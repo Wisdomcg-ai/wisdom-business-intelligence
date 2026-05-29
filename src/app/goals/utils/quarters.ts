@@ -234,12 +234,22 @@ export function getAvailableQuarters(yearType: YearType, planYear: number): Quar
  * Auto-disappears on the FY rollover (1 July for AU FY) when the planned
  * year begins, and auto-reappears the following April when the new current
  * FY enters its last 3 months.
+ *
+ * B15 (Phase 68) — extended-period override:
+ *   When isExtendedPeriod=true AND planStartDate is provided AND planStartDate
+ *   is before fyEnd, the returned column's endDate is trimmed to one day before
+ *   planned Year 1 starts so the remainder does not overlap with planned Year 1.
+ *   This handles Phase-14 first-time-extended-period plans where Year 1 begins
+ *   mid-FY (e.g. Armstrong: plan_start_date 2026-06-01 vs FY26 end 2026-06-30
+ *   would otherwise show June in BOTH "Now" and planned Y1).
  */
 export function deriveCurrentRemainderColumn(
   today: Date,
   planYear: number,
   fiscalYearStart: number,
   thresholdMonths: number = 3,
+  isExtendedPeriod: boolean = false,
+  planStartDate: Date | null = null,
 ): QuarterInfo | null {
   // Local copy of these utilities to keep this module dependency-free of
   // /lib/utils/fiscal-year-utils. Mirrors the behavior of getFiscalYear,
@@ -256,8 +266,15 @@ export function deriveCurrentRemainderColumn(
   // Compute FY end date (last day of the month before yearStart).
   const fyEndMonth = yearStart === 1 ? 12 : yearStart - 1 // 1-12
   const fyEndYear = currentFY
-  const fyEnd = new Date(fyEndYear, fyEndMonth, 0) // last day of fyEndMonth
+  let fyEnd = new Date(fyEndYear, fyEndMonth, 0) // last day of fyEndMonth
   fyEnd.setHours(23, 59, 59, 999)
+
+  // B15: extended-period override — trim remainder to end the day before
+  // planned Year 1 starts, so the remainder does not overlap planned months.
+  if (isExtendedPeriod && planStartDate instanceof Date && planStartDate < fyEnd) {
+    fyEnd = new Date(planStartDate.getTime() - 24 * 60 * 60 * 1000)
+    fyEnd.setHours(23, 59, 59, 999)
+  }
 
   // Rule 2: planning season — today within the last `thresholdMonths` of FY.
   const monthsUntilEnd =
@@ -268,7 +285,10 @@ export function deriveCurrentRemainderColumn(
 
   const remainingMonths = monthsUntilEnd + 1 // inclusive of current month
   const startMonth = monthOneBased
-  const endMonth = fyEndMonth
+  // Read endMonth from the (possibly-overridden) fyEnd so the label reflects
+  // any B15 trim. Without this, the label would show the full FY-end month
+  // even when the remainder column actually ends mid-FY.
+  const endMonth = fyEnd.getMonth() + 1
 
   const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   const monthRange = remainingMonths === 1

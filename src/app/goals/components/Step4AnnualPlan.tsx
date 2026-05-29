@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { formatDollar, parseDollarInput } from '../utils/formatting'
 import { calculateQuarters, deriveCurrentRemainderColumn, determinePlanYear, QuarterInfo } from '../utils/quarters'
 import { TeamMember, getInitials, getColorForName } from '../utils/team'
+import type { OnePagePlanData } from '@/app/one-page-plan/types'
 
 interface Step4Props {
   twelveMonthInitiatives: StrategicInitiative[]
@@ -26,14 +27,20 @@ interface Step4Props {
   yearType: YearType
   businessId: string
   /**
-   * Phase 14 legacy props — retained on the interface so existing callers don't
-   * break, but the column-display logic below no longer reads them. Column
-   * visibility is driven entirely by today's date relative to `planYear` and
-   * `fiscalYearStart`. See `currentRemainderInfo` below.
+   * Phase 14 extended-period support — when true, the wizard is planning a
+   * 13-15 month first plan whose Year 1 begins mid-FY. Combined with
+   * `planStartDate`, this trims the "Now" remainder column to end before
+   * Y1 begins (B15) AND distributes auto-split across 5 periods instead of 4
+   * (B16). When false, no behaviour change.
    */
   isExtendedPeriod?: boolean
   currentYearRemainingMonths?: number
   fiscalYearStart?: number
+  /**
+   * Plan Y1 start date. Required when `isExtendedPeriod=true` for B15's
+   * boundary trim. ISO string from Supabase or a Date object both accepted.
+   */
+  planStartDate?: Date | string | null
   /**
    * The fiscal year being planned (e.g. 2027 = FY27). When provided, overrides
    * `determinePlanYear(yearType)`. Callers should derive this from the saved
@@ -58,9 +65,10 @@ export default function Step4AnnualPlan({
   kpis,
   yearType,
   businessId,
-  isExtendedPeriod: _isExtendedPeriod, // Phase 14 legacy — see interface comment
+  isExtendedPeriod, // Phase 14 extended-period — un-deprecated by B15/B16
   currentYearRemainingMonths: _currentYearRemainingMonths,
   fiscalYearStart,
+  planStartDate: planStartDateProp,
   planYear: planYearProp,
 }: Step4Props) {
   // Calculate dynamic quarters. planYearProp (derived from saved year1EndDate)
@@ -70,11 +78,21 @@ export default function Step4AnnualPlan({
   const QUARTERS = useMemo(() => calculateQuarters(yearType, planYear), [yearType, planYear])
   const yearLabel = `${yearType} ${planYear}`
 
-  // "Current FY remainder" pseudo-column — purely date-driven.
+  // Normalize the planStartDate prop into a Date | null. Accepts both Date
+  // and ISO string (Supabase returns date columns as strings).
+  const planStartDate = useMemo<Date | null>(() => {
+    if (!planStartDateProp) return null
+    if (planStartDateProp instanceof Date) return planStartDateProp
+    const d = new Date(planStartDateProp)
+    return isNaN(d.getTime()) ? null : d
+  }, [planStartDateProp])
+
+  // "Current FY remainder" pseudo-column — purely date-driven, with B15
+  // extended-period boundary trim applied when isExtendedPeriod=true.
   // See deriveCurrentRemainderColumn for the visibility rules.
   const currentRemainderInfo = useMemo(
-    () => deriveCurrentRemainderColumn(new Date(), planYear, fiscalYearStart ?? 7),
-    [planYear, fiscalYearStart],
+    () => deriveCurrentRemainderColumn(new Date(), planYear, fiscalYearStart ?? 7, 3, !!isExtendedPeriod, planStartDate),
+    [planYear, fiscalYearStart, isExtendedPeriod, planStartDate],
   )
 
   // Combined column list for initiative sections: [current_remainder] + Q1-Q4
@@ -105,6 +123,14 @@ export default function Step4AnnualPlan({
   const [newPersonName, setNewPersonName] = useState('')
   const [newPersonRole, setNewPersonRole] = useState('')
   const [isSavingNewPerson, setIsSavingNewPerson] = useState(false)
+  // B6 (Phase 68): Available-pool category filter. 'all' = no filter.
+  const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  // B7: per-quarter note in-progress draft (avoids firing setQuarterlyTargets
+  // on every keystroke; commits on blur).
+  const [draftQuarterNotes, setDraftQuarterNotes] = useState<Record<string, string>>({})
+  // B8 (Phase 68): "Save plan version" snapshot trigger state.
+  const [savingSnapshot, setSavingSnapshot] = useState(false)
+  const [lastSavedVersion, setLastSavedVersion] = useState<number | null>(null)
 
 
   // Load team members from Supabase or localStorage
@@ -367,6 +393,31 @@ export default function Step4AnnualPlan({
     i => !assignedTitles.has((i.title || '').trim().toLowerCase())
   )
 
+  // B6: chip-filtered subset of the unassigned pool — used only by the
+  // Available pool grid render. The quarter card `+ Add` dropdown and the
+  // drop handler keep using the unfiltered `unassignedInitiatives` so the
+  // chip filter only affects display, not assignment mechanics.
+  const filteredUnassignedInitiatives = selectedCategory === 'all'
+    ? unassignedInitiatives
+    : unassignedInitiatives.filter(i => (i.category || 'uncategorised').trim().toLowerCase() === selectedCategory)
+
+  // B6: derived chips for the Available pool category filter row.
+  const categoryChips = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const i of twelveMonthInitiatives) {
+      const key = (i.category || 'uncategorised').trim().toLowerCase()
+      counts.set(key, (counts.get(key) || 0) + 1)
+    }
+    const knownOrder = ['marketing', 'finance', 'people', 'systems', 'customer_experience', 'customer experience', 'cx', 'leadership', 'time', 'diversification', 'growth', 'operations', 'product', 'sales', 'other']
+    const known = knownOrder.filter(k => counts.has(k))
+    const unknown = Array.from(counts.keys()).filter(k => !knownOrder.includes(k)).sort()
+    return [...known, ...unknown].map(key => {
+      const style = getCategoryStyle(key) ?? { bg: 'bg-gray-200', text: 'text-gray-700', label: key.toUpperCase().slice(0, 8) }
+      return { key, label: style.label, bg: style.bg, text: style.text, count: counts.get(key) || 0 }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getCategoryStyle is component-local with stable refs in palette objects
+  }, [twelveMonthInitiatives])
+
   // Add initiative to quarter
   const handleAddToQuarter = (initiative: StrategicInitiative, quarterId: string) => {
     setAnnualPlanByQuarter({
@@ -459,6 +510,84 @@ export default function Step4AnnualPlan({
     })
 
     setAnnualPlanByQuarter(distribution)
+  }
+
+  // B4 (Phase 68) — category + priority badge palettes for initiative cards.
+  // Case-insensitive keyed lookup; unknown categories fall back to a neutral
+  // grey badge with the first 4 chars of the category UPPERCASED as the label.
+  const CATEGORY_PALETTE: Record<string, { bg: string; text: string; label: string }> = {
+    marketing:             { bg: 'bg-pink-100',    text: 'text-pink-700',    label: 'MKTG' },
+    finance:               { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'FIN'  },
+    people:                { bg: 'bg-violet-100',  text: 'text-violet-700',  label: 'PPL'  },
+    systems:               { bg: 'bg-sky-100',     text: 'text-sky-700',     label: 'SYS'  },
+    'customer experience': { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'CX'   },
+    customer_experience:   { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'CX'   },
+    cx:                    { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'CX'   },
+    leadership:            { bg: 'bg-indigo-100',  text: 'text-indigo-700',  label: 'LEAD' },
+    time:                  { bg: 'bg-orange-100',  text: 'text-orange-700',  label: 'TIME' },
+    diversification:       { bg: 'bg-rose-100',    text: 'text-rose-700',    label: 'DIV'  },
+    growth:                { bg: 'bg-rose-100',    text: 'text-rose-700',    label: 'GROW' },
+    operations:            { bg: 'bg-cyan-100',    text: 'text-cyan-700',    label: 'OPS'  },
+    product:               { bg: 'bg-fuchsia-100', text: 'text-fuchsia-700', label: 'PROD' },
+    sales:                 { bg: 'bg-lime-100',    text: 'text-lime-700',    label: 'SALE' },
+    other:                 { bg: 'bg-gray-200',    text: 'text-gray-700',    label: 'OTHR' },
+  }
+
+  const PRIORITY_PALETTE: Record<string, { bg: string; text: string; label: string }> = {
+    high:   { bg: 'bg-red-100',   text: 'text-red-700',   label: 'HIGH' },
+    medium: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'MED'  },
+    low:    { bg: 'bg-slate-100', text: 'text-slate-700', label: 'LOW'  },
+  }
+
+  const getCategoryStyle = (category?: string | null) => {
+    if (!category) return null
+    const key = category.trim().toLowerCase()
+    if (CATEGORY_PALETTE[key]) return CATEGORY_PALETTE[key]
+    return { bg: 'bg-gray-200', text: 'text-gray-700', label: category.toUpperCase().slice(0, 4) }
+  }
+
+  const getPriorityStyle = (priority?: string | null) => {
+    if (!priority) return null
+    return PRIORITY_PALETTE[priority.toLowerCase()] ?? null
+  }
+
+  // B5 (Phase 68) — per-quarter engine balance: small stacked bar under each
+  // quarter card header showing the mix of initiative categories. Recomputed
+  // per render (≤5 items per quarter, negligible cost). Returns an empty
+  // array when the quarter has no items so the placeholder strip shows.
+  const computeCategoryBreakdown = (items: StrategicInitiative[]): Array<{ key: string; bg: string; label: string; count: number; widthPct: number }> => {
+    if (!items || items.length === 0) return []
+    const counts = new Map<string, number>()
+    for (const it of items) {
+      const raw = (it.category || 'uncategorised').trim().toLowerCase()
+      counts.set(raw, (counts.get(raw) || 0) + 1)
+    }
+    const total = items.length
+    // Stable order: known palette keys first (PALETTE-defined sequence),
+    // then unknowns alphabetical. Keeps the bar visually stable as the
+    // operator drags items between quarters.
+    const knownOrder = ['marketing', 'finance', 'people', 'systems', 'customer_experience', 'customer experience', 'cx', 'leadership', 'time', 'diversification', 'growth', 'operations', 'product', 'sales', 'other']
+    const known = knownOrder.filter(k => counts.has(k))
+    const unknown = Array.from(counts.keys()).filter(k => !knownOrder.includes(k)).sort()
+    const ordered = [...known, ...unknown]
+    return ordered.map(key => {
+      const style = getCategoryStyle(key) ?? { bg: 'bg-gray-300', text: 'text-gray-700', label: 'OTHER' }
+      const count = counts.get(key) ?? 0
+      return {
+        key,
+        bg: style.bg,
+        label: style.label,
+        count,
+        widthPct: (count / total) * 100,
+      }
+    })
+  }
+
+  // Coloured cards (brand-navy / brand-orange) need white-on-translucent
+  // badges, otherwise the contextual `bg-{color}-100` palette is unreadable.
+  const overrideBadgeForColoredCard = (isColored: boolean, style: { bg: string; text: string; label: string }) => {
+    if (!isColored) return style
+    return { ...style, bg: 'bg-white/20', text: 'text-white' }
   }
 
   // Drag handlers
@@ -620,6 +749,34 @@ export default function Step4AnnualPlan({
     setQuarterlyTargets(newTargets)
   }
 
+  // B7 (Phase 68) — per-quarter notes ("why this quarter?") persisted via
+  // the existing quarterlyTargets JSONB shape. Uses a magic metricKey
+  // 'period_notes' whose inner record shape matches the existing
+  // {q1,q2,q3,q4,current_remainder?} pattern — no Step4Props type change
+  // required. Tolerant read: missing notes default to empty string.
+  const getQuarterNote = (quarterId: string): string => {
+    const notesByQuarter = quarterlyTargets['period_notes'] as Record<string, string> | undefined
+    return notesByQuarter?.[quarterId] ?? ''
+  }
+
+  const setQuarterNote = (quarterId: string, value: string) => {
+    const existing = (quarterlyTargets['period_notes'] || { q1: '', q2: '', q3: '', q4: '' }) as Record<string, string>
+    setQuarterlyTargets({
+      ...quarterlyTargets,
+      // 'period_notes' is an additive metricKey — same shape as q1/q2/q3/q4
+      // metric records, just stored as string text instead of numeric values.
+      period_notes: {
+        ...existing,
+        [quarterId]: value,
+      } as { q1: string; q2: string; q3: string; q4: string; current_remainder?: string },
+    })
+  }
+
+  // While the textarea is focused, render the local draft; once the field
+  // blurs we drop the draft entry so future reads come from quarterlyTargets.
+  const getQuarterNoteDraft = (quarterId: string) =>
+    draftQuarterNotes[quarterId] !== undefined ? draftQuarterNotes[quarterId] : getQuarterNote(quarterId)
+
   // Format currency for display
   const formatCurrency = (value: number) => {
     const abs = Math.abs(value)
@@ -657,21 +814,39 @@ export default function Step4AnnualPlan({
   }
 
   // ── Auto-distribute helpers (card layout's smart-defaults bar) ──
-  // Splits the annual target evenly across the 4 quarters of the planned FY.
-  // The current_remainder period stays at 0 by design (it's outside Year 1).
+  // Splits the annual target evenly across the planned periods.
+  //
+  // B16 (Phase 68): for extended-period plans (isExtendedPeriod=true) where
+  // Y1 includes the remainder column, distribute across 5 periods instead of
+  // 4 — the remainder IS part of Y1 in that case. For non-extended plans,
+  // distribution stays across q1..q4 only (remainder excluded, behaviour
+  // unchanged).
   const autoSplitEvenly = () => {
     if (!financialData) return
+    const includeRemainder = !!(isExtendedPeriod && currentRemainderInfo)
+    const periodCount = includeRemainder ? 5 : 4
     const newTargets = { ...quarterlyTargets }
     const updateMetric = (metricKey: string, annual: number) => {
       if (annual <= 0) return
-      const each = Math.round(annual / 4)
-      newTargets[metricKey] = {
-        ...(newTargets[metricKey] || {}),
+      const each = Math.round(annual / periodCount)
+      const distributed: { q1: string; q2: string; q3: string; q4: string; current_remainder?: string } = {
+        ...(newTargets[metricKey] || { q1: '', q2: '', q3: '', q4: '' }),
         q1: each.toString(),
         q2: each.toString(),
         q3: each.toString(),
         // Q4 absorbs rounding remainder so the sum equals annual exactly.
-        q4: (annual - each * 3).toString(),
+        q4: (annual - each * (periodCount - 1)).toString(),
+      }
+      if (includeRemainder) {
+        distributed.current_remainder = each.toString()
+      }
+      // Preserve the explicit cast — the strict `quarterlyTargets` index
+      // signature at Step4Props:21-22 means tsc can't prove the spread
+      // matches the shape without it. Relaxing the index signature is out
+      // of scope for B16.
+      newTargets[metricKey] = {
+        ...(newTargets[metricKey] || {}),
+        ...distributed,
       } as { q1: string; q2: string; q3: string; q4: string; current_remainder?: string }
     }
     updateMetric('revenue', financialData.revenue.year1)
@@ -683,6 +858,82 @@ export default function Step4AnnualPlan({
   const clearTargets = () => {
     if (!confirm('Clear all quarterly target values? Initiative assignments are not affected.')) return
     setQuarterlyTargets({})
+  }
+
+  // B8 (Phase 68): build the Step-4-owned slice of OnePagePlanData.
+  // vision/mission/coreValues/SWOT/companyName/ownerGoals are NOT computed
+  // here — the API route at /api/plan-snapshots reads them server-side from
+  // strategy_data + swot_items + business_profiles + businesses and merges
+  // them in before insert. Keeps the wizard component lean and matches the
+  // 68-08 baseline composition exactly.
+  type Step4PartialPlanData = Pick<OnePagePlanData,
+    'financialGoals' | 'coreMetrics' | 'kpis' | 'strategicInitiatives'
+    | 'quarterlyRocks' | 'currentQuarter' | 'currentQuarterLabel' | 'yearType' | 'planYear'>
+
+  const composePlanData = (): Step4PartialPlanData => {
+    const fg = financialData
+    const cm = coreMetrics
+    return {
+      financialGoals: {
+        year3:   { revenue: fg?.revenue?.year3 ?? 0, grossProfit: fg?.grossProfit?.year3 ?? 0, netProfit: fg?.netProfit?.year3 ?? 0 },
+        year2:   { revenue: fg?.revenue?.year2 ?? 0, grossProfit: fg?.grossProfit?.year2 ?? 0, netProfit: fg?.netProfit?.year2 ?? 0 },
+        year1:   { revenue: fg?.revenue?.year1 ?? 0, grossProfit: fg?.grossProfit?.year1 ?? 0, netProfit: fg?.netProfit?.year1 ?? 0 },
+        quarter: { revenue: 0, grossProfit: 0, netProfit: 0 },
+      },
+      coreMetrics: {
+        year3:   cm ?? {},
+        year2:   cm ?? {},
+        year1:   cm ?? {},
+        quarter: {},
+      },
+      kpis: kpis.map(k => ({
+        name: k.friendlyName || k.name,
+        category: ((k as unknown as { category?: string }).category) || 'General',
+        year3Target: Number(k.year3Target) || 0,
+        year1Target: Number(k.year1Target) || 0,
+        quarterTarget: 0,
+      })),
+      strategicInitiatives: twelveMonthInitiatives.map(i => {
+        const inQuarters: string[] = []
+        for (const [q, items] of Object.entries(annualPlanByQuarter)) {
+          if ((items || []).some(x => x.id === i.id || (x.title || '').trim().toLowerCase() === (i.title || '').trim().toLowerCase())) {
+            inQuarters.push(q.toUpperCase())
+          }
+        }
+        return { title: i.title, quarters: inQuarters, owner: i.assignedTo || undefined }
+      }),
+      quarterlyRocks: [],
+      currentQuarter: 'q1',
+      currentQuarterLabel: yearLabel,
+      yearType,
+      planYear,
+    }
+  }
+
+  const handleSaveSnapshot = async () => {
+    if (savingSnapshot) return
+    setSavingSnapshot(true)
+    try {
+      const step4_plan_data = composePlanData()
+      const res = await fetch('/api/plan-snapshots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_id: businessId, step4_plan_data }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok) {
+        const msg = json?.error || `Save failed (${res.status})`
+        alert(`Could not save plan version: ${msg}`)
+        return
+      }
+      setLastSavedVersion(json.version_number as number)
+      alert(`Plan version ${json.version_number} saved.`)
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'network error'
+      alert(`Could not save plan version: ${message}`)
+    } finally {
+      setSavingSnapshot(false)
+    }
   }
 
   // Calculate section completion status
@@ -950,7 +1201,11 @@ export default function Step4AnnualPlan({
           { key: 'teamHeadcount', label: 'Team Headcount', year1: coreMetrics.teamHeadcount?.year1 },
           { key: 'ownerHoursPerWeek', label: 'Owner Hours / Week', year1: coreMetrics.ownerHoursPerWeek?.year1 },
         ]
-        const visibleRows = CORE_ROWS.filter(r => (r.year1 ?? 0) > 0)
+        // B2 (Phase 68): Owner Hours always visible — even when year1 isn't set.
+        // Coach can't drop it silently because Luke's "off the tools" trajectory
+        // is the whole point. When year1 is 0/unset for ownerHoursPerWeek, the
+        // Annual cell renders a "Set in Step 1 →" CTA (see render block below).
+        const visibleRows = CORE_ROWS.filter(r => (r.year1 ?? 0) > 0 || r.key === 'ownerHoursPerWeek')
         if (visibleRows.length === 0) return null
         return (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -999,7 +1254,18 @@ export default function Step4AnnualPlan({
                               <span className="font-semibold text-gray-900 text-sm">{m.label}</span>
                             </td>
                             <td className="p-3 text-center text-sm font-medium text-gray-700">
-                              {m.isPercentage ? `${m.year1}%` : m.isCurrency ? formatCurrency(m.year1 ?? 0) : (m.year1 ?? 0)}
+                              {m.key === 'ownerHoursPerWeek' && (m.year1 ?? 0) <= 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => { document.querySelector('[data-step="1"]')?.scrollIntoView({ behavior: 'smooth' }) }}
+                                  className="text-brand-orange underline hover:text-brand-orange-700 text-sm"
+                                  title="Set Owner Hours / Week in Step 1"
+                                >
+                                  Set in Step 1 →
+                                </button>
+                              ) : (
+                                m.isPercentage ? `${m.year1}%` : m.isCurrency ? formatCurrency(m.year1 ?? 0) : (m.year1 ?? 0)
+                              )}
                             </td>
                             {allPeriods.map((q) => {
                               const raw = metric?.[q.id] || ''
@@ -1121,12 +1387,25 @@ export default function Step4AnnualPlan({
                 <p className="text-sm text-gray-600">Drag initiatives into quarters or use the + Add dropdown — max {MAX_PER_QUARTER} per quarter</p>
               </div>
             </div>
-            <button
-              onClick={() => setExecutionCollapsed(!executionCollapsed)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              {executionCollapsed ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronUp className="w-5 h-5 text-gray-400" />}
-            </button>
+            <div className="flex items-center gap-2">
+              {/* B3 (Phase 68): surface the existing handleStaggerByPriority — function existed but no UI called it. */}
+              {!executionCollapsed && twelveMonthInitiatives.length > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleStaggerByPriority() }}
+                  className="hidden sm:flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded border border-brand-orange text-brand-orange hover:bg-brand-orange hover:text-white transition-colors"
+                  title="Distribute initiatives across Q1-Q4 by priority (HIGH first, LOW last)"
+                >
+                  Stagger by priority
+                </button>
+              )}
+              <button
+                onClick={() => setExecutionCollapsed(!executionCollapsed)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                {executionCollapsed ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronUp className="w-5 h-5 text-gray-400" />}
+              </button>
+            </div>
           </div>
           {!executionCollapsed && (
             <div className="border-t border-gray-200 p-4 sm:p-6 bg-gradient-to-b from-white to-gray-50">
@@ -1177,6 +1456,25 @@ export default function Step4AnnualPlan({
                               <p className="text-[11px] text-gray-500 mt-0.5">{quarter.months}</p>
                             </div>
                           </div>
+                          {/* B5: per-quarter engine balance bar — category mix of assigned initiatives. */}
+                          {(() => {
+                            const segments = computeCategoryBreakdown(items)
+                            const titleText = segments.length === 0
+                              ? 'No initiatives assigned to this quarter yet'
+                              : segments.map(s => `${s.label}: ${s.count}`).join(' · ')
+                            return (
+                              <div
+                                className="engine-balance-bar h-1.5 w-full flex rounded-sm overflow-hidden mb-2 bg-gray-100"
+                                title={titleText}
+                                role="img"
+                                aria-label={`Engine balance: ${titleText}`}
+                              >
+                                {segments.map(s => (
+                                  <div key={s.key} className={s.bg} style={{ width: `${s.widthPct}%` }} />
+                                ))}
+                              </div>
+                            )
+                          })()}
                           <div className="flex items-center justify-between mb-1.5">
                             <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
                               Initiatives <span className="text-gray-400">({items.length}/{MAX_PER_QUARTER})</span>
@@ -1212,6 +1510,9 @@ export default function Step4AnnualPlan({
                                   : isOperational ? 'bg-white text-gray-900 border-gray-300'
                                   : 'bg-brand-orange text-white border-brand-orange'
                                 const subTextColor = isOperational ? 'text-gray-500' : 'text-white/70'
+                                const isColored = isRoadmap || !isOperational
+                                const cat = getCategoryStyle(initiative.category)
+                                const pri = getPriorityStyle(initiative.priority)
                                 return (
                                   <div
                                     key={initiative.id}
@@ -1220,7 +1521,21 @@ export default function Step4AnnualPlan({
                                     className={`group flex items-start gap-1.5 p-2 rounded border-2 cursor-move transition-all ${cardBg}`}
                                   >
                                     <GripVertical className={`w-3 h-3 flex-shrink-0 mt-0.5 ${subTextColor}`} />
-                                    <p className="text-xs font-medium leading-snug flex-1 line-clamp-2">{initiative.title}</p>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-medium leading-snug line-clamp-2">{initiative.title}</p>
+                                      {(cat || pri) && (
+                                        <div className="flex flex-wrap gap-1 mt-1">
+                                          {cat && (() => {
+                                            const s = overrideBadgeForColoredCard(isColored, cat)
+                                            return <span className={`px-1 py-0.5 text-[9px] rounded font-semibold ${s.bg} ${s.text}`}>{s.label}</span>
+                                          })()}
+                                          {pri && (() => {
+                                            const s = overrideBadgeForColoredCard(isColored, pri)
+                                            return <span className={`px-1 py-0.5 text-[9px] rounded font-semibold ${s.bg} ${s.text}`}>{s.label}</span>
+                                          })()}
+                                        </div>
+                                      )}
+                                    </div>
                                     <button
                                       type="button"
                                       onClick={() => handleRemoveFromQuarter(initiative.id, quarter.id)}
@@ -1233,6 +1548,33 @@ export default function Step4AnnualPlan({
                                 )
                               })
                             )}
+                          </div>
+                          {/* B7: per-quarter notes. Commits on blur to avoid setQuarterlyTargets on every keystroke. */}
+                          <div className="mt-2 pt-2 border-t border-gray-200">
+                            <label
+                              htmlFor={`quarter-notes-${quarter.id}`}
+                              className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 block mb-1"
+                            >
+                              Why this quarter?
+                            </label>
+                            <textarea
+                              id={`quarter-notes-${quarter.id}`}
+                              value={getQuarterNoteDraft(quarter.id)}
+                              onChange={(e) => setDraftQuarterNotes(prev => ({ ...prev, [quarter.id]: e.target.value }))}
+                              onBlur={(e) => {
+                                const value = e.target.value
+                                const current = getQuarterNote(quarter.id)
+                                if (value !== current) setQuarterNote(quarter.id, value)
+                                setDraftQuarterNotes(prev => {
+                                  const next = { ...prev }
+                                  delete next[quarter.id]
+                                  return next
+                                })
+                              }}
+                              placeholder="Optional — capture why these initiatives belong here"
+                              rows={2}
+                              className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-brand-orange focus:border-brand-orange resize-none"
+                            />
                           </div>
                         </div>
                       )
@@ -1247,15 +1589,51 @@ export default function Step4AnnualPlan({
                   >
                     <div className="flex items-center justify-between mb-3">
                       <h4 className="font-semibold text-brand-navy text-sm">
-                        Available initiatives <span className="text-gray-500 font-normal">({unassignedInitiatives.length})</span>
+                        Available initiatives <span className="text-gray-500 font-normal">({filteredUnassignedInitiatives.length}{selectedCategory !== 'all' && unassignedInitiatives.length !== filteredUnassignedInitiatives.length ? ` of ${unassignedInitiatives.length}` : ''})</span>
                       </h4>
                       <p className="text-xs text-gray-500">Drag into a quarter or use + Add</p>
                     </div>
-                    {unassignedInitiatives.length === 0 ? (
-                      <p className="text-xs text-center py-4 text-gray-500">All initiatives assigned ✓</p>
+                    {/* B6: category chip filter row */}
+                    {categoryChips.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-3" role="tablist" aria-label="Filter Available initiatives by category">
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={selectedCategory === 'all'}
+                          onClick={() => setSelectedCategory('all')}
+                          className={`px-2 py-1 text-[10px] font-semibold rounded-full border transition-colors ${
+                            selectedCategory === 'all'
+                              ? 'bg-brand-navy text-white border-brand-navy'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-brand-navy'
+                          }`}
+                        >
+                          All ({twelveMonthInitiatives.length})
+                        </button>
+                        {categoryChips.map(chip => (
+                          <button
+                            key={chip.key}
+                            type="button"
+                            role="tab"
+                            aria-selected={selectedCategory === chip.key}
+                            onClick={() => setSelectedCategory(chip.key)}
+                            className={`px-2 py-1 text-[10px] font-semibold rounded-full border transition-colors ${
+                              selectedCategory === chip.key
+                                ? `${chip.bg} ${chip.text} border-transparent`
+                                : 'bg-white text-gray-700 border-gray-300 hover:border-gray-500'
+                            }`}
+                          >
+                            {chip.label} ({chip.count})
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {filteredUnassignedInitiatives.length === 0 ? (
+                      <p className="text-xs text-center py-4 text-gray-500">
+                        {selectedCategory === 'all' ? 'All initiatives assigned ✓' : 'No initiatives in this category — try All'}
+                      </p>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-[40vh] overflow-y-auto pr-1">
-                        {unassignedInitiatives.map((initiative) => {
+                        {filteredUnassignedInitiatives.map((initiative) => {
                           const isRoadmap = initiative.source === 'roadmap'
                           const isOperational = initiative.ideaType === 'operational'
                           const cardBg = isRoadmap ? 'bg-brand-navy text-white border-brand-navy'
@@ -1265,6 +1643,10 @@ export default function Step4AnnualPlan({
                           const badgeStyle = isRoadmap ? { bg: 'bg-white/20', text: 'text-white', label: 'ROADMAP' }
                             : isOperational ? { bg: 'bg-gray-200', text: 'text-gray-700', label: 'OPERATIONAL' }
                             : { bg: 'bg-white/20', text: 'text-white', label: 'STRATEGIC' }
+                          // B4: category + priority badges sit alongside the source badge.
+                          const isColored = isRoadmap || !isOperational
+                          const cat = getCategoryStyle(initiative.category)
+                          const pri = getPriorityStyle(initiative.priority)
                           return (
                             <div
                               key={initiative.id}
@@ -1275,9 +1657,19 @@ export default function Step4AnnualPlan({
                               <GripVertical className={`w-3 h-3 flex-shrink-0 mt-0.5 ${subTextColor}`} />
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-medium leading-snug">{initiative.title}</p>
-                                <span className={`inline-block mt-1 px-1 py-0.5 text-[9px] rounded font-semibold ${badgeStyle.bg} ${badgeStyle.text}`}>
-                                  {badgeStyle.label}
-                                </span>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  <span className={`px-1 py-0.5 text-[9px] rounded font-semibold ${badgeStyle.bg} ${badgeStyle.text}`}>
+                                    {badgeStyle.label}
+                                  </span>
+                                  {cat && (() => {
+                                    const s = overrideBadgeForColoredCard(isColored, cat)
+                                    return <span className={`px-1 py-0.5 text-[9px] rounded font-semibold ${s.bg} ${s.text}`}>{s.label}</span>
+                                  })()}
+                                  {pri && (() => {
+                                    const s = overrideBadgeForColoredCard(isColored, pri)
+                                    return <span className={`px-1 py-0.5 text-[9px] rounded font-semibold ${s.bg} ${s.text}`}>{s.label}</span>
+                                  })()}
+                                </div>
                               </div>
                             </div>
                           )
@@ -1291,6 +1683,27 @@ export default function Step4AnnualPlan({
           )}
         </div>
       )}
+
+      {/* B8 (Phase 68): Save plan version snapshot trigger */}
+      <div className="flex items-center justify-between bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Save plan version</h3>
+          <p className="text-xs text-gray-600 mt-0.5">
+            Capture current Step 4 state as a snapshot you can refer back to.
+            {lastSavedVersion !== null && (
+              <span className="ml-2 text-brand-orange font-semibold">Last saved: v{lastSavedVersion}</span>
+            )}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleSaveSnapshot}
+          disabled={savingSnapshot}
+          className="px-4 py-2 text-sm font-semibold rounded bg-brand-orange text-white hover:bg-brand-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {savingSnapshot ? 'Saving…' : 'Save plan version'}
+        </button>
+      </div>
 
     </div>
   )

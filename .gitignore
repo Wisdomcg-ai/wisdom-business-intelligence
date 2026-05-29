@@ -67,3 +67,6 @@ scripts/audit-xero-pl-lines-duplicates-report-*.md
 # of the working tree so they never accumulate again.
 * [0-9].*
 * [0-9][0-9].*
+
+# Phase 68 — Armstrong rollback snapshots (large, regenerable, contain tenant PII)
+scripts/snapshots/*.json
