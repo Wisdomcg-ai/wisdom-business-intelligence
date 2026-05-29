@@ -1053,6 +1053,7 @@ function StrategicPlanningContent() {
                 isExtendedPeriod={isExtendedPeriod}
                 currentYearRemainingMonths={currentYearRemainingMonths}
                 fiscalYearStart={fiscalYearStart}
+                planStartDate={planStartDate}
                 planYear={planYearFromSavedDates}
               />
             </div>

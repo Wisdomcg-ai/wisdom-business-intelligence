@@ -26,14 +26,20 @@ interface Step4Props {
   yearType: YearType
   businessId: string
   /**
-   * Phase 14 legacy props — retained on the interface so existing callers don't
-   * break, but the column-display logic below no longer reads them. Column
-   * visibility is driven entirely by today's date relative to `planYear` and
-   * `fiscalYearStart`. See `currentRemainderInfo` below.
+   * Phase 14 extended-period support — when true, the wizard is planning a
+   * 13-15 month first plan whose Year 1 begins mid-FY. Combined with
+   * `planStartDate`, this trims the "Now" remainder column to end before
+   * Y1 begins (B15) AND distributes auto-split across 5 periods instead of 4
+   * (B16). When false, no behaviour change.
    */
   isExtendedPeriod?: boolean
   currentYearRemainingMonths?: number
   fiscalYearStart?: number
+  /**
+   * Plan Y1 start date. Required when `isExtendedPeriod=true` for B15's
+   * boundary trim. ISO string from Supabase or a Date object both accepted.
+   */
+  planStartDate?: Date | string | null
   /**
    * The fiscal year being planned (e.g. 2027 = FY27). When provided, overrides
    * `determinePlanYear(yearType)`. Callers should derive this from the saved
@@ -58,9 +64,10 @@ export default function Step4AnnualPlan({
   kpis,
   yearType,
   businessId,
-  isExtendedPeriod: _isExtendedPeriod, // Phase 14 legacy — see interface comment
+  isExtendedPeriod, // Phase 14 extended-period — un-deprecated by B15/B16
   currentYearRemainingMonths: _currentYearRemainingMonths,
   fiscalYearStart,
+  planStartDate: planStartDateProp,
   planYear: planYearProp,
 }: Step4Props) {
   // Calculate dynamic quarters. planYearProp (derived from saved year1EndDate)
@@ -70,11 +77,21 @@ export default function Step4AnnualPlan({
   const QUARTERS = useMemo(() => calculateQuarters(yearType, planYear), [yearType, planYear])
   const yearLabel = `${yearType} ${planYear}`
 
-  // "Current FY remainder" pseudo-column — purely date-driven.
+  // Normalize the planStartDate prop into a Date | null. Accepts both Date
+  // and ISO string (Supabase returns date columns as strings).
+  const planStartDate = useMemo<Date | null>(() => {
+    if (!planStartDateProp) return null
+    if (planStartDateProp instanceof Date) return planStartDateProp
+    const d = new Date(planStartDateProp)
+    return isNaN(d.getTime()) ? null : d
+  }, [planStartDateProp])
+
+  // "Current FY remainder" pseudo-column — purely date-driven, with B15
+  // extended-period boundary trim applied when isExtendedPeriod=true.
   // See deriveCurrentRemainderColumn for the visibility rules.
   const currentRemainderInfo = useMemo(
-    () => deriveCurrentRemainderColumn(new Date(), planYear, fiscalYearStart ?? 7),
-    [planYear, fiscalYearStart],
+    () => deriveCurrentRemainderColumn(new Date(), planYear, fiscalYearStart ?? 7, 3, !!isExtendedPeriod, planStartDate),
+    [planYear, fiscalYearStart, isExtendedPeriod, planStartDate],
   )
 
   // Combined column list for initiative sections: [current_remainder] + Q1-Q4
@@ -657,21 +674,39 @@ export default function Step4AnnualPlan({
   }
 
   // ── Auto-distribute helpers (card layout's smart-defaults bar) ──
-  // Splits the annual target evenly across the 4 quarters of the planned FY.
-  // The current_remainder period stays at 0 by design (it's outside Year 1).
+  // Splits the annual target evenly across the planned periods.
+  //
+  // B16 (Phase 68): for extended-period plans (isExtendedPeriod=true) where
+  // Y1 includes the remainder column, distribute across 5 periods instead of
+  // 4 — the remainder IS part of Y1 in that case. For non-extended plans,
+  // distribution stays across q1..q4 only (remainder excluded, behaviour
+  // unchanged).
   const autoSplitEvenly = () => {
     if (!financialData) return
+    const includeRemainder = !!(isExtendedPeriod && currentRemainderInfo)
+    const periodCount = includeRemainder ? 5 : 4
     const newTargets = { ...quarterlyTargets }
     const updateMetric = (metricKey: string, annual: number) => {
       if (annual <= 0) return
-      const each = Math.round(annual / 4)
-      newTargets[metricKey] = {
-        ...(newTargets[metricKey] || {}),
+      const each = Math.round(annual / periodCount)
+      const distributed: { q1: string; q2: string; q3: string; q4: string; current_remainder?: string } = {
+        ...(newTargets[metricKey] || { q1: '', q2: '', q3: '', q4: '' }),
         q1: each.toString(),
         q2: each.toString(),
         q3: each.toString(),
         // Q4 absorbs rounding remainder so the sum equals annual exactly.
-        q4: (annual - each * 3).toString(),
+        q4: (annual - each * (periodCount - 1)).toString(),
+      }
+      if (includeRemainder) {
+        distributed.current_remainder = each.toString()
+      }
+      // Preserve the explicit cast — the strict `quarterlyTargets` index
+      // signature at Step4Props:21-22 means tsc can't prove the spread
+      // matches the shape without it. Relaxing the index signature is out
+      // of scope for B16.
+      newTargets[metricKey] = {
+        ...(newTargets[metricKey] || {}),
+        ...distributed,
       } as { q1: string; q2: string; q3: string; q4: string; current_remainder?: string }
     }
     updateMetric('revenue', financialData.revenue.year1)
