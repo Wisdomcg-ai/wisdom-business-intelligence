@@ -478,6 +478,52 @@ export default function Step4AnnualPlan({
     setAnnualPlanByQuarter(distribution)
   }
 
+  // B4 (Phase 68) — category + priority badge palettes for initiative cards.
+  // Case-insensitive keyed lookup; unknown categories fall back to a neutral
+  // grey badge with the first 4 chars of the category UPPERCASED as the label.
+  const CATEGORY_PALETTE: Record<string, { bg: string; text: string; label: string }> = {
+    marketing:             { bg: 'bg-pink-100',    text: 'text-pink-700',    label: 'MKTG' },
+    finance:               { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'FIN'  },
+    people:                { bg: 'bg-violet-100',  text: 'text-violet-700',  label: 'PPL'  },
+    systems:               { bg: 'bg-sky-100',     text: 'text-sky-700',     label: 'SYS'  },
+    'customer experience': { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'CX'   },
+    customer_experience:   { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'CX'   },
+    cx:                    { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'CX'   },
+    leadership:            { bg: 'bg-indigo-100',  text: 'text-indigo-700',  label: 'LEAD' },
+    time:                  { bg: 'bg-orange-100',  text: 'text-orange-700',  label: 'TIME' },
+    diversification:       { bg: 'bg-rose-100',    text: 'text-rose-700',    label: 'DIV'  },
+    growth:                { bg: 'bg-rose-100',    text: 'text-rose-700',    label: 'GROW' },
+    operations:            { bg: 'bg-cyan-100',    text: 'text-cyan-700',    label: 'OPS'  },
+    product:               { bg: 'bg-fuchsia-100', text: 'text-fuchsia-700', label: 'PROD' },
+    sales:                 { bg: 'bg-lime-100',    text: 'text-lime-700',    label: 'SALE' },
+    other:                 { bg: 'bg-gray-200',    text: 'text-gray-700',    label: 'OTHR' },
+  }
+
+  const PRIORITY_PALETTE: Record<string, { bg: string; text: string; label: string }> = {
+    high:   { bg: 'bg-red-100',   text: 'text-red-700',   label: 'HIGH' },
+    medium: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'MED'  },
+    low:    { bg: 'bg-slate-100', text: 'text-slate-700', label: 'LOW'  },
+  }
+
+  const getCategoryStyle = (category?: string | null) => {
+    if (!category) return null
+    const key = category.trim().toLowerCase()
+    if (CATEGORY_PALETTE[key]) return CATEGORY_PALETTE[key]
+    return { bg: 'bg-gray-200', text: 'text-gray-700', label: category.toUpperCase().slice(0, 4) }
+  }
+
+  const getPriorityStyle = (priority?: string | null) => {
+    if (!priority) return null
+    return PRIORITY_PALETTE[priority.toLowerCase()] ?? null
+  }
+
+  // Coloured cards (brand-navy / brand-orange) need white-on-translucent
+  // badges, otherwise the contextual `bg-{color}-100` palette is unreadable.
+  const overrideBadgeForColoredCard = (isColored: boolean, style: { bg: string; text: string; label: string }) => {
+    if (!isColored) return style
+    return { ...style, bg: 'bg-white/20', text: 'text-white' }
+  }
+
   // Drag handlers
   const handleDragStart = (initiativeId: string, sourceQuarter: string | 'unassigned') => {
     setDraggedItem({ initiativeId, sourceQuarter })
@@ -1275,6 +1321,9 @@ export default function Step4AnnualPlan({
                                   : isOperational ? 'bg-white text-gray-900 border-gray-300'
                                   : 'bg-brand-orange text-white border-brand-orange'
                                 const subTextColor = isOperational ? 'text-gray-500' : 'text-white/70'
+                                const isColored = isRoadmap || !isOperational
+                                const cat = getCategoryStyle(initiative.category)
+                                const pri = getPriorityStyle(initiative.priority)
                                 return (
                                   <div
                                     key={initiative.id}
@@ -1283,7 +1332,21 @@ export default function Step4AnnualPlan({
                                     className={`group flex items-start gap-1.5 p-2 rounded border-2 cursor-move transition-all ${cardBg}`}
                                   >
                                     <GripVertical className={`w-3 h-3 flex-shrink-0 mt-0.5 ${subTextColor}`} />
-                                    <p className="text-xs font-medium leading-snug flex-1 line-clamp-2">{initiative.title}</p>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-medium leading-snug line-clamp-2">{initiative.title}</p>
+                                      {(cat || pri) && (
+                                        <div className="flex flex-wrap gap-1 mt-1">
+                                          {cat && (() => {
+                                            const s = overrideBadgeForColoredCard(isColored, cat)
+                                            return <span className={`px-1 py-0.5 text-[9px] rounded font-semibold ${s.bg} ${s.text}`}>{s.label}</span>
+                                          })()}
+                                          {pri && (() => {
+                                            const s = overrideBadgeForColoredCard(isColored, pri)
+                                            return <span className={`px-1 py-0.5 text-[9px] rounded font-semibold ${s.bg} ${s.text}`}>{s.label}</span>
+                                          })()}
+                                        </div>
+                                      )}
+                                    </div>
                                     <button
                                       type="button"
                                       onClick={() => handleRemoveFromQuarter(initiative.id, quarter.id)}
@@ -1328,6 +1391,10 @@ export default function Step4AnnualPlan({
                           const badgeStyle = isRoadmap ? { bg: 'bg-white/20', text: 'text-white', label: 'ROADMAP' }
                             : isOperational ? { bg: 'bg-gray-200', text: 'text-gray-700', label: 'OPERATIONAL' }
                             : { bg: 'bg-white/20', text: 'text-white', label: 'STRATEGIC' }
+                          // B4: category + priority badges sit alongside the source badge.
+                          const isColored = isRoadmap || !isOperational
+                          const cat = getCategoryStyle(initiative.category)
+                          const pri = getPriorityStyle(initiative.priority)
                           return (
                             <div
                               key={initiative.id}
@@ -1338,9 +1405,19 @@ export default function Step4AnnualPlan({
                               <GripVertical className={`w-3 h-3 flex-shrink-0 mt-0.5 ${subTextColor}`} />
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-medium leading-snug">{initiative.title}</p>
-                                <span className={`inline-block mt-1 px-1 py-0.5 text-[9px] rounded font-semibold ${badgeStyle.bg} ${badgeStyle.text}`}>
-                                  {badgeStyle.label}
-                                </span>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  <span className={`px-1 py-0.5 text-[9px] rounded font-semibold ${badgeStyle.bg} ${badgeStyle.text}`}>
+                                    {badgeStyle.label}
+                                  </span>
+                                  {cat && (() => {
+                                    const s = overrideBadgeForColoredCard(isColored, cat)
+                                    return <span className={`px-1 py-0.5 text-[9px] rounded font-semibold ${s.bg} ${s.text}`}>{s.label}</span>
+                                  })()}
+                                  {pri && (() => {
+                                    const s = overrideBadgeForColoredCard(isColored, pri)
+                                    return <span className={`px-1 py-0.5 text-[9px] rounded font-semibold ${s.bg} ${s.text}`}>{s.label}</span>
+                                  })()}
+                                </div>
                               </div>
                             </div>
                           )
