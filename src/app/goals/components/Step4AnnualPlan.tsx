@@ -122,6 +122,8 @@ export default function Step4AnnualPlan({
   const [newPersonName, setNewPersonName] = useState('')
   const [newPersonRole, setNewPersonRole] = useState('')
   const [isSavingNewPerson, setIsSavingNewPerson] = useState(false)
+  // B6 (Phase 68): Available-pool category filter. 'all' = no filter.
+  const [selectedCategory, setSelectedCategory] = useState<string>('all')
 
 
   // Load team members from Supabase or localStorage
@@ -383,6 +385,31 @@ export default function Step4AnnualPlan({
   const unassignedInitiatives = twelveMonthInitiatives.filter(
     i => !assignedTitles.has((i.title || '').trim().toLowerCase())
   )
+
+  // B6: chip-filtered subset of the unassigned pool — used only by the
+  // Available pool grid render. The quarter card `+ Add` dropdown and the
+  // drop handler keep using the unfiltered `unassignedInitiatives` so the
+  // chip filter only affects display, not assignment mechanics.
+  const filteredUnassignedInitiatives = selectedCategory === 'all'
+    ? unassignedInitiatives
+    : unassignedInitiatives.filter(i => (i.category || 'uncategorised').trim().toLowerCase() === selectedCategory)
+
+  // B6: derived chips for the Available pool category filter row.
+  const categoryChips = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const i of twelveMonthInitiatives) {
+      const key = (i.category || 'uncategorised').trim().toLowerCase()
+      counts.set(key, (counts.get(key) || 0) + 1)
+    }
+    const knownOrder = ['marketing', 'finance', 'people', 'systems', 'customer_experience', 'customer experience', 'cx', 'leadership', 'time', 'diversification', 'growth', 'operations', 'product', 'sales', 'other']
+    const known = knownOrder.filter(k => counts.has(k))
+    const unknown = Array.from(counts.keys()).filter(k => !knownOrder.includes(k)).sort()
+    return [...known, ...unknown].map(key => {
+      const style = getCategoryStyle(key) ?? { bg: 'bg-gray-200', text: 'text-gray-700', label: key.toUpperCase().slice(0, 8) }
+      return { key, label: style.label, bg: style.bg, text: style.text, count: counts.get(key) || 0 }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getCategoryStyle is component-local with stable refs in palette objects
+  }, [twelveMonthInitiatives])
 
   // Add initiative to quarter
   const handleAddToQuarter = (initiative: StrategicInitiative, quarterId: string) => {
@@ -1424,15 +1451,51 @@ export default function Step4AnnualPlan({
                   >
                     <div className="flex items-center justify-between mb-3">
                       <h4 className="font-semibold text-brand-navy text-sm">
-                        Available initiatives <span className="text-gray-500 font-normal">({unassignedInitiatives.length})</span>
+                        Available initiatives <span className="text-gray-500 font-normal">({filteredUnassignedInitiatives.length}{selectedCategory !== 'all' && unassignedInitiatives.length !== filteredUnassignedInitiatives.length ? ` of ${unassignedInitiatives.length}` : ''})</span>
                       </h4>
                       <p className="text-xs text-gray-500">Drag into a quarter or use + Add</p>
                     </div>
-                    {unassignedInitiatives.length === 0 ? (
-                      <p className="text-xs text-center py-4 text-gray-500">All initiatives assigned ✓</p>
+                    {/* B6: category chip filter row */}
+                    {categoryChips.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-3" role="tablist" aria-label="Filter Available initiatives by category">
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={selectedCategory === 'all'}
+                          onClick={() => setSelectedCategory('all')}
+                          className={`px-2 py-1 text-[10px] font-semibold rounded-full border transition-colors ${
+                            selectedCategory === 'all'
+                              ? 'bg-brand-navy text-white border-brand-navy'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-brand-navy'
+                          }`}
+                        >
+                          All ({twelveMonthInitiatives.length})
+                        </button>
+                        {categoryChips.map(chip => (
+                          <button
+                            key={chip.key}
+                            type="button"
+                            role="tab"
+                            aria-selected={selectedCategory === chip.key}
+                            onClick={() => setSelectedCategory(chip.key)}
+                            className={`px-2 py-1 text-[10px] font-semibold rounded-full border transition-colors ${
+                              selectedCategory === chip.key
+                                ? `${chip.bg} ${chip.text} border-transparent`
+                                : 'bg-white text-gray-700 border-gray-300 hover:border-gray-500'
+                            }`}
+                          >
+                            {chip.label} ({chip.count})
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {filteredUnassignedInitiatives.length === 0 ? (
+                      <p className="text-xs text-center py-4 text-gray-500">
+                        {selectedCategory === 'all' ? 'All initiatives assigned ✓' : 'No initiatives in this category — try All'}
+                      </p>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-[40vh] overflow-y-auto pr-1">
-                        {unassignedInitiatives.map((initiative) => {
+                        {filteredUnassignedInitiatives.map((initiative) => {
                           const isRoadmap = initiative.source === 'roadmap'
                           const isOperational = initiative.ideaType === 'operational'
                           const cardBg = isRoadmap ? 'bg-brand-navy text-white border-brand-navy'
