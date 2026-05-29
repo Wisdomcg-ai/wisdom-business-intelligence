@@ -1036,10 +1036,10 @@ Plans:
 **Goal:** Diagnose why Phase 53's 6-hourly Xero refresh cron is not keeping production tokens alive (Phase 70 audit found 5 sampled tenants expired 3-7 days, JDS stale 20 days), execute interactive manual reconnect to unblock month-end, fix root cause with regression tests, add pre-expiry monitoring.
 **Requirements**: PHASE69-DIAG, PHASE69-RECONNECT, PHASE69-FIX, PHASE69-MONITOR (emergent — no roadmap-mapped IDs)
 **Depends on:** Phase 53 (the durability work being debugged)
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 Plans:
-- [ ] 69-01-PLAN.md — Read-only diagnosis: address 7 hypotheses with evidence, produce 69-DIAGNOSIS.md with named root cause(s)
+- [x] 69-01-PLAN.md — Read-only diagnosis: address 7 hypotheses with evidence, produce 69-DIAGNOSIS.md with named root cause(s)
 - [ ] 69-02-PLAN.md — Interactive manual reconnect runbook (Matt approves each of 5 tenants) — INTERACTIVE
 - [ ] 69-03-PLAN.md — Code fix mapped 1:1 to 69-DIAGNOSIS root cause(s) + regression tests
 - [ ] 69-04-PLAN.md — Pre-expiry Sentry warning (24h lead time) + XeroHealthPill verification + monitoring runbook
