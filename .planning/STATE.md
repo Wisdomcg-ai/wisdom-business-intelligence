@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: Ready to execute
-last_updated: "2026-05-31T21:55:00.000Z"
+last_updated: "2026-05-31T23:55:00.000Z"
 last_activity: 2026-05-31
 progress:
   total_phases: 58
@@ -17,7 +17,7 @@ progress:
 ## Current Position
 
 Phase: 70 (Production data backfill + migration debt cleanup) — EXECUTING
-Plan: 6 of 9
+Plan: 7 of 9
 
 Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete
@@ -28,9 +28,11 @@ Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-
 Phase: 53 (Xero Connection Durability) — **COMPLETE** (5/5 plans shipped 2026-05-06). 53-01 server-side disconnect with dual-ID purge (PR #107). 53-03 token-rotation race holes closed + tightened deactivation policy (commit b5a233d, merged). 53-02 centralized Xero refresh through token-manager + deleted dead refresh-tokens route (PR #109). 53-04 proactive refresh cron at `0 */6 * * *` UTC (PR #110). **53-05 Sentry capture + coach dashboard health pill (PR opened 2026-05-06).** Durability story is whole — JDS root cause permanently closed.
 Phase: 54 (Xero Employee Import Completion) — **PARTIAL** (1/2 plans shipped 2026-05-06). **54-01 PayRun-derived hours + salary fallback (PR opening 2026-05-06).** ENTEREARNINGSRATE employees (timesheet-driven payroll, JDS default) now return populated hours_per_week + annual_salary derived from last 4 POSTED PayRuns; PayTemplate values WIN via ??= precedence; new optional `derived_from` provenance field on response. 54-02 (soft auto-fill on empty Step 4 + new-employees banner) is next.
 Phase: 61 (Selective List Sharing) — **COMPLETE IN PRODUCTION** (6/6 plans shipped 2026-05-14, merged via PRs #193 + #194, plus #195/196 polish). 61-VERIFICATION.md verdict PASS; 147/147 vitest pass. Migrations applied to production: `shared_with_all` + `shared_with uuid[]` on `daily_tasks` and `ideas`, asymmetric RLS, `mark_task_complete` + `mark_idea_status` RPCs, ShareDialog UI, recipient flows, coach dashboard owned-vs-shared breakdown. **Only outstanding item:** the 9-cell SQL RLS test matrix in 61-02 was deferred for a Docker-running local Supabase stack. Since Phase 61 has been live in production for 12 days with zero sharing-related Sentry events, the matrix is de-facto validated. Re-running it remains a "belt and suspenders" exercise; not blocking.
-Last activity: 2026-05-30
+Last activity: 2026-05-31
 
 ## Active operational notes
+
+**Phase 70-06 SKIPPED (2026-05-31 — Matt decision):** JDS profile_completed flip + FY26 forecast resolution intentionally deferred to a future coach session. The build artifact (`scripts/70-06-B2-jds-profile-and-forecast.mjs`, 430 LOC, commit b8d0b0ef) remains committed and usable but was NOT invoked with `--apply`. Rationale: 1 month from FY26 end (June 30, 2026); JDS's FY26 active forecast has 0 lines. Option A (auto-backfill) is explicitly unimplemented (requires forecast-wizard re-materialize with operator-provided assumptions — coach work). Option B (deactivate FY26 in favour of FY27) would leave May/June 2026 month-end with FY27 numbers (off-period) — operationally worse than current zero/blank state. The `profile_completed=true` flip was ALSO deferred (would be cosmetic without the FY26 substance — bundled into the future coach session for atomicity). **Zero JDS data touched.** Future to-do at orchestrator level: "rebuild JDS FY26 budget (or accept zero-line + build FY27)" — to be picked up in a coach session. Downstream impact: 70-07 (IICT) unaffected; 70-08 (audit re-run) will continue flagging JDS as expected and should document the deferral pointer to this SUMMARY. See `.planning/phases/70-.../70-06-SUMMARY.md`.
 
 **Phase 70-05 shipped (2026-05-31):** Envisage subscription_budgets cleanup (`scripts/70-05-B1-envisage-cleanup.ts`, ~670 LOC, two-mode dry-run/--apply). Result: Envisage subs **44 → 43 rows** (1 DELETE) + **36 UPDATEs** with account_codes inferred from 12mo of Envisage Xero SPEND BankTransactions (1815 tx indexed, 147 unique vendor keys). **Paypal merge:** kept `Paypal Australia 1043714034893` (id=fbc38c1a), deleted generic `Paypal` (id=fab1f8a5), keeper inherited codes `[415, 440, 710]` via Matt-approved fallback (D1) — the specific row has zero direct Xero matches because Xero contacts use the generic "Paypal" name. **'Unknown' vendor (D2):** explicit skip per Matt — 372 tx across 34 codes, no dominant pattern would mislead variance; marked UNRESOLVED with reason string; recommend deactivate/rename in future ops cleanup. **'Jb Hi Fi Group Pl' duplicate (D3):** deferred out of scope — 70-05's lock is Paypal-only dedupe; generalized vendor-aliasing is a future plan. **7 UNRESOLVED** (Matt-acknowledged surfaces, NOT failures): Abacus.ai, Jb Hi Fi Group Pl, Kindle, Paddle, Shutterstock, Tech, Unknown. **Audit framing CORRECT** (unlike 70-02/70-04): audit said 44/44 active Envisage rows had empty account_codes; live matched exactly. Coverage: 36/43 = 84% (target was ≥75%). Idempotency verified — post-apply dry-run reports "Paypal: already deduped" + "0 INFERRED + 7 UNRESOLVED". See `.planning/phases/70-.../70-05-SUMMARY.md`.
 

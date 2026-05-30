@@ -1049,7 +1049,7 @@ Plans:
 **Goal:** Clean up production data debt blocking month-end reporting. Workstream A cross-client (D1 dedupe duplicate active forecasts from Phase 67 enforcement gap; D2 backfill empty forecast_payroll_summary across all clients; D3 backfill NULL subscription_budgets.renewal_month from Xero billing cadence). Workstream B per-client (Envisage Paypal dedupe + account_codes; JDS profile_completed + FY26 forecast resolution; IICT full profile fill-out + consolidated mode + initial subs budgets + baseline snapshots). Workstream C verification (re-audit + Phase 69 cron health gate). Zero schema changes, additive backfills only, all scripts dry-run-first then --apply with Matt approval.
 **Requirements**: PHASE-70-D1, PHASE-70-D2, PHASE-70-D3, PHASE-70-B1, PHASE-70-B2, PHASE-70-B3, PHASE-70-VERIFY-C1, PHASE-70-VERIFY-C2
 **Depends on:** Phase 69
-**Plans:** 5/9 plans executed
+**Plans:** 5/9 shipped + 1/9 SKIPPED = 6/9 resolved
 
 Plans:
 - [x] 70-01-PLAN.md — Pre-write snapshot of all affected tables (rollback baseline; read-only)
@@ -1057,7 +1057,7 @@ Plans:
 - [x] 70-03-PLAN.md — A2: forecast_payroll_summary backfill across all active forecasts (D2)
 - [x] 70-04-PLAN.md — A3: subscription_budgets.renewal_month backfill from Xero (D3)
 - [x] 70-05-PLAN.md — B1: Envisage Paypal dedupe + account_codes inference
-- [ ] 70-06-PLAN.md — B2: JDS profile_completed + FY26 forecast decision (interactive — Option A vs B)
+- [~] 70-06-PLAN.md — B2: JDS profile_completed + FY26 forecast decision — **SKIPPED 2026-05-31** per Matt (FY26 1mo from end; both auto-options have material downsides; deferred to future coach-session rebuild of JDS FY26 budget). Script committed b8d0b0ef but uninvoked. See `.planning/phases/70-.../70-06-SUMMARY.md`.
 - [ ] 70-07-PLAN.md — B3: IICT 5-step onboarding completion (profile + consolidation mode + subs + FY27 dedupe + baseline snapshots; interactive)
 - [ ] 70-08-PLAN.md — C1: Re-run phase-70-data-audit.mjs and produce before/after comparison
 - [ ] 70-09-PLAN.md — C2: Phase 69 cron heartbeat health check (warn-not-block)
