@@ -175,8 +175,54 @@ export default function BalanceSheetTab({
     )
   }
 
+  // S5: Balance Sheet equation residual check.
+  // Derive Assets / Liabilities / Equity from the existing subtotal rows
+  // (label-matched per Calxa convention). If any total is missing or null,
+  // skip the banner — the legacy `balanceSheet.balances` amber badge still covers it.
+  const findSubtotal = (predicate: (label: string) => boolean): number | null => {
+    const row = balanceSheet.rows.find(
+      (r) => r.type === 'subtotal' && predicate(r.label.toLowerCase()),
+    )
+    return row?.current ?? null
+  }
+  const totalAssets = findSubtotal((l) => l.startsWith('total asset') || l.includes('asset'))
+  const totalLiabilities = findSubtotal((l) => l.startsWith('total liabilit') || l.includes('liabilit'))
+  const totalEquity = findSubtotal((l) => l.startsWith('total equity') || l.includes('equity'))
+
+  const canComputeResidual =
+    totalAssets !== null && totalLiabilities !== null && totalEquity !== null
+  const residual = canComputeResidual
+    ? (totalAssets as number) - ((totalLiabilities as number) + (totalEquity as number))
+    : 0
+  const isImbalanced = canComputeResidual && Math.abs(residual) > 1
+
+  const fmtAbsCurrency = (v: number): string =>
+    `$${Math.abs(v).toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+
   return (
     <div className="space-y-4">
+      {/* S5: Equation residual banner — louder than the amber `balances` badge below */}
+      {isImbalanced && (
+        <div
+          role="alert"
+          className="mb-2 rounded-md border border-red-300 bg-red-50 px-4 py-3"
+        >
+          <p className="text-sm font-semibold text-red-800">
+            Balance Sheet does not balance — residual of {fmtAbsCurrency(residual)}
+            {' '}
+            (Assets {residual > 0 ? 'exceed' : 'are short of'} Liabilities + Equity).
+          </p>
+          <p className="mt-1 text-xs text-red-700">
+            <a
+              href={`mailto:cfo@wisdombi.ai?subject=BS%20imbalance%20%E2%80%94%20residual%20${Math.abs(residual)}`}
+              className="underline"
+            >
+              Report imbalance to support
+            </a>
+          </p>
+        </div>
+      )}
+
       {/* Controls bar */}
       <div className="flex items-center justify-between">
         <div>
