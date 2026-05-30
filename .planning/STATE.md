@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: Ready to execute
-last_updated: "2026-05-31T23:59:00.000Z"
-last_activity: 2026-05-31
+last_updated: "2026-05-30T22:29:12.012Z"
+last_activity: 2026-05-30
 progress:
   total_phases: 58
   completed_phases: 26
   total_plans: 159
-  completed_plans: 152
+  completed_plans: 155
 ---
 
 # Project State
@@ -17,7 +17,7 @@ progress:
 ## Current Position
 
 Phase: 70 (Production data backfill + migration debt cleanup) — EXECUTING
-Plan: 8 of 9
+Plan: 9 of 9
 
 Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete
@@ -28,9 +28,11 @@ Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-
 Phase: 53 (Xero Connection Durability) — **COMPLETE** (5/5 plans shipped 2026-05-06). 53-01 server-side disconnect with dual-ID purge (PR #107). 53-03 token-rotation race holes closed + tightened deactivation policy (commit b5a233d, merged). 53-02 centralized Xero refresh through token-manager + deleted dead refresh-tokens route (PR #109). 53-04 proactive refresh cron at `0 */6 * * *` UTC (PR #110). **53-05 Sentry capture + coach dashboard health pill (PR opened 2026-05-06).** Durability story is whole — JDS root cause permanently closed.
 Phase: 54 (Xero Employee Import Completion) — **PARTIAL** (1/2 plans shipped 2026-05-06). **54-01 PayRun-derived hours + salary fallback (PR opening 2026-05-06).** ENTEREARNINGSRATE employees (timesheet-driven payroll, JDS default) now return populated hours_per_week + annual_salary derived from last 4 POSTED PayRuns; PayTemplate values WIN via ??= precedence; new optional `derived_from` provenance field on response. 54-02 (soft auto-fill on empty Step 4 + new-employees banner) is next.
 Phase: 61 (Selective List Sharing) — **COMPLETE IN PRODUCTION** (6/6 plans shipped 2026-05-14, merged via PRs #193 + #194, plus #195/196 polish). 61-VERIFICATION.md verdict PASS; 147/147 vitest pass. Migrations applied to production: `shared_with_all` + `shared_with uuid[]` on `daily_tasks` and `ideas`, asymmetric RLS, `mark_task_complete` + `mark_idea_status` RPCs, ShareDialog UI, recipient flows, coach dashboard owned-vs-shared breakdown. **Only outstanding item:** the 9-cell SQL RLS test matrix in 61-02 was deferred for a Docker-running local Supabase stack. Since Phase 61 has been live in production for 12 days with zero sharing-related Sentry events, the matrix is de-facto validated. Re-running it remains a "belt and suspenders" exercise; not blocking.
-Last activity: 2026-05-31
+Last activity: 2026-05-30
 
 ## Active operational notes
+
+**Phase 70-09 shipped (2026-05-30):** C2 cron heartbeat health check (`scripts/70-09-C2-cron-heartbeat-check.mjs`, ~460 LOC, read-only, no flags, always exits 0 per WARN-not-BLOCK contract). Queries `cron_heartbeats` per cron_path for last_run / 24h ticks / 24h failures; classifies HEALTHY / WARN / CRITICAL / UNKNOWN with refresh-xero-tokens flagged `critical=true`. **EMPIRICAL FINDING:** `cron_heartbeats` table is NOT present in production Supabase (PGRST205 — "Could not find the table 'public.cron_heartbeats' in the schema cache"). PR #231 merged the Phase 69-04 app code (cron route changes + heartbeat helper + vercel.json) and the migration file to git, but the Supabase migration (`20260530000000_phase69_cron_heartbeats.sql`) has not been applied to the production database. **Implication:** the refresh cron may or may not be firing — without the heartbeat table we cannot tell. Per `src/lib/cron/heartbeat.ts` fail-soft design, every heartbeat write fails silently, so cron firing is invisible from the data side. **Phase 70 close NOT blocked** (per CONTEXT.md C2). **Implicit follow-up for Matt (orchestrator-level):** apply the Phase 69-04 Supabase migration to prod, wait ≤ 6h for first organic refresh-xero-tokens tick, re-run `node scripts/70-09-C2-cron-heartbeat-check.mjs` to confirm HEALTHY. Two build-time deviations: D1 (Rule 1 bug) — initial `tableExists()` head-only probe returned status=204/error=null/count=null on schema-cache miss (false-positive "exists"); switched to non-head SELECT to surface PGRST205 properly. D2 (Rule 2 missing critical) — promoted TABLE_MISSING / UNKNOWN to a first-class verdict beyond the plan's HEALTHY/WARN/CRITICAL trichotomy so the report discriminates "Vercel-side cron silent" from "Supabase migration not applied" (very different remediation paths). Report at `.planning/phases/70-.../70-09-cron-health-report.md`. See `.planning/phases/70-.../70-09-SUMMARY.md`.
 
 **Phase 70-07 DEFERRED (2026-05-31 — Matt decision):** IICT 5-step onboarding completion intentionally deferred to a future IICT-focused coach session. Same pattern as 70-06 (JDS). The build artifact (`scripts/70-07-B3-iict-onboarding-completion.mjs`, 727 LOC, commit 3cb30e71) remains committed and usable but was NOT invoked with `--apply` at any step. Rationale: Steps 1 + 3 require IICT business data Matt does not have at hand (industry classification, FY26 annual revenue / gross profit / net profit, the canonical IICT subscription list). Forcing those entries today risks shipping wrong numbers into a CFO-level report. Steps 2 + 4 are technically executable without further input (Step 2 = consolidation_budget_mode flip; Step 4 = FY27 dedupe confirmation = no-op per 70-02) but were bundled into the defer to avoid partial-onboarded false-positive 'IICT looks onboarded' signal in 70-08 audit re-run. Step 5 (snapshot generation) is UI-driven and requires healthy IICT Xero tokens. **Three build-time deviations the script-author run surfaced + corrected:** D1 — `consolidation_budget_mode = 'per_tenant'` (NOT 'consolidated'; CHECK constraint enforces only 'single' | 'per_tenant'); D2 — Step 5 snapshot generation requires browser session, so the script does dry-run + verification only, snapshot writes happen via the existing UI flow; D3 — Step 4 IICT FY27 dedupe is already a no-op (70-02 cleaned it up cross-business). **Zero IICT data touched.** Future to-do at orchestrator level: "IICT onboarding completion (use 70-07 script with --step=1 through --step=5 interactively)" — to be picked up in a coach session. Downstream impact: 70-08 (audit re-run) will continue flagging IICT as expected and should document the deferral pointer to this SUMMARY; 70-09 (cron heartbeat) unaffected. Phase 70 overall: 5/9 shipped + 2/9 deferred (70-06, 70-07) = 7/9 resolved + 2/9 remaining (70-08, 70-09 verification). See `.planning/phases/70-.../70-07-SUMMARY.md`.
 
