@@ -479,6 +479,13 @@ async function runAccountCodesBackfill(): Promise<{
   }
 
   // Per-row inference
+  // Skip 'Unknown' vendor auto-fill per Matt 2026-05-31 — junk row with no
+  // dominant pattern (372 tx spread across 34 different account codes); the
+  // top-3 codes (404/473/492) account for <40% of activity, so auto-filling
+  // would surface misleading variance. Leave empty; future cleanup will
+  // deactivate or rename this row.
+  const SKIP_AUTOFILL_VENDOR_NAMES = new Set(['Unknown'])
+
   console.log('')
   const results: BackfillRowResult[] = []
   for (const r of candidates) {
@@ -487,12 +494,38 @@ async function runAccountCodesBackfill(): Promise<{
       results.push({ row: r, status: 'SKIPPED_NULL_VENDOR' })
       continue
     }
+    if (SKIP_AUTOFILL_VENDOR_NAMES.has(r.vendor_name.trim())) {
+      console.log(C.yellow(`  ⚠ SKIP   "${r.vendor_name}"  (excluded from auto-fill per Matt 2026-05-31 — junk row, no dominant pattern)`))
+      results.push({ row: r, status: 'UNRESOLVED', unresolved_reason: 'excluded from auto-fill (junk vendor name, no dominant pattern)' })
+      continue
+    }
     if (SKIP_XERO || !xeroAvailable) {
       console.log(C.dim(`  · SKIP   "${r.vendor_name}"  (xero unavailable)`))
       results.push({ row: r, status: 'SKIPPED_XERO', unresolved_reason: 'xero data not available' })
       continue
     }
-    const { codes, matchCount, perCodeCounts } = inferAccountCodes(r.vendor_name, vendorIndex)
+    let { codes, matchCount, perCodeCounts } = inferAccountCodes(r.vendor_name, vendorIndex)
+    let fallbackNote = ''
+    // PayPal post-merge codes inheritance per Matt 2026-05-31:
+    // The keeper row's vendor_name is specific ("Paypal Australia 1043714034893")
+    // which has no direct Xero BankTransaction matches because Xero contacts use
+    // the generic "Paypal" name. When the keeper has zero matches AND its name
+    // matches the Paypal-specific pattern, fall back to inferring from the
+    // generic "Paypal" vendor_key so we inherit the loser's would-have-been
+    // codes ([415, 440, 710]) into the surviving row.
+    if (codes.length === 0) {
+      const v = r.vendor_name.trim()
+      const isPaypalSpecific = /paypal\s+australia\b/i.test(v) || (/paypal/i.test(v) && /\d{8,}/.test(v))
+      if (isPaypalSpecific) {
+        const fallback = inferAccountCodes('Paypal', vendorIndex)
+        if (fallback.codes.length > 0) {
+          codes = fallback.codes
+          matchCount = fallback.matchCount
+          perCodeCounts = fallback.perCodeCounts
+          fallbackNote = ' [via generic "Paypal" fallback]'
+        }
+      }
+    }
     if (codes.length === 0) {
       console.log(C.yellow(`  ⚠ UNRES  "${r.vendor_name}"  → no PL/BankTxn matches in last 12mo`))
       results.push({ row: r, status: 'UNRESOLVED', match_count: 0, unresolved_reason: 'no Xero BankTransaction matches in last 12mo' })
@@ -501,7 +534,7 @@ async function runAccountCodesBackfill(): Promise<{
         .sort((a, b) => b[1] - a[1])
         .map(([code, count]) => `${code}×${count}`)
         .join(', ')
-      console.log(C.green(`  ✓ INFER  "${r.vendor_name}"  → codes=${JSON.stringify(codes)}  (${matchCount} matches: ${breakdown})`))
+      console.log(C.green(`  ✓ INFER  "${r.vendor_name}"  → codes=${JSON.stringify(codes)}  (${matchCount} matches: ${breakdown})${fallbackNote}`))
       results.push({ row: r, status: 'INFERRED', inferred_codes: codes, match_count: matchCount, per_code_counts: perCodeCounts })
     }
   }
