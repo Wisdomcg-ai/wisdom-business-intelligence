@@ -2,22 +2,22 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
-status: Milestone complete
-last_updated: "2026-05-30T22:39:24.925Z"
-last_activity: 2026-05-30
+status: Executing Phase 71
+last_updated: "2026-05-30T23:48:32.420Z"
+last_activity: 2026-05-30 -- Phase 71 execution started
 progress:
-  total_phases: 58
+  total_phases: 60
   completed_phases: 27
-  total_plans: 159
-  completed_plans: 156
+  total_plans: 170
+  completed_plans: 158
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 70
-Plan: Not started
+Phase: 71 (Month-end reporting code fixes) — EXECUTING
+Plan: 1 of 10
 
 Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete
@@ -28,7 +28,7 @@ Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-
 Phase: 53 (Xero Connection Durability) — **COMPLETE** (5/5 plans shipped 2026-05-06). 53-01 server-side disconnect with dual-ID purge (PR #107). 53-03 token-rotation race holes closed + tightened deactivation policy (commit b5a233d, merged). 53-02 centralized Xero refresh through token-manager + deleted dead refresh-tokens route (PR #109). 53-04 proactive refresh cron at `0 */6 * * *` UTC (PR #110). **53-05 Sentry capture + coach dashboard health pill (PR opened 2026-05-06).** Durability story is whole — JDS root cause permanently closed.
 Phase: 54 (Xero Employee Import Completion) — **PARTIAL** (1/2 plans shipped 2026-05-06). **54-01 PayRun-derived hours + salary fallback (PR opening 2026-05-06).** ENTEREARNINGSRATE employees (timesheet-driven payroll, JDS default) now return populated hours_per_week + annual_salary derived from last 4 POSTED PayRuns; PayTemplate values WIN via ??= precedence; new optional `derived_from` provenance field on response. 54-02 (soft auto-fill on empty Step 4 + new-employees banner) is next.
 Phase: 61 (Selective List Sharing) — **COMPLETE IN PRODUCTION** (6/6 plans shipped 2026-05-14, merged via PRs #193 + #194, plus #195/196 polish). 61-VERIFICATION.md verdict PASS; 147/147 vitest pass. Migrations applied to production: `shared_with_all` + `shared_with uuid[]` on `daily_tasks` and `ideas`, asymmetric RLS, `mark_task_complete` + `mark_idea_status` RPCs, ShareDialog UI, recipient flows, coach dashboard owned-vs-shared breakdown. **Only outstanding item:** the 9-cell SQL RLS test matrix in 61-02 was deferred for a Docker-running local Supabase stack. Since Phase 61 has been live in production for 12 days with zero sharing-related Sentry events, the matrix is de-facto validated. Re-running it remains a "belt and suspenders" exercise; not blocking.
-Last activity: 2026-05-30
+Last activity: 2026-05-30 -- Phase 71 execution started
 
 ## Active operational notes
 
@@ -86,7 +86,9 @@ Goal: take the codebase from 55/100 to ~75/100 (Series-A defensible) over 6 phas
 - Phase 66 added (2026-05-16): Section-Permission Follow-ups & Hardening — legacy `financials`-key audit (gates Phase 65 Wave 65-04 ENFORCE cutover), consolidated-route business-ID drift, service-role data-fetching audit, ops/admin section-permission audit. Source: 65-02-SUMMARY.md follow-ups.
 - Phase 68 added (2026-05-28): Step 4 wizard MVP improvements + Armstrong & Co plan-data refresh — 9 Step 4 UX/bug-fix items (B2–B8, B15, B16) + 11 Armstrong data-update items (A1–A11). Source: 2026-05-12 Armstrong & Co planning session transcript + `docs/armstrong-update-and-step4-plan.md`. Numbered 68 because Phase 67 (multi-currency-consolidation-fix) already exists as codebase-resident drift not listed in roadmap.
 - Phase 69 added (2026-05-30): Xero token auto-refresh diagnosis + production durability fix — diagnose why Phase 53's refresh cron is leaving Envisage (7d expired), JDS (4d expired + 20d stale), and all 3 IICT tenants (3d expired) with dead tokens; manual reconnect to unblock month-end; fix root cause; add pre-expiry monitoring. Source: Phase 70 month-end reporting audit (`docs/phase-70-month-end-audit.md`). Gates downstream month-end work (data backfill + code fixes + Calxa migration) — none can be end-to-end verified without working Xero. **SHIPPED 2026-05-30** (4/4 plans, PR #231).
-- Phase 70 added (2026-05-30): Production data backfill + migration debt cleanup for month-end reporting clients — Workstream A (cross-client D1+D2+D3: dedupe duplicate active forecasts from Phase 67 enforcement gap, backfill empty forecast_payroll_summary across all clients, backfill NULL subscription_budgets.renewal_month from Xero billing cadence). Workstream B (per-client cleanup: Envisage Paypal dedupe + account_codes; JDS profile_completed + FY26 forecast resolution; IICT full profile fill-out + consolidated mode + initial subs budgets + baseline snapshots). Workstream C (re-run phase-70-data-audit.mjs to verify readiness flips). Source: Phase 70 month-end audit. Zero schema changes, additive backfills only. Gates code-fixes phase + Calxa migration.
+- Phase 70 added (2026-05-30): Production data backfill + migration debt cleanup for month-end reporting clients — Workstream A (cross-client D1+D2+D3: dedupe duplicate active forecasts from Phase 67 enforcement gap, backfill empty forecast_payroll_summary across all clients, backfill NULL subscription_budgets.renewal_month from Xero billing cadence). Workstream B (per-client cleanup: Envisage Paypal dedupe + account_codes; JDS profile_completed + FY26 forecast resolution; IICT full profile fill-out + consolidated mode + initial subs budgets + baseline snapshots). Workstream C (re-run phase-70-data-audit.mjs to verify readiness flips). Source: Phase 70 month-end audit. Zero schema changes, additive backfills only. Gates code-fixes phase + Calxa migration. **SHIPPED 2026-05-31** (9/9 plans resolved: 7 shipped + 2 deferred-by-design to coach sessions, PR #232).
+- Phase 71 added (2026-05-31): Month-end reporting code fixes — B1 wages employee name matching (fuzzy match) + B2 vendor-key normalization consolidation (one shared util) + B3 Proceed-as-Draft persistence (save snapshot immediately) + S1 commentary scope expansion (revenue shortfalls + BS movements + large favourable) + S2 subscription budget-only vendors visible with $0 actuals + S3 wages per-payrun expand UI + S4 PDF variance polarity refactor (raw data, not string parsing) + S5 BS equation check + S6 multi-tenant non-AUD redirect toast + D4 snapshot serializer (numeric→named section keys) + data remap. Source: Phase 70 month-end audit (`docs/phase-70-month-end-audit.md`) P1 production bugs + P2 Calxa-parity gaps + D4 deferred from Phase 70 by design. Gates Calxa migration.
+- Phase 72 added (2026-05-31): Forecast wizard Step 3 extended-period bug — Y1 month range honors plan_start_date through full Y1 duration. Original symptom: Armstrong Step 3 only allows revenue/COGS forecast for 3 months (FY26 remainder) instead of full extended Y1 duration when is_extended_period=true. Related to Phase 14 extended-period plans + Phase 68 deriveCurrentRemainderColumn work (Phase 68 B15). Source: Matt callout 2026-05-30 mid-Phase-68 execution; draft analysis at `docs/forecast-wizard-extended-period-bug.md` (renamed from `phase-69-...` due to numbering collision).
 
 ### Active production tenants
 
