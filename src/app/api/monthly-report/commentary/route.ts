@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
-import { extractVendorInfo } from '@/lib/utils/vendor-normalization'
+import { extractVendorInfo, createVendorKey } from '@/lib/utils/vendor-normalization'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -274,14 +274,21 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      // Collect all transactions for this account and group by vendor
-      const vendorData = new Map<string, { total: number; transactions: VendorTransaction[] }>()
+      // Collect all transactions for this account and group by vendor.
+      // B2 (Phase 71-01): key by createVendorKey(vendor) so a budgeted vendor
+      // ("Stripe Au") matches an extracted Xero vendor ("STRIPE AU"). Preserve
+      // the human display name on first insert for UI rendering.
+      const vendorData = new Map<string, { display_name: string; total: number; transactions: VendorTransaction[] }>()
 
       function addToVendor(vendor: string, txn: VendorTransaction) {
-        const existing = vendorData.get(vendor) || { total: 0, transactions: [] }
-        existing.total += txn.amount
-        existing.transactions.push(txn)
-        vendorData.set(vendor, existing)
+        const key = createVendorKey(vendor)
+        const existing = vendorData.get(key)
+        if (existing) {
+          existing.total += txn.amount
+          existing.transactions.push(txn)
+        } else {
+          vendorData.set(key, { display_name: vendor, total: txn.amount, transactions: [txn] })
+        }
       }
 
       for (const inv of invoices) {
@@ -322,10 +329,11 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Sort by amount descending
-      const sorted = Array.from(vendorData.entries())
-        .map(([vendor, data]) => ({
-          vendor,
+      // Sort by amount descending. Map key is the normalized vendor key (B2);
+      // the human-readable display_name is used in the response payload.
+      const sorted = Array.from(vendorData.values())
+        .map(data => ({
+          vendor: data.display_name,
           amount: Math.round(data.total),
           transactions: data.transactions.sort((a, b) => b.amount - a.amount),
         }))
