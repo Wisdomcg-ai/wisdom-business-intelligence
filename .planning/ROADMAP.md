@@ -1062,6 +1062,35 @@ Plans:
 - [x] 70-08-PLAN.md — C1: Re-run phase-70-data-audit.mjs and produce before/after comparison
 - [x] 70-09-PLAN.md — C2: Phase 69 cron heartbeat health check (warn-not-block)
 
+### Phase 71: Month-end reporting code fixes — production bugs + Calxa-parity scope gaps + snapshot serializer remap
+
+**Goal:** Ship 10 code fixes from the Phase 70 month-end audit — 3 P1 production bugs (B1 wages employee fuzzy-match, B2 vendor-key normalization, B3 Proceed-as-Draft persistence), 6 P2 Calxa-parity gaps (S1 commentary scope expansion, S2 budget-only subscription visibility, S3 wages per-payrun expand UI, S4 PDF variance polarity refactor, S5 Balance Sheet equation check, S6 multi-tenant non-AUD toast), and D4 (snapshot serializer numeric→named keys + data remap migration deferred from Phase 70). Every fix ships with a regression test that would have caught the bug.
+**Requirements**: B1, B2, B3, S1, S2, S3, S4, S5, S6, D4
+**Depends on:** Phase 70
+**Plans:** 10 plans
+
+Plans:
+- [ ] 71-01-PLAN.md — B2: vendor-key normalization consolidation (commentary route keying alignment + round-trip + single-source-of-truth test)
+- [ ] 71-02-PLAN.md — B1: wages employee fuzzy name match (tokenSort + Levenshtein fallback + Sentry telemetry on fuzzy hits)
+- [ ] 71-03-PLAN.md — B3: Proceed-as-Draft persistence (immediate snapshot save + toast + integration test)
+- [ ] 71-04-PLAN.md — S1: commentary trigger expansion (revenue shortfalls + favourable expense + BS movements + trigger_reason)
+- [ ] 71-05-PLAN.md — S2: subscription budget-only vendor visibility (zero-actual rows + "not billed this month" badge)
+- [ ] 71-06-PLAN.md — S3: wages per-payrun expand UI (chevron + per-payrun detail row)
+- [ ] 71-07-PLAN.md — S4: PDF variance polarity refactor (decideTintColor helper + _polarity cell metadata)
+- [ ] 71-08-PLAN.md — S5: Balance Sheet equation check + red banner when |residual| > $1
+- [ ] 71-09-PLAN.md — S6: multi-tenant non-AUD redirect toast (one-time per session per business via localStorage)
+- [ ] 71-10-PLAN.md — D4: snapshot serializer (numeric→named section keys) + remap migration script with dry-run/--apply checkpoint
+
+### Phase 72: Forecast wizard Step 3 extended-period bug — Y1 month range honors plan_start_date through full Y1 duration
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 71
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 72 to break down)
+
 ---
 
 ### Phase 59: Forecast Seed from Prior FY
