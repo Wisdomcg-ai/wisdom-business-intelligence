@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: Ready to execute
-last_updated: "2026-05-30T21:20:50.509Z"
-last_activity: 2026-05-30
+last_updated: "2026-05-31T00:00:00.000Z"
+last_activity: 2026-05-31
 progress:
   total_phases: 58
   completed_phases: 26
   total_plans: 159
-  completed_plans: 150
+  completed_plans: 151
 ---
 
 # Project State
@@ -17,7 +17,7 @@ progress:
 ## Current Position
 
 Phase: 70 (Production data backfill + migration debt cleanup) — EXECUTING
-Plan: 4 of 9
+Plan: 5 of 9
 
 Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete
@@ -31,6 +31,8 @@ Phase: 61 (Selective List Sharing) — **COMPLETE IN PRODUCTION** (6/6 plans shi
 Last activity: 2026-05-30
 
 ## Active operational notes
+
+**Phase 70-04 shipped (2026-05-31):** Cross-client `subscription_budgets.renewal_month` backfill (`scripts/70-04-A3-subscription-renewal-month-backfill.ts`, ~680 lines, three-mode dry-run / --apply / --enter-manual). **2 rows updated** in production: Envisage Australia / LastPass renewal_month=1 (matched Xero tx 2026-01-27 $254.23) + Envisage Australia / Click Up renewal_month=1 (matched Xero tx 2026-01-31 $372.61). **AUDIT FRAMING MISMATCH:** the Phase 70 audit claimed 91 NULL rows (44 Envisage + 47 JDS); live production reality was 2 rows total, both Envisage; JDS has zero annual+active rows with NULL renewal_month. The script's filter (`frequency='annual' AND is_active=true AND renewal_month IS NULL`) matches the cashflow engine's filter — that is the source of truth, not the audit framing. **Cashflow impact:** Envisage's annual lumps now correctly show as January charges (~$627 total) instead of 1/12-smoothed (~$52/mo) across the FY. **Vendor normalization:** script imports `createVendorKey` + `extractVendorName` from `src/lib/utils/vendor-normalization.ts` directly — same as `src/app/api/monthly-report/subscription-detail/route.ts`, so code-fix B2's consolidation is now hardening (not initial consolidation). Idempotency verified — post-apply dry-run reports "candidate rows: 0". Script is reusable for future onboarding when 70-05/06/07 add new annual subs. Follow-up flagged: 70-08 (C1) audit re-run should verify `scripts/phase-70-data-audit.mjs` uses the correct filter so the framing mismatch cannot recur. See `.planning/phases/70-.../70-04-SUMMARY.md`.
 
 **Phase 70-03 shipped (2026-05-31):** Cross-client `forecast_payroll_summary` backfill (`scripts/70-03-A2-payroll-summary-backfill.mjs`, ~460 lines, two-mode dry-run/--apply). 2 forecasts upserted in production: **Envisage Australia FY26** (INSERT — 6 emp, 4-month window 2026-03..2026-06, wages_admin=$98.6k, super=$11.8k, ptax=$4.8k, payg=$31.6k) + **Precision Electrical Group FY26** (UPDATE — 14 emp 4/10 opex/cogs, wages=$384k, super=$46.1k recomputed at 12%). 23 active forecasts skipped (no `forecast_employees` rows — onboarding cleanup in 70-05/06/07). **SUPER-RATE POLICY LOCK (Matt 2026-05-31):** hardcoded to 0.12 across all forecasts; `financial_forecasts.superannuation_rate` overrides IGNORED as stale FY25 operator artifacts (only Precision Electrical held 0.115). Admin-configurable UI for future statutory bumps (next: 12.5% from 2027-07-01) deferred to code-fixes phase. Idempotency verified — post-apply dry-run reports "needing backfill: 0 / already correct: 2". Wages tab + cashflow engine now have a non-zero budget side for both clients (was zero-fallback before). See `.planning/phases/70-.../70-03-SUMMARY.md`.
 
