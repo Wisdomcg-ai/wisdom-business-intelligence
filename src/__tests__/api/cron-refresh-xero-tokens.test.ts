@@ -39,6 +39,16 @@ vi.mock('@sentry/nextjs', () => ({
   captureMessage: vi.fn(),
 }))
 
+// Phase 69-04: the cron now calls recordHeartbeat on every real invocation.
+// Stub at the module boundary so this 53-04 regression suite keeps focusing
+// on the cron's primary contract (auth gate, per-row status mapping, Sentry
+// invariants) without bringing the heartbeats DB-insert path into scope.
+// The dedicated 69-04 test file
+// (cron-refresh-xero-tokens-pre-expiry.test.ts) pins heartbeat behaviour.
+vi.mock('@/lib/cron/heartbeat', () => ({
+  recordHeartbeat: vi.fn().mockResolvedValue(undefined),
+}))
+
 const ORIGINAL_CRON_SECRET = process.env.CRON_SECRET
 
 beforeEach(() => {

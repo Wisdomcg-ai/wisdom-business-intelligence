@@ -2,22 +2,22 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
-status: Phase 67 deferred items + Phase 65 ENFORCE tests shipped (PR #224, #225); Phase 61 confirmed already in prod
-last_updated: "2026-05-26T07:35:00.000Z"
-last_activity: 2026-05-26 -- Phase 65 ENFORCE tests + runbook (PR #224); Phase 67 deferred batch (PR #225); STATE.md realigned with prod (Phase 61 was shipped via #193/#194)
+status: Milestone complete
+last_updated: "2026-05-30T02:20:04.779Z"
+last_activity: 2026-05-30
 progress:
-  total_phases: 56
-  completed_phases: 25
-  total_plans: 134
-  completed_plans: 131
+  total_phases: 57
+  completed_phases: 26
+  total_plans: 150
+  completed_plans: 147
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 67 (multi-currency-consolidation-fix) — **COMPLETE INCL. DEFERRED** (3 core plans shipped 2026-05-23..26, deferred batch shipped 2026-05-26 in PR #225). Triggered by IICT (3 Xero tenants — 2 AUD + 1 HKD) showing wrong FY25 in the forecast wizard. Core: PR #214 backfill + #215 wizard pl-summary FX engine + #216 forecast composite FX. Collateral fixes #213/217/218/219/220/221. Reconciled to live Calxa within $36 on FY25 (2026-05-26). Deferred batch (PR #225 2026-05-26): cfo/summaries multi-currency, monthly-report non-consol auto-redirect, Step 2 missing-FX-rate banner via reused FXRateMissingBanner. Push-back-to-Xero cancelled — grep confirmed zero write-to-Xero code exists, so it was speculative scope. All multi-currency surfaces now FX-aware for IICT; single-tenant + all-AUD multi-tenant clients (Dragon Roofing) unaffected.
-Plan: all 4 plans shipped + deferred items closed
+Phase: 69
+Plan: Not started
 
 Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete
@@ -28,7 +28,7 @@ Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-
 Phase: 53 (Xero Connection Durability) — **COMPLETE** (5/5 plans shipped 2026-05-06). 53-01 server-side disconnect with dual-ID purge (PR #107). 53-03 token-rotation race holes closed + tightened deactivation policy (commit b5a233d, merged). 53-02 centralized Xero refresh through token-manager + deleted dead refresh-tokens route (PR #109). 53-04 proactive refresh cron at `0 */6 * * *` UTC (PR #110). **53-05 Sentry capture + coach dashboard health pill (PR opened 2026-05-06).** Durability story is whole — JDS root cause permanently closed.
 Phase: 54 (Xero Employee Import Completion) — **PARTIAL** (1/2 plans shipped 2026-05-06). **54-01 PayRun-derived hours + salary fallback (PR opening 2026-05-06).** ENTEREARNINGSRATE employees (timesheet-driven payroll, JDS default) now return populated hours_per_week + annual_salary derived from last 4 POSTED PayRuns; PayTemplate values WIN via ??= precedence; new optional `derived_from` provenance field on response. 54-02 (soft auto-fill on empty Step 4 + new-employees banner) is next.
 Phase: 61 (Selective List Sharing) — **COMPLETE IN PRODUCTION** (6/6 plans shipped 2026-05-14, merged via PRs #193 + #194, plus #195/196 polish). 61-VERIFICATION.md verdict PASS; 147/147 vitest pass. Migrations applied to production: `shared_with_all` + `shared_with uuid[]` on `daily_tasks` and `ideas`, asymmetric RLS, `mark_task_complete` + `mark_idea_status` RPCs, ShareDialog UI, recipient flows, coach dashboard owned-vs-shared breakdown. **Only outstanding item:** the 9-cell SQL RLS test matrix in 61-02 was deferred for a Docker-running local Supabase stack. Since Phase 61 has been live in production for 12 days with zero sharing-related Sentry events, the matrix is de-facto validated. Re-running it remains a "belt and suspenders" exercise; not blocking.
-Last activity: 2026-05-26
+Last activity: 2026-05-30
 
 ## Active operational notes
 
@@ -67,6 +67,7 @@ Goal: take the codebase from 55/100 to ~75/100 (Series-A defensible) over 6 phas
 
 - Phase 66 added (2026-05-16): Section-Permission Follow-ups & Hardening — legacy `financials`-key audit (gates Phase 65 Wave 65-04 ENFORCE cutover), consolidated-route business-ID drift, service-role data-fetching audit, ops/admin section-permission audit. Source: 65-02-SUMMARY.md follow-ups.
 - Phase 68 added (2026-05-28): Step 4 wizard MVP improvements + Armstrong & Co plan-data refresh — 9 Step 4 UX/bug-fix items (B2–B8, B15, B16) + 11 Armstrong data-update items (A1–A11). Source: 2026-05-12 Armstrong & Co planning session transcript + `docs/armstrong-update-and-step4-plan.md`. Numbered 68 because Phase 67 (multi-currency-consolidation-fix) already exists as codebase-resident drift not listed in roadmap.
+- Phase 69 added (2026-05-30): Xero token auto-refresh diagnosis + production durability fix — diagnose why Phase 53's refresh cron is leaving Envisage (7d expired), JDS (4d expired + 20d stale), and all 3 IICT tenants (3d expired) with dead tokens; manual reconnect to unblock month-end; fix root cause; add pre-expiry monitoring. Source: Phase 70 month-end reporting audit (`docs/phase-70-month-end-audit.md`). Gates downstream month-end work (data backfill + code fixes + Calxa migration) — none can be end-to-end verified without working Xero.
 
 ### Active production tenants
 

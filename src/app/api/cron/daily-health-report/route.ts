@@ -3,6 +3,9 @@ import { runHealthChecks } from "@/lib/health-checks";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/resend";
 import * as Sentry from '@sentry/nextjs'
+import { recordHeartbeat } from '@/lib/cron/heartbeat'
+
+const CRON_PATH = '/api/cron/daily-health-report'
 
 const BRAND_ORANGE = "#F5821F";
 const BRAND_NAVY = "#172238";
@@ -187,9 +190,23 @@ export async function GET(request: NextRequest) {
       html,
     });
 
+    // Phase 69-04 — invocation heartbeat. Health.overall feeds metadata so a
+    // cadence query can also observe the system-wide health summary the
+    // report emailed out.
+    await recordHeartbeat({
+      cronPath: CRON_PATH,
+      status: result.success ? 'success' : 'partial',
+      metadata: { health_overall: health.overall, email_sent: !!result.success },
+    });
+
     return NextResponse.json({ success: result.success, health: health.overall });
   } catch (err) {
     Sentry.captureException(err, { tags: { route: 'cron/daily-health-report' }, extra: { context: "[Daily Health Report] Error" } } as any);
+    await recordHeartbeat({
+      cronPath: CRON_PATH,
+      status: 'failed',
+      errorMessage: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Unknown error" },
       { status: 500 }

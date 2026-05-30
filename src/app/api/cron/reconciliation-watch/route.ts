@@ -22,6 +22,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
+import { recordHeartbeat } from '@/lib/cron/heartbeat'
+
+const CRON_PATH = '/api/cron/reconciliation-watch'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -59,6 +62,11 @@ export async function GET(req: NextRequest) {
       Sentry.captureException(error, {
         tags: { invariant: 'cron_reconciliation_watch', phase: 'sync_jobs_query' },
       } as any)
+      await recordHeartbeat({
+        cronPath: CRON_PATH,
+        status: 'failed',
+        errorMessage: `sync_jobs query failed: ${error.message ?? error}`,
+      })
       return NextResponse.json({ error: 'sync_jobs query failed' }, { status: 500 })
     }
 
@@ -97,6 +105,17 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Phase 69-04 — invocation heartbeat. Drift count is metadata so cadence
+    // queries can also observe whether the watcher is finding anything.
+    await recordHeartbeat({
+      cronPath: CRON_PATH,
+      status: drift.length > 0 ? 'partial' : 'success',
+      metadata: {
+        sync_jobs_scanned: rows?.length ?? 0,
+        drift_count: drift.length,
+      },
+    })
+
     return NextResponse.json({
       success: true,
       since,
@@ -108,6 +127,11 @@ export async function GET(req: NextRequest) {
     Sentry.captureException(err, {
       tags: { invariant: 'cron_reconciliation_watch' },
     } as any)
+    await recordHeartbeat({
+      cronPath: CRON_PATH,
+      status: 'failed',
+      errorMessage: String(err?.message ?? err),
+    })
     return NextResponse.json({ error: String(err?.message ?? err) }, { status: 500 })
   }
 }
