@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
-status: Ready to execute
-last_updated: "2026-05-30T22:29:12.012Z"
-last_activity: 2026-05-30
+status: Phase complete — ready for verification
+last_updated: "2026-05-30T22:30:09.919Z"
+last_activity: 2026-05-31
 progress:
   total_phases: 58
-  completed_phases: 26
+  completed_phases: 27
   total_plans: 159
-  completed_plans: 155
+  completed_plans: 156
 ---
 
 # Project State
@@ -28,9 +28,11 @@ Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-
 Phase: 53 (Xero Connection Durability) — **COMPLETE** (5/5 plans shipped 2026-05-06). 53-01 server-side disconnect with dual-ID purge (PR #107). 53-03 token-rotation race holes closed + tightened deactivation policy (commit b5a233d, merged). 53-02 centralized Xero refresh through token-manager + deleted dead refresh-tokens route (PR #109). 53-04 proactive refresh cron at `0 */6 * * *` UTC (PR #110). **53-05 Sentry capture + coach dashboard health pill (PR opened 2026-05-06).** Durability story is whole — JDS root cause permanently closed.
 Phase: 54 (Xero Employee Import Completion) — **PARTIAL** (1/2 plans shipped 2026-05-06). **54-01 PayRun-derived hours + salary fallback (PR opening 2026-05-06).** ENTEREARNINGSRATE employees (timesheet-driven payroll, JDS default) now return populated hours_per_week + annual_salary derived from last 4 POSTED PayRuns; PayTemplate values WIN via ??= precedence; new optional `derived_from` provenance field on response. 54-02 (soft auto-fill on empty Step 4 + new-employees banner) is next.
 Phase: 61 (Selective List Sharing) — **COMPLETE IN PRODUCTION** (6/6 plans shipped 2026-05-14, merged via PRs #193 + #194, plus #195/196 polish). 61-VERIFICATION.md verdict PASS; 147/147 vitest pass. Migrations applied to production: `shared_with_all` + `shared_with uuid[]` on `daily_tasks` and `ideas`, asymmetric RLS, `mark_task_complete` + `mark_idea_status` RPCs, ShareDialog UI, recipient flows, coach dashboard owned-vs-shared breakdown. **Only outstanding item:** the 9-cell SQL RLS test matrix in 61-02 was deferred for a Docker-running local Supabase stack. Since Phase 61 has been live in production for 12 days with zero sharing-related Sentry events, the matrix is de-facto validated. Re-running it remains a "belt and suspenders" exercise; not blocking.
-Last activity: 2026-05-30
+Last activity: 2026-05-31
 
 ## Active operational notes
+
+**Phase 70-08 shipped (2026-05-31):** C1 audit re-run + before/after comparison (`70-08-audit-comparison.md`, 238 lines, commit 493cf60c, --no-verify per parallel directive). Re-ran `scripts/phase-70-data-audit.mjs` unchanged against current live state; captured 152-line output (`/tmp/70-08-audit-after.txt`). **Cross-client gates: D1/D2/D3 all CLOSED on the data side** (Phase 67 violations = 0; payroll_summary populated for every active forecast with employees > 0; annual+active subs with NULL renewal_month = 0). **Per-client verdict:** Envisage partial → partial-substantial (B1 closed: 44→43 + 36 codes; D4 + D5 + B1-B3 + S1-S6 out of scope); JDS broken → partial (deferred-by-design per 70-06); IICT broken → broken-as-expected (deferred-by-design per 70-07). **4 audit framing mismatches surfaced + 4 recommended audit-script fixes** (NOT applied — modifying the audit script would invalidate the before/after comparison; recorded as ops touch-up TODO): (1) D1 multi-active warning counts business cardinality not unique-key cardinality (Phase 67 design allows FY26+FY27 dual-active); (2) D3 renewal_month NULL count lacks `frequency='annual' AND is_active=true` filter (89 phantom rows); (3) JSONB payroll_summary display bug (prints `[object Object]` for all 7 monthly maps — data IS populated, only the print is wrong); (4) D1 (70-07) wrong enum literal recommendation ('consolidated' violates CHECK constraint; correct is 'per_tenant'). **Phase 70 overall acceptance: COMPLETE-WITH-DEFERRALS** — MET on every cross-client gate + Envisage; PARTIAL on JDS + IICT by intentional defer (committed-but-uninvoked scripts + future coach-session to-dos). **Recommended next steps:** unblock Phase 71 (code fixes); schedule one JDS coach session before 2026-07-01; schedule one IICT coach session; apply the 4 audit-script fixes as a 30-min ops touch-up. See `.planning/phases/70-.../70-08-SUMMARY.md` + `70-08-audit-comparison.md`.
 
 **Phase 70-09 shipped (2026-05-30):** C2 cron heartbeat health check (`scripts/70-09-C2-cron-heartbeat-check.mjs`, ~460 LOC, read-only, no flags, always exits 0 per WARN-not-BLOCK contract). Queries `cron_heartbeats` per cron_path for last_run / 24h ticks / 24h failures; classifies HEALTHY / WARN / CRITICAL / UNKNOWN with refresh-xero-tokens flagged `critical=true`. **EMPIRICAL FINDING:** `cron_heartbeats` table is NOT present in production Supabase (PGRST205 — "Could not find the table 'public.cron_heartbeats' in the schema cache"). PR #231 merged the Phase 69-04 app code (cron route changes + heartbeat helper + vercel.json) and the migration file to git, but the Supabase migration (`20260530000000_phase69_cron_heartbeats.sql`) has not been applied to the production database. **Implication:** the refresh cron may or may not be firing — without the heartbeat table we cannot tell. Per `src/lib/cron/heartbeat.ts` fail-soft design, every heartbeat write fails silently, so cron firing is invisible from the data side. **Phase 70 close NOT blocked** (per CONTEXT.md C2). **Implicit follow-up for Matt (orchestrator-level):** apply the Phase 69-04 Supabase migration to prod, wait ≤ 6h for first organic refresh-xero-tokens tick, re-run `node scripts/70-09-C2-cron-heartbeat-check.mjs` to confirm HEALTHY. Two build-time deviations: D1 (Rule 1 bug) — initial `tableExists()` head-only probe returned status=204/error=null/count=null on schema-cache miss (false-positive "exists"); switched to non-head SELECT to surface PGRST205 properly. D2 (Rule 2 missing critical) — promoted TABLE_MISSING / UNKNOWN to a first-class verdict beyond the plan's HEALTHY/WARN/CRITICAL trichotomy so the report discriminates "Vercel-side cron silent" from "Supabase migration not applied" (very different remediation paths). Report at `.planning/phases/70-.../70-09-cron-health-report.md`. See `.planning/phases/70-.../70-09-SUMMARY.md`.
 
