@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: Ready to execute
-last_updated: "2026-05-30T20:58:01.418Z"
+last_updated: "2026-05-30T21:20:50.509Z"
 last_activity: 2026-05-30
 progress:
   total_phases: 58
   completed_phases: 26
   total_plans: 159
-  completed_plans: 149
+  completed_plans: 150
 ---
 
 # Project State
@@ -17,7 +17,7 @@ progress:
 ## Current Position
 
 Phase: 70 (Production data backfill + migration debt cleanup) — EXECUTING
-Plan: 3 of 9
+Plan: 4 of 9
 
 Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete
@@ -31,6 +31,8 @@ Phase: 61 (Selective List Sharing) — **COMPLETE IN PRODUCTION** (6/6 plans shi
 Last activity: 2026-05-30
 
 ## Active operational notes
+
+**Phase 70-03 shipped (2026-05-31):** Cross-client `forecast_payroll_summary` backfill (`scripts/70-03-A2-payroll-summary-backfill.mjs`, ~460 lines, two-mode dry-run/--apply). 2 forecasts upserted in production: **Envisage Australia FY26** (INSERT — 6 emp, 4-month window 2026-03..2026-06, wages_admin=$98.6k, super=$11.8k, ptax=$4.8k, payg=$31.6k) + **Precision Electrical Group FY26** (UPDATE — 14 emp 4/10 opex/cogs, wages=$384k, super=$46.1k recomputed at 12%). 23 active forecasts skipped (no `forecast_employees` rows — onboarding cleanup in 70-05/06/07). **SUPER-RATE POLICY LOCK (Matt 2026-05-31):** hardcoded to 0.12 across all forecasts; `financial_forecasts.superannuation_rate` overrides IGNORED as stale FY25 operator artifacts (only Precision Electrical held 0.115). Admin-configurable UI for future statutory bumps (next: 12.5% from 2027-07-01) deferred to code-fixes phase. Idempotency verified — post-apply dry-run reports "needing backfill: 0 / already correct: 2". Wages tab + cashflow engine now have a non-zero budget side for both clients (was zero-fallback before). See `.planning/phases/70-.../70-03-SUMMARY.md`.
 
 **Phase 70-02 verified clean (2026-05-30):** Cross-business active-forecast remediation script built (`scripts/70-02-A1-active-forecast-remediation.mjs`, 337 lines, two-mode dry-run/--apply). Both modes returned 0 conflicts against production (25 active forecasts → 25 unique (business_id, fiscal_year, year_type, forecast_type) groups). The Phase 67 unique partial index is keyed on `(business_id, fiscal_year, forecast_type)`, so the same business legitimately may have FY26+FY27 both active — observed for Envisage, JDS, Dragon, Armstrong. The Phase 70 audit's "multiple active forecasts" warning was a framing mismatch (counted business cardinality, not unique-key cardinality), not a constraint violation. JDS's FY26-empty-vs-FY27-healthy issue is content/population, not multiplicity, and is the explicit subject of 70-06. Script preserved for future cross-business cleanup runs. See `.planning/phases/70-.../70-02-SUMMARY.md`.
 
