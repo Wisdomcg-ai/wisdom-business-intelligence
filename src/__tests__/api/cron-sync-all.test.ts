@@ -22,6 +22,13 @@ vi.mock('@sentry/nextjs', () => ({
   captureMessage: vi.fn(),
 }))
 
+// Phase 69-04: the cron now writes a cron_heartbeats row per invocation.
+// Stub the helper at the module boundary so this 44-05 regression suite
+// stays focused on the orchestrator contract (not telemetry side effects).
+vi.mock('@/lib/cron/heartbeat', () => ({
+  recordHeartbeat: vi.fn().mockResolvedValue(undefined),
+}))
+
 const ORIGINAL_CRON_SECRET = process.env.CRON_SECRET
 
 beforeEach(() => {

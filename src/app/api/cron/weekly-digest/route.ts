@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { sendEmail } from '@/lib/email/resend'
 import * as Sentry from '@sentry/nextjs'
+import { recordHeartbeat } from '@/lib/cron/heartbeat'
+
+const CRON_PATH = '/api/cron/weekly-digest'
 
 // Brand colors for email
 const BRAND_ORANGE = '#F5821F'
@@ -25,6 +28,11 @@ export async function GET(request: NextRequest) {
       .in('role', ['coach', 'super_admin'])
 
     if (!coaches || coaches.length === 0) {
+      await recordHeartbeat({
+        cronPath: CRON_PATH,
+        status: 'success',
+        metadata: { coaches_found: 0, sent: 0 },
+      })
       return NextResponse.json({ message: 'No coaches found', sent: 0 })
     }
 
@@ -195,6 +203,18 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Phase 69-04 — invocation heartbeat. status='partial' if any per-coach
+    // send errored; 'success' when every coach got their digest.
+    await recordHeartbeat({
+      cronPath: CRON_PATH,
+      status: errors.length > 0 ? 'partial' : 'success',
+      metadata: {
+        coaches_found: coaches.length,
+        sent: sentCount,
+        errors: errors.length,
+      },
+    })
+
     return NextResponse.json({
       success: true,
       sent: sentCount,
@@ -202,6 +222,11 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'cron/weekly-digest' }, extra: { context: "[Weekly Digest] Error" } } as any)
+    await recordHeartbeat({
+      cronPath: CRON_PATH,
+      status: 'failed',
+      errorMessage: error instanceof Error ? error.message : String(error),
+    })
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

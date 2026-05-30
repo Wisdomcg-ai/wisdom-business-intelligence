@@ -24,6 +24,13 @@ vi.mock('@/lib/supabase/admin', () => ({
   createServiceRoleClient: () => supabaseMock,
 }))
 
+// Phase 69-04: cron now writes a cron_heartbeats row per invocation.
+// Stub the helper at the module boundary so this watcher regression suite
+// stays focused on the sync_jobs query contract.
+vi.mock('@/lib/cron/heartbeat', () => ({
+  recordHeartbeat: vi.fn().mockResolvedValue(undefined),
+}))
+
 const ORIGINAL_CRON_SECRET = process.env.CRON_SECRET
 
 function makeSupabaseStub(syncJobsRows: any[]) {
