@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: Ready to execute
-last_updated: "2026-05-30T20:45:21.286Z"
+last_updated: "2026-05-30T20:58:01.418Z"
 last_activity: 2026-05-30
 progress:
   total_phases: 58
   completed_phases: 26
   total_plans: 159
-  completed_plans: 148
+  completed_plans: 149
 ---
 
 # Project State
@@ -17,7 +17,7 @@ progress:
 ## Current Position
 
 Phase: 70 (Production data backfill + migration debt cleanup) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 
 Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete
@@ -31,6 +31,8 @@ Phase: 61 (Selective List Sharing) — **COMPLETE IN PRODUCTION** (6/6 plans shi
 Last activity: 2026-05-30
 
 ## Active operational notes
+
+**Phase 70-02 verified clean (2026-05-30):** Cross-business active-forecast remediation script built (`scripts/70-02-A1-active-forecast-remediation.mjs`, 337 lines, two-mode dry-run/--apply). Both modes returned 0 conflicts against production (25 active forecasts → 25 unique (business_id, fiscal_year, year_type, forecast_type) groups). The Phase 67 unique partial index is keyed on `(business_id, fiscal_year, forecast_type)`, so the same business legitimately may have FY26+FY27 both active — observed for Envisage, JDS, Dragon, Armstrong. The Phase 70 audit's "multiple active forecasts" warning was a framing mismatch (counted business cardinality, not unique-key cardinality), not a constraint violation. JDS's FY26-empty-vs-FY27-healthy issue is content/population, not multiplicity, and is the explicit subject of 70-06. Script preserved for future cross-business cleanup runs. See `.planning/phases/70-.../70-02-SUMMARY.md`.
 
 **Phase 70 rollback baseline (70-01, 2026-05-30):** Pre-write snapshot captured at `.planning/phases/70-production-data-backfill-migration-debt-cleanup-for-month-end-reporting-clients/snapshots/70-pre-write-2026-05-30T20-31-43-496Z.json` (3.4 MB, 3587 rows across 15 table labels). Cross-client baseline counts: businesses=27, business_profiles=27, xero_connections=12, subscription_budgets=103, monthly_report_snapshots=4, financial_forecasts=36 (25 active), forecast_employees=22, forecast_payroll_summary=1, forecast_pl_lines_active=394. Dual-ID drift defence: ALL xero_pl_lines for Envisage/JDS/IICT are correctly keyed under `business_profiles.id` (0 rows under `businesses.id` for all 3) — no drift to remediate on that table. Downstream plans 70-02 through 70-07 may now proceed with `--apply` runs; rollback artifact is in place.
 
