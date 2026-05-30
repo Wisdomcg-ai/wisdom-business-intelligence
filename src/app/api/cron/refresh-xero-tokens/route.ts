@@ -5,6 +5,27 @@ import {
   REFRESH_THRESHOLD_MINUTES,
 } from '@/lib/xero/token-manager'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
+import { recordHeartbeat } from '@/lib/cron/heartbeat'
+
+/**
+ * Phase 69-04 — Pre-expiry early-warning threshold.
+ *
+ * Fires a Sentry warning per tenant when `(expires_at - now()) < 24h` AND
+ * the current cron tick's per-row status was NOT `refreshed` (i.e. cron
+ * observed an expiring token but did not produce a new one). This is the
+ * sensor that closes the diagnostic gap named in 69-DIAGNOSIS.md root
+ * cause 2 — "what happens when the cron runs" telemetry was excellent in
+ * Phase 53, but there was no early-warning signal for the case where the
+ * cron's per-tenant call succeeded structurally but the token was about
+ * to die anyway.
+ *
+ * 24h chosen because the cron runs every 6h: 24h = 4 cron ticks of grace
+ * before expiry. A single missed tick still leaves 3 chances to warn
+ * BEFORE the token dies.
+ */
+const PRE_EXPIRY_WARNING_HOURS = 24
+const PRE_EXPIRY_WARNING_MS = PRE_EXPIRY_WARNING_HOURS * 60 * 60 * 1000
+const CRON_PATH = '/api/cron/refresh-xero-tokens'
 
 /**
  * Phase 53 Plan 53-04 — Proactive Xero token refresh cron.
@@ -126,6 +147,13 @@ export async function GET(req: NextRequest) {
     const total = rows.length
 
     if (total === 0) {
+      // Phase 69-04: heartbeat even on zero-rows path so cadence observers
+      // can see "cron fired, nothing to do" vs "cron didn't fire".
+      await recordHeartbeat({
+        cronPath: CRON_PATH,
+        status: 'success',
+        metadata: { total: 0 },
+      })
       return NextResponse.json({
         success: true,
         total: 0,
@@ -244,7 +272,70 @@ export async function GET(req: NextRequest) {
           tenant_id: row.tenant_id,
         })
       }
+
+      // Phase 69-04 — Pre-expiry early-warning sensor.
+      //
+      // Fires when the row's expires_at is within 24h AND the current
+      // tick did not produce a fresh access token (status != refreshed
+      // and != deactivated). Distinct from cron_refresh_xero_tokens_failed
+      // (which fires only on transient per-tick failures); xero_token_pre_expiry
+      // is the OBSERVATION that the token is about to die, regardless of
+      // whether the current tick succeeded structurally. Per 53-05's "exactly
+      // one event per failure mode" invariant, this is a SEPARATE failure mode
+      // (token-aging vs transient-refresh-failure), so emitting alongside
+      // cron_refresh_xero_tokens_failed is correct, not duplicative.
+      //
+      // Deactivated rows are skipped — token-manager already fired
+      // xero_connection_deactivated; pre-expiry observation is redundant
+      // once the row is terminal.
+      const lastResult = results[results.length - 1]
+      if (
+        lastResult &&
+        lastResult.connection_id === row.id &&
+        lastResult.status !== 'refreshed' &&
+        lastResult.status !== 'deactivated'
+      ) {
+        const expiresAtMs = new Date(row.expires_at).getTime()
+        const msUntilExpiry = expiresAtMs - Date.now()
+        if (msUntilExpiry > 0 && msUntilExpiry < PRE_EXPIRY_WARNING_MS) {
+          const hoursUntilExpiry = Math.floor(
+            msUntilExpiry / (60 * 60 * 1000),
+          )
+          try {
+            Sentry.captureMessage(
+              'Xero token within 24h of expiry — cron did not refresh',
+              {
+                level: 'warning',
+                tags: {
+                  invariant: 'xero_token_pre_expiry',
+                  connection_id: row.id,
+                  business_id: row.business_id,
+                  tenant_id: row.tenant_id,
+                  hours_until_expiry: String(hoursUntilExpiry),
+                  last_status: lastResult.status,
+                },
+                extra: {
+                  expires_at: row.expires_at,
+                  tenant_name: row.tenant_name,
+                },
+              } as any,
+            )
+          } catch {
+            // Sentry outage must never abort a cron run.
+          }
+        }
+      }
     }
+
+    // Phase 69-04: heartbeat. Status='partial' if any rows failed; otherwise
+    // 'success'. Aggregate failure path captures this differently below.
+    const heartbeatStatus: 'success' | 'partial' =
+      failed > 0 || deactivated > 0 ? 'partial' : 'success'
+    await recordHeartbeat({
+      cronPath: CRON_PATH,
+      status: heartbeatStatus,
+      metadata: { total, refreshed, still_valid, failed, deactivated },
+    })
 
     return NextResponse.json({
       success: true,
@@ -257,6 +348,13 @@ export async function GET(req: NextRequest) {
     })
   } catch (err: any) {
     safeSentryCapture(err, { invariant: 'cron_refresh_xero_tokens' })
+    // Phase 69-04: heartbeat on aggregate-failure path so the cadence query
+    // still sees a row for this invocation (just with status='failed').
+    await recordHeartbeat({
+      cronPath: CRON_PATH,
+      status: 'failed',
+      errorMessage: String(err?.message ?? err),
+    })
     return NextResponse.json(
       { success: false, error: String(err?.message ?? err) },
       { status: 500 },

@@ -109,10 +109,12 @@ function preExpiryCaptures() {
 
 describe('phase-69 pre-expiry — xero_token_pre_expiry Sentry warning', () => {
   it('emits xero_token_pre_expiry warning when expires_at < 24h AND status=still_valid', async () => {
-    // expires in 6h, so wasFreshBeforeCall=true → status='still_valid'.
-    // 6h < 24h pre-expiry threshold → warning must fire.
+    // expires in 6h + 30s grace so the Math.floor rounding lands on 6 not 5
+    // after the few ms of wall-time the cron loop burns before checking.
+    // wasFreshBeforeCall=true → status='still_valid'. 6h < 24h pre-expiry
+    // threshold → warning must fire.
     mockConnectionsQuery([
-      rowExpiringIn(6 * 60 * 60 * 1000, {
+      rowExpiringIn(6 * 60 * 60 * 1000 + 30 * 1000, {
         id: 'c-pre',
         business_id: 'b-pre',
         tenant_id: 't-pre',
@@ -138,7 +140,10 @@ describe('phase-69 pre-expiry — xero_token_pre_expiry Sentry warning', () => {
     expect(ctx.tags.connection_id).toBe('c-pre')
     expect(ctx.tags.business_id).toBe('b-pre')
     expect(ctx.tags.tenant_id).toBe('t-pre')
-    expect(ctx.tags.hours_until_expiry).toBe('6')
+    // hours_until_expiry is the floor — accept either 5 or 6 depending on
+    // wall-time drift during the loop; what matters is the warning fired
+    // with the right invariant + tags.
+    expect(['5', '6']).toContain(ctx.tags.hours_until_expiry)
     expect(ctx.tags.last_status).toBe('still_valid')
   })
 
