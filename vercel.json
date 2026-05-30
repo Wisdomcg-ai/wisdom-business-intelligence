@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/refresh-xero-tokens",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/daily-health-report",
+      "schedule": "0 7 * * *"
     }
   ]
 }
