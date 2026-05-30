@@ -184,3 +184,159 @@ After 69-03 and 69-04 deploy to production:
 - [ ] Test connection (deliberately near-expiry) triggers `xero_token_pre_expiry` event in Sentry within 6h.
 - [ ] No `cron_refresh_xero_tokens_failed` events for the production tenants over the next 7 days.
 - [ ] Cadence query run on day 1, day 3, day 7 — all 5 crons show fresh heartbeats.
+
+---
+
+## Post-Deploy Cron Registration Verification (NEW in 69-03)
+
+This section was added after the Phase 69-03 root-cause confirmation: Vercel's
+scheduler had silently dropped registration of `/api/cron/refresh-xero-tokens`
+despite `vercel.json` being correct since PR #110 (2026-05-06). Detection took
+24 days. Below is the protocol that catches the same failure mode within 12h
+on any future deploy.
+
+### Step 1 — Immediately after `vercel --prod` completes
+
+Open the Vercel Dashboard for the production project:
+
+```
+https://vercel.com/<team>/wisdombi/settings/crons
+```
+
+Visually confirm every entry from `vercel.json` appears in the Crons list
+with:
+
+- The correct schedule
+- A `Next run` timestamp within the schedule's window (e.g. for `0 */6 * * *`,
+  next run should be ≤ 6h from now)
+
+If ANY entry is missing or shows "Not scheduled", the platform-level
+registration is broken — re-run `vercel --prod` once more. Per Vercel docs,
+crons re-register on every production deploy that includes `vercel.json`.
+If a second redeploy still fails, escalate to the GitHub Actions fallback
+(below).
+
+### Step 2 — 12h after deploy: cron_heartbeats cadence check
+
+Run the cadence SQL query in the "cron_heartbeats — Cadence Query" section
+above. Expected output 12h post-deploy:
+
+| cron_path                          | hours_since_last | runs_last_24h | verdict |
+|------------------------------------|------------------|---------------|---------|
+| /api/cron/refresh-xero-tokens      | ≤ 6h             | ≥ 2           | OK      |
+| /api/cron/sync-all-xero            | ≤ 24h            | ≥ 1 (if 16:00 UTC has passed)        | OK |
+| /api/cron/reconciliation-watch     | ≤ 24h            | ≥ 1 (if 18:00 UTC has passed)        | OK |
+| /api/cron/daily-health-report      | ≤ 24h            | ≥ 1 (if 07:00 UTC has passed)        | OK |
+| /api/cron/weekly-digest            | ≤ 7d             | 0 or 1                               | OK |
+
+Alert threshold: **if any cron has not fired in `2 × <its schedule interval>`,
+treat as broken and escalate**. Concretely:
+
+- refresh-xero-tokens: missing for > 12h → P1
+- sync-all-xero / reconciliation-watch / daily-health-report: missing for
+  > 48h → P1
+- weekly-digest: missing for > 14d → P2
+
+### Step 3 — 7-day soak
+
+Re-run the cadence query daily for 7 days post-deploy. Any cron that flips
+from healthy to "missing for 2× its interval" is a regression of the Phase 69
+class — likely cause is a subsequent deploy that didn't re-register one of
+the crons. The codebase regression test
+`src/__tests__/vercel/cron-registration.test.ts` would have caught a
+codebase-side declaration drift; a Vercel-side scheduler drift requires this
+runtime check.
+
+---
+
+## Backup: GitHub Actions Fallback (mentioned, NOT built)
+
+If after 12h post-deploy `cron_heartbeats` shows no rows for
+`/api/cron/refresh-xero-tokens` AND a second `vercel --prod` redeploy did not
+restore registration, the fallback is an external scheduler hitting the route
+directly. This is documented here as the escape hatch; it is intentionally
+NOT built preemptively because (a) the vercel.json modification + redeploy in
+69-03 forces re-registration on Vercel's side, and (b) the cadence query in
+69-04 surfaces any future drift within 12h.
+
+### When to build it
+
+Build only if:
+1. The 12h post-deploy check after 69-03 shows the cron STILL isn't firing
+   (i.e. the registration fix didn't work), OR
+2. The Phase 69 root cause recurs within 90 days (Vercel scheduler is
+   structurally unreliable for this project).
+
+### Skeleton (for future reference)
+
+Add a workflow at `.github/workflows/cron-fallback-refresh-xero-tokens.yml`:
+
+```yaml
+name: Cron fallback — refresh Xero tokens
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # mirror vercel.json schedule
+  workflow_dispatch: {}     # allow manual trigger for ops triage
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Invoke production refresh-xero-tokens cron
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -fsS -X GET \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            https://wisdombi.ai/api/cron/refresh-xero-tokens \
+            | tee response.json
+          # Fail the job if the route returned an error so the GH Actions
+          # alert email surfaces the issue. The route is idempotent — if
+          # Vercel's scheduler ALSO fired, the second call short-circuits
+          # because every row's token is fresh.
+```
+
+Cost: 4 runs/day × ~5s per run = trivial within GitHub Actions free tier.
+Risk: doubled invocation when both Vercel + GitHub fire concurrently — safe
+because the cron is structurally idempotent (per 53-03's lock + re-fetch
+semantics) but worth noting if cost ever matters.
+
+CRON_SECRET in GitHub repo secrets must mirror Vercel's. Rotate together.
+
+### Why we did NOT build this in 69-03
+
+- The vercel.json modification in 69-03 forces Vercel to re-read the file and
+  re-register every cron. This is the actual published fix path for this
+  failure mode.
+- The cron_heartbeats cadence query (this runbook) detects future drift
+  within 12h, giving a clear signal before silent expiry can recur.
+- Building the GitHub Actions fallback preemptively would introduce dual-write
+  semantics and a second secret-management surface for a problem that may not
+  recur. Reserve it for evidence of repeat failure.
+
+---
+
+## Dual-Track Closure (69-02 + 69-03)
+
+Phase 69 needs BOTH plans to ship for the production state to be repaired AND
+the regression to be prevented going forward:
+
+- **69-02 — Retroactive (manual reconnect):** the 5 already-expired tenants
+  (Envisage Malouf Family Trust, JDS Aeris, IICT × 3) have dead refresh tokens
+  too old for any code-side fix to revive. They MUST be reconnected via the
+  OAuth callback flow with Matt's per-tenant approval. The vercel.json fix
+  does NOT retroactively refresh dead tokens — only forward-going cron ticks
+  refresh tokens that are still alive.
+- **69-03 — Forward (cron re-registration + regression guard):** the
+  vercel.json edit + redeploy in this plan forces Vercel to re-register the
+  refresh-xero-tokens cron AND registers the previously-missing
+  daily-health-report. The new regression test pins the codebase invariant
+  so future declaration drift fails at PR-review time.
+
+Order: 69-02 may ship before or after 69-03 — they are independent (different
+failure scopes). The forward fix in 69-03 does not depend on the 5 tenants
+being reconnected, and the reconnect does not depend on the cron being
+re-registered (a reconnected tenant gets a fresh 60-day refresh token good
+for many subsequent user-driven syncs even if the cron never fires). For
+operational simplicity, prefer 69-03 first so by the time 69-02's reconnected
+tenants are live, the cron is already firing to keep them alive.
