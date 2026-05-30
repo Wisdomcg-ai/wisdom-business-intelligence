@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: Ready to execute
-last_updated: "2026-05-31T00:00:00.000Z"
+last_updated: "2026-05-31T21:55:00.000Z"
 last_activity: 2026-05-31
 progress:
   total_phases: 58
   completed_phases: 26
   total_plans: 159
-  completed_plans: 151
+  completed_plans: 152
 ---
 
 # Project State
@@ -17,7 +17,7 @@ progress:
 ## Current Position
 
 Phase: 70 (Production data backfill + migration debt cleanup) — EXECUTING
-Plan: 5 of 9
+Plan: 6 of 9
 
 Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete
@@ -31,6 +31,8 @@ Phase: 61 (Selective List Sharing) — **COMPLETE IN PRODUCTION** (6/6 plans shi
 Last activity: 2026-05-30
 
 ## Active operational notes
+
+**Phase 70-05 shipped (2026-05-31):** Envisage subscription_budgets cleanup (`scripts/70-05-B1-envisage-cleanup.ts`, ~670 LOC, two-mode dry-run/--apply). Result: Envisage subs **44 → 43 rows** (1 DELETE) + **36 UPDATEs** with account_codes inferred from 12mo of Envisage Xero SPEND BankTransactions (1815 tx indexed, 147 unique vendor keys). **Paypal merge:** kept `Paypal Australia 1043714034893` (id=fbc38c1a), deleted generic `Paypal` (id=fab1f8a5), keeper inherited codes `[415, 440, 710]` via Matt-approved fallback (D1) — the specific row has zero direct Xero matches because Xero contacts use the generic "Paypal" name. **'Unknown' vendor (D2):** explicit skip per Matt — 372 tx across 34 codes, no dominant pattern would mislead variance; marked UNRESOLVED with reason string; recommend deactivate/rename in future ops cleanup. **'Jb Hi Fi Group Pl' duplicate (D3):** deferred out of scope — 70-05's lock is Paypal-only dedupe; generalized vendor-aliasing is a future plan. **7 UNRESOLVED** (Matt-acknowledged surfaces, NOT failures): Abacus.ai, Jb Hi Fi Group Pl, Kindle, Paddle, Shutterstock, Tech, Unknown. **Audit framing CORRECT** (unlike 70-02/70-04): audit said 44/44 active Envisage rows had empty account_codes; live matched exactly. Coverage: 36/43 = 84% (target was ≥75%). Idempotency verified — post-apply dry-run reports "Paypal: already deduped" + "0 INFERRED + 7 UNRESOLVED". See `.planning/phases/70-.../70-05-SUMMARY.md`.
 
 **Phase 70-04 shipped (2026-05-31):** Cross-client `subscription_budgets.renewal_month` backfill (`scripts/70-04-A3-subscription-renewal-month-backfill.ts`, ~680 lines, three-mode dry-run / --apply / --enter-manual). **2 rows updated** in production: Envisage Australia / LastPass renewal_month=1 (matched Xero tx 2026-01-27 $254.23) + Envisage Australia / Click Up renewal_month=1 (matched Xero tx 2026-01-31 $372.61). **AUDIT FRAMING MISMATCH:** the Phase 70 audit claimed 91 NULL rows (44 Envisage + 47 JDS); live production reality was 2 rows total, both Envisage; JDS has zero annual+active rows with NULL renewal_month. The script's filter (`frequency='annual' AND is_active=true AND renewal_month IS NULL`) matches the cashflow engine's filter — that is the source of truth, not the audit framing. **Cashflow impact:** Envisage's annual lumps now correctly show as January charges (~$627 total) instead of 1/12-smoothed (~$52/mo) across the FY. **Vendor normalization:** script imports `createVendorKey` + `extractVendorName` from `src/lib/utils/vendor-normalization.ts` directly — same as `src/app/api/monthly-report/subscription-detail/route.ts`, so code-fix B2's consolidation is now hardening (not initial consolidation). Idempotency verified — post-apply dry-run reports "candidate rows: 0". Script is reusable for future onboarding when 70-05/06/07 add new annual subs. Follow-up flagged: 70-08 (C1) audit re-run should verify `scripts/phase-70-data-audit.mjs` uses the correct filter so the framing mismatch cannot recur. See `.planning/phases/70-.../70-04-SUMMARY.md`.
 
