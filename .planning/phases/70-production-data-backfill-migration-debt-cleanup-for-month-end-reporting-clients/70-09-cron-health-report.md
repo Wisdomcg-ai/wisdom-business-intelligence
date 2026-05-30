@@ -1,28 +1,20 @@
 # Phase 70-09 — Cron Health Report (C2)
 
-**Captured:** 2026-05-30T22:25:59.997Z
-**Overall status:** TABLE_MISSING
+**Captured:** 2026-05-30T22:34:44.700Z
+**Overall status:** CRITICAL
 **Source:** `scripts/70-09-C2-cron-heartbeat-check.mjs` (read-only query against `public.cron_heartbeats`)
 **Cron registry:** `vercel.json` (5 cron paths)
 **Heartbeat layer:** Phase 69-04 (`supabase/migrations/20260530000000_phase69_cron_heartbeats.sql`, `src/lib/cron/heartbeat.ts`)
-
-## cron_heartbeats table NOT present
-
-Query error: `Could not find the table 'public.cron_heartbeats' in the schema cache`
-
-The Phase 69-04 migration (`supabase/migrations/20260530000000_phase69_cron_heartbeats.sql`) has not been applied to this database. Until it is, cron cadence cannot be empirically verified. Phase 70's Xero-dependent verifications (70-04 renewal_month, 70-05 account_codes, 70-08 audit re-run) are NOT confirmed — they ran without invocation-cadence proof.
-
-**Action:** apply the migration; re-run this check after the first organic cron tick (max 6h post-deploy).
 
 ## Summary
 
 | Cron path | Status | Last run | Cadence | Ticks 24h | Failures 24h |
 |---|---|---|---|---|---|
-| `/api/cron/refresh-xero-tokens` (CRITICAL) | UNKNOWN | NEVER | 6h | 0 | 0 |
-| `/api/cron/sync-all-xero` | UNKNOWN | NEVER | 24h (daily) | 0 | 0 |
-| `/api/cron/reconciliation-watch` | UNKNOWN | NEVER | 24h (daily) | 0 | 0 |
-| `/api/cron/daily-health-report` | UNKNOWN | NEVER | 24h (daily) | 0 | 0 |
-| `/api/cron/weekly-digest` | UNKNOWN | NEVER | 168h (weekly) | 0 | 0 |
+| `/api/cron/refresh-xero-tokens` (CRITICAL) | CRITICAL | NEVER | 6h | 0 | 0 |
+| `/api/cron/sync-all-xero` | CRITICAL | NEVER | 24h (daily) | 0 | 0 |
+| `/api/cron/reconciliation-watch` | CRITICAL | NEVER | 24h (daily) | 0 | 0 |
+| `/api/cron/daily-health-report` | CRITICAL | NEVER | 24h (daily) | 0 | 0 |
+| `/api/cron/weekly-digest` | CRITICAL | NEVER | 168h (weekly) | 0 | 0 |
 
 Classification rules:
 - **HEALTHY**: last run within cadence window AND zero failed/partial ticks in 24h
@@ -32,15 +24,22 @@ Classification rules:
 
 ## Phase 70 implications
 
-**Status:** UNKNOWN — `cron_heartbeats` table not present in this database.
+**Status:** CRITICAL — `/api/cron/refresh-xero-tokens` has NEVER run since the heartbeats table was created.
 
-Phase 70's Xero-touching verifications (70-04 renewal_month backfill via Xero bank tx, 70-05 account_codes inference via Xero P&L lines, 70-08 audit re-run reading expires_at / last_synced_at) all ran assuming Phase 69 had landed and the refresh cron was firing. With no heartbeat evidence to prove that, those verdicts are PROVISIONAL. Re-run 70-08 + this check once the migration is live AND one full cron cycle (≥ 6h) has elapsed.
+Phase 69 deploy may not have re-registered the cron with Vercel's scheduler — the EXACT failure mode Phase 69 was meant to permanently fix. Phase 70 verdicts that depend on fresh Xero data (70-04 renewal_month from Xero bank tx, 70-05 account_codes from Xero P&L, 70-08 audit re-run) MAY be reading STALE token / sync state.
+
+**Actions, in order:**
+1. Check Vercel Dashboard → Project → Settings → Crons. Confirm `/api/cron/refresh-xero-tokens` is listed with a near-future `Next run` timestamp.
+2. If missing or shows "Not scheduled", re-run `vercel --prod` to force re-registration (per 69-04 runbook Step 1).
+3. If still missing after a second redeploy, activate the GitHub Actions fallback skeleton documented in 69-04-MONITORING-RUNBOOK.md.
+4. Once the cron is empirically firing (re-run this script and see HEALTHY), re-run `scripts/phase-70-data-audit.mjs` to refresh the trust signal for 70-04 / 70-05 / 70-08 verdicts.
 
 ## Recommendations for the next 24h
 
-- Apply the Phase 69-04 migration to this database.
-- Re-run this script after ≥ 6h post-deploy to confirm the first organic refresh-xero-tokens tick fires.
-- Until then, treat 70-04 / 70-05 / 70-08 Xero verdicts as provisional.
+- Immediate: Vercel dashboard cron check + redeploy per 69-04 runbook Step 1.
+- Within 6h: re-run this script. If still CRITICAL, escalate to GitHub Actions fallback per 69-04 runbook.
+- Within 24h: re-run `scripts/phase-70-data-audit.mjs` once the cron is empirically firing — current 70-04 / 70-05 / 70-08 verdicts are PROVISIONAL until the cron health is confirmed.
+- Phase 70 close itself is NOT blocked (per CONTEXT.md C2 warn-not-block); this is verification debt to clear before declaring Xero-side trust restored.
 
 ## Cross-reference
 
