@@ -28,6 +28,11 @@ import WagesAnalysisTab from './components/WagesAnalysisTab'
 import ChartsTab from './components/ChartsTab'
 import CashflowTab from './components/CashflowTab'
 import ForecastService from '@/app/finances/forecast/services/forecast-service'
+// Phase 71 Plan 09 (S6) — one-time per-session toast on multi-currency redirect.
+import {
+  shouldShowMultiCurrencyToast,
+  buildMultiCurrencyToastMessage,
+} from './utils/multi-currency-toast'
 import { generateCashflowForecast, getDefaultCashflowAssumptions } from '@/lib/cashflow/engine'
 import { getForecastFiscalYear } from '@/app/finances/forecast/utils/fiscal-year'
 import { useMonthlyReport } from './hooks/useMonthlyReport'
@@ -119,9 +124,14 @@ export default function MonthlyReportPage() {
   // their consolidated equivalents so the user never lands on a broken view.
   // Single-tenant and all-AUD multi-tenant businesses stay unchanged.
   const [isMultiCurrency, setIsMultiCurrency] = useState(false)
+  // Phase 71 Plan 09 (S6) — list of unique currencies present across included
+  // tenants. Drives the multi-currency redirect toast text so the operator
+  // sees the actual currencies (e.g. "AUD + HKD") instead of a generic label.
+  const [activeCurrencies, setActiveCurrencies] = useState<string[]>([])
   useEffect(() => {
     if (!businessId) {
       setIsMultiCurrency(false)
+      setActiveCurrencies([])
       return
     }
     let aborted = false
@@ -131,15 +141,22 @@ export default function MonthlyReportPage() {
         const data = await res.json()
         if (aborted) return
         const tenants = Array.isArray(data.tenants) ? data.tenants : []
-        const fx = tenants.some(
-          (t: { functional_currency?: string; include_in_consolidation?: boolean }) =>
-            (t.include_in_consolidation !== false) &&
-            (t.functional_currency || 'AUD').toUpperCase() !== 'AUD',
-        )
+        const includedCurrencies = tenants
+          .filter(
+            (t: { include_in_consolidation?: boolean }) => t.include_in_consolidation !== false,
+          )
+          .map((t: { functional_currency?: string }) =>
+            (t.functional_currency || 'AUD').toUpperCase(),
+          )
+        const fx = includedCurrencies.some((c: string) => c !== 'AUD')
         setIsMultiCurrency(fx)
+        setActiveCurrencies(includedCurrencies)
       })
       .catch(() => {
-        if (!aborted) setIsMultiCurrency(false)
+        if (!aborted) {
+          setIsMultiCurrency(false)
+          setActiveCurrencies([])
+        }
       })
     return () => {
       aborted = true
@@ -158,9 +175,14 @@ export default function MonthlyReportPage() {
       setActiveTab(target)
       if (typeof window !== 'undefined') {
         localStorage.setItem('monthly-report-active-tab', target)
+        // Phase 71 Plan 09 (S6) — one-time toast per session per business so
+        // the silent mid-session tab switch is no longer mysterious.
+        if (shouldShowMultiCurrencyToast(businessId, isMultiCurrency, window.localStorage)) {
+          toast.info(buildMultiCurrencyToastMessage(activeCurrencies))
+        }
       }
     }
-  }, [isMultiCurrency, activeTab])
+  }, [isMultiCurrency, activeTab, businessId, activeCurrencies])
 
   // Hooks
   const {
