@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: Ready to execute
-last_updated: "2026-05-31T23:55:00.000Z"
+last_updated: "2026-05-31T23:59:00.000Z"
 last_activity: 2026-05-31
 progress:
   total_phases: 58
@@ -17,7 +17,7 @@ progress:
 ## Current Position
 
 Phase: 70 (Production data backfill + migration debt cleanup) — EXECUTING
-Plan: 7 of 9
+Plan: 8 of 9
 
 Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete
@@ -31,6 +31,8 @@ Phase: 61 (Selective List Sharing) — **COMPLETE IN PRODUCTION** (6/6 plans shi
 Last activity: 2026-05-31
 
 ## Active operational notes
+
+**Phase 70-07 DEFERRED (2026-05-31 — Matt decision):** IICT 5-step onboarding completion intentionally deferred to a future IICT-focused coach session. Same pattern as 70-06 (JDS). The build artifact (`scripts/70-07-B3-iict-onboarding-completion.mjs`, 727 LOC, commit 3cb30e71) remains committed and usable but was NOT invoked with `--apply` at any step. Rationale: Steps 1 + 3 require IICT business data Matt does not have at hand (industry classification, FY26 annual revenue / gross profit / net profit, the canonical IICT subscription list). Forcing those entries today risks shipping wrong numbers into a CFO-level report. Steps 2 + 4 are technically executable without further input (Step 2 = consolidation_budget_mode flip; Step 4 = FY27 dedupe confirmation = no-op per 70-02) but were bundled into the defer to avoid partial-onboarded false-positive 'IICT looks onboarded' signal in 70-08 audit re-run. Step 5 (snapshot generation) is UI-driven and requires healthy IICT Xero tokens. **Three build-time deviations the script-author run surfaced + corrected:** D1 — `consolidation_budget_mode = 'per_tenant'` (NOT 'consolidated'; CHECK constraint enforces only 'single' | 'per_tenant'); D2 — Step 5 snapshot generation requires browser session, so the script does dry-run + verification only, snapshot writes happen via the existing UI flow; D3 — Step 4 IICT FY27 dedupe is already a no-op (70-02 cleaned it up cross-business). **Zero IICT data touched.** Future to-do at orchestrator level: "IICT onboarding completion (use 70-07 script with --step=1 through --step=5 interactively)" — to be picked up in a coach session. Downstream impact: 70-08 (audit re-run) will continue flagging IICT as expected and should document the deferral pointer to this SUMMARY; 70-09 (cron heartbeat) unaffected. Phase 70 overall: 5/9 shipped + 2/9 deferred (70-06, 70-07) = 7/9 resolved + 2/9 remaining (70-08, 70-09 verification). See `.planning/phases/70-.../70-07-SUMMARY.md`.
 
 **Phase 70-06 SKIPPED (2026-05-31 — Matt decision):** JDS profile_completed flip + FY26 forecast resolution intentionally deferred to a future coach session. The build artifact (`scripts/70-06-B2-jds-profile-and-forecast.mjs`, 430 LOC, commit b8d0b0ef) remains committed and usable but was NOT invoked with `--apply`. Rationale: 1 month from FY26 end (June 30, 2026); JDS's FY26 active forecast has 0 lines. Option A (auto-backfill) is explicitly unimplemented (requires forecast-wizard re-materialize with operator-provided assumptions — coach work). Option B (deactivate FY26 in favour of FY27) would leave May/June 2026 month-end with FY27 numbers (off-period) — operationally worse than current zero/blank state. The `profile_completed=true` flip was ALSO deferred (would be cosmetic without the FY26 substance — bundled into the future coach session for atomicity). **Zero JDS data touched.** Future to-do at orchestrator level: "rebuild JDS FY26 budget (or accept zero-line + build FY27)" — to be picked up in a coach session. Downstream impact: 70-07 (IICT) unaffected; 70-08 (audit re-run) will continue flagging JDS as expected and should document the deferral pointer to this SUMMARY. See `.planning/phases/70-.../70-06-SUMMARY.md`.
 
