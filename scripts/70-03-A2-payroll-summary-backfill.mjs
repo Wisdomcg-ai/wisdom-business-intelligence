@@ -1,31 +1,39 @@
 #!/usr/bin/env node
+// SUPER POLICY (locked by Matt 2026-05-31): always 0.12 default unless employee.superannuation_rate is non-null. Per-forecast overrides ignored as stale FY25 artifacts. Admin-configurable UI deferred.
 /**
  * Phase 70 Plan 03 — A2: forecast_payroll_summary backfill (cross-client).
  *
  * Computes one `forecast_payroll_summary` row per active forecast from the
  * underlying `forecast_employees` rows. Idempotent upsert keyed by forecast_id.
  *
- * COMPUTE RULES (locked per 70-CONTEXT.md decision A2, 2026-05-31):
+ * COMPUTE RULES (locked per 70-CONTEXT.md decision A2, 2026-05-31; super-rate
+ * policy re-locked by Matt 2026-05-31 post-dry-run):
  *   wages       = monthly_cost ?? (annual_salary / 12)
- *   super       = wages × super_rate (default 0.12 / 12% — AU SG statutory rate FY27+)
+ *   super       = wages × 0.12 (HARDCODED — AU SG statutory rate FY26+ from 2025-07-01.
+ *                 Per-forecast `financial_forecasts.superannuation_rate` overrides are
+ *                 IGNORED as stale FY25 operator artifacts. Admin-configurable UI to
+ *                 update this on rate changes (next: 12.5% from 2027-07-01) is a
+ *                 deferred feature for the code-fixes phase.)
  *   payg        = wages × 0.32 (default AU fallback; per-employee payg_per_period
  *                 conversion deferred to a follow-up code phase)
  *   payroll_tax = wages × NSW_PAYROLL_TAX_RATE (NSW; multi-state out of scope)
  *   net_wages   = wages_admin + wages_cogs − payg
  *
- * SUPER RATE SOURCE (schema deviation auto-fix vs plan text):
- *   The plan text reads "super = wages × E.super_rate (default 0.12)". This is
- *   schema-incorrect: `forecast_employees.super_rate` is `numeric(5,2) DEFAULT 11.0`
- *   — i.e. a WHOLE-PERCENT column (snapshot confirms current production rows hold
- *   the value 11.5 meaning 11.5%, NOT a fraction). Multiplying wages by that
- *   whole-percent value directly would produce nonsensical super values (~10× wages).
- *   The canonical source is `financial_forecasts.superannuation_rate`
- *   (numeric(5,4) DEFAULT 0.12 — decimal form). Snapshot confirms all active
- *   forecasts hold 0.12 today.
- *   This script reads super rate from the forecast row (decimal), defaulting to
- *   0.12 if NULL. The legacy per-employee `super_rate` column is ignored to
- *   prevent the units-mismatch bug. Documented as a Rule 1 (bug) deviation in
- *   the SUMMARY.
+ * SUPER RATE SOURCE (Matt 2026-05-31 policy lock):
+ *   Both `forecast_employees.super_rate` (numeric(5,2) DEFAULT 11.0 — whole-percent)
+ *   AND `financial_forecasts.superannuation_rate` (numeric(5,4) DEFAULT 0.12 — decimal)
+ *   are IGNORED. Reasons:
+ *     • Employee `super_rate` is a units-mismatched column (holds whole-percent
+ *       like 11.5; multiplying wages by it gives ~10× nonsense values).
+ *     • Forecast `superannuation_rate` overrides observed in production (e.g.
+ *       Precision Electrical = 0.115) are stale operator artifacts from FY25
+ *       when the statutory rate was 11.5%. The current AU SG statutory rate is
+ *       12% (effective 2025-07-01); applying stale overrides under-allocates super.
+ *   Policy: hardcode to 0.12 default. When a future rate change ships (next:
+ *   12.5% effective 2027-07-01), a coach/admin UI setting will let operators
+ *   update this — deferred to the code-fixes phase.
+ *   The script emits a warning for every forecast whose `superannuation_rate`
+ *   differs from 0.12, naming the stale value so operators can verify.
  *
  * DATE HANDLING:
  *   forecast_employees.start_date / end_date are DB `date` columns ("YYYY-MM-DD").
@@ -179,7 +187,7 @@ if (APPLY) {
 }
 console.log(`URL: ${URL}`);
 console.log(`Started: ${new Date().toISOString()}`);
-console.log(C.dim(`Compute rules: wages=monthly_cost??salary/12, super=wages×${DEFAULT_SUPER_RATE} (forecast override applies), payg=wages×${DEFAULT_PAYG_RATE}, ptax=wages×${NSW_PAYROLL_TAX_RATE}`));
+console.log(C.dim(`Compute rules: wages=monthly_cost??salary/12, super=wages×${DEFAULT_SUPER_RATE} (HARDCODED — forecast overrides ignored per Matt 2026-05-31), payg=wages×${DEFAULT_PAYG_RATE}, ptax=wages×${NSW_PAYROLL_TAX_RATE}`));
 console.log('');
 
 // ── (1) Fetch all active forecasts ──────────────────────────────────────────
@@ -237,10 +245,16 @@ for (const F of activeForecasts) {
     continue;
   }
 
-  // Resolve super rate for this forecast (decimal). Default 0.12 if NULL.
-  const forecastSuperRate = (F.superannuation_rate != null && Number(F.superannuation_rate) > 0)
-    ? Number(F.superannuation_rate)
-    : DEFAULT_SUPER_RATE;
+  // SUPER POLICY (Matt 2026-05-31): always 0.12 default; per-forecast overrides
+  // (e.g. Precision Electrical's stale 0.115 FY25 artifact) are IGNORED.
+  // Warn the operator when the forecast carries a non-0.12 rate so they can
+  // verify the stale-artifact assumption.
+  const forecastSuperRateRaw = F.superannuation_rate != null ? Number(F.superannuation_rate) : null;
+  if (forecastSuperRateRaw != null && Math.abs(forecastSuperRateRaw - DEFAULT_SUPER_RATE) > 1e-6) {
+    console.log(C.yellow(`⚠ Forecast "${F.name}" (business="${bizName}") has stale forecast.superannuation_rate=${forecastSuperRateRaw}; using ${DEFAULT_SUPER_RATE} per Matt 2026-05-31`));
+    warnings++;
+  }
+  const forecastSuperRate = DEFAULT_SUPER_RATE; // hardcoded per policy lock
 
   // Build month range
   let monthKeys;
@@ -302,10 +316,11 @@ for (const F of activeForecasts) {
       // wages = monthly_cost ?? annual_salary/12 (per CONTEXT A2 locked rule)
       const wages = monthlyCost != null ? monthlyCost : (annualSalary != null ? annualSalary / 12 : 0);
 
-      // super = wages × forecast.superannuation_rate (default 0.12)
-      // SCHEMA-CORRECTNESS NOTE: ignoring forecast_employees.super_rate
-      // (numeric(5,2), whole-percent like 11.5) to avoid units-mismatch bug.
-      // See header comment.
+      // super = wages × 0.12 (Matt 2026-05-31 policy lock).
+      // - forecast_employees.super_rate IGNORED (whole-percent column,
+      //   units-mismatch bug).
+      // - financial_forecasts.superannuation_rate overrides IGNORED (stale
+      //   FY25 operator artifacts; AU SG statutory rate is 12% from 2025-07-01).
       superVal += wages * forecastSuperRate;
 
       // payg = wages × 0.32 (locked default; per-employee payg_per_period
