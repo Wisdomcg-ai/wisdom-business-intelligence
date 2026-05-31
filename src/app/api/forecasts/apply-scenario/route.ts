@@ -1,9 +1,19 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 import { NextResponse } from 'next/server'
 import type { WhatIfParameters } from '@/app/finances/forecast/types'
 import * as Sentry from '@sentry/nextjs'
 
-export async function POST(request: Request) {
+// VALID-04 (observe mode): POST applies what-if scenario parameters to a forecast.
+const ApplyScenarioPostSchema = z
+  .object({
+    forecastId: z.string(),
+    parameters: z.unknown(),
+  })
+  .passthrough()
+
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -88,3 +98,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('forecasts/apply-scenario', ApplyScenarioPostSchema, postHandler)

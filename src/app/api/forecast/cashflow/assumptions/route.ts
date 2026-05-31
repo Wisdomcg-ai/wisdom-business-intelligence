@@ -1,4 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
+
+// VALID-04 (observe mode): POST merges cashflow assumptions into a forecast.
+const CashflowAssumptionsPostSchema = z
+  .object({
+    forecast_id: z.string(),
+    business_id: z.string().optional(),
+  })
+  .passthrough()
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -69,7 +79,7 @@ export async function GET(request: NextRequest) {
  * Saves cashflow assumptions into financial_forecasts.assumptions.cashflow
  * Body: { forecast_id, business_id, ...cashflow assumptions }
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     const supabase = await createRouteHandlerClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -137,3 +147,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('forecast/cashflow/assumptions', CashflowAssumptionsPostSchema, postHandler)

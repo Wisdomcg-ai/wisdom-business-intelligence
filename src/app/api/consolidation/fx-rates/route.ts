@@ -14,6 +14,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { validateFxRatePayload } from '@/lib/consolidation/admin-guards'
@@ -55,7 +57,17 @@ async function requireCoachOrSuperAdmin(): Promise<Guard> {
   return { allowed: true, userId: user.id, role }
 }
 
-export async function POST(request: NextRequest) {
+// VALID-04 (observe mode): POST upserts a manual FX rate (rate is numeric money).
+const FxRatePostSchema = z
+  .object({
+    currency_pair: z.string(),
+    rate_type: z.string(),
+    period: z.string(),
+    rate: z.number(),
+  })
+  .passthrough()
+
+async function postHandler(request: Request) {
   let stage = 'init'
   try {
     stage = 'auth'
@@ -99,6 +111,8 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const POST = withSchema('consolidation/fx-rates', FxRatePostSchema, postHandler)
 
 export async function GET(request: NextRequest) {
   let stage = 'init'

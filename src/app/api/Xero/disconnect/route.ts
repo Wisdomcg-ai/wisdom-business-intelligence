@@ -1,4 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { withSchema } from '@/lib/api/with-schema';
+
+// VALID-04 (observe mode): POST disconnects a business's Xero connection.
+const DisconnectPostSchema = z
+  .object({
+    business_id: z.string(),
+  })
+  .passthrough();
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
@@ -58,7 +67,7 @@ const supabaseAdmin = createClient(
  *   them here would interfere with concurrent reconnect attempts; leaving them
  *   alone is correct.
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     // 1. Cookie-session auth via the route-handler client.
     const supabase = await createRouteHandlerClient();
@@ -214,3 +223,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withSchema('Xero/disconnect', DisconnectPostSchema, postHandler);

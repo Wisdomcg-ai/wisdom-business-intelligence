@@ -24,6 +24,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
@@ -101,8 +103,15 @@ async function requireAccess(
   return { allowed: true, userId: user.id, role }
 }
 
-export async function PATCH(
-  request: NextRequest,
+// VALID-04 (observe mode): PATCH updates a consolidation business's budget mode.
+const ConsolidationBusinessPatchSchema = z
+  .object({
+    consolidation_budget_mode: z.string().optional(),
+  })
+  .passthrough()
+
+async function patchHandler(
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   let stage = 'init'
@@ -183,3 +192,5 @@ export async function PATCH(
     )
   }
 }
+
+export const PATCH = withSchema('consolidation/businesses/[id]', ConsolidationBusinessPatchSchema, patchHandler)

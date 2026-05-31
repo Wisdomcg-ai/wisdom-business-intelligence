@@ -1,4 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
+
+// VALID-04 (observe mode): POST pulls + optionally saves bank balances from Xero.
+const SyncBalancesPostSchema = z
+  .object({
+    business_id: z.string(),
+    forecast_id: z.string().optional(),
+    balance_date: z.string(),
+    save: z.boolean().optional(),
+  })
+  .passthrough()
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -102,7 +114,7 @@ function classifyAccount(label: string, sectionTitle: string): string | null {
  *
  * Body: { business_id, forecast_id, balance_date (YYYY-MM-DD), save?: boolean }
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     const authClient = await createRouteHandlerClient()
     const { data: { user }, error: authError } = await authClient.auth.getUser()
@@ -383,3 +395,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('forecast/cashflow/sync-balances', SyncBalancesPostSchema, postHandler)

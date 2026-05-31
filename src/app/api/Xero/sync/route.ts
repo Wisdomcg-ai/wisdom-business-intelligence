@@ -1,4 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { withSchema } from '@/lib/api/with-schema';
+
+// VALID-04 (observe mode): POST triggers a Xero data sync for a business.
+const SyncPostSchema = z
+  .object({
+    business_id: z.string(),
+  })
+  .passthrough();
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
@@ -218,7 +227,7 @@ export async function GET(request: NextRequest) {
   return syncXeroData(business_id);
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient();
 
   // Verify user is authenticated
@@ -245,3 +254,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
 }
+
+export const POST = withSchema('Xero/sync', SyncPostSchema, postHandler);

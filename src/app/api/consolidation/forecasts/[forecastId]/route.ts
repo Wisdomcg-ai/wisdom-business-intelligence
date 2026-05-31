@@ -16,6 +16,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
@@ -58,8 +60,15 @@ async function requireCoachOrSuperAdmin(): Promise<
   return { allowed: true }
 }
 
-export async function PATCH(
-  request: NextRequest,
+// VALID-04 (observe mode): PATCH links/unlinks a tenant on a consolidation forecast.
+const ConsolidationForecastPatchSchema = z
+  .object({
+    tenant_id: z.string().nullable(),
+  })
+  .passthrough()
+
+async function patchHandler(
+  request: Request,
   { params }: { params: Promise<{ forecastId: string }> },
 ) {
   let stage = 'init'
@@ -164,3 +173,5 @@ export async function PATCH(
     )
   }
 }
+
+export const PATCH = withSchema('consolidation/forecasts/[forecastId]', ConsolidationForecastPatchSchema, patchHandler)

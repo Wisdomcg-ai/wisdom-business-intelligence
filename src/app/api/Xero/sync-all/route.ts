@@ -20,6 +20,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 import {
   runSyncForAllBusinesses,
   syncBusinessXeroPL,
@@ -60,7 +62,15 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+// VALID-04 (observe mode): POST syncs one business (businessId) or all (all=true).
+const SyncAllPostSchema = z
+  .object({
+    businessId: z.string().optional(),
+    all: z.boolean().optional(),
+  })
+  .passthrough()
+
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -87,3 +97,5 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const POST = withSchema('Xero/sync-all', SyncAllPostSchema, postHandler)

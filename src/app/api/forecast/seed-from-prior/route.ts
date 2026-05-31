@@ -27,10 +27,20 @@ import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/as
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST(request: Request) {
+// VALID-04 (observe mode): seed a target-FY forecast from the prior FY.
+const SeedFromPriorPostSchema = z
+  .object({
+    businessId: z.string(),
+    targetFiscalYear: z.number(),
+  })
+  .passthrough()
+
+async function postHandler(request: Request) {
   try {
     const supabase = await createRouteHandlerClient()
 
@@ -257,3 +267,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('forecast/seed-from-prior', SeedFromPriorPostSchema, postHandler)

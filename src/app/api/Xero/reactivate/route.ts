@@ -1,4 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { withSchema } from '@/lib/api/with-schema';
+
+// VALID-04 (observe mode): POST reactivates a Xero connection for a business.
+const ReactivatePostSchema = z
+  .object({
+    business_id: z.string(),
+  })
+  .passthrough();
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
@@ -36,7 +45,7 @@ const supabaseAdmin = createClient(
  * `ForecastWizardV4.tsx:1430`) do NOT branch on `status === 500` for the
  * reactivate path, so this change is transparent to existing UX.
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     // Verify user is authenticated
     const supabase = await createRouteHandlerClient();
@@ -202,3 +211,5 @@ export async function POST(request: NextRequest) {
     }, { status: 500 });
   }
 }
+
+export const POST = withSchema('Xero/reactivate', ReactivatePostSchema, postHandler);

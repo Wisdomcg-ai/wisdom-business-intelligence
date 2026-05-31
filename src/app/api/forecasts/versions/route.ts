@@ -1,4 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 import { NextResponse } from 'next/server'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import type { WhatIfParameters } from '@/app/finances/forecast/types'
@@ -6,7 +8,17 @@ import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST(request: Request) {
+// VALID-04 (observe mode): POST snapshots a forecast as a named version.
+const VersionsPostSchema = z
+  .object({
+    forecastId: z.string(),
+    versionName: z.string(),
+    parameters: z.unknown().optional(),
+    versionType: z.enum(['budget', 'forecast']).optional(),
+  })
+  .passthrough()
+
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -163,6 +175,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('forecasts/versions', VersionsPostSchema, postHandler)
 
 // GET endpoint to list all versions
 export async function GET(request: Request) {

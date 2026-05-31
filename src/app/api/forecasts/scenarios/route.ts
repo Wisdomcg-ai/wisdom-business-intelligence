@@ -5,8 +5,30 @@ import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// VALID-04 (observe mode): POST creates a scenario; multipliers are numeric.
+const ScenariosPostSchema = z
+  .object({
+    forecast_id: z.string(),
+    name: z.string(),
+    description: z.string().optional(),
+    revenue_multiplier: z.number().optional(),
+    cogs_multiplier: z.number().optional(),
+    opex_multiplier: z.number().optional(),
+    scenario_type: z.string().optional(),
+  })
+  .passthrough()
+
+// VALID-04 (observe mode): PATCH updates a scenario by id.
+const ScenariosPatchSchema = z
+  .object({
+    scenario_id: z.string(),
+  })
+  .passthrough()
 
 // Service client for database operations (bypasses RLS)
 const supabaseAdmin = createClient(
@@ -113,7 +135,7 @@ export async function GET(request: NextRequest) {
  * POST /api/forecasts/scenarios
  * Create a new scenario
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     // SECURITY: Verify user is authenticated and use their ID
     const { user, error: authError, supabase } = await getAuthenticatedUser()
@@ -183,11 +205,13 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export const POST = withSchema('forecasts/scenarios', ScenariosPostSchema, postHandler)
+
 /**
  * PATCH /api/forecasts/scenarios
  * Update a scenario (set active, update multipliers, etc.)
  */
-export async function PATCH(request: NextRequest) {
+async function patchHandler(request: Request) {
   try {
     // SECURITY: Verify user is authenticated
     const { user, error: authError } = await getAuthenticatedUser()
@@ -232,6 +256,8 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const PATCH = withSchema('forecasts/scenarios', ScenariosPatchSchema, patchHandler)
 
 /**
  * DELETE /api/forecasts/scenarios?scenario_id=xxx

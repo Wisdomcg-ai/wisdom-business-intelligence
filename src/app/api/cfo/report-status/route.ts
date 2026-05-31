@@ -13,6 +13,8 @@
 // Resend failure NEVER leaves the row at status='sent'.
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { sendMonthlyReport } from '@/lib/email/send-report'
@@ -69,7 +71,16 @@ function errorResponse(message: string, status: number, extra?: Record<string, u
   return NextResponse.json({ success: false, error: message, ...extra }, { status })
 }
 
-export async function POST(request: NextRequest) {
+// VALID-04 (observe mode): POST drives report-status actions for a business/period.
+const ReportStatusPostSchema = z
+  .object({
+    action: z.string(),
+    business_id: z.string(),
+    period_month: z.string(),
+  })
+  .passthrough()
+
+async function postHandler(request: Request) {
   try {
     // 1. Auth
     const authClient = await createRouteHandlerClient()
@@ -322,6 +333,8 @@ async function handleApproveAndSend(userId: string, body: ApproveSendBody) {
     { status: 207 },
   )
 }
+
+export const POST = withSchema('cfo/report-status', ReportStatusPostSchema, postHandler)
 
 async function handleResend(userId: string, body: ResendBody) {
   // D-13: resend already-approved/sent report. No snapshot recapture.
