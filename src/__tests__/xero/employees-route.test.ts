@@ -23,7 +23,7 @@ vi.mock('@/lib/xero/token-manager', () => ({
   })),
 }));
 
-vi.mock('@/lib/utils/resolve-xero-business-id', () => ({
+vi.mock('@/lib/business/resolveXeroBusinessId', () => ({
   resolveXeroBusinessId: vi.fn(async (id: string) => id),
 }));
 

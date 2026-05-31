@@ -73,7 +73,7 @@ vi.mock('@/lib/utils/verify-business-access', () => ({
 }))
 
 const resolveXeroBusinessIdMock = vi.fn()
-vi.mock('@/lib/utils/resolve-xero-business-id', () => ({
+vi.mock('@/lib/business/resolveXeroBusinessId', () => ({
   resolveXeroBusinessId: (...args: unknown[]) => resolveXeroBusinessIdMock(...args),
 }))
 

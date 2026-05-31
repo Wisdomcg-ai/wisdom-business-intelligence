@@ -4,7 +4,7 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
-import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
 // Phase 52 (XERO-S4-01..04): mapping helpers extracted to a pure module so
 // the route + wizard first-load + Plan 52-01 import modal all share one
 // canonical Xero-→-wizard mapping path.
