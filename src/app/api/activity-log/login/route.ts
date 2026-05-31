@@ -2,8 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
-export async function POST(request: NextRequest) {
+// POST body: { business_id } — drives the user_logins upsert.
+const PostBodySchema = z.object({ business_id: z.string() }).passthrough()
+
+// GET searchParams: { business_id? } (string-typed query).
+const GetQuerySchema = z.object({ business_id: z.string().optional() }).passthrough()
+
+async function postHandler(request: NextRequest) {
   try {
     const supabase = await createRouteHandlerClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -68,7 +76,13 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+export const POST = withSchema(
+  'activity-log/login',
+  PostBodySchema,
+  postHandler as unknown as (request: Request) => Promise<Response>
+)
+
+async function getHandler(request: NextRequest) {
   try {
     const supabase = await createRouteHandlerClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -107,3 +121,9 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export const GET = withQuerySchema(
+  'activity-log/login',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+)
