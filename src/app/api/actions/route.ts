@@ -2,10 +2,26 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { notifyCoachActionCompleted } from '@/lib/notifications'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: Request) {
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    status: z.string().optional(),
+  })
+  .passthrough()
+
+const PutBodySchema = z
+  .object({
+    action_id: z.string(),
+    status: z.string(),
+  })
+  .passthrough()
+
+async function getHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
   const { searchParams } = new URL(request.url)
   const businessId = searchParams.get('business_id')
@@ -94,7 +110,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function PUT(request: Request) {
+async function putHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -164,3 +180,6 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('actions', GetQuerySchema, getHandler)
+export const PUT = withSchema('actions', PutBodySchema, putHandler)

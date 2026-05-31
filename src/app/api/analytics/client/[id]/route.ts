@@ -2,8 +2,13 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
-export async function GET(
+// Input-less GET — no query string, business id arrives via the dynamic [id] param.
+const GetQuerySchema = z.object({})
+
+async function getHandler(
   request: Request,
   { params }: { params: { id: string } }
 ) {
@@ -125,6 +130,8 @@ export async function GET(
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('analytics/client/[id]', GetQuerySchema, getHandler)
 
 // Helper functions
 

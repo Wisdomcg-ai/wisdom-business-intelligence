@@ -2,8 +2,16 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+  })
+  .passthrough()
 
 /**
  * GET /api/goals/resolve-business?business_id=xxx
@@ -13,7 +21,7 @@ export const dynamic = 'force-dynamic'
  * always resolve client business IDs even without SELECT policies on
  * business_profiles.
  */
-export async function GET(request: Request) {
+async function getHandler(request: Request) {
   try {
     const supabase = await createRouteHandlerClient()
     const { searchParams } = new URL(request.url)
@@ -132,3 +140,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('goals/resolve-business', GetQuerySchema, getHandler)

@@ -16,8 +16,10 @@
  */
 
 import { createRouteHandlerClient } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 import type { OnePagePlanData } from '@/app/one-page-plan/types'
 
 export const dynamic = 'force-dynamic'
@@ -28,7 +30,15 @@ interface RequestBody {
   step4_plan_data: Partial<OnePagePlanData>
 }
 
-export async function POST(req: NextRequest) {
+const PostBodySchema = z
+  .object({
+    business_id: z.string(),
+    label: z.string().optional(),
+    step4_plan_data: z.object({}).passthrough(),
+  })
+  .passthrough()
+
+async function postHandler(req: Request) {
   try {
     const supabase = await createRouteHandlerClient()
 
@@ -177,3 +187,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 })
   }
 }
+
+export const POST = withSchema('plan-snapshots', PostBodySchema, postHandler)
