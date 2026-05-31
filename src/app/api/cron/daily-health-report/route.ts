@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runHealthChecks } from "@/lib/health-checks";
+import { runHealthChecks, getLastSyncByTenant } from "@/lib/health-checks";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/resend";
 import * as Sentry from '@sentry/nextjs'
@@ -67,11 +67,19 @@ export async function GET(request: NextRequest) {
         .from("businesses")
         .select("id, name, updated_at")
         .lt("updated_at", thirtyDaysAgo),
-      // Xero connections with issues
+      // Xero connections with issues.
+      // REL-N1: the column is `expires_at`, not the nonexistent `token_expires_at`
+      // (which silently errored this query). tenant_id enables the sync_jobs
+      // freshness join below.
       supabase
         .from("xero_connections")
-        .select("id, business_id, is_active, token_expires_at, last_synced_at"),
+        .select("id, business_id, tenant_id, is_active, expires_at, last_synced_at"),
     ]);
+
+    // REL-N2: cron-safe sync freshness keyed on the stable Xero tenant_id.
+    // last_synced_at alone false-positives "stale" on cron-only tenants because
+    // the nightly cron never writes it.
+    const lastSyncByTenant = await getLastSyncByTenant(supabase);
 
     // Process error summary
     const errorCounts: Record<string, number> = {};
@@ -88,10 +96,15 @@ export async function GET(request: NextRequest) {
       const oneDayMs = 24 * 60 * 60 * 1000;
       const activeConnections = xeroConnectionsResult.data.filter((c: any) => c.is_active);
       for (const conn of activeConnections) {
-        if (conn.token_expires_at && new Date(conn.token_expires_at).getTime() < now.getTime() + oneDayMs) {
+        if (conn.expires_at && new Date(conn.expires_at).getTime() < now.getTime() + oneDayMs) {
           xeroIssues.push(`Xero token expiring soon (business ${conn.business_id})`);
         }
-        if (conn.last_synced_at && now.getTime() - new Date(conn.last_synced_at).getTime() > oneDayMs) {
+        const lastConnSync = conn.last_synced_at ? new Date(conn.last_synced_at).getTime() : 0;
+        const lastJobSync = conn.tenant_id ? lastSyncByTenant.get(conn.tenant_id) ?? 0 : 0;
+        const freshest = Math.max(lastConnSync, lastJobSync);
+        // Only flag tenants that have synced before but not within the last day;
+        // a never-synced new connection (freshest === 0) is not "stale".
+        if (freshest > 0 && now.getTime() - freshest > oneDayMs) {
           xeroIssues.push(`Xero sync stale (business ${conn.business_id})`);
         }
       }
