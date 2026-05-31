@@ -240,6 +240,29 @@ describe('generateCashflowForecast', () => {
     expect(result.months[0].cash_inflows).toBeCloseTo(70000, 0)
   })
 
+  it('treats a $0 actual as authoritative — does NOT fall back to forecast (DM-N6)', () => {
+    // July is actualized at exactly $0 (e.g. a seasonal revenue line that
+    // genuinely printed nothing in a closed month). The forecast for July was
+    // $50k. The cash inflow for July must reflect the actual $0, NOT the $50k
+    // forecast — otherwise actualized cash is overstated.
+    const pl: any[] = [{
+      account_name: 'Sales',
+      category: 'Revenue',
+      actual_months: { '2025-07': 0 },
+      forecast_months: evenSpread(FY_MONTHS, 50000),
+    }]
+    const result = generateCashflowForecast(
+      pl, null,
+      baseAssumptions({ dso_days: 0, gst_registered: false }),  // immediate for simplicity
+      FORECAST,
+    )
+    // Month 0 (July) shows $0 (the actual), not $50k (the forecast).
+    expect(result.months[0].cash_inflows).toBeCloseTo(0, 0)
+    // A later forecast-only month still uses the forecast (sanity: absent key
+    // in actual_months falls through to forecast as before).
+    expect(result.months[1].cash_inflows).toBeCloseTo(50000, 0)
+  })
+
   it('processes loans: monthly payment reduces principal', () => {
     const pl = [plLine('Sales', 'Revenue', 0)]
     const result = generateCashflowForecast(

@@ -54,6 +54,16 @@ export interface ConsolidationTenant {
   display_order: number
   functional_currency: string // 'AUD' | 'HKD' | etc
   include_in_consolidation: boolean
+  /**
+   * False when xero_connections.functional_currency was NULL/empty and the
+   * engine had to default `functional_currency` to the presentation currency.
+   * A consolidation invariant violation: the tenant's true reporting currency
+   * is unknown, so the FX short-circuit may sum foreign figures 1:1. Surfaced
+   * via diagnostics.tenants_missing_currency + a Sentry alert. Optional so
+   * legacy/test ConsolidationTenant literals don't need to set it (undefined is
+   * treated as "not flagged").
+   */
+  currency_known?: boolean
 }
 
 // consolidation_elimination_rules row (business-scoped, tenant-paired).
@@ -159,6 +169,13 @@ export interface ConsolidatedReport {
     tenants_with_budget: number
     /** Tenants for which no budget was found (for UI warnings). */
     tenants_without_budget: string[]
+    /**
+     * Consolidation-included tenants whose xero_connections.functional_currency
+     * was NULL/empty. These were defaulted to the presentation currency and so
+     * skipped FX translation — their figures may be summed 1:1 from a foreign
+     * currency. Re-sync the connection (captures Xero BaseCurrency) to clear.
+     */
+    tenants_missing_currency: string[]
     /**
      * Which budget mode the engine ran in (from businesses.consolidation_budget_mode).
      * Phase 34 Step 2. The UI uses this to hide per-tenant Budget/Variance

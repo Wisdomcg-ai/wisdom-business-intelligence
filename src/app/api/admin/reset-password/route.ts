@@ -61,14 +61,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if user is admin
-    const { data: userData } = await supabase
-      .from('users')
-      .select('system_role')
-      .eq('id', user.id)
-      .single()
+    // Check if user is admin.
+    // R31 (SEC-N4): gate on the canonical `system_roles` table — the single
+    // super-admin source of truth used by every other privileged route — NOT
+    // the legacy `users.system_role` column, which can drift out of sync.
+    const { data: roleData } = await supabase
+      .from('system_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-    if (userData?.system_role !== 'super_admin') {
+    if (roleData?.role !== 'super_admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

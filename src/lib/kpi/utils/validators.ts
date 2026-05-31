@@ -143,7 +143,24 @@ export function validateKPITarget(
     return { isValid: false, errors, warnings }
   }
 
-  // Target should typically be higher than current (for most KPIs)
+  // Target should typically be higher than current (for most KPIs).
+  // Guard divide-by-zero: a current value of 0 makes the percentage change
+  // undefined (it would otherwise yield Infinity/NaN and emit misleading
+  // "300% higher" / silent-no-warning results). Surface a clear warning and
+  // skip the percent-based checks. (R28)
+  if (current === 0) {
+    warnings.push(
+      target === 0
+        ? 'Target equals the current value (both are 0)'
+        : 'Current value is 0 — percentage change to the target is undefined',
+    )
+    return {
+      isValid: true,
+      errors,
+      warnings: warnings.length > 0 ? warnings : undefined,
+    }
+  }
+
   const percentChange = ((target - current) / current) * 100
 
   if (Math.abs(percentChange) < 1) {

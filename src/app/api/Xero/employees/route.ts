@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
+import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
 // Phase 52 (XERO-S4-01..04): mapping helpers extracted to a pure module so
@@ -117,6 +119,24 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // ── R24 (SEC-N1): auth gate ──────────────────────────────────────────────
+    // This route returns live Xero payroll PII (employee names, emails,
+    // salaries, hours). It was previously reachable by any unauthenticated
+    // caller who knew a business_id — the service-role client below bypasses
+    // RLS, so app-layer authorization is the only protection. Require a logged-
+    // in user (401) who has access to the requested business (403) before any
+    // payroll data is fetched or returned.
+    const authClient = await createRouteHandlerClient();
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const hasAccess = await verifyBusinessAccess(user.id, business_id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Per-request supabase client — see getSupabaseAdmin() comment above for
     // why this can't be module-level.

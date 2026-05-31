@@ -222,6 +222,12 @@ vi.mock('@/lib/supabase/server', () => ({
   })),
 }))
 
+// R29: route now hard-gates on verifyBusinessAccess. These tests exercise the
+// business logic with an authorized user, so grant access.
+vi.mock('@/lib/utils/verify-business-access', () => ({
+  verifyBusinessAccess: vi.fn(async () => true),
+}))
+
 // revert-report stub — not relevant for serializer assertions, but the route
 // will call it post-upsert; mock to a no-op success.
 vi.mock('@/lib/reports/revert-report', () => ({

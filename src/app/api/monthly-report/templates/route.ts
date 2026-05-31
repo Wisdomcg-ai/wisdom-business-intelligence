@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
+import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
@@ -9,6 +11,30 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   getSupabaseSecretKey()
 )
+
+/**
+ * R24 (SEC-N1/MNT-N1): auth gate shared by all four verbs.
+ *
+ * The module-level `supabase` client above is service-role and bypasses RLS,
+ * so these routes had NO authorization — any caller knowing a business_id
+ * could read/write another tenant's report templates (cross-tenant IDOR).
+ *
+ * Returns a NextResponse to short-circuit (401 unauthenticated / 403 no access)
+ * or null to let the caller proceed. The caller passes the businessId it
+ * already extracted from the query/body.
+ */
+async function requireBusinessAccess(businessId: string): Promise<NextResponse | null> {
+  const authClient = await createRouteHandlerClient()
+  const { data: { user }, error: authError } = await authClient.auth.getUser()
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const hasAccess = await verifyBusinessAccess(user.id, businessId)
+  if (!hasAccess) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  return null
+}
 
 /**
  * GET /api/monthly-report/templates?business_id=xxx
@@ -22,6 +48,9 @@ export async function GET(request: NextRequest) {
     if (!businessId) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 })
     }
+
+    const denied = await requireBusinessAccess(businessId)
+    if (denied) return denied
 
     const { data, error } = await supabase
       .from('report_templates')
@@ -68,6 +97,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const denied = await requireBusinessAccess(business_id)
+    if (denied) return denied
 
     // If this template is the new default, clear the existing default first
     if (is_default) {
@@ -119,6 +151,9 @@ export async function PUT(request: NextRequest) {
     if (!id || !business_id) {
       return NextResponse.json({ error: 'id and business_id are required' }, { status: 400 })
     }
+
+    const denied = await requireBusinessAccess(business_id)
+    if (denied) return denied
 
     // Verify this template belongs to this business
     const { data: existing } = await supabase
@@ -185,6 +220,9 @@ export async function DELETE(request: NextRequest) {
     if (!id || !businessId) {
       return NextResponse.json({ error: 'id and business_id are required' }, { status: 400 })
     }
+
+    const denied = await requireBusinessAccess(businessId)
+    if (denied) return denied
 
     const { error } = await supabase
       .from('report_templates')
