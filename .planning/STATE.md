@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
-status: Ready to execute
-last_updated: "2026-05-31T00:32:00.000Z"
+status: Ready to plan
+last_updated: "2026-05-31T01:08:15.370Z"
 last_activity: 2026-05-31
 progress:
   total_phases: 60
@@ -16,8 +16,8 @@ progress:
 
 ## Current Position
 
-Phase: 71 (Month-end reporting code fixes) — **COMPLETE** (10/10 plans shipped 2026-05-31). 71-10 D4 snapshot serializer + remap migration is the closer: new snapshots persist `report_data.sections` as a named-key JSONB map (`{ revenue, cost_of_sales, operating_expenses, other_income, ... }`); 4 existing snapshot rows (3 Envisage + 1 JDS) migrated in place via `scripts/71-D4-snapshot-sections-remap.mjs --apply` (applied: 4, failed: 0); idempotency verified on re-run (need remap: 0). Backward-compat preserved via `deserializeReportSections` (handles named-map / numeric-keyed legacy / array passthrough).
-Plan: 10 of 10 — phase complete
+Phase: 72
+Plan: Not started
 
 Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete

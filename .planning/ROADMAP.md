@@ -1067,7 +1067,7 @@ Plans:
 **Goal:** Ship 10 code fixes from the Phase 70 month-end audit — 3 P1 production bugs (B1 wages employee fuzzy-match, B2 vendor-key normalization, B3 Proceed-as-Draft persistence), 6 P2 Calxa-parity gaps (S1 commentary scope expansion, S2 budget-only subscription visibility, S3 wages per-payrun expand UI, S4 PDF variance polarity refactor, S5 Balance Sheet equation check, S6 multi-tenant non-AUD toast), and D4 (snapshot serializer numeric→named keys + data remap migration deferred from Phase 70). Every fix ships with a regression test that would have caught the bug.
 **Requirements**: B1, B2, B3, S1, S2, S3, S4, S5, S6, D4
 **Depends on:** Phase 70
-**Plans:** 10/10 plans executed — **PHASE COMPLETE 2026-05-31**
+**Plans:** 10/10 plans complete
 **Wave order (post-checker B1 fix 2026-05-31):** Wave 1: 71-07 (S4 PDF tint), 71-08 (S5 BS equation). Wave 2 (after 71-01): 71-03 (B3 draft persistence). Wave 2 (after 71-02): 71-02-dependents start. Wave 3: 71-04 (S1 commentary triggers — depends_on [71-01, 71-03] to avoid page.tsx collision with 71-03), 71-05 (S2), 71-06 (S3 wages expand), 71-09 (S6 non-AUD toast). Wave 4: 71-10 (D4 snapshot serializer + checkpoint).
 
 Plans:
