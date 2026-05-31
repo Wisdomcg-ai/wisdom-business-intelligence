@@ -41,6 +41,12 @@ vi.mock('@/lib/supabase/server', () => ({
   })),
 }))
 
+// R29: route now hard-gates on verifyBusinessAccess. These tests exercise the
+// business logic with an authorized user, so grant access.
+vi.mock('@/lib/utils/verify-business-access', () => ({
+  verifyBusinessAccess: vi.fn(async () => true),
+}))
+
 vi.mock('@/lib/supabase/keys', () => ({
   getSupabaseSecretKey: vi.fn(() => 'test-secret-key'),
 }))

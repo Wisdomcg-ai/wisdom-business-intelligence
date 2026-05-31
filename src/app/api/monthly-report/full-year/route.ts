@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
@@ -127,6 +128,15 @@ export async function POST(request: NextRequest) {
       business_id,
     )
     if (_sectionBlocked) return _sectionBlocked
+
+    // R29 (SEC-N2): hard authorization gate. The section-permission check above
+    // is LOG_ONLY by default, so it does not block cross-tenant access on its
+    // own. The module-level Supabase client is service-role and bypasses RLS,
+    // making this the only durable tenant-isolation enforcement on this route.
+    const _hasAccess = await verifyBusinessAccess(user.id, business_id)
+    if (!_hasAccess) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     // Resolve dual business IDs (businesses.id vs business_profiles.id)
     const ids = await resolveBusinessIds(supabase, business_id)
