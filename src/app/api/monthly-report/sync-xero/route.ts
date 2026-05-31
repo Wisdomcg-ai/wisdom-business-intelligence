@@ -12,7 +12,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids';
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds';
 import { syncBusinessXeroPL } from '@/lib/xero/sync-orchestrator';
 import { replaceTenantBSRows } from './bs-writer';
 import { parseSingleMonthBSReport } from './report-parsers';
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
     }
 
     stage = 'resolve_business_ids';
-    const ids = await resolveBusinessIds(supabaseAdmin, business_id);
+    const ids = await resolveBusinessProfileIds(supabaseAdmin, business_id);
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[Sync Xero] Resolved IDs for ${business_id}:`, ids);
     }
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
     const { data: business, error: bizError } = await supabaseAdmin
       .from('businesses')
       .select('id, owner_id, assigned_coach_id')
-      .eq('id', ids.bizId)
+      .eq('id', ids.businessId)
       .maybeSingle();
 
     if (bizError) {
@@ -239,7 +239,7 @@ export async function POST(request: NextRequest) {
         const bsAccounts = parseSingleMonthBSReport(bsResult.report);
         for (const [name, data] of bsAccounts) {
           const existing = tenantBSAccounts.get(name) || {
-            business_id: ids.bizId,
+            business_id: ids.businessId,
             tenant_id: tenantId,
             account_name: name,
             account_code: null,
@@ -258,13 +258,13 @@ export async function POST(request: NextRequest) {
       );
 
       // Replace this tenant's BS rows atomically-enough (R25 / DM-N5).
-      // delete + insert are scoped to the same id-space (ids.bizId — the table
+      // delete + insert are scoped to the same id-space (ids.businessId — the table
       // FK is businesses(id)); an empty fetch never wipes good rows; and a
       // failed insert restores the prior rows + surfaces as a tenant error
       // instead of silently returning success with an empty balance sheet.
       stage = `db_swap_bs:${tenantId}`;
       const bsSwap = await replaceTenantBSRows(supabaseAdmin, {
-        businessId: ids.bizId,
+        businessId: ids.businessId,
         tenantId,
         tenantLabel,
         newRows: tenantBSLines,

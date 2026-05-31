@@ -5,7 +5,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import { getPriorYearMonth } from '@/lib/monthly-report/shared'
 import * as Sentry from '@sentry/nextjs'
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve dual business IDs (businesses.id vs business_profiles.id)
-    const ids = await resolveBusinessIds(supabase, business_id)
+    const ids = await resolveBusinessProfileIds(supabase, business_id)
 
     // Always fetch fiscal_year_start for parameterized FY range calculation
     const { data: profile } = await supabase

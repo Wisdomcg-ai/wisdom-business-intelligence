@@ -4,7 +4,7 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve dual business IDs (businesses.id vs business_profiles.id)
-    const ids = await resolveBusinessIds(supabase, business_id)
+    const ids = await resolveBusinessProfileIds(supabase, business_id)
 
     // 1. Query all Xero accounts including account_code (if column exists)
     let { data: xeroAccounts, error: xeroError } = await supabase

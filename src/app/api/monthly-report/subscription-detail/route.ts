@@ -6,7 +6,7 @@ import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { extractVendorName, createVendorKey } from '@/lib/utils/vendor-normalization'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -356,7 +356,7 @@ export async function POST(request: NextRequest) {
 
       if (!forecastId) {
         // Resolve business_profiles.id from businesses.id
-        const ids = await resolveBusinessIds(supabase, business_id)
+        const ids = await resolveBusinessProfileIds(supabase, business_id)
         const { data: fc } = await supabase
           .from('financial_forecasts')
           .select('id')

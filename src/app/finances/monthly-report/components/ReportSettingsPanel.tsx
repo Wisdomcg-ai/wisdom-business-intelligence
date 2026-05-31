@@ -5,7 +5,7 @@ import { X, Settings, BookmarkPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import type { MonthlyReportSettings, ReportSections, ForecastOption, AccountMapping, ReportTemplate } from '../types'
 import { createClient } from '@/lib/supabase/client'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import TemplatePicker from './TemplatePicker'
 import TemplateSaveModal from './TemplateSaveModal'
 
@@ -124,7 +124,7 @@ export default function ReportSettingsPanel({
     async function loadData() {
       const supabase = createClient()
       // Resolve business_profiles.id from businesses.id
-      const ids = await resolveBusinessIds(supabase, businessId)
+      const ids = await resolveBusinessProfileIds(supabase, businessId)
       const forecastRes = await supabase
         .from('financial_forecasts')
         .select('id, name, fiscal_year, forecast_type, is_active')
