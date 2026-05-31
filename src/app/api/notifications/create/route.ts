@@ -1,9 +1,24 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
+
+// POST body: notification fields. target_user_id/type/title/message required; rest optional.
+const PostBodySchema = z
+  .object({
+    target_user_id: z.string(),
+    business_id: z.string().nullish(),
+    type: z.string(),
+    title: z.string(),
+    message: z.string(),
+    link: z.string().nullish(),
+    metadata: z.unknown().optional(),
+  })
+  .passthrough()
 
 // POST /api/notifications/create - Create a notification (internal use)
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -87,3 +102,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('notifications/create', PostBodySchema, postHandler)
