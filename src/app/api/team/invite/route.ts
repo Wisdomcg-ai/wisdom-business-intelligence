@@ -3,6 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email/resend'
+import { getAppBaseUrl } from '@/lib/config/brand'
 import crypto from 'crypto'
 import { csrfProtection } from '@/lib/security/csrf'
 import * as Sentry from '@sentry/nextjs'
@@ -187,7 +188,7 @@ export async function POST(request: Request) {
           <p>Hi ${firstName},</p>
           <p><strong>${inviterName}</strong> has added you to <strong>${businessName}</strong> on WisdomBI.</p>
           <p>You can now access the team's business data by logging in with your existing account.</p>
-          <p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'}/auth/login" style="display: inline-block; background: #F5821F; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
+          <p><a href="${getAppBaseUrl()}/auth/login" style="display: inline-block; background: #F5821F; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
         `
       })
 
@@ -334,7 +335,7 @@ export async function POST(request: Request) {
                 <p>Hi ${firstName},</p>
                 <p><strong>${inviterName}</strong> has added you to <strong>${businessName}</strong> on WisdomBI.</p>
                 <p>You can now access the team's business data by logging in with your existing account.</p>
-                <p><a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'}/auth/login" style="display: inline-block; background: #F5821F; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
+                <p><a href="${getAppBaseUrl()}/auth/login" style="display: inline-block; background: #F5821F; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
               `
             })
 
@@ -421,7 +422,7 @@ export async function POST(request: Request) {
         ? `${user.user_metadata.first_name} ${user.user_metadata.last_name || ''}`
         : user.email?.split('@')[0] || 'Your colleague'
 
-      const loginUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+      const loginUrl = getAppBaseUrl()
 
       await sendEmail({
         to: email,
@@ -529,7 +530,7 @@ export async function POST(request: Request) {
         ? `${user.user_metadata.first_name} ${user.user_metadata.last_name || ''}`
         : user.email?.split('@')[0] || 'Someone'
 
-      const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'}/accept-invite?token=${inviteToken}`
+      const inviteUrl = `${getAppBaseUrl()}/accept-invite?token=${inviteToken}`
 
       await sendEmail({
         to: email,

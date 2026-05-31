@@ -7,6 +7,7 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { encrypt, verifySignedOAuthState } from '@/lib/utils/encryption';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
 import { getXeroOrgTimezone } from '@/lib/xero/organisation';
+import { getAppBaseUrl } from '@/lib/config/brand'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
@@ -20,7 +21,7 @@ const supabase = createClient(
 // Get environment variables
 const XERO_CLIENT_ID = process.env.XERO_CLIENT_ID!;
 const XERO_CLIENT_SECRET = process.env.XERO_CLIENT_SECRET!;
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const APP_URL = getAppBaseUrl();
 const REDIRECT_URI = `${APP_URL}/api/Xero/callback`;
 
 // Xero token URL

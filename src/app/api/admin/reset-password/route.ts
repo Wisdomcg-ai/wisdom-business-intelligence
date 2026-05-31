@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { sendPasswordReset } from '@/lib/email/resend'
+import { getAppBaseUrl } from '@/lib/config/brand'
 import crypto from 'crypto'
 import { checkRateLimit, getClientIP, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 import { csrfProtection } from '@/lib/security/csrf'
@@ -110,7 +111,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       const userName = targetUser?.first_name || email.split('@')[0]
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+      const appUrl = getAppBaseUrl()
       const resetUrl = `${appUrl}/auth/update-password?token=${token}`
 
       // Send email
