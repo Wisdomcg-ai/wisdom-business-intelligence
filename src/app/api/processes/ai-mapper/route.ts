@@ -10,6 +10,16 @@ import {
   logSuspiciousInput,
   AI_INPUT_LIMITS,
 } from '@/lib/utils/ai-sanitizer'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
+
+// POST body: { messages, currentProcess? } — chat turns + optional current diagram state.
+const PostBodySchema = z
+  .object({
+    messages: z.array(z.unknown()),
+    currentProcess: z.unknown().optional(),
+  })
+  .passthrough()
 
 const SYSTEM_PROMPT = `You are a business process mapping specialist. Your job is to help the user document their business process step by step, exactly like a coach would using sticky notes on a whiteboard.
 
@@ -49,7 +59,7 @@ Your response MUST be valid JSON with this structure:
 
 toolCalls is optional — omit it or use an empty array if no diagram changes are needed (e.g. when asking clarifying questions).`
 
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   try {
     const supabase = await createRouteHandlerClient()
     const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -136,3 +146,5 @@ export async function POST(request: Request) {
     )
   }
 }
+
+export const POST = withSchema('processes/ai-mapper', PostBodySchema, postHandler)
