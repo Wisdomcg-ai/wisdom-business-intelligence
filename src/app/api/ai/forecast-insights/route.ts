@@ -9,8 +9,18 @@ import {
   AI_INPUT_LIMITS,
 } from '@/lib/utils/ai-sanitizer'
 import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// POST body: { type, data } — insight type discriminator + its structured payload.
+const PostBodySchema = z
+  .object({
+    type: z.string(),
+    data: z.unknown(),
+  })
+  .passthrough()
 
 /**
  * AI Forecast Insights — structured AI responses for the forecast wizard.
@@ -20,7 +30,7 @@ export const dynamic = 'force-dynamic'
  *   - review-narrative:    Summarizes full forecast → returns narrative string
  *   - scenario-suggestion: Suggests a data-driven what-if → returns scenario object
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -149,6 +159,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('ai/forecast-insights', PostBodySchema, postHandler)
 
 // ─── Prompt Builders ────────────────────────────────────────────────────────
 
