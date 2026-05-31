@@ -35,7 +35,7 @@
  * Reuse discipline: DOES NOT modify `src/lib/cashflow/engine.ts`. Orchestrates it.
  */
 
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import {
   generateCashflowForecast,
   getDefaultCashflowAssumptions,
@@ -136,7 +136,7 @@ async function loadTenantOpeningBankBalance(
   const prior = new Date(y, m - 2, 1)  // previous month
   const priorMonthKey = `${prior.getFullYear()}-${String(prior.getMonth() + 1).padStart(2, '0')}`
 
-  const ids = await resolveBusinessIds(supabase, tenant.business_id)
+  const ids = await resolveBusinessProfileIds(supabase, tenant.business_id)
 
   const { data, error } = await supabase
     .from('xero_balance_sheet_lines')
@@ -182,7 +182,7 @@ async function loadBusinessBaseline(
   supabase: any,
   businessId: string,
 ): Promise<BusinessCashflowBaseline | null> {
-  const ids = await resolveBusinessIds(supabase, businessId)
+  const ids = await resolveBusinessProfileIds(supabase, businessId)
 
   // 1. Active forecast for the business. Prefer the business-level forecast
   //    (tenant_id IS NULL) as the consolidation baseline; fall back to whichever
