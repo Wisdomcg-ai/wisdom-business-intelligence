@@ -8,8 +8,34 @@ import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic';
+
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    forecast_id: z.string().optional(),
+    active_only: z.string().optional(),
+  })
+  .passthrough()
+
+const PostBodySchema = z
+  .object({
+    business_id: z.string(),
+    forecast_id: z.string().optional(),
+    budgets: z.array(z.unknown()),
+  })
+  .passthrough()
+
+const DeleteQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    vendor_key: z.string().optional(),
+    id: z.string().optional(),
+  })
+  .passthrough()
 
 // Service-key client — used INSIDE handlers (after auth passes) for actual DB ops.
 // Keeps RLS-bypass behaviour intact while the auth gate guards business_id access.
@@ -131,7 +157,7 @@ async function authoriseBusinessAccess(businessId: string): Promise<AuthResult> 
 }
 
 // GET - Retrieve subscription budgets for a business
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const businessId = searchParams.get('business_id');
@@ -186,7 +212,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST - Save subscription budgets (upsert)
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     const body = await request.json();
     const { business_id, forecast_id, budgets } = body;
@@ -261,7 +287,7 @@ export async function POST(request: NextRequest) {
 }
 
 // DELETE - Remove a subscription budget
-export async function DELETE(request: NextRequest) {
+async function deleteHandler(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const businessId = searchParams.get('business_id');
@@ -301,3 +327,19 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to delete subscription budget' }, { status: 500 });
   }
 }
+
+// getHandler / deleteHandler read `request.nextUrl` (Next.js runtime always
+// passes a NextRequest), so they keep the NextRequest param. The wrapper's
+// generic types its first arg as the wider `Request`; cast at the wiring site
+// to bridge the variance — runtime behaviour is unchanged (observe mode).
+export const GET = withQuerySchema(
+  'subscription-budgets',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>,
+)
+export const POST = withSchema('subscription-budgets', PostBodySchema, postHandler)
+export const DELETE = withQuerySchema(
+  'subscription-budgets',
+  DeleteQuerySchema,
+  deleteHandler as unknown as (request: Request) => Promise<Response>,
+)
