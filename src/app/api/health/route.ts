@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
+
+// Health check takes no body or query — permissive observe-mode schema.
+const QuerySchema = z.object({}).passthrough()
 
 /**
  * Health check endpoint for monitoring
@@ -11,7 +16,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
  * - Timestamp
  * - Version info
  */
-export async function GET() {
+async function getHandler() {
   const startTime = Date.now()
   const checks: Record<string, { status: 'ok' | 'error'; latency?: number; error?: string }> = {}
 
@@ -55,3 +60,5 @@ export async function GET() {
 
   return NextResponse.json(response, { status: statusCode })
 }
+
+export const GET = withQuerySchema('health', QuerySchema, getHandler)

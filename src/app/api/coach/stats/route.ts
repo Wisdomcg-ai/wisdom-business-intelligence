@@ -1,8 +1,13 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
-export async function GET() {
+// Read-only route, no query params consumed — permissive observe-mode schema.
+const QuerySchema = z.object({}).passthrough()
+
+async function getHandler() {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -170,3 +175,5 @@ export async function GET() {
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('coach/stats', QuerySchema, getHandler)

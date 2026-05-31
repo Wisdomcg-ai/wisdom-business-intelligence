@@ -45,7 +45,10 @@ describe('SEC-07: canary route (coach/stats) routes errors to Sentry', () => {
   it('calls Sentry.captureException when the route catches an unexpected error', async () => {
     const { GET } = await import('@/app/api/coach/stats/route')
     const Sentry = await import('@sentry/nextjs')
-    const res = await GET()
+    // GET is now wrapped by withQuerySchema (Phase 47 VALID-02 observe mode),
+    // so it requires a Request. The route reads no query params; observe mode
+    // is a no-op here and control still drops into the catch block (500).
+    const res = await GET(new Request('http://localhost/api/coach/stats'))
     // Route returns 500 from its catch block — regression-check the status
     // alongside the Sentry assertion so the canary is meaningful.
     expect(res.status).toBe(500)
