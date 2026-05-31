@@ -1,8 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,6 +12,12 @@ const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   getSupabaseSecretKey()
 )
+
+const GetQuerySchema = z
+  .object({
+    user_id: z.string().optional(),
+  })
+  .passthrough()
 
 /**
  * GET /api/annual-plan?user_id=xxx
@@ -19,7 +27,7 @@ const supabaseAdmin = createClient(
  * 1. business_financial_goals table (Year 1 targets from Goals & Targets wizard)
  * 2. Strategic initiatives (selected for annual plan)
  */
-export async function GET(request: NextRequest) {
+async function getHandler(request: Request) {
   try {
     // Authentication check
     const supabase = await createRouteHandlerClient()
@@ -129,3 +137,5 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export const GET = withQuerySchema('annual-plan', GetQuerySchema, getHandler)
