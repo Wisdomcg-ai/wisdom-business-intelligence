@@ -18,7 +18,7 @@
  * xero_connections.functional_currency — fixing those rows is a prerequisite
  * for this predicate to return true at all.
  */
-import { resolveBusinessIds } from './resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 
 const PRESENTATION_CURRENCY = 'AUD'
 
@@ -26,7 +26,7 @@ export async function needsFxConsolidation(
   supabase: any, // matches the prevailing pattern across this codebase
   businessId: string,
 ): Promise<boolean> {
-  const ids = await resolveBusinessIds(supabase, businessId)
+  const ids = await resolveBusinessProfileIds(supabase, businessId)
   const { data: conns, error } = await supabase
     .from('xero_connections')
     .select('functional_currency')

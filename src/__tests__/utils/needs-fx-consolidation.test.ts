@@ -15,9 +15,9 @@
 import { describe, it, expect, vi } from 'vitest'
 import { needsFxConsolidation } from '@/lib/utils/needs-fx-consolidation'
 
-vi.mock('@/lib/utils/resolve-business-ids', () => ({
-  resolveBusinessIds: vi.fn(async (_sb: unknown, businessId: string) => ({
-    bizId: businessId,
+vi.mock('@/lib/business/resolveBusinessProfileIds', () => ({
+  resolveBusinessProfileIds: vi.fn(async (_sb: unknown, businessId: string) => ({
+    businessId,
     all: [businessId],
   })),
 }))

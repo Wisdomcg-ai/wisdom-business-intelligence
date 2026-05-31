@@ -1,6 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 
 export async function GET(
@@ -62,7 +62,7 @@ export async function GET(
       .order('created_at', { ascending: true })
 
     // Get forecast data if available (resolve business_profiles.id from businesses.id)
-    const ids = await resolveBusinessIds(supabase, businessId)
+    const ids = await resolveBusinessProfileIds(supabase, businessId)
     const { data: forecasts } = await supabase
       .from('financial_forecasts')
       .select('id, created_at, version_name, forecast_data')
