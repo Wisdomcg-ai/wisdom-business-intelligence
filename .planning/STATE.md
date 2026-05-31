@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: Milestone complete
-last_updated: "2026-05-31T01:30:00.000Z"
+last_updated: "2026-05-31T11:50:00.000Z"
 last_activity: 2026-05-31
 progress:
   total_phases: 60
   completed_phases: 28
-  total_plans: 171
-  completed_plans: 166
+  total_plans: 170
+  completed_plans: 159
 ---
 
 # Project State
@@ -31,6 +31,8 @@ Phase: 61 (Selective List Sharing) — **COMPLETE IN PRODUCTION** (6/6 plans shi
 Last activity: 2026-05-31
 
 ## Active operational notes
+
+**Phase 72-02 shipped (2026-05-31):** Step 3 extended-period bug fix per 72-01 diagnosis. Extracted shared util `src/lib/utils/plan-period.ts` (175 LOC — `PlanPeriod` type + `getPlanY1MonthKeys` + `getActualMonthKeysForPlanY1`; sibling to Phase 68 B15's `deriveCurrentRemainderColumn`, NOT a refactor — inlining would re-introduce the drift hazard Phase 68 paid down). Added optional `planPeriod` slice on `ForecastWizardState` + `setPlanPeriod` action (slice intentionally NOT on `BusinessProfile` — source-of-truth tables differ; optional for backward-compat with legacy localStorage drafts and existing test fixtures, Phase 56 soft-migration pattern). `ForecastWizardV4.tsx` goals-loader now captures the four extended-period fields the `/api/goals` payload has always returned but the wizard discarded, and plumbs them via `setPlanPeriod`. `Step3RevenueCOGS.tsx` L311 monthKeys + L545-547 actuals lock now plan-period-aware: Y1 uses the util, Y2/Y3 fall through to 12-month FY-aligned behaviour. **Three defensive fixes Step 3 needed during Task 5 (Rule 3 - Blocking):** (1) Header `months` labels were sourced from `getFiscalMonthLabels(7)` (always 12 entries) — derived from `monthKeys` directly so header always matches body. (2) `grid-cols-12` Tailwind class hardcoded the per-line expanded-detail row — replaced with inline `gridTemplateColumns: repeat(monthKeys.length, minmax(0, 1fr))`. (3) Three `colSpan={16}` + one `colSpan={15}` section-header/spacer/empty-state rows would mis-span on 13+ column grids — replaced with `monthKeys.length + 4` / `+ 3`. **5 regression tests added** (`src/__tests__/forecast/phase-72-step3-extended-period.test.tsx`): Armstrong 13mo, standard 12mo (no regression), FY-boundary edge, 15mo Phase 14 max, component-level Armstrong renders 13 editable inputs. **Full forecast vitest 365/365 pass** (zero regressions); tsc clean; lint clean on touched files. Step 8 GrowthPlan summary aggregation under-count remains deferred per 72-01 decision. Commits `e9f7dc61` (RED) + `0c75797b` (GREEN). See `.planning/phases/72-.../72-02-SUMMARY.md`.
 
 **Phase 72-01 shipped (2026-05-31):** Read-only investigation of Step3RevenueCOGS.tsx extended-period bug. Produced `.planning/phases/72-.../72-DIAGNOSIS.md` naming the root cause as **"wizard-blind-to-plan-period"** — `Step3RevenueCOGS.tsx:311` derives monthKeys from `fiscalYear-1` (12 hardcoded months of current FY) and `:545-547` computes `remainingMonthsCount = 12 - currentYTD.months_count`, neither consulting `is_extended_period` / `plan_start_date` / `year1_months` / `year1_end_date`. Those fields exist on `business_financial_goals` (NOT `business_profiles` as planner suggested), are returned by `/api/goals`, deserialised by `financial-service.ts:265-275`, and then **discarded by `ForecastWizardV4.tsx:131-162`** before reaching any step. **For Armstrong on 2026-05-31:** monthKeys = `2025-07..2026-06`, `completedMonthsCount = 9` → only 3 editable cells (Apr/May/Jun 2026); plan Y1 actually = `2026-06..2027-06` (13 months), 12 of which never appear in the grid. **Fix scope (72-02):** Phase A plumb new `PlanPeriod` slice into `ForecastWizardState` (NOT extending `BusinessProfile` — separate source-of-truth tables); Phase B replace L311 monthKeys + L545-547 actuals lock with `getPlanY1MonthKeys` / `getActualMonthKeysForPlanY1` calls; Phase C extract shared util to `src/lib/utils/plan-period.ts` (sibling to Phase 68 B15's `deriveCurrentRemainderColumn`, NOT a refactor of it — inlining would re-introduce the drift hazard Phase 68 paid down). **Same-family audit Steps 4-8:** no parallel bug — Steps 4-7 don't use FY-aligned per-month grids; Step 8 GrowthPlan has a latent Y1-aggregation under-count (12-month rollup of 13-month plan) deferred to a follow-up phase. **Zero src/ modifications** (`git status --porcelain src/ | wc -l == 0`). Commit `bb02009d`. See `.planning/phases/72-.../72-01-SUMMARY.md` + `72-DIAGNOSIS.md`.
 
