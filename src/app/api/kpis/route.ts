@@ -1,10 +1,41 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+const GetQuerySchema = z
+  .object({
+    businessId: z.string().optional(),
+  })
+  .passthrough()
+
+const PostBodySchema = z
+  .object({
+    businessId: z.string(),
+    kpis: z.array(z.unknown()),
+  })
+  .passthrough()
+
+const DeleteQuerySchema = z
+  .object({
+    kpiId: z.string().optional(),
+    businessId: z.string().optional(),
+  })
+  .passthrough()
+
+const PatchBodySchema = z
+  .object({
+    businessId: z.string(),
+    kpiId: z.string(),
+    currentValue: z.unknown().optional(),
+    notes: z.string().optional(),
+  })
+  .passthrough()
 
 // Initialize Supabase client with service role for admin operations
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -35,7 +66,7 @@ async function verifyBusinessAccess(userId: string, businessId: string): Promise
 }
 
 // GET endpoint - Fetch existing KPIs for a business
-export async function GET(request: NextRequest) {
+async function getHandler(request: Request) {
   try {
     // Authentication check
     const supabase = await createRouteHandlerClient()
@@ -93,7 +124,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST endpoint - Save or update KPIs for a business
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     // Authentication check
     const supabase = await createRouteHandlerClient()
@@ -216,7 +247,7 @@ export async function POST(request: NextRequest) {
 }
 
 // DELETE endpoint - Remove a specific KPI
-export async function DELETE(request: NextRequest) {
+async function deleteHandler(request: Request) {
   try {
     // Authentication check
     const supabase = await createRouteHandlerClient()
@@ -274,7 +305,7 @@ export async function DELETE(request: NextRequest) {
 }
 
 // PATCH endpoint - Update KPI values (for tracking actual performance)
-export async function PATCH(request: NextRequest) {
+async function patchHandler(request: Request) {
   try {
     // Authentication check
     const supabase = await createRouteHandlerClient()
@@ -346,3 +377,8 @@ export async function PATCH(request: NextRequest) {
     )
   }
 }
+
+export const GET = withQuerySchema('kpis', GetQuerySchema, getHandler)
+export const POST = withSchema('kpis', PostBodySchema, postHandler)
+export const DELETE = withQuerySchema('kpis', DeleteQuerySchema, deleteHandler)
+export const PATCH = withSchema('kpis', PatchBodySchema, patchHandler)
