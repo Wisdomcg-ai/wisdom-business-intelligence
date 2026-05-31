@@ -1,10 +1,12 @@
 import { Resend } from 'resend';
+import { SENDER_FROM, BRAND_COLORS, BRAND_LOGO_URL } from '@/lib/config/brand';
 
 // Initialize Resend client
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Default from address - update this to your verified domain
-const DEFAULT_FROM = 'WisdomBI <noreply@mail.wisdombi.ai>';
+// Default from address — env-driven via the brand config (R7). Override with
+// SENDER_FROM / SENDER_EMAIL for the fork.
+const DEFAULT_FROM = SENDER_FROM;
 
 /**
  * Escape HTML entities to prevent XSS in email templates
@@ -20,14 +22,14 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, char => htmlEntities[char]);
 }
 
-// Brand colors
-const BRAND_ORANGE = '#F5821F';
-const BRAND_NAVY = '#172238';
-const BRAND_ORANGE_LIGHT = '#fff8f1';
-const BRAND_NAVY_LIGHT = '#f4f6f9';
+// Brand colors — env-driven via the brand config (R7).
+const BRAND_ORANGE = BRAND_COLORS.orange;
+const BRAND_NAVY = BRAND_COLORS.navy;
+const BRAND_ORANGE_LIGHT = BRAND_COLORS.orangeLight;
+const BRAND_NAVY_LIGHT = BRAND_COLORS.navyLight;
 
 // Logo URL - uses production domain for email compatibility
-const LOGO_URL = 'https://wisdombi.ai/images/logo-main.png';
+const LOGO_URL = BRAND_LOGO_URL;
 
 export interface SendEmailOptions {
   to: string | string[];

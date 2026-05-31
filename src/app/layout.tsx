@@ -6,16 +6,17 @@ import { Toaster } from 'sonner'
 import { BusinessContextProvider } from '@/contexts/BusinessContext'
 import { ContextErrorToast } from '@/components/providers/ContextErrorToast'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { APP_TITLE, APP_DESCRIPTION, FAVICON_PATH } from '@/lib/config/brand'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'WisdomBi - Business Intelligence',
-  description: 'Transform your business with data-driven coaching and business intelligence',
+  title: APP_TITLE,
+  description: APP_DESCRIPTION,
   icons: {
-    icon: '/favicon.png',
-    shortcut: '/favicon.png',
-    apple: '/favicon.png',
+    icon: FAVICON_PATH,
+    shortcut: FAVICON_PATH,
+    apple: FAVICON_PATH,
   },
 }
 
