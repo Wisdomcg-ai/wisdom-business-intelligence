@@ -3,10 +3,26 @@ import { NextResponse } from 'next/server'
 import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST(request: Request) {
+const PostBodySchema = z
+  .object({
+    businessId: z.string(),
+    fiscalYear: z.number(),
+    forecastDuration: z.number().optional(),
+    forecastId: z.string().optional(),
+    forecastName: z.string().optional(),
+    createNew: z.boolean().optional(),
+    isDraft: z.boolean().optional(),
+    assumptions: z.unknown().optional(),
+    summary: z.unknown().optional(),
+  })
+  .passthrough()
+
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -244,3 +260,5 @@ export async function POST(request: Request) {
     )
   }
 }
+
+export const POST = withSchema('forecast-wizard-v4/generate', PostBodySchema, postHandler)
