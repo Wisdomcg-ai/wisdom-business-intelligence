@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { checkRateLimit, getClientIP, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
 // Use service role for admin operations
 const supabase = createClient(
@@ -11,8 +13,14 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 )
 
+// GET searchParams: { token? } — the reset token to verify (string-typed query).
+const GetQuerySchema = z.object({ token: z.string().optional() }).passthrough()
+
+// POST body: { token, password } — token + new password to set.
+const PostBodySchema = z.object({ token: z.string(), password: z.string() }).passthrough()
+
 // Verify token is valid
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     // Rate limiting - 10 token verification requests per 15 minutes per IP
     const clientIP = getClientIP(request)
@@ -61,8 +69,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export const GET = withQuerySchema(
+  'auth/update-password',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+)
+
 // Update password with valid token
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   try {
     // Rate limiting - 5 password update attempts per 15 minutes per IP
     const clientIP = getClientIP(request)
@@ -148,3 +162,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to update password' }, { status: 500 })
   }
 }
+
+export const POST = withSchema(
+  'auth/update-password',
+  PostBodySchema,
+  postHandler as unknown as (request: Request) => Promise<Response>
+)
