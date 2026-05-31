@@ -2,8 +2,28 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// `data` carries the full Goals Wizard payload; model its known top-level
+// sections (each a deeply-nested object/array shaped server-side) permissively.
+const PostBodySchema = z
+  .object({
+    businessId: z.string(),
+    profileId: z.string().optional(),
+    data: z
+      .object({
+        financial: z.unknown().optional(),
+        kpis: z.array(z.unknown()).optional(),
+        initiatives: z.unknown().optional(),
+        sprintKeyActions: z.array(z.unknown()).optional(),
+        operationalActivities: z.array(z.unknown()).optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough()
 
 /**
  * POST /api/goals/save
@@ -16,7 +36,7 @@ export const dynamic = 'force-dynamic'
  * The route still verifies that the caller is authorized (coach, owner,
  * admin, or super_admin) before performing any writes.
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   try {
     const supabase = await createRouteHandlerClient()
 
@@ -498,3 +518,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('goals/save', PostBodySchema, postHandler)

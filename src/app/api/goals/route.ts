@@ -1,10 +1,18 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: Request) {
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+  })
+  .passthrough()
+
+async function getHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   const { searchParams } = new URL(request.url)
@@ -83,3 +91,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ goals: null })
   }
 }
+
+export const GET = withQuerySchema('goals', GetQuerySchema, getHandler)
