@@ -3,6 +3,12 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
+
+// VALID-05a (observe mode): demo-client seeder takes no inbound body/query.
+const AdminDemoClientPostSchema = z.object({})
+const AdminDemoClientQuerySchema = z.object({})
 
 // SEC-07 (Phase 46 plan 46-04): Local helper for the demo-seeder's
 // progress logs. The seeder is dev/admin-only and noisy by design;
@@ -47,7 +53,7 @@ const DEMO_CLIENT = {
   country: 'Australia'
 }
 
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const authClient = await createRouteHandlerClient()
   const supabase = getServiceClient() // Use service role for all inserts
 
@@ -748,7 +754,7 @@ export async function POST(request: Request) {
 }
 
 // GET - Check if demo client exists
-export async function GET(request: Request) {
+async function getHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -777,7 +783,7 @@ export async function GET(request: Request) {
 }
 
 // DELETE - Remove demo client
-export async function DELETE(request: Request) {
+async function deleteHandler(request: Request) {
   const authClient = await createRouteHandlerClient()
   const supabase = getServiceClient() // Use service role for deletions
 
@@ -874,3 +880,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Failed to delete demo client' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('admin/demo-client', AdminDemoClientPostSchema, postHandler)
+export const GET = withQuerySchema('admin/demo-client', AdminDemoClientQuerySchema, getHandler)
+export const DELETE = withQuerySchema('admin/demo-client', AdminDemoClientQuerySchema, deleteHandler)

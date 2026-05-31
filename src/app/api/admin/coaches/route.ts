@@ -4,9 +4,15 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
-import { withSchema } from '@/lib/api/with-schema'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// VALID-05a (observe mode): GET takes no input; DELETE reads the `id` query param.
+const AdminCoachesGetQuerySchema = z.object({})
+const AdminCoachesDeleteQuerySchema = z.object({
+  id: z.string().optional(),
+})
 
 // VALID-03 (observe mode): POST creates a coach.
 const AdminCoachesPostSchema = z.object({
@@ -37,7 +43,7 @@ const supabaseAdmin = createClient(
   }
 )
 
-export async function GET() {
+async function getHandler() {
   try {
     const supabase = await createRouteHandlerClient()
 
@@ -267,7 +273,7 @@ async function patchHandler(request: Request) {
   }
 }
 
-export async function DELETE(request: Request) {
+async function deleteHandler(request: Request) {
   try {
     const supabase = await createRouteHandlerClient()
 
@@ -309,5 +315,7 @@ export async function DELETE(request: Request) {
   }
 }
 
+export const GET = withQuerySchema('admin/coaches', AdminCoachesGetQuerySchema, getHandler)
+export const DELETE = withQuerySchema('admin/coaches', AdminCoachesDeleteQuerySchema, deleteHandler)
 export const POST = withSchema('admin/coaches', AdminCoachesPostSchema, postHandler)
 export const PATCH = withSchema('admin/coaches', AdminCoachesPatchSchema, patchHandler)
