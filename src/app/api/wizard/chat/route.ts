@@ -3,6 +3,8 @@ import OpenAI from 'openai';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter';
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 import {
   sanitizeAIInput,
   sanitizeConversationHistory,
@@ -11,7 +13,16 @@ import {
   AI_INPUT_LIMITS
 } from '@/lib/utils/ai-sanitizer';
 
-export async function POST(request: Request) {
+const PostBodySchema = z
+  .object({
+    userMessage: z.string(),
+    processData: z.unknown().optional(),
+    conversationHistory: z.array(z.unknown()).optional(),
+    stage: z.string().optional(),
+  })
+  .passthrough()
+
+async function postHandler(request: Request) {
   try {
     // Verify user is authenticated before processing AI request
     const supabase = await createRouteHandlerClient();
@@ -136,6 +147,8 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export const POST = withSchema('wizard/chat', PostBodySchema, postHandler)
 
 // Helper function: Get system prompt based on stage
 function getSystemPrompt(stage: string, processData: any): string {
