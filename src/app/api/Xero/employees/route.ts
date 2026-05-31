@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
 // Phase 52 (XERO-S4-01..04): mapping helpers extracted to a pure module so
 // the route + wizard first-load + Plan 52-01 import modal all share one
 // canonical Xero-→-wizard mapping path.
@@ -107,6 +109,17 @@ interface XeroEmployee {
 
 export async function GET(request: NextRequest) {
   try {
+    // R24 (SEC-N1): this route returns live payroll PII (names, emails, job
+    // titles, salaries, hourly rates, hours) via a service-role client. It
+    // MUST authenticate the caller and authorize them against the requested
+    // business before doing anything else — previously it gated only on
+    // business_id presence, leaking every tenant's compensation roster.
+    const authClient = await createRouteHandlerClient();
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const business_id = searchParams.get('business_id');
     const include_terminated = searchParams.get('include_terminated') === 'true';
@@ -116,6 +129,11 @@ export async function GET(request: NextRequest) {
         { error: 'business_id is required' },
         { status: 400 }
       );
+    }
+
+    const hasAccess = await verifyBusinessAccess(user.id, business_id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     // Per-request supabase client — see getSupabaseAdmin() comment above for

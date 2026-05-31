@@ -27,6 +27,20 @@ vi.mock('@/lib/utils/resolve-xero-business-id', () => ({
   resolveXeroBusinessId: vi.fn(async (id: string) => id),
 }));
 
+// R24: the route now authenticates + authorizes before any Xero/DB work.
+// These tests exercise the post-guard happy path, so stub an authed, authorized
+// caller. (Guard rejection paths are covered in
+// src/app/api/Xero/employees/__tests__/auth-guard.test.ts.)
+vi.mock('@/lib/supabase/server', () => ({
+  createRouteHandlerClient: vi.fn(async () => ({
+    auth: { getUser: vi.fn(async () => ({ data: { user: { id: 'user-1' } }, error: null })) },
+  })),
+}));
+
+vi.mock('@/lib/utils/verify-business-access', () => ({
+  verifyBusinessAccess: vi.fn(async () => true),
+}));
+
 // Module-level Supabase client (`const supabase = createClient(...)`) — mock
 // `@supabase/supabase-js` to return a stub whose `.from('xero_connections')`
 // chain resolves to a single active connection.
