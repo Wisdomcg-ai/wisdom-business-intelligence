@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
+import { LEGAL_ENTITY, LEGAL_ABN, LEGAL_TRADING_AS, SUPPORT_EMAIL } from '@/lib/config/brand'
 
 export default function TermsAndConditionsPage() {
   const lastUpdated = '5 December 2024'
@@ -26,8 +27,8 @@ export default function TermsAndConditionsPage() {
               <h2 className="text-xl font-semibold text-gray-900 mb-4">1. Agreement to Terms</h2>
               <p className="text-gray-700 mb-4">
                 These Terms and Conditions (&quot;Terms&quot;) constitute a legally binding agreement between you
-                (&quot;you&quot;, &quot;your&quot;, &quot;Client&quot;) and Envisage Australia Pty Ltd ATF Malouf Family Trust
-                (ABN 11 331 804 705) trading as Wisdom Coaching (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;, &quot;Company&quot;).
+                (&quot;you&quot;, &quot;your&quot;, &quot;Client&quot;) and {LEGAL_ENTITY}
+                (ABN {LEGAL_ABN}) trading as {LEGAL_TRADING_AS} (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;, &quot;Company&quot;).
               </p>
               <p className="text-gray-700 mb-4">
                 By accessing or using our business coaching platform (the &quot;Platform&quot;), you agree to be
@@ -349,10 +350,10 @@ export default function TermsAndConditionsPage() {
                 If you have any questions about these Terms, please contact us:
               </p>
               <div className="bg-gray-50 rounded-lg p-4 text-gray-700">
-                <p className="font-medium">Envisage Australia Pty Ltd ATF Malouf Family Trust</p>
-                <p>Trading as Wisdom Coaching</p>
-                <p>ABN: 11 331 804 705</p>
-                <p className="mt-2">Email: support@wisdombi.ai</p>
+                <p className="font-medium">{LEGAL_ENTITY}</p>
+                <p>Trading as {LEGAL_TRADING_AS}</p>
+                <p>ABN: {LEGAL_ABN}</p>
+                <p className="mt-2">Email: {SUPPORT_EMAIL}</p>
               </div>
             </section>
           </div>

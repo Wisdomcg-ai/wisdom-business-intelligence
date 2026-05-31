@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
+import { LEGAL_ENTITY, LEGAL_ABN, LEGAL_TRADING_AS, SUPPORT_EMAIL } from '@/lib/config/brand'
 
 export default function PrivacyPolicyPage() {
   const lastUpdated = '5 December 2024'
@@ -25,7 +26,7 @@ export default function PrivacyPolicyPage() {
             <section className="mb-8">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">1. Introduction</h2>
               <p className="text-gray-700 mb-4">
-                Envisage Australia Pty Ltd ATF Malouf Family Trust (ABN 11 331 804 705) trading as Wisdom Coaching
+                {LEGAL_ENTITY} (ABN {LEGAL_ABN}) trading as {LEGAL_TRADING_AS}
                 (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) is committed to protecting your privacy and complying with the
                 Australian Privacy Principles (&quot;APPs&quot;) contained in the <em>Privacy Act 1988</em> (Cth).
               </p>
@@ -231,10 +232,10 @@ export default function PrivacyPolicyPage() {
                 please contact us:
               </p>
               <div className="bg-gray-50 rounded-lg p-4 text-gray-700">
-                <p className="font-medium">Envisage Australia Pty Ltd ATF Malouf Family Trust</p>
-                <p>Trading as Wisdom Coaching</p>
-                <p>ABN: 11 331 804 705</p>
-                <p className="mt-2">Email: support@wisdombi.ai</p>
+                <p className="font-medium">{LEGAL_ENTITY}</p>
+                <p>Trading as {LEGAL_TRADING_AS}</p>
+                <p>ABN: {LEGAL_ABN}</p>
+                <p className="mt-2">Email: {SUPPORT_EMAIL}</p>
               </div>
               <p className="text-gray-700 mt-4">
                 If you are not satisfied with our response, you may lodge a complaint with the

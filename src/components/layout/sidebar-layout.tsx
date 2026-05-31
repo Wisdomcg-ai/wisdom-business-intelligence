@@ -47,6 +47,7 @@ import {
   HeartHandshake,
   GitBranch,
 } from 'lucide-react'
+import { APP_NAME } from '@/lib/config/brand'
 
 interface NavItem {
   label: string
@@ -439,7 +440,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
           <div className="relative">
             <Image
               src="/images/logo-wbi.png"
-              alt="WisdomBi"
+              alt={APP_NAME}
               width={410}
               height={170}
               className="h-14 w-auto animate-pulse"
@@ -465,7 +466,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
             <Link href="/dashboard" className="block">
               <Image
                 src="/images/logo-wbi.png"
-                alt="WisdomBi"
+                alt={APP_NAME}
                 width={410}
                 height={170}
                 className={`${sidebarOpen ? 'h-12' : 'h-10'} w-auto`}

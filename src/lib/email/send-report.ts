@@ -8,9 +8,10 @@
 // generic sendEmail() helper. Isolating it here keeps it testable and auditable.
 
 import { Resend } from 'resend'
+import { APP_NAME, BRAND_COLORS, BRAND_LOGO_URL } from '@/lib/config/brand'
 
-const BRAND_ORANGE = '#F5821F'
-const LOGO_URL = 'https://wisdombi.ai/images/logo-main.png'
+const BRAND_ORANGE = BRAND_COLORS.orange
+const LOGO_URL = BRAND_LOGO_URL
 
 /**
  * Escape HTML entities to prevent XSS in email templates.
@@ -76,7 +77,7 @@ function buildHtml(p: SendMonthlyReportParams): string {
   return `<!DOCTYPE html>
 <html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color: rgb(23, 34, 56); max-width: 600px; margin: 0 auto; padding: 24px;">
   <div style="text-align:center;margin-bottom:24px;">
-    <img src="${LOGO_URL}" alt="WisdomBI" style="max-width:180px;height:auto;" />
+    <img src="${LOGO_URL}" alt="${APP_NAME}" style="max-width:180px;height:auto;" />
   </div>
   <p>Hi ${escapeHtml(p.clientGreetingName)},</p>
   <p>Your ${escapeHtml(p.monthLabel)} financial report for ${escapeHtml(p.businessName)} is ready.</p>
@@ -88,7 +89,7 @@ function buildHtml(p: SendMonthlyReportParams): string {
   <p>— ${escapeHtml(p.fromName)}</p>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:30px 0;" />
   <p style="color:#9ca3af;font-size:12px;text-align:center;">
-    WisdomBI - Business Intelligence Platform<br>
+    ${APP_NAME} - Business Intelligence Platform<br>
     This email was sent to ${escapeHtml(p.to)}
   </p>
 </body></html>`

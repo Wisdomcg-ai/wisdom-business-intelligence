@@ -3,7 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email/resend'
-import { getAppBaseUrl } from '@/lib/config/brand'
+import { getAppBaseUrl, APP_NAME, BRAND_COLORS, BRAND_LOGO_URL } from '@/lib/config/brand'
 import crypto from 'crypto'
 import { csrfProtection } from '@/lib/security/csrf'
 import * as Sentry from '@sentry/nextjs'
@@ -183,12 +183,12 @@ export async function POST(request: Request) {
 
       await sendEmail({
         to: email,
-        subject: `You've been added to ${businessName} on WisdomBI`,
+        subject: `You've been added to ${businessName} on ${APP_NAME}`,
         html: `
           <p>Hi ${firstName},</p>
-          <p><strong>${inviterName}</strong> has added you to <strong>${businessName}</strong> on WisdomBI.</p>
+          <p><strong>${inviterName}</strong> has added you to <strong>${businessName}</strong> on ${APP_NAME}.</p>
           <p>You can now access the team's business data by logging in with your existing account.</p>
-          <p><a href="${getAppBaseUrl()}/auth/login" style="display: inline-block; background: #F5821F; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
+          <p><a href="${getAppBaseUrl()}/auth/login" style="display: inline-block; background: ${BRAND_COLORS.orange}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
         `
       })
 
@@ -330,12 +330,12 @@ export async function POST(request: Request) {
 
             await sendEmail({
               to: email,
-              subject: `You've been added to ${businessName} on WisdomBI`,
+              subject: `You've been added to ${businessName} on ${APP_NAME}`,
               html: `
                 <p>Hi ${firstName},</p>
-                <p><strong>${inviterName}</strong> has added you to <strong>${businessName}</strong> on WisdomBI.</p>
+                <p><strong>${inviterName}</strong> has added you to <strong>${businessName}</strong> on ${APP_NAME}.</p>
                 <p>You can now access the team's business data by logging in with your existing account.</p>
-                <p><a href="${getAppBaseUrl()}/auth/login" style="display: inline-block; background: #F5821F; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
+                <p><a href="${getAppBaseUrl()}/auth/login" style="display: inline-block; background: ${BRAND_COLORS.orange}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
               `
             })
 
@@ -426,7 +426,7 @@ export async function POST(request: Request) {
 
       await sendEmail({
         to: email,
-        subject: `${inviterName} invited you to ${businessName} on WisdomBI`,
+        subject: `${inviterName} invited you to ${businessName} on ${APP_NAME}`,
         html: `
           <!DOCTYPE html>
           <html>
@@ -436,14 +436,14 @@ export async function POST(request: Request) {
           </head>
           <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="text-align: center; margin-bottom: 30px;">
-              <img src="https://wisdombi.ai/images/logo-main.png" alt="WisdomBI" style="max-width: 180px; height: auto;" />
+              <img src="${BRAND_LOGO_URL}" alt="${APP_NAME}" style="max-width: 180px; height: auto;" />
             </div>
 
-            <h2 style="color: #172238;">You're Invited to Join ${businessName}</h2>
+            <h2 style="color: ${BRAND_COLORS.navy};">You're Invited to Join ${businessName}</h2>
 
             <p>Hi ${firstName},</p>
 
-            <p><strong>${inviterName}</strong> has invited you to join <strong>${businessName}</strong> on WisdomBI - a business intelligence platform for tracking goals, metrics, and growth.</p>
+            <p><strong>${inviterName}</strong> has invited you to join <strong>${businessName}</strong> on ${APP_NAME} - a business intelligence platform for tracking goals, metrics, and growth.</p>
 
             ${position ? `<p>You've been added as: <strong>${position}</strong></p>` : ''}
 
@@ -456,7 +456,7 @@ export async function POST(request: Request) {
             </div>
 
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${loginUrl}/auth/login" style="display: inline-block; background: #F5821F; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+              <a href="${loginUrl}/auth/login" style="display: inline-block; background: ${BRAND_COLORS.orange}; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 16px;">
                 Log In Now
               </a>
             </div>
@@ -467,7 +467,7 @@ export async function POST(request: Request) {
 
             <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
             <p style="color: #9ca3af; font-size: 12px; text-align: center;">
-              WisdomBI - Business Intelligence Platform<br>
+              ${APP_NAME} - Business Intelligence Platform<br>
               This email was sent to ${email}
             </p>
           </body>
@@ -537,9 +537,9 @@ export async function POST(request: Request) {
         subject: `${inviterName} invited you to join ${businessName}`,
         html: `
           <p>Hi ${firstName},</p>
-          <p><strong>${inviterName}</strong> has invited you to join <strong>${businessName}</strong> on WisdomBI.</p>
+          <p><strong>${inviterName}</strong> has invited you to join <strong>${businessName}</strong> on ${APP_NAME}.</p>
           <p>Click the button below to create your account and join the team:</p>
-          <p><a href="${inviteUrl}" style="display: inline-block; background: #F5821F; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Accept Invitation</a></p>
+          <p><a href="${inviteUrl}" style="display: inline-block; background: ${BRAND_COLORS.orange}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Accept Invitation</a></p>
           <p style="font-size: 12px; color: #666;">This invitation will expire in 7 days.</p>
         `
       })
