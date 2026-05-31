@@ -4,7 +4,7 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { loadFxRates } from '@/lib/consolidation/fx'
 import type { BalanceSheetRow, BalanceSheetData, BalanceSheetCompare } from '@/app/finances/monthly-report/types'
 import * as Sentry from '@sentry/nextjs'
@@ -210,8 +210,8 @@ export async function GET(request: NextRequest) {
     // active connection (consolidated multi-tenant clients like IICT). The
     // resulting null connection then 400'd as "NO_CONNECTION" even though
     // multiple connections existed. Now we load ALL active connections for the
-    // business via the canonical resolveBusinessIds helper.
-    const ids = await resolveBusinessIds(supabase, businessId)
+    // business via the canonical resolveBusinessProfileIds helper.
+    const ids = await resolveBusinessProfileIds(supabase, businessId)
     const { data: connections } = await supabase
       .from('xero_connections')
       .select('*')

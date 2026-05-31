@@ -4,7 +4,7 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
@@ -118,8 +118,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Use the same business ID that xero_pl_lines uses (businesses.id)
-    const ids = await resolveBusinessIds(supabase, businessId)
-    const canonicalBusinessId = ids.bizId
+    const ids = await resolveBusinessProfileIds(supabase, businessId)
+    const canonicalBusinessId = ids.businessId
 
     // Check cache
     const { data: cached } = await supabase

@@ -16,14 +16,14 @@
  *   }
  *
  * Empty array when no Xero connection exists. Multi-tenant-safe via
- * resolveBusinessIds (handles dual businesses.id / business_profiles.id).
+ * resolveBusinessProfileIds (handles dual businesses.id / business_profiles.id).
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    const ids = await resolveBusinessIds(supabaseAdmin, businessId)
+    const ids = await resolveBusinessProfileIds(supabaseAdmin, businessId)
     const { data: conns, error } = await supabaseAdmin
       .from('xero_connections')
       .select('tenant_id, tenant_name, display_name, functional_currency, include_in_consolidation')
