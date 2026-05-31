@@ -4,6 +4,36 @@ import { NextResponse } from 'next/server'
 import { sendClientInvitation } from '@/lib/email/resend'
 import { getAppBaseUrl } from '@/lib/config/brand'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
+
+// VALID-05a (observe mode): POST create-client wizard body (Steps 1-6). GET takes no input.
+const CoachClientsPostSchema = z.object({
+  businessName: z.string(),
+  industry: z.string().optional(),
+  ownerFirstName: z.string(),
+  ownerLastName: z.string(),
+  ownerEmail: z.string(),
+  ownerPhone: z.string().optional(),
+  website: z.string().optional(),
+  address: z.string().optional(),
+  programType: z.string().optional(),
+  sessionFrequency: z.string().optional(),
+  customFrequency: z.string().optional(),
+  engagementStartDate: z.string().optional(),
+  enabledModules: z.array(z.string()).optional(),
+  sendInvitation: z.boolean().optional(),
+  teamMembers: z.array(z.any()).optional(),
+  topChallenges: z.array(z.any()).optional(),
+  topOpportunities: z.array(z.any()).optional(),
+  coachNotes: z.string().optional(),
+  firstSessionDate: z.string().nullable().optional(),
+  firstSessionTime: z.string().nullable().optional(),
+  firstSessionType: z.string().optional(),
+  firstSessionAgenda: z.string().optional(),
+}).passthrough()
+
+const CoachClientsGetQuerySchema = z.object({})
 
 // Generate a secure random password
 function generateSecurePassword(length = 16): string {
@@ -18,7 +48,7 @@ function generateSecurePassword(length = 16): string {
 }
 
 // POST - Create a new client (with auth user and email invitation)
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -468,7 +498,7 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+async function getHandler() {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -552,3 +582,6 @@ export async function GET() {
     )
   }
 }
+
+export const POST = withSchema('coach/clients', CoachClientsPostSchema, postHandler)
+export const GET = withQuerySchema('coach/clients', CoachClientsGetQuerySchema, getHandler)
