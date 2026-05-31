@@ -21,6 +21,22 @@ interface ExpenseOverBudgetLine {
   xero_account_name: string
 }
 
+// Phase 71-04 (S1): expanded trigger types — see utils/commentary-triggers.ts.
+// Kept as a string union here (not imported) so the route stays decoupled from
+// the UI utils tree.
+type TriggerReason =
+  | 'expense_over_budget_dollar'
+  | 'revenue_under_budget_dollar'
+  | 'revenue_under_budget_percent'
+  | 'expense_favourable_significant'
+  | 'bs_movement_dollar'
+  | 'bs_movement_percent'
+
+interface TriggerLineInput {
+  account_name: string
+  xero_account_name: string
+}
+
 interface VendorTransaction {
   date: string
   vendor: string
@@ -99,10 +115,26 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { business_id, report_month, expense_lines } = body as {
+    // Phase 71-04 (S1): expanded payload — the page now sends 4 separate
+    // line-set arrays plus an optional `trigger_reasons` map (accountName →
+    // TriggerReason). Pre-71-04 callers only send `expense_lines`; the other
+    // arrays default to [] for backward compat.
+    const {
+      business_id,
+      report_month,
+      expense_lines,
+      revenue_lines = [],
+      favourable_expense_lines = [],
+      bs_lines = [],
+      trigger_reasons = {},
+    } = body as {
       business_id: string
       report_month: string
       expense_lines: ExpenseOverBudgetLine[]
+      revenue_lines?: TriggerLineInput[]
+      favourable_expense_lines?: TriggerLineInput[]
+      bs_lines?: TriggerLineInput[]
+      trigger_reasons?: Record<string, TriggerReason>
     }
 
     if (!business_id || !report_month || !expense_lines) {
@@ -111,6 +143,24 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Build the unified processing set + per-account trigger_reason resolver.
+    // Priority on conflict (rare — accounts don't typically span buckets):
+    // expense_over > revenue > favourable > bs. Within each bucket, an
+    // explicit entry in `trigger_reasons` (from the page-side collector) wins
+    // over the bucket's default; this lets the page differentiate
+    // `revenue_under_budget_dollar` vs `revenue_under_budget_percent` for the
+    // same account_name.
+    const reasonByAccount = new Map<string, TriggerReason>()
+    const addReason = (accountName: string, bucketDefault: TriggerReason) => {
+      if (reasonByAccount.has(accountName)) return // first wins
+      const explicit = trigger_reasons[accountName]
+      reasonByAccount.set(accountName, explicit ?? bucketDefault)
+    }
+    for (const l of expense_lines) addReason(l.account_name, 'expense_over_budget_dollar')
+    for (const l of revenue_lines) addReason(l.account_name, 'revenue_under_budget_dollar')
+    for (const l of favourable_expense_lines) addReason(l.account_name, 'expense_favourable_significant')
+    for (const l of bs_lines) addReason(l.account_name, 'bs_movement_dollar')
 
     // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
     const _sectionVerdict = await requireSectionPermission(
@@ -128,7 +178,23 @@ export async function POST(request: NextRequest) {
     )
     if (_sectionBlocked) return _sectionBlocked
 
-    if (expense_lines.length === 0) {
+    // Phase 71-04 (S1): the unified processing set is { expense_lines ∪
+    // revenue_lines ∪ favourable_expense_lines ∪ bs_lines } deduped by
+    // account_name (expense bucket wins on duplicate). If ALL four buckets
+    // are empty there's nothing to comment on.
+    const seen = new Set<string>()
+    const allLines: TriggerLineInput[] = []
+    const pushUnique = (l: TriggerLineInput) => {
+      if (seen.has(l.account_name)) return
+      seen.add(l.account_name)
+      allLines.push(l)
+    }
+    for (const l of expense_lines) pushUnique(l)
+    for (const l of revenue_lines) pushUnique(l)
+    for (const l of favourable_expense_lines) pushUnique(l)
+    for (const l of bs_lines) pushUnique(l)
+
+    if (allLines.length === 0) {
       return NextResponse.json({ success: true, commentary: {} })
     }
 
@@ -243,17 +309,21 @@ export async function POST(request: NextRequest) {
       // Settings not available — no cross-references
     }
 
-    // Build commentary for each expense line over budget
+    // Build commentary for each line (Phase 71-04 S1: iterates the unified
+    // set, not just expense_lines). Each row carries `trigger_reason` from
+    // the reasonByAccount resolver built up-front.
     const commentary: Record<string, {
       vendor_summary: VendorSummary[]
       coach_note: string
       is_edited: boolean
       detail_tab_ref?: 'subscriptions' | 'wages' | null
+      trigger_reason?: TriggerReason
     }> = {}
 
-    for (const line of expense_lines) {
+    for (const line of allLines) {
       const xeroName = line.xero_account_name || line.account_name
       const accountCode = accountNameToCode.get(xeroName.toLowerCase())
+      const trigger_reason = reasonByAccount.get(line.account_name)
 
       // Determine detail tab cross-reference
       let detail_tab_ref: 'subscriptions' | 'wages' | null = null
@@ -264,12 +334,15 @@ export async function POST(request: NextRequest) {
       }
 
       if (!accountCode) {
-        // No account code — still include with empty vendor summary so coach can add notes
+        // No account code (or BS line / revenue line without Xero P&L
+        // membership) — still include with empty vendor summary so coach
+        // can add notes. trigger_reason makes the row meaningful to the UI.
         commentary[line.account_name] = {
           vendor_summary: [],
           coach_note: '',
           is_edited: false,
           detail_tab_ref,
+          trigger_reason,
         }
         continue
       }
@@ -363,6 +436,7 @@ export async function POST(request: NextRequest) {
         coach_note: '',
         is_edited: false,
         detail_tab_ref,
+        trigger_reason,
       }
     }
 

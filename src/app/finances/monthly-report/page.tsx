@@ -45,6 +45,7 @@ import { useAccountMappings } from './hooks/useAccountMappings'
 import { useReconciliation } from './hooks/useReconciliation'
 import { useReportTemplates } from './hooks/useReportTemplates'
 import { useBalanceSheet } from './hooks/useBalanceSheet'
+import { collectCommentaryTriggers, type TriggerLine } from './utils/commentary-triggers'
 import { useConsolidatedBalanceSheet } from './hooks/useConsolidatedBalanceSheet'
 import { useConsolidatedCashflow } from './hooks/useConsolidatedCashflow'
 import BalanceSheetTab from './components/BalanceSheetTab'
@@ -610,33 +611,51 @@ export default function MonthlyReportPage() {
     }
   }, [activeTab, isConsolidationGroup, consolidatedCashflow, consolidatedCashflowLoading, consolidatedCashflowError, businessId, fiscalYear, generateConsolidatedCashflow])
 
-  // Fetch commentary after report generation — expenses over budget only
+  // Fetch commentary after report generation.
+  // Phase 71-04 (S1): triggers now cover 4 types — expense over-budget (existing),
+  // revenue under-budget, large favourable expense swings, and BS movements.
+  // The pure collector lives at utils/commentary-triggers.ts so it's unit-testable.
   const fetchCommentary = useCallback(async (reportData: GeneratedReport, existingCommentary?: VarianceCommentary) => {
     if (!businessId) return
     setCommentaryLoading(true)
 
     try {
-      // Only expense sections (COGS, OpEx, Other Expenses) where actual >= $500 over budget
-      const expenseSections = ['Cost of Sales', 'Operating Expenses', 'Other Expenses']
-      const expenseLines: { account_name: string; xero_account_name: string }[] = []
+      // Strip the trigger_reason from each line before POST — the route
+      // consumes the reasons via the separate `trigger_reasons` map keyed
+      // by account_name (avoids redundant payload + keeps line shape
+      // backward-compatible with pre-71-04 callers).
+      const stripReason = (l: TriggerLine) => ({
+        account_name: l.account_name,
+        xero_account_name: l.xero_account_name,
+      })
 
-      for (const section of reportData.sections) {
-        if (!expenseSections.includes(section.category)) continue
-        for (const line of section.lines) {
-          // variance_amount <= -500 means actual is $500+ over budget for expenses
-          if (line.variance_amount <= -500 && !line.is_budget_only) {
-            expenseLines.push({
-              account_name: line.account_name,
-              xero_account_name: line.xero_account_name || line.account_name,
-            })
-          }
-        }
-      }
+      const triggers = collectCommentaryTriggers(reportData, balanceSheet)
 
-      if (expenseLines.length === 0) {
+      const isEmpty =
+        triggers.expense_lines.length === 0 &&
+        triggers.revenue_lines.length === 0 &&
+        triggers.favourable_expense_lines.length === 0 &&
+        triggers.bs_lines.length === 0
+
+      if (isEmpty) {
         setCommentary(undefined)
         setCommentaryLoading(false)
         return
+      }
+
+      // Build accountName → trigger_reason map so the route can tag each
+      // commentary row with WHY it appeared (revenue dollar vs percent, etc.).
+      const trigger_reasons: Record<string, string> = {}
+      for (const l of [
+        ...triggers.expense_lines,
+        ...triggers.revenue_lines,
+        ...triggers.favourable_expense_lines,
+        ...triggers.bs_lines,
+      ]) {
+        // First occurrence wins (matches route-side priority).
+        if (!(l.account_name in trigger_reasons)) {
+          trigger_reasons[l.account_name] = l.trigger_reason
+        }
       }
 
       const res = await fetch('/api/monthly-report/commentary', {
@@ -645,7 +664,11 @@ export default function MonthlyReportPage() {
         body: JSON.stringify({
           business_id: businessId,
           report_month: reportData.report_month,
-          expense_lines: expenseLines,
+          expense_lines: triggers.expense_lines.map(stripReason),
+          revenue_lines: triggers.revenue_lines.map(stripReason),
+          favourable_expense_lines: triggers.favourable_expense_lines.map(stripReason),
+          bs_lines: triggers.bs_lines.map(stripReason),
+          trigger_reasons,
         }),
       })
 
@@ -667,7 +690,7 @@ export default function MonthlyReportPage() {
     } finally {
       setCommentaryLoading(false)
     }
-  }, [businessId])
+  }, [businessId, balanceSheet])
 
   const handleGenerateReport = useCallback(async (forceDraft?: boolean) => {
     const isDraft = forceDraft || (reconciliation ? !reconciliation.is_clean : false)
