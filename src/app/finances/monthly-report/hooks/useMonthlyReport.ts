@@ -33,6 +33,10 @@ import type {
   MonthlyReportSettings,
 } from '../types'
 import { mapTypeToCategory, buildSubtotal } from '@/lib/monthly-report/shared'
+import {
+  serializeReportSections,
+  deserializeReportSections,
+} from '../utils/snapshot-serializer'
 
 // Five canonical categories — mirrors `/api/monthly-report/generate` output
 // ordering so the adapted report lines up 1:1 with what single-entity shows.
@@ -366,6 +370,14 @@ export function useMonthlyReport(businessId: string) {
         )
       }
       try {
+        // Phase 71-10 (D4): serialize `sections` from ReportSection[] → named-key map
+        // before persisting. The in-memory shape stays an array (so BudgetVsActualTable,
+        // pdf-service, etc. keep working unchanged); ONLY the JSONB shape on disk
+        // changes. See src/app/finances/monthly-report/utils/snapshot-serializer.ts.
+        const serializedReportData = {
+          ...reportData,
+          sections: serializeReportSections(reportData.sections),
+        }
         const res = await fetch('/api/monthly-report/snapshot', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -376,7 +388,7 @@ export function useMonthlyReport(businessId: string) {
             status: options?.status || (reportData.is_draft ? 'draft' : 'final'),
             is_draft: options?.status === 'final' ? false : reportData.is_draft,
             unreconciled_count: reportData.unreconciled_count,
-            report_data: reportData,
+            report_data: serializedReportData,
             summary: reportData.summary,
             coach_notes: options?.coachNotes,
             generated_by: options?.generatedBy,
@@ -403,8 +415,19 @@ export function useMonthlyReport(businessId: string) {
         )
         const data = await res.json()
         if (data.snapshot) {
-          setReport(data.snapshot.report_data)
-          return data.snapshot
+          // Phase 71-10 (D4): hydrate persisted `sections` back to ReportSection[].
+          // Handles three shapes (named map / legacy numeric-keyed object / passthrough
+          // array) so pre-71-10 snapshots still load. Downstream consumers
+          // (BudgetVsActualTable, pdf-service) continue to receive the array shape.
+          const persisted = data.snapshot.report_data
+          const hydratedReportData = persisted
+            ? {
+                ...persisted,
+                sections: deserializeReportSections(persisted.sections ?? []),
+              }
+            : persisted
+          if (hydratedReportData) setReport(hydratedReportData)
+          return { ...data.snapshot, report_data: hydratedReportData }
         }
         return null
       } catch (err) {
