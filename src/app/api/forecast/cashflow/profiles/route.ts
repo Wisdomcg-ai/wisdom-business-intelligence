@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -40,15 +40,15 @@ export async function GET(request: NextRequest) {
       .maybeSingle()
     if (!forecast) return NextResponse.json({ error: 'Forecast not found' }, { status: 404 })
 
-    const ids = await resolveBusinessIds(supabase, forecast.business_id)
-    const hasAccess = await verifyBusinessAccess(user.id, ids.bizId)
+    const ids = await resolveBusinessProfileIds(supabase, forecast.business_id)
+    const hasAccess = await verifyBusinessAccess(user.id, ids.businessId)
     if (!hasAccess) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
 
     // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
     const _sectionVerdict = await requireSectionPermission(
       authClient,          // auth-bound client; NEVER pass a service-role client here
       user.id,
-      ids.bizId,
+      ids.businessId,
       'finances',
     )
     const _sectionBlocked = enforceSectionPermission(
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       'finances',
       'api/forecast/cashflow/profiles',
       user.id,
-      ids.bizId,
+      ids.businessId,
     )
     if (_sectionBlocked) return _sectionBlocked
 
@@ -121,15 +121,15 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
     if (!forecast) return NextResponse.json({ error: 'Forecast not found' }, { status: 404 })
 
-    const ids = await resolveBusinessIds(supabase, forecast.business_id)
-    const hasAccess = await verifyBusinessAccess(user.id, ids.bizId)
+    const ids = await resolveBusinessProfileIds(supabase, forecast.business_id)
+    const hasAccess = await verifyBusinessAccess(user.id, ids.businessId)
     if (!hasAccess) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
 
     // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
     const _sectionVerdictPost = await requireSectionPermission(
       authClient,          // auth-bound client; NEVER pass a service-role client here
       user.id,
-      ids.bizId,
+      ids.businessId,
       'finances',
     )
     const _sectionBlockedPost = enforceSectionPermission(
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
       'finances',
       'api/forecast/cashflow/profiles',
       user.id,
-      ids.bizId,
+      ids.businessId,
     )
     if (_sectionBlockedPost) return _sectionBlockedPost
 

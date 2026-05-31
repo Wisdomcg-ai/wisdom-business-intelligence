@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -78,8 +78,8 @@ export async function GET(request: NextRequest) {
     }
 
     // forecast.business_id may be businesses.id or business_profiles.id — resolve
-    const ids = await resolveBusinessIds(supabase, forecast.business_id)
-    const canonicalBusinessId = ids.bizId
+    const ids = await resolveBusinessProfileIds(supabase, forecast.business_id)
+    const canonicalBusinessId = ids.businessId
 
     const hasAccess = await verifyBusinessAccess(user.id, canonicalBusinessId)
     if (!hasAccess) {
@@ -163,8 +163,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forecast not found' }, { status: 404 })
     }
 
-    const ids = await resolveBusinessIds(supabase, forecast.business_id)
-    const canonicalBusinessId = ids.bizId
+    const ids = await resolveBusinessProfileIds(supabase, forecast.business_id)
+    const canonicalBusinessId = ids.businessId
 
     const hasAccess = await verifyBusinessAccess(user.id, canonicalBusinessId)
     if (!hasAccess) {

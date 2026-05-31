@@ -3,7 +3,7 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
@@ -50,7 +50,7 @@ async function denyIfNoForecastAccess(
   }
 
   // Resolve both ID formats so the access check works regardless of which was stored
-  const ids = await resolveBusinessIds(supabaseAdmin, forecast.business_id)
+  const ids = await resolveBusinessProfileIds(supabaseAdmin, forecast.business_id)
   const { data: bizAccess } = await supabase
     .from('businesses')
     .select('id')

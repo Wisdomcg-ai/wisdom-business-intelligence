@@ -44,10 +44,10 @@ vi.mock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
   ]),
 }))
 
-// ─── resolveBusinessIds mock ──────────────────────────────────────────────
-vi.mock('@/lib/utils/resolve-business-ids', () => ({
-  resolveBusinessIds: vi.fn().mockResolvedValue({
-    bizId: 'biz-1',
+// ─── resolveBusinessProfileIds mock ───────────────────────────────────────
+vi.mock('@/lib/business/resolveBusinessProfileIds', () => ({
+  resolveBusinessProfileIds: vi.fn().mockResolvedValue({
+    businessId: 'biz-1',
     profileId: 'profile-1',
     all: ['biz-1', 'profile-1'],
   }),

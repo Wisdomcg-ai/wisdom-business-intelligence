@@ -1,6 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import type { WhatIfParameters } from '@/app/finances/forecast/types'
 import * as Sentry from '@sentry/nextjs'
 
@@ -183,7 +183,7 @@ export async function GET(request: Request) {
     }
 
     // Resolve both business ID formats so we find forecasts stored under either
-    const ids = await resolveBusinessIds(supabase, businessId)
+    const ids = await resolveBusinessProfileIds(supabase, businessId)
 
     const { data: versions, error } = await supabase
       .from('financial_forecasts')

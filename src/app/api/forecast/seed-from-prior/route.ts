@@ -21,7 +21,7 @@
 
 import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { seedForecastFromPrior, isForecastSeedable } from '@/lib/services/forecast-seed-service'
 import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
 import * as Sentry from '@sentry/nextjs'
@@ -119,7 +119,7 @@ export async function POST(request: Request) {
 
     // ── 4. Resolve dual-IDs for financial_forecasts queries ───────────────────
     // financial_forecasts.business_id is business_profiles.id (research pitfall 3)
-    const ids = await resolveBusinessIds(supabase, businessId)
+    const ids = await resolveBusinessProfileIds(supabase, businessId)
 
     // ── 5. Load prior FY forecast ─────────────────────────────────────────────
     const priorFY = targetFiscalYear - 1
