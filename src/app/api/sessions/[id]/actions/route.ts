@@ -1,8 +1,16 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
-export async function POST(
+// VALID-05a (observe mode): POST creates a session action item.
+const SessionActionsPostSchema = z.object({
+  description: z.string(),
+  due_date: z.string().nullable().optional(),
+})
+
+async function postHandler(
   request: Request,
   { params }: { params: { id: string } }
 ) {
@@ -73,3 +81,5 @@ export async function POST(
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('sessions/[id]/actions', SessionActionsPostSchema, postHandler)

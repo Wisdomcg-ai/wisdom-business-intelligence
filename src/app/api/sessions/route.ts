@@ -1,10 +1,25 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: Request) {
+// VALID-05a (observe mode): GET filters sessions by business; POST creates a session.
+const SessionsGetQuerySchema = z.object({
+  business_id: z.string().optional(),
+})
+
+const SessionsPostSchema = z.object({
+  business_id: z.string(),
+  title: z.string(),
+  scheduled_at: z.string(),
+  duration_minutes: z.number().optional(),
+  agenda: z.array(z.any()).optional(),
+})
+
+async function getHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
   const { searchParams } = new URL(request.url)
   const businessId = searchParams.get('business_id')
@@ -58,7 +73,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -132,3 +147,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('sessions', SessionsGetQuerySchema, getHandler)
+export const POST = withSchema('sessions', SessionsPostSchema, postHandler)
