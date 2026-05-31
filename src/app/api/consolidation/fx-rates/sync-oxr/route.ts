@@ -15,6 +15,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { deriveMonthlyRatePair } from '@/lib/consolidation/oxr'
@@ -87,7 +89,16 @@ function validate(body: unknown): {
   return { ok: true, currency_pair: cp, year, month }
 }
 
-export async function POST(request: NextRequest) {
+// VALID-04 (observe mode): POST derives an FX rate from OpenExchangeRates.
+const SyncOxrPostSchema = z
+  .object({
+    currency_pair: z.string(),
+    year: z.number(),
+    month: z.number(),
+  })
+  .passthrough()
+
+async function postHandler(request: Request) {
   let stage = 'init'
   try {
     stage = 'auth'
@@ -174,3 +185,5 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const POST = withSchema('consolidation/fx-rates/sync-oxr', SyncOxrPostSchema, postHandler)

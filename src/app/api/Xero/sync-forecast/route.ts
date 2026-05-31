@@ -14,6 +14,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { syncBusinessXeroPL } from '@/lib/xero/sync-orchestrator'
 import * as Sentry from '@sentry/nextjs'
@@ -21,7 +23,15 @@ import * as Sentry from '@sentry/nextjs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
-export async function POST(request: NextRequest) {
+// VALID-04 (observe mode): POST syncs Xero P&L for a business (id in either casing).
+const SyncForecastPostSchema = z
+  .object({
+    business_id: z.string().optional(),
+    businessId: z.string().optional(),
+  })
+  .passthrough()
+
+async function postHandler(request: Request) {
   try {
     const authClient = await createRouteHandlerClient()
     const { data: { user } } = await authClient.auth.getUser()
@@ -44,3 +54,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to sync Xero data', detail: message }, { status: 500 })
   }
 }
+
+export const POST = withSchema('Xero/sync-forecast', SyncForecastPostSchema, postHandler)

@@ -1,4 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
+
+// VALID-04 (observe mode): POST saves cashflow settings for a forecast.
+const CashflowSettingsPostSchema = z
+  .object({
+    forecast_id: z.string(),
+  })
+  .passthrough()
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -137,7 +146,7 @@ export async function GET(request: NextRequest) {
  * Upserts the cashflow_settings row for a forecast.
  * Body: { forecast_id, ...all settings fields }
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     const authClient = await createRouteHandlerClient()
     const { data: { user }, error: authError } = await authClient.auth.getUser()
@@ -231,3 +240,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('forecast/cashflow/settings', CashflowSettingsPostSchema, postHandler)

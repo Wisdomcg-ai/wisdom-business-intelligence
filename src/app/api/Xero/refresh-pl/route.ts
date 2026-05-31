@@ -15,6 +15,16 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
+
+// VALID-04 (observe mode): POST refreshes Xero P&L; id from body (either casing).
+const RefreshPlPostSchema = z
+  .object({
+    business_id: z.string().optional(),
+    businessId: z.string().optional(),
+  })
+  .passthrough()
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { syncBusinessXeroPL } from '@/lib/xero/sync-orchestrator'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -23,7 +33,7 @@ import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionCon
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
@@ -72,3 +82,5 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const POST = withSchema('Xero/refresh-pl', RefreshPlPostSchema, postHandler)

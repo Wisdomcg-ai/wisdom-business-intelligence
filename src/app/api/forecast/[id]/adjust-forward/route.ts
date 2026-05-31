@@ -16,8 +16,19 @@ import { generateFiscalMonthKeys } from '@/lib/utils/fiscal-year-utils'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// VALID-04 (observe mode): PATCH applies a forward % adjustment to a forecast.
+const AdjustForwardPatchSchema = z
+  .object({
+    adjustmentPct: z.number(),
+    yearStartMonth: z.number(),
+    fiscalYear: z.number(),
+  })
+  .passthrough()
 
 // Categories that map to Revenue in the P&L (must stay in sync with quarterly-summary + actuals-summary)
 const REVENUE_CATEGORIES = ['Revenue', 'revenue', 'Trading Revenue', 'Other Revenue']
@@ -28,7 +39,7 @@ function isRevenue(category?: string, accountType?: string): boolean {
   return REVENUE_CATEGORIES.some(c => c.toLowerCase() === category.toLowerCase())
 }
 
-export async function PATCH(
+async function patchHandler(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -184,3 +195,5 @@ export async function PATCH(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const PATCH = withSchema('forecast/[id]/adjust-forward', AdjustForwardPatchSchema, patchHandler)

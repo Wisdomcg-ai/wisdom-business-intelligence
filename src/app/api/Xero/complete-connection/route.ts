@@ -1,4 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { withSchema } from '@/lib/api/with-schema';
+
+// VALID-04 (observe mode): POST completes a pending Xero connection (1+ tenants).
+const CompleteConnectionPostSchema = z
+  .object({
+    pending_id: z.string(),
+    tenant_id: z.string().optional(),
+    tenant_ids: z.array(z.string()).optional(),
+  })
+  .passthrough();
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
@@ -15,7 +26,7 @@ const supabaseAdmin = createClient(
 
 const PENDING_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     // Verify user is authenticated
     const supabase = await createRouteHandlerClient();
@@ -199,6 +210,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
+export const POST = withSchema('Xero/complete-connection', CompleteConnectionPostSchema, postHandler);
 
 /**
  * Trigger an initial sync after connection.

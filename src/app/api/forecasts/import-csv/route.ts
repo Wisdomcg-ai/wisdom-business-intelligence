@@ -1,4 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
+
+// VALID-04 (observe mode): POST imports CSV-parsed P&L lines into a forecast.
+const ImportCsvPostSchema = z
+  .object({
+    forecastId: z.string(),
+    lines: z.array(z.unknown()),
+  })
+  .passthrough()
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import type { PLLine } from '@/app/finances/forecast/types'
 import * as Sentry from '@sentry/nextjs'
@@ -30,7 +40,7 @@ function validateLine(line: PLLine, index: number): string | null {
   return null
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     const supabase = await createRouteHandlerClient()
 
@@ -146,3 +156,5 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const POST = withSchema('forecasts/import-csv', ImportCsvPostSchema, postHandler)

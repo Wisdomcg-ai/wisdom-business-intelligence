@@ -6,6 +6,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { z } from 'zod';
+import { withSchema } from '@/lib/api/with-schema';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
@@ -372,7 +374,15 @@ function extractAccountBalance(plReport: any, accountCodes: string[]): number | 
   }
 }
 
-export async function POST(request: NextRequest) {
+// VALID-04 (observe mode): POST analyzes subscription transactions for a business.
+const SubscriptionTransactionsPostSchema = z
+  .object({
+    business_id: z.string(),
+    account_codes: z.array(z.string()),
+  })
+  .passthrough();
+
+async function postHandler(request: Request) {
   try {
     // Auth check
     const authClient = await createRouteHandlerClient();
@@ -1385,3 +1395,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to analyze subscriptions' }, { status: 500 });
   }
 }
+
+export const POST = withSchema('Xero/subscription-transactions', SubscriptionTransactionsPostSchema, postHandler);

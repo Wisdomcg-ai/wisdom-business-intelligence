@@ -18,6 +18,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { validateTenantPatchPayload } from '@/lib/consolidation/admin-guards'
@@ -61,8 +63,19 @@ async function requireCoachOrSuperAdmin(): Promise<
   return { allowed: true }
 }
 
-export async function PATCH(
-  request: NextRequest,
+// VALID-04 (observe mode): PATCH updates editable consolidation tenant fields.
+const TenantPatchSchema = z
+  .object({
+    display_name: z.string().optional(),
+    display_order: z.number().optional(),
+    functional_currency: z.string().optional(),
+    include_in_consolidation: z.boolean().optional(),
+    is_active: z.boolean().optional(),
+  })
+  .passthrough()
+
+async function patchHandler(
+  request: Request,
   { params }: { params: Promise<{ connectionId: string }> },
 ) {
   let stage = 'init'
@@ -120,3 +133,5 @@ export async function PATCH(
     )
   }
 }
+
+export const PATCH = withSchema('consolidation/tenants/[connectionId]', TenantPatchSchema, patchHandler)
