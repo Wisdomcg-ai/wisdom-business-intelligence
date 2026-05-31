@@ -1,10 +1,24 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST(request: Request) {
+// VALID-05a (observe mode): POST submits a coach question; GET filters by business/status.
+const CoachQuestionsPostSchema = z.object({
+  question: z.string(),
+  priority: z.enum(['normal', 'urgent']),
+  businessId: z.string(),
+})
+
+const CoachQuestionsGetQuerySchema = z.object({
+  businessId: z.string(),
+  status: z.string().optional(),
+})
+
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -70,7 +84,7 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET(request: Request) {
+async function getHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -124,3 +138,6 @@ export async function GET(request: Request) {
     )
   }
 }
+
+export const POST = withSchema('coach-questions', CoachQuestionsPostSchema, postHandler)
+export const GET = withQuerySchema('coach-questions', CoachQuestionsGetQuerySchema, getHandler)
