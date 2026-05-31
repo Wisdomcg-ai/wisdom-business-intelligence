@@ -9,12 +9,12 @@
  * FX translation (fx.ts) and elimination rules (eliminations.ts) are pure modules plugged in
  * via the `translate` callback and the business-scoped rules table.
  *
- * resolveBusinessIds is used ONCE to resolve the dual-ID business identifier; the subsequent
+ * resolveBusinessProfileIds is used ONCE to resolve the dual-ID business identifier; the subsequent
  * xero_pl_lines query uses the resolved IDs + filters by tenant_id per tenant.
  */
 
 import * as Sentry from '@sentry/nextjs'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import type {
   ConsolidationBusiness,
   ConsolidationTenant,
@@ -188,7 +188,7 @@ export function reportMissingCurrencyTenants(
 }
 
 /**
- * Single-query per business, grouped by tenant in memory. Uses resolveBusinessIds
+ * Single-query per business, grouped by tenant in memory. Uses resolveBusinessProfileIds
  * on the parent business (dual-ID safety) then slices xero_pl_lines by tenant_id.
  */
 export async function loadTenantSnapshots(
@@ -198,7 +198,7 @@ export async function loadTenantSnapshots(
 ): Promise<TenantSnapshot[]> {
   if (tenants.length === 0) return []
 
-  const ids = await resolveBusinessIds(supabase, businessId)
+  const ids = await resolveBusinessProfileIds(supabase, businessId)
   const tenantIds = tenants.map((t) => t.tenant_id)
 
   const { data: lines, error } = await supabase
@@ -320,7 +320,7 @@ export function normaliseForecastLine(row: {
  *
  * Lookup strategy (Option B — each tenant has its own budget):
  *   1. For each tenant, find a forecast where business_id matches (via
- *      resolveBusinessIds for dual-ID safety) AND tenant_id = tenant.tenant_id
+ *      resolveBusinessProfileIds for dual-ID safety) AND tenant_id = tenant.tenant_id
  *      AND fiscal_year matches. If found, load that forecast's pl_lines.
  *   2. If NO tenants have tenant-scoped forecasts (simpler alternative per
  *      plan): return an empty Map and let the caller render zero-budget
@@ -339,7 +339,7 @@ export async function loadTenantBudgets(
   const result = new Map<string, ForecastLineLike[]>()
   if (tenants.length === 0) return result
 
-  const ids = await resolveBusinessIds(supabase, businessId)
+  const ids = await resolveBusinessProfileIds(supabase, businessId)
 
   // 1. For each tenant, try to find a tenant-scoped forecast.
   // Uses .limit(1) — if multiple exist, pick the most recently updated one.
@@ -392,7 +392,7 @@ export async function loadSingleBusinessBudget(
   businessId: string,
   fiscalYear: number,
 ): Promise<ForecastLineLike[] | null> {
-  const ids = await resolveBusinessIds(supabase, businessId)
+  const ids = await resolveBusinessProfileIds(supabase, businessId)
 
   const { data: forecasts, error } = await supabase
     .from('financial_forecasts')

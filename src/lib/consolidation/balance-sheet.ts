@@ -18,7 +18,7 @@
  * only). This engine consumes ONLY `intercompany_loan` rules (the inverse).
  */
 
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import type {
   ConsolidationBusiness,
   ConsolidationTenant,
@@ -131,7 +131,7 @@ export async function loadBSTenantSnapshots(
 ): Promise<Array<{ tenant: ConsolidationTenant; rawLines: XeroPLLineLike[] }>> {
   if (tenants.length === 0) return []
 
-  const ids = await resolveBusinessIds(supabase, businessId)
+  const ids = await resolveBusinessProfileIds(supabase, businessId)
   const tenantIds = tenants.map((t) => t.tenant_id)
 
   const { data: lines, error } = await supabase
