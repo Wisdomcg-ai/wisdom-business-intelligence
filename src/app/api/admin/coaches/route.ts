@@ -1,10 +1,29 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// VALID-03 (observe mode): POST creates a coach.
+const AdminCoachesPostSchema = z.object({
+  email: z.string().email(),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  phone: z.string().optional(),
+  password: z.string().optional(),
+})
+
+// VALID-03 (observe mode): PATCH updates a coach (id comes from query).
+const AdminCoachesPatchSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  email: z.string().email(),
+  phone: z.string().optional(),
+})
 
 // Initialize Supabase admin client for user creation
 const supabaseAdmin = createClient(
@@ -69,7 +88,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     const supabase = await createRouteHandlerClient()
 
@@ -173,7 +192,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function PATCH(request: NextRequest) {
+async function patchHandler(request: Request) {
   try {
     const supabase = await createRouteHandlerClient()
 
@@ -248,7 +267,7 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
+export async function DELETE(request: Request) {
   try {
     const supabase = await createRouteHandlerClient()
 
@@ -289,3 +308,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('admin/coaches', AdminCoachesPostSchema, postHandler)
+export const PATCH = withSchema('admin/coaches', AdminCoachesPatchSchema, patchHandler)

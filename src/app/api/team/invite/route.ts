@@ -7,6 +7,21 @@ import { getAppBaseUrl, APP_NAME, BRAND_COLORS, BRAND_LOGO_URL } from '@/lib/con
 import crypto from 'crypto'
 import { csrfProtection } from '@/lib/security/csrf'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
+
+// VALID-03 (observe mode): models the team-invite body (matches destructure :46-56).
+const InviteBodySchema = z.object({
+  businessId: z.string().min(1),
+  firstName: z.string().min(1),
+  lastName: z.string().optional(),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  position: z.string().optional(),
+  role: z.string().min(1),
+  sectionPermissions: z.record(z.string(), z.unknown()).optional(),
+  createAccount: z.boolean().optional().default(true),
+})
 
 // Generate a secure random password
 function generateSecurePassword(length = 16): string {
@@ -25,7 +40,7 @@ function generateInviteToken(): string {
   return crypto.randomBytes(32).toString('hex')
 }
 
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
   const adminSupabase = createServiceRoleClient() // For bypassing RLS on admin operations
 
@@ -560,3 +575,5 @@ export async function POST(request: Request) {
     )
   }
 }
+
+export const POST = withSchema('team/invite', InviteBodySchema, postHandler)

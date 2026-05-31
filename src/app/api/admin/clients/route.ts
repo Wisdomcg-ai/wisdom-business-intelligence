@@ -5,6 +5,25 @@ import { NextResponse } from 'next/server'
 import { sendClientInvitation } from '@/lib/email/resend'
 import { getAppBaseUrl } from '@/lib/config/brand'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
+
+// VALID-03 (observe mode): models the POST create-client body.
+const AdminClientsPostSchema = z.object({
+  businessName: z.string().min(1),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  email: z.string().email(),
+  position: z.string().min(1),
+  accessLevel: z.string().optional(),
+  sendInvitation: z.boolean().optional(),
+  teamMembers: z.array(z.record(z.string(), z.unknown())).optional(),
+})
+
+// VALID-03 (observe mode): PATCH updates client status (id comes from query).
+const AdminClientsPatchSchema = z.object({
+  status: z.enum(['active', 'inactive', 'pending']),
+})
 
 // Generate a secure random password
 function generateSecurePassword(length = 16): string {
@@ -18,7 +37,7 @@ function generateSecurePassword(length = 16): string {
   return password
 }
 
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
   const adminSupabase = createServiceRoleClient() // For bypassing RLS on users table upsert
 
@@ -451,7 +470,7 @@ export async function POST(request: Request) {
 }
 
 // PATCH - Update client status (active/inactive)
-export async function PATCH(request: Request) {
+async function patchHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -613,3 +632,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('admin/clients', AdminClientsPostSchema, postHandler)
+export const PATCH = withSchema('admin/clients', AdminClientsPatchSchema, patchHandler)

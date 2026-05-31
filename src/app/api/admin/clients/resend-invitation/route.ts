@@ -4,6 +4,13 @@ import { NextResponse } from 'next/server'
 import { sendClientInvitation } from '@/lib/email/resend'
 import { getAppBaseUrl } from '@/lib/config/brand'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
+
+// VALID-03 (observe mode): POST resends an invitation by client owner email.
+const ResendInvitationPostSchema = z.object({
+  email: z.string().email(),
+})
 
 // Generate a secure random password
 function generateSecurePassword(length = 16): string {
@@ -17,7 +24,7 @@ function generateSecurePassword(length = 16): string {
   return password
 }
 
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -134,3 +141,5 @@ export async function POST(request: Request) {
     )
   }
 }
+
+export const POST = withSchema('admin/clients/resend-invitation', ResendInvitationPostSchema, postHandler)

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -8,6 +8,15 @@ import crypto from 'crypto'
 import { checkRateLimit, getClientIP, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 import { csrfProtection } from '@/lib/security/csrf'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
+
+// VALID-03 (observe mode): POST resets a user's password (email or temp pw).
+const AdminResetPasswordPostSchema = z.object({
+  userId: z.string().min(1),
+  email: z.string().email(),
+  action: z.string().optional(),
+})
 
 // Use service role for admin operations
 const supabaseAdmin = createClient(
@@ -27,7 +36,7 @@ function generatePassword(length = 12): string {
   return password
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     // Rate limiting - 5 admin password reset requests per 15 minutes per IP
     const clientIP = getClientIP(request)
@@ -161,3 +170,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to reset password' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('admin/reset-password', AdminResetPasswordPostSchema, postHandler)
