@@ -33,7 +33,7 @@ vi.mock('@/lib/utils/verify-business-access', () => ({
 
 // mock resolveXeroBusinessId — return a fake connection so route proceeds
 const FAKE_CONNECTION_ID = 'xero-conn-uuid-001'
-vi.mock('@/lib/utils/resolve-xero-business-id', () => ({
+vi.mock('@/lib/business/resolveXeroBusinessId', () => ({
   resolveXeroBusinessId: vi.fn(async (_supabase: any, businessId: string) => ({
     connection: {
       id: FAKE_CONNECTION_ID,

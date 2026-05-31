@@ -5,7 +5,7 @@
  *
  * Two modules are covered:
  *   1. `src/lib/business/resolveBusinessId.ts`     — role-aware canonical resolver
- *   2. `src/lib/utils/resolve-xero-business-id.ts` — Xero connection id resolver
+ *   2. `src/lib/business/resolveXeroBusinessId.ts` — Xero connection id resolver
  *
  * Both take the Supabase client as an injectable parameter, so (mirroring the
  * sibling `resolve-business-profile-ids.test.ts`) we model only the tables each
@@ -15,7 +15,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
-import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id'
+import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId'
 
 // ───────────────────────────────────────────────────────────────────────────
 // Fake Supabase for resolveBusinessId.

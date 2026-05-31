@@ -24,7 +24,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
-import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id'
+import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { getHistoricalSummary } from '@/lib/services/historical-pl-summary'
 import type { HistoricalPLSummary } from '@/app/finances/forecast/types'

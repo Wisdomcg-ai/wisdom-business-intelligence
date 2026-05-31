@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
-import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
-import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import * as Sentry from '@sentry/nextjs'
 

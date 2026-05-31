@@ -54,7 +54,7 @@ vi.mock('@/lib/xero/token-manager', () => ({
   getValidAccessToken: mockGetValidAccessToken,
 }));
 
-vi.mock('@/lib/utils/resolve-xero-business-id', () => ({
+vi.mock('@/lib/business/resolveXeroBusinessId', () => ({
   resolveXeroBusinessId: mockResolveXeroBusinessId,
 }));
 

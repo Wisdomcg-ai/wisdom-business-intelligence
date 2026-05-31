@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { encrypt, verifySignedOAuthState } from '@/lib/utils/encryption';
-import { resolveXeroBusinessId } from '@/lib/utils/resolve-xero-business-id';
+import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
 import { getXeroOrgTimezone } from '@/lib/xero/organisation';
 import { getAppBaseUrl } from '@/lib/config/brand'
 import * as Sentry from '@sentry/nextjs'
