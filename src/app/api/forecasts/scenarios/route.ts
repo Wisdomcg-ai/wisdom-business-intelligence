@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
@@ -23,6 +23,50 @@ async function getAuthenticatedUser() {
 }
 
 /**
+ * SECURITY: Verify the authenticated user can access the business that owns
+ * this forecast before reading or writing its scenarios.
+ *
+ * Returns a 403 NextResponse if access should be denied, or null if allowed.
+ * If the forecast row does not exist, returns null (the caller's own
+ * not-found / FK handling takes over) — this mirrors the original GET behaviour.
+ *
+ * The check is done with the USER-scoped client (RLS enforced) against the
+ * resolved business id-set, so it works regardless of which id-class was stored
+ * on the forecast and cannot be bypassed by passing another tenant's forecast_id.
+ */
+async function denyIfNoForecastAccess(
+  supabase: SupabaseClient,
+  userId: string,
+  forecastId: string,
+): Promise<NextResponse | null> {
+  const { data: forecast } = await supabaseAdmin
+    .from('financial_forecasts')
+    .select('business_id')
+    .eq('id', forecastId)
+    .maybeSingle()
+
+  if (!forecast) {
+    return null
+  }
+
+  // Resolve both ID formats so the access check works regardless of which was stored
+  const ids = await resolveBusinessIds(supabaseAdmin, forecast.business_id)
+  const { data: bizAccess } = await supabase
+    .from('businesses')
+    .select('id')
+    .in('id', ids.all)
+    .or(`owner_id.eq.${userId},assigned_coach_id.eq.${userId}`)
+    .limit(1)
+    .maybeSingle()
+
+  if (!bizAccess) {
+    return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+  }
+
+  return null
+}
+
+/**
  * GET /api/forecasts/scenarios?forecast_id=xxx
  * Fetch all scenarios for a forecast
  */
@@ -41,28 +85,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'forecast_id is required' }, { status: 400 })
     }
 
-    // Verify user owns or has access to this forecast
-    const { data: forecast } = await supabaseAdmin
-      .from('financial_forecasts')
-      .select('business_id')
-      .eq('id', forecastId)
-      .maybeSingle()
-
-    if (forecast) {
-      // Resolve both ID formats so access check works regardless of which was stored
-      const ids = await resolveBusinessIds(supabaseAdmin, forecast.business_id)
-      const { data: bizAccess } = await supabase
-        .from('businesses')
-        .select('id')
-        .in('id', ids.all)
-        .or(`owner_id.eq.${user.id},assigned_coach_id.eq.${user.id}`)
-        .limit(1)
-        .maybeSingle()
-
-      if (!bizAccess) {
-        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-      }
-    }
+    // Verify user owns or has access to the business that owns this forecast
+    const denied = await denyIfNoForecastAccess(supabase, user.id, forecastId)
+    if (denied) return denied
 
     // Fetch scenarios (use admin client since we verified auth above)
     const { data: scenarios, error } = await supabaseAdmin
@@ -91,7 +116,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // SECURITY: Verify user is authenticated and use their ID
-    const { user, error: authError } = await getAuthenticatedUser()
+    const { user, error: authError, supabase } = await getAuthenticatedUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -114,6 +139,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // SECURITY: Verify the caller can access the business that owns this forecast
+    // before writing. Without this, any authenticated user could create scenarios
+    // against another tenant's forecast_id (cross-tenant write IDOR). Mirrors GET.
+    const denied = await denyIfNoForecastAccess(supabase, user.id, forecast_id)
+    if (denied) return denied
 
     // SECURITY: Use authenticated user's ID, not the one from request body
     const authenticatedUserId = user.id

@@ -23,6 +23,31 @@ import { encrypt, decrypt } from '@/lib/utils/encryption';
 export const REFRESH_THRESHOLD_MINUTES = 15;
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1000;
+// Upper bound on how long we'll sleep on a 429 Retry-After inside a single
+// invocation (REL-N3). Xero's daily-limit 429 can carry a multi-hour
+// Retry-After; sleeping that long would just burn the function (and time out)
+// only to wake up still throttled, so beyond this we defer the retry to the
+// caller / next cron tick instead.
+const MAX_RETRY_AFTER_MS = 60000;
+
+// Refresh-lock coordination (REL-N4).
+//   LOCK_TTL_MS — how long a held refresh lock stays valid before it is
+//     considered stale. A waiter polls for *exactly* this window: that is the
+//     longest a healthy lock-holder could legitimately be mid-refresh (Xero
+//     backoff/retries included) before its lock ages out and a waiter may take
+//     over. acquireRefreshLock uses the same constant for its staleness cutoff.
+//   LOCK_POLL_INTERVAL_MS — how often a waiter re-checks for the sibling's
+//     rotated token / a freed lock.
+const LOCK_TTL_MS = 30000;
+const LOCK_POLL_INTERVAL_MS = 2000;
+
+// REL-N5: persisting a freshly-rotated token is mandatory — Xero has already
+// invalidated the previous refresh token by the time we get a 200, so the new
+// token is the ONLY valid one. Retry the save a few times (short backoff) so a
+// transient write blip can't strand the connection on a dead token. Kept small
+// to avoid materially adding to the refresh cron's per-tenant time budget.
+const MAX_TOKEN_SAVE_ATTEMPTS = 3;
+const TOKEN_SAVE_RETRY_DELAY_MS = 200;
 
 // Error types for better handling
 export type TokenRefreshError =
@@ -110,6 +135,31 @@ function extractErrorCode(errorText: string): string {
 function truncate(s: string, maxLen: number): string {
   if (s.length <= maxLen) return s;
   return s.slice(0, maxLen - 1) + '…';
+}
+
+/**
+ * Parse an HTTP Retry-After header into milliseconds (REL-N3).
+ * Supports both RFC-7231 forms: delta-seconds (e.g. "30") and an HTTP-date
+ * (e.g. "Wed, 21 Oct 2026 07:28:00 GMT"). Returns null when the header is
+ * absent or unparseable; clamps past dates to 0.
+ */
+function parseRetryAfterMs(header: string | null): number | null {
+  if (!header) return null;
+  const trimmed = header.trim();
+  if (trimmed === '') return null;
+
+  // delta-seconds form — a bare non-negative integer count of seconds.
+  if (/^\d+$/.test(trimmed)) {
+    return parseInt(trimmed, 10) * 1000;
+  }
+
+  // HTTP-date form — wait until the given instant (never negative).
+  const dateMs = Date.parse(trimmed);
+  if (!Number.isNaN(dateMs)) {
+    return Math.max(0, dateMs - Date.now());
+  }
+
+  return null;
 }
 
 /**
@@ -215,7 +265,7 @@ export async function getValidAccessToken(
   console.log(`[Token Manager] Token expires at ${expiry.toISOString()}, refreshing...`);
 
   // Check if another process is already refreshing (race condition prevention)
-  const lockResult = await acquireRefreshLock(connection.id, supabase);
+  let lockResult = await acquireRefreshLock(connection.id, supabase);
 
   // Snapshot of the row state we're going to use for the refresh.
   // If we acquire the lock, we re-fetch (closing Hole A); otherwise we use
@@ -223,44 +273,103 @@ export async function getValidAccessToken(
   let workingRow: any = connection;
 
   if (!lockResult.acquired) {
-    // Another process is refreshing, wait and re-fetch
-    console.log('[Token Manager] Another process is refreshing, waiting...');
-    await sleep(2000);
+    // ─── REL-N4: poll for the lock-holder's result up to the lock TTL ──────
+    // A sibling holds the refresh lock. The previous code slept a fixed 2s
+    // ONCE and, if the holder hadn't finished, fell straight through to an
+    // UNLOCKED self-refresh. Under Xero backoff the holder's refresh routinely
+    // takes >2s, so every concurrent caller would then refresh in parallel —
+    // each rotating the single-use refresh token out from under the others
+    // (a rotated-token stampede that bricks the connection).
+    //
+    // Instead, poll for up to ~LOCK_TTL_MS — the longest a healthy holder can
+    // legitimately be mid-refresh:
+    //   - if the sibling rotates the token (expires_at advances past the
+    //     threshold) → return that fresh token immediately;
+    //   - if the lock frees up (sibling released it, or its lock aged past the
+    //     TTL) → take it over and do a *locked* refresh via the acquired path;
+    //   - only if the entire TTL window elapses with neither happening (holder
+    //     wedged) do we fall through to a best-effort unlocked self-refresh, so
+    //     a stuck sibling can't block this caller forever.
+    console.log('[Token Manager] Another process is refreshing, waiting for it to finish...');
 
-    // Re-fetch connection to get updated tokens
-    const { data: updatedConnection } = await supabase
-      .from('xero_connections')
-      .select('*')
-      .eq('id', connection.id)
-      .single();
+    const pollDeadline = Date.now() + LOCK_TTL_MS;
+    while (Date.now() < pollDeadline) {
+      await sleep(LOCK_POLL_INTERVAL_MS);
 
-    if (updatedConnection && new Date(updatedConnection.expires_at) > thresholdTime) {
-      try {
-        return {
-          success: true,
-          accessToken: decrypt(updatedConnection.access_token)
-        };
-      } catch (err) {
-        console.error('[Token Manager] Failed to decrypt sibling-rotated access token:', err);
-        return {
-          success: false,
-          error: 'database_error',
-          message: 'Failed to decrypt sibling-rotated tokens',
-          shouldDeactivate: false,
-        };
+      const { data: updatedConnection } = await supabase
+        .from('xero_connections')
+        .select('*')
+        .eq('id', connection.id)
+        .single();
+
+      // Sibling completed the refresh — use its rotated token.
+      if (updatedConnection && new Date(updatedConnection.expires_at) > thresholdTime) {
+        try {
+          return {
+            success: true,
+            accessToken: decrypt(updatedConnection.access_token)
+          };
+        } catch (err) {
+          console.error('[Token Manager] Failed to decrypt sibling-rotated access token:', err);
+          return {
+            success: false,
+            error: 'database_error',
+            message: 'Failed to decrypt sibling-rotated tokens',
+            shouldDeactivate: false,
+          };
+        }
+      }
+
+      // Token still stale. Try to take over the lock — this succeeds once the
+      // sibling releases it (or its lock ages past the TTL). If we get it, drop
+      // into the locked-refresh path below (which re-fetches the freshest row).
+      lockResult = await acquireRefreshLock(connection.id, supabase);
+      if (lockResult.acquired) {
+        break;
       }
     }
 
-    // Still expired, fall through and try ourselves (best-effort, no lock).
-    if (updatedConnection) {
-      workingRow = updatedConnection;
-      try {
-        decryptedRefreshToken = decrypt(updatedConnection.refresh_token);
-      } catch {
-        // Keep stale rt; refreshTokenWithRetry will fail and surface error.
+    if (!lockResult.acquired) {
+      // TTL elapsed and the lock never cleared — the holder is wedged. Best-effort
+      // UNLOCKED self-refresh with the freshest row we can read, so this caller
+      // isn't blocked indefinitely by a stuck sibling.
+      console.warn('[Token Manager] Refresh lock did not clear within TTL; attempting best-effort unlocked refresh.');
+      const { data: latestRow } = await supabase
+        .from('xero_connections')
+        .select('*')
+        .eq('id', connection.id)
+        .single();
+
+      if (latestRow) {
+        // One last check: a sibling may have rotated right at the deadline.
+        if (new Date(latestRow.expires_at) > thresholdTime) {
+          try {
+            return {
+              success: true,
+              accessToken: decrypt(latestRow.access_token)
+            };
+          } catch (err) {
+            console.error('[Token Manager] Failed to decrypt sibling-rotated access token (post-TTL):', err);
+            return {
+              success: false,
+              error: 'database_error',
+              message: 'Failed to decrypt sibling-rotated tokens',
+              shouldDeactivate: false,
+            };
+          }
+        }
+
+        workingRow = latestRow;
+        try {
+          decryptedRefreshToken = decrypt(latestRow.refresh_token);
+        } catch {
+          // Keep stale rt; refreshTokenWithRetry will fail and surface error.
+        }
       }
     }
-  } else {
+  }
+
+  if (lockResult.acquired) {
     // ─── Hole A close: re-fetch row immediately after acquiring the lock. ──
     // A sibling may have completed a full refresh between our initial fetch
     // and our lock acquire. If expires_at advanced past threshold, short-circuit
@@ -398,30 +507,75 @@ async function refreshTokenWithRetry(
       const newExpiry = new Date();
       newExpiry.setSeconds(newExpiry.getSeconds() + tokens.expires_in);
 
-      // Save new tokens to database
-      const { error: updateError } = await supabase
-        .from('xero_connections')
-        .update({
-          access_token: encrypt(tokens.access_token),
-          refresh_token: encrypt(tokens.refresh_token),
-          expires_at: newExpiry.toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', connectionId);
+      // ─── REL-N5: persist the rotated token, with retry. ────────────────────
+      // Xero rotates refresh tokens: the moment this 200 came back, the OLD
+      // refresh token was invalidated and the only valid one is the freshly
+      // issued `tokens.refresh_token`. If we fail to persist it, the DB is left
+      // holding a now-dead token; the next refresh reads it, gets invalid_grant,
+      // and a perfectly healthy tenant is deactivated by a transient write blip.
+      //
+      // So we MUST persist before reporting success. The new token is valid and
+      // in-hand, so a write blip is fully recoverable — retry a few times.
+      const encryptedAccessToken = encrypt(tokens.access_token);
+      const encryptedRefreshToken = encrypt(tokens.refresh_token);
+      const newExpiryIso = newExpiry.toISOString();
+
+      let updateError: unknown = null;
+      for (let saveAttempt = 1; saveAttempt <= MAX_TOKEN_SAVE_ATTEMPTS; saveAttempt++) {
+        const { error } = await supabase
+          .from('xero_connections')
+          .update({
+            access_token: encryptedAccessToken,
+            refresh_token: encryptedRefreshToken,
+            expires_at: newExpiryIso,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', connectionId);
+
+        if (!error) {
+          updateError = null;
+          break;
+        }
+
+        updateError = error;
+        console.error(
+          `[Token Manager] Failed to save refreshed tokens (attempt ${saveAttempt}/${MAX_TOKEN_SAVE_ATTEMPTS}):`,
+          error,
+        );
+        if (saveAttempt < MAX_TOKEN_SAVE_ATTEMPTS) {
+          await sleep(TOKEN_SAVE_RETRY_DELAY_MS);
+        }
+      }
 
       if (updateError) {
-        console.error('[Token Manager] Failed to save refreshed tokens:', updateError);
-        // Return the new token anyway - it's valid even if we couldn't save it
-        // Next request will refresh again
+        // Rotation succeeded at Xero but we could NOT persist the new token
+        // after every retry. Do NOT report success — that would mask a real
+        // token desync and strand the connection on a dead DB token. Return a
+        // transient, NON-deactivating failure so the caller retries (Xero keeps
+        // the previous refresh token valid for a short grace window) instead of
+        // committing to an unpersisted rotation. The connection stays active.
+        try {
+          Sentry.captureMessage('Xero token rotated but failed to persist', {
+            level: 'error',
+            tags: {
+              invariant: 'xero_token_persist_failed',
+              connection_id: connectionId,
+              tenant_id: ctx.tenant_id ?? 'unknown',
+              business_id: ctx.business_id ?? 'unknown',
+            },
+          } as any);
+        } catch {
+          // Sentry outage must never change the return contract below.
+        }
         return {
-          success: true,
-          accessToken: tokens.access_token,
+          success: false,
           error: 'database_error',
-          message: 'Token refreshed but failed to save to database'
+          message: 'Token refreshed but failed to save to database after retries',
+          shouldDeactivate: false,
         };
       }
 
-      console.log('[Token Manager] Token refreshed successfully, expires:', newExpiry.toISOString());
+      console.log('[Token Manager] Token refreshed successfully, expires:', newExpiryIso);
       return {
         success: true,
         accessToken: tokens.access_token
@@ -547,10 +701,33 @@ async function refreshTokenWithRetry(
       return errorInfo;
     }
 
-    // For transient errors, retry with backoff
+    // For transient errors, retry with backoff. On a 429 (rate limit), honor
+    // Xero's Retry-After header instead of blindly using exponential backoff —
+    // otherwise we retry too soon and trip the limiter again (REL-N3).
     if (attempt < MAX_RETRIES) {
-      const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-      console.log(`[Token Manager] Retrying in ${delay}ms (attempt ${attempt}/${MAX_RETRIES})...`);
+      const backoffMs = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+      const retryAfterMs =
+        response.status === 429 ? parseRetryAfterMs(response.headers.get('retry-after')) : null;
+
+      if (retryAfterMs != null && retryAfterMs > MAX_RETRY_AFTER_MS) {
+        // Xero is rate-limiting us for longer than we can usefully wait inside a
+        // single invocation. Don't burn the function on a sleep that will still
+        // be throttled on wake — surface the transient error so the caller (or
+        // the next cron tick) retries later.
+        console.warn(
+          `[Token Manager] 429 Retry-After ${retryAfterMs}ms exceeds max ${MAX_RETRY_AFTER_MS}ms — deferring retry to caller.`,
+        );
+        return errorInfo;
+      }
+
+      // Wait at least our own exponential backoff, but honor a longer
+      // server-supplied Retry-After so we don't immediately re-trip the limiter.
+      const delay = retryAfterMs != null ? Math.max(retryAfterMs, backoffMs) : backoffMs;
+      console.log(
+        `[Token Manager] Retrying in ${delay}ms (attempt ${attempt}/${MAX_RETRIES})${
+          retryAfterMs != null ? ` — honoring 429 Retry-After (${retryAfterMs}ms)` : ''
+        }...`,
+      );
       await sleep(delay);
       return refreshTokenWithRetry(refreshToken, connectionId, supabase, ctx, attempt + 1);
     }
@@ -704,7 +881,7 @@ async function acquireRefreshLock(
   supabase: SupabaseClient
 ): Promise<{ acquired: boolean }> {
   const now = new Date();
-  const lockExpiry = new Date(now.getTime() - 30000); // Lock expires after 30 seconds
+  const lockExpiry = new Date(now.getTime() - LOCK_TTL_MS); // Lock expires after LOCK_TTL_MS
 
   // Try to acquire lock by setting token_refreshing_at
   // Only succeed if no other process has the lock
