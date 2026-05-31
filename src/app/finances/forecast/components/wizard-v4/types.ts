@@ -2,6 +2,7 @@
 // Based on the 8-step CFO methodology with scenario planning support
 
 import type { PLLineItem } from '@/app/finances/forecast/types';
+import type { PlanPeriod } from '@/lib/utils/plan-period';
 
 export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9; // 8 = Growth Plan, 9 = Final Review
 export type ForecastDuration = 1 | 2 | 3; // 1yr, 2yr, or 3yr forecast
@@ -60,6 +61,13 @@ export interface BusinessProfile {
   businessModel?: string;
   profileCompleted?: boolean;
 }
+
+// Re-export the PlanPeriod shape from the shared util so consumers of
+// ForecastWizardState don't need a second import. Phase 72-02 (S3 extended-
+// period bug fix) introduced this slice — it lives on `business_financial_goals`,
+// NOT on `business_profiles`, so it intentionally is NOT extended onto
+// BusinessProfile above.
+export type { PlanPeriod } from '@/lib/utils/plan-period';
 
 export interface YearlyGoals {
   revenue: number;
@@ -738,6 +746,29 @@ export interface ForecastWizardState {
   // Business profile (from business_profiles table)
   businessProfile: BusinessProfile | null;
 
+  /**
+   * Phase 72-02 — plan-period slice sourced from `business_financial_goals`.
+   *
+   * Surfaces the four extended-period columns (`is_extended_period`,
+   * `year1_months`, `plan_start_date`, `year1_end_date`) into wizard state so
+   * Step 3 (and any future plan-Y1 consumer) can render the correct month
+   * range instead of hardcoding a 12-month current-FY window.
+   *
+   * Null until the goals loader resolves; thereafter set on every refresh by
+   * `ForecastWizardV4.tsx`'s goals-loader. Persisted to localStorage as part
+   * of the wizard state — missing/undefined on legacy drafts and falls through
+   * to the standard 12-month FY behaviour in `getPlanY1MonthKeys` (consistent
+   * with Phase 56's soft-migration approach for new state fields).
+   *
+   * Optional in the type signature so legacy localStorage payloads and the
+   * various test fixtures that predate Phase 72 still construct without
+   * needing per-call updates. Read by `getPlanY1MonthKeys` /
+   * `getActualMonthKeysForPlanY1` from `@/lib/utils/plan-period`. This slice
+   * intentionally is NOT on BusinessProfile — the source-of-truth tables
+   * differ.
+   */
+  planPeriod?: PlanPeriod | null;
+
   // Step 1: Goals
   goals: Goals;
 
@@ -838,6 +869,9 @@ export interface WizardActions {
 
   // Business Profile
   setBusinessProfile: (profile: BusinessProfile | null) => void;
+
+  // Phase 72-02 — plan-period slice (extended-period plans). See state.planPeriod.
+  setPlanPeriod: (period: PlanPeriod | null) => void;
 
   // Step 1: Duration & Goals
   setForecastDuration: (duration: ForecastDuration) => void;
