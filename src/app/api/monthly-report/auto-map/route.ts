@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -8,8 +8,15 @@ import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfile
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// VALID-05a (observe mode): POST auto-maps Xero accounts for a business.
+const AutoMapPostSchema = z.object({
+  business_id: z.string(),
+})
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -41,7 +48,7 @@ function mapAccountTypeToCategory(accountType: string): string {
  *   1. Exact account_code match (most reliable)
  *   2. Fuzzy name match (exact → normalized → word-order independent)
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
     // The module-level service-role `supabase` continues to be used for data fetching below.
@@ -247,3 +254,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('monthly-report/auto-map', AutoMapPostSchema, postHandler)

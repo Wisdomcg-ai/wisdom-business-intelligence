@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -7,8 +7,30 @@ import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// VALID-05a (observe mode): GET reads `business_id`/`report_month`; POST saves a report snapshot.
+const SnapshotGetQuerySchema = z.object({
+  business_id: z.string().optional(),
+  report_month: z.string().optional(),
+})
+
+const SnapshotPostSchema = z.object({
+  business_id: z.string(),
+  report_month: z.string(),
+  fiscal_year: z.union([z.string(), z.number()]),
+  status: z.string().optional(),
+  is_draft: z.boolean().optional(),
+  unreconciled_count: z.number().optional(),
+  report_data: z.any(),
+  summary: z.any(),
+  coach_notes: z.string().nullable().optional(),
+  commentary: z.any().optional(),
+  generated_by: z.string().nullable().optional(),
+})
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,7 +42,7 @@ const supabase = createClient(
  * - With report_month: returns a specific snapshot
  * - Without report_month: returns all snapshots for the business
  */
-export async function GET(request: NextRequest) {
+async function getHandler(request: Request) {
   try {
     // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
     // The module-level service-role `supabase` continues to be used for data fetching below.
@@ -103,7 +125,7 @@ export async function GET(request: NextRequest) {
  * POST /api/monthly-report/snapshot
  * Save or finalise a report snapshot
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
     // The module-level service-role `supabase` continues to be used for data fetching below.
@@ -209,3 +231,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('monthly-report/snapshot', SnapshotGetQuerySchema, getHandler)
+export const POST = withSchema('monthly-report/snapshot', SnapshotPostSchema, postHandler)

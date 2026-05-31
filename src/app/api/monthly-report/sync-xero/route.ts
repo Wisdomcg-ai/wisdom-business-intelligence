@@ -7,7 +7,7 @@
 // business_profiles(id) added in 06A. Both bugs would cause every "Sync"
 // click on the integration page to wipe and fail to re-insert P&L rows.
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
@@ -17,6 +17,13 @@ import { syncBusinessXeroPL } from '@/lib/xero/sync-orchestrator';
 import { replaceTenantBSRows } from './bs-writer';
 import { parseSingleMonthBSReport } from './report-parsers';
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
+
+// VALID-05a (observe mode): POST triggers a Xero sync for a business.
+const SyncXeroPostSchema = z.object({
+  business_id: z.string(),
+})
 
 export const dynamic = 'force-dynamic';
 // Path A orchestrator can take >60s for multi-tenant + 24-month windows.
@@ -100,7 +107,7 @@ async function fetchSingleMonthBS(
   return { success: true, report: data?.Reports?.[0] };
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   // Stage tracker — included in error responses to aid debugging
   let stage = 'init';
   try {
@@ -315,3 +322,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withSchema('monthly-report/sync-xero', SyncXeroPostSchema, postHandler)

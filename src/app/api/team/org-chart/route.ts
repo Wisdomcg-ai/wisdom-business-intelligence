@@ -1,18 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import * as Sentry from '@sentry/nextjs'
 import { getSupabasePublishableKey, getSupabaseSecretKey } from '@/lib/supabase/keys'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// VALID-05a (observe mode): GET reads optional `user_id`; POST saves the org chart.
+const OrgChartGetQuerySchema = z.object({
+  user_id: z.string().optional(),
+})
+
+const OrgChartPostSchema = z.object({
+  org_chart: z.any(),
+  user_id: z.string().optional(),
+  business_id: z.string().optional(),
+})
 
 const adminClient = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   getSupabaseSecretKey()
 )
 
-async function getAuthUser(request: NextRequest) {
+async function getAuthUser(request: Request) {
   const cookieStore = cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -30,14 +43,14 @@ async function getAuthUser(request: NextRequest) {
 }
 
 // GET - Load org chart data
-export async function GET(request: NextRequest) {
+async function getHandler(request: Request) {
   try {
     const user = await getAuthUser(request)
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const searchParams = request.nextUrl.searchParams
+    const searchParams = new URL(request.url).searchParams
     const userId = searchParams.get('user_id') || user.id
 
     const { data, error } = await adminClient
@@ -59,7 +72,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST - Save org chart data
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     const user = await getAuthUser(request)
     if (!user) {
@@ -102,3 +115,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('team/org-chart', OrgChartGetQuerySchema, getHandler)
+export const POST = withSchema('team/org-chart', OrgChartPostSchema, postHandler)

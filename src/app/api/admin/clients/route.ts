@@ -6,7 +6,12 @@ import { sendClientInvitation } from '@/lib/email/resend'
 import { getAppBaseUrl } from '@/lib/config/brand'
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
-import { withSchema } from '@/lib/api/with-schema'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
+
+// VALID-05a (observe mode): DELETE reads the `id` query param.
+const AdminClientsDeleteQuerySchema = z.object({
+  id: z.string().optional(),
+})
 
 // VALID-03 (observe mode): models the POST create-client body.
 const AdminClientsPostSchema = z.object({
@@ -525,7 +530,7 @@ async function patchHandler(request: Request) {
 }
 
 // DELETE - Permanently delete a client and all associated data
-export async function DELETE(request: Request) {
+async function deleteHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -635,3 +640,4 @@ export async function DELETE(request: Request) {
 
 export const POST = withSchema('admin/clients', AdminClientsPostSchema, postHandler)
 export const PATCH = withSchema('admin/clients', AdminClientsPatchSchema, patchHandler)
+export const DELETE = withQuerySchema('admin/clients', AdminClientsDeleteQuerySchema, deleteHandler)

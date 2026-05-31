@@ -9,12 +9,19 @@ import {
   logSuspiciousInput,
   AI_INPUT_LIMITS
 } from '@/lib/utils/ai-sanitizer'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 })
 
-export async function POST(
+// VALID-05a (observe mode): POST analyzes a session transcript.
+const AnalyzeTranscriptPostSchema = z.object({
+  transcript_text: z.string(),
+})
+
+async function postHandler(
   request: Request,
   { params }: { params: { id: string } }
 ) {
@@ -227,3 +234,5 @@ Return ONLY valid JSON in this exact format:
     )
   }
 }
+
+export const POST = withSchema('sessions/[id]/analyze-transcript', AnalyzeTranscriptPostSchema, postHandler)

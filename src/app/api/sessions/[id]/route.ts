@@ -1,8 +1,22 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
-export async function GET(
+// VALID-05a (observe mode): GET takes no input; PUT updates session fields.
+const SessionGetQuerySchema = z.object({})
+const SessionPutSchema = z.object({
+  title: z.string().optional(),
+  scheduled_at: z.string().optional(),
+  duration_minutes: z.number().optional(),
+  status: z.string().optional(),
+  notes: z.string().optional(),
+  agenda: z.array(z.any()).optional(),
+  summary: z.string().optional(),
+})
+
+async function getHandler(
   request: Request,
   { params }: { params: { id: string } }
 ) {
@@ -56,7 +70,7 @@ export async function GET(
   }
 }
 
-export async function PUT(
+async function putHandler(
   request: Request,
   { params }: { params: { id: string } }
 ) {
@@ -164,3 +178,6 @@ export async function DELETE(
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('sessions/[id]', SessionGetQuerySchema, getHandler)
+export const PUT = withSchema('sessions/[id]', SessionPutSchema, putHandler)

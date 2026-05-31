@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -11,6 +11,14 @@ import { getPriorYearMonth } from '@/lib/monthly-report/shared'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
+
+// VALID-05a (observe mode): POST builds the full-year report for a business.
+const FullYearPostSchema = z.object({
+  business_id: z.string(),
+  fiscal_year: z.union([z.string(), z.number()]).optional(),
+})
 
 export const dynamic = 'force-dynamic'
 
@@ -93,7 +101,7 @@ function buildFullYearSubtotal(lines: FullYearLine[], label: string, category: s
  * POST /api/monthly-report/full-year
  * Generates a 12-month full year projection report
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
     // The module-level service-role `supabase` continues to be used for data fetching below.
@@ -552,3 +560,5 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const POST = withSchema('monthly-report/full-year', FullYearPostSchema, postHandler)

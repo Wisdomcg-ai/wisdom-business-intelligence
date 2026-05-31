@@ -1,11 +1,39 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// VALID-05a (observe mode): GET/DELETE read query params; POST creates, PUT updates a template.
+const TemplatesGetQuerySchema = z.object({
+  business_id: z.string().optional(),
+})
+
+const TemplatesDeleteQuerySchema = z.object({
+  id: z.string().optional(),
+  business_id: z.string().optional(),
+})
+
+const TemplatesPostSchema = z.object({
+  business_id: z.string(),
+  name: z.string(),
+  is_default: z.boolean().optional(),
+  sections: z.any(),
+  column_settings: z.any(),
+  budget_forecast_id: z.string().nullable().optional(),
+  subscription_account_codes: z.array(z.string()).optional(),
+  wages_account_names: z.array(z.string()).optional(),
+})
+
+const TemplatesPutSchema = z.object({
+  id: z.string(),
+  business_id: z.string(),
+}).passthrough()
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -40,7 +68,7 @@ async function requireBusinessAccess(businessId: string): Promise<NextResponse |
  * GET /api/monthly-report/templates?business_id=xxx
  * List all templates for this business, ordered by name.
  */
-export async function GET(request: NextRequest) {
+async function getHandler(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const businessId = searchParams.get('business_id')
@@ -77,7 +105,7 @@ export async function GET(request: NextRequest) {
  * Body: { business_id, name, is_default, sections, column_settings, budget_forecast_id?,
  *         subscription_account_codes?, wages_account_names? }
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     const body = await request.json()
     const {
@@ -143,7 +171,7 @@ export async function POST(request: NextRequest) {
  *
  * Body: { id, business_id, ...fields_to_update }
  */
-export async function PUT(request: NextRequest) {
+async function putHandler(request: Request) {
   try {
     const body = await request.json()
     const { id, business_id, ...fields } = body
@@ -211,7 +239,7 @@ export async function PUT(request: NextRequest) {
  * DELETE /api/monthly-report/templates?id=xxx&business_id=xxx
  * Delete a template. Does not affect any business settings that referenced it.
  */
-export async function DELETE(request: NextRequest) {
+async function deleteHandler(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
@@ -241,3 +269,8 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('monthly-report/templates', TemplatesGetQuerySchema, getHandler)
+export const POST = withSchema('monthly-report/templates', TemplatesPostSchema, postHandler)
+export const PUT = withSchema('monthly-report/templates', TemplatesPutSchema, putHandler)
+export const DELETE = withQuerySchema('monthly-report/templates', TemplatesDeleteQuerySchema, deleteHandler)

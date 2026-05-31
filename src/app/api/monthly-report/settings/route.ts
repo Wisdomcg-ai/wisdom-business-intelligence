@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -7,8 +7,30 @@ import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// VALID-05a (observe mode): GET reads `business_id`; POST persists report settings.
+const SettingsGetQuerySchema = z.object({
+  business_id: z.string().optional(),
+})
+
+const SettingsPostSchema = z.object({
+  business_id: z.string(),
+  sections: z.record(z.string(), z.any()).optional(),
+  show_prior_year: z.boolean().optional(),
+  show_ytd: z.boolean().optional(),
+  show_unspent_budget: z.boolean().optional(),
+  show_budget_next_month: z.boolean().optional(),
+  show_budget_annual_total: z.boolean().optional(),
+  budget_forecast_id: z.string().nullable().optional(),
+  subscription_account_codes: z.array(z.string()).optional(),
+  wages_account_names: z.array(z.string()).optional(),
+  pdf_layout: z.any().optional(),
+  report_month: z.string().optional(),
+})
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -53,7 +75,7 @@ const DEFAULT_SETTINGS = {
  * GET /api/monthly-report/settings?business_id=xxx
  * Returns the settings for this business. If none exist, return the defaults.
  */
-export async function GET(request: NextRequest) {
+async function getHandler(request: Request) {
   try {
     // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
     // The module-level service-role `supabase` continues to be used for data fetching below.
@@ -138,7 +160,7 @@ export async function GET(request: NextRequest) {
  * POST /api/monthly-report/settings
  * Upsert settings for a business
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
     const authClient = await createRouteHandlerClient()
@@ -275,3 +297,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('monthly-report/settings', SettingsGetQuerySchema, getHandler)
+export const POST = withSchema('monthly-report/settings', SettingsPostSchema, postHandler)

@@ -141,7 +141,7 @@ describe('Group A — Pre-phase shape preserved (all-private ideas)', () => {
     ]
     createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase({ ideas: { data: allPrivate, error: null } }))
 
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     const body = await res.json()
     const client = body.clients[0]
 
@@ -157,7 +157,7 @@ describe('Group A — Pre-phase shape preserved (all-private ideas)', () => {
     ]
     createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase({ ideas: { data: allPrivate, error: null } }))
 
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     const body = await res.json()
     const client = body.clients[0]
 
@@ -181,7 +181,7 @@ describe('Group B — Private vs team-shared split', () => {
     ]
     createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase({ ideas: { data: mixed, error: null } }))
 
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     const body = await res.json()
     const client = body.clients[0]
 
@@ -198,7 +198,7 @@ describe('Group B — Private vs team-shared split', () => {
     ]
     createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase({ ideas: { data: mixed, error: null } }))
 
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     const body = await res.json()
     const client = body.clients[0]
 
@@ -217,7 +217,7 @@ describe('Group C — Specific-share semantics', () => {
     ]
     createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase({ ideas: { data: ideas, error: null } }))
 
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     const body = await res.json()
     const client = body.clients[0]
 
@@ -232,7 +232,7 @@ describe('Group C — Specific-share semantics', () => {
     ]
     createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase({ ideas: { data: ideas, error: null } }))
 
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     const body = await res.json()
     const client = body.clients[0]
 
@@ -257,7 +257,7 @@ describe('Group D — Headline total preservation', () => {
     }))
     createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase({ ideas: { data: twelveIdeas, error: null } }))
 
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     const body = await res.json()
     const client = body.clients[0]
 
@@ -276,7 +276,7 @@ describe('Group E — Sentry fallback when ideas fetch errors', () => {
       makeSupabase({ ideas_error: { message: 'simulated db error' } })
     )
 
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     expect(res.status).toBe(200)
     const body = await res.json()
     const client = body.clients[0]
@@ -294,7 +294,7 @@ describe('Group F — Pre-existing response shape unchanged', () => {
   it('still emits modules + engagement + alerts on each client', async () => {
     createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase())
 
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     const body = await res.json()
     const client = body.clients[0]
 
@@ -308,7 +308,7 @@ describe('Group F — Pre-existing response shape unchanged', () => {
   it('still emits businessId, businessName, ownerId on each client', async () => {
     createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase())
 
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     const body = await res.json()
     const client = body.clients[0]
 
@@ -323,7 +323,7 @@ describe('Group F — Pre-existing response shape unchanged', () => {
     ]
     createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase({ ideas: { data: oneShared, error: null } }))
 
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     const body = await res.json()
     const client = body.clients[0]
 
@@ -339,7 +339,7 @@ describe('Group G — Zero-ideas client', () => {
   it('returns zeros across the board and does not throw', async () => {
     createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase({ ideas: { data: [], error: null } }))
 
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     expect(res.status).toBe(200)
     const body = await res.json()
     const client = body.clients[0]
@@ -358,7 +358,7 @@ describe('Group H — Auth gates remain in place', () => {
     createRouteHandlerClientMock.mockResolvedValueOnce(
       makeSupabase({ user: null, userError: { message: 'not authed' } })
     )
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     expect(res.status).toBe(401)
   })
 
@@ -366,7 +366,7 @@ describe('Group H — Auth gates remain in place', () => {
     createRouteHandlerClientMock.mockResolvedValueOnce(
       makeSupabase({ systemRole: { data: { role: 'client' }, error: null } })
     )
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     expect(res.status).toBe(403)
   })
 })

@@ -1,6 +1,11 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
+
+// VALID-05a (observe mode): GET takes no input.
+const CoachClientCompletionQuerySchema = z.object({})
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -176,7 +181,7 @@ function generateAlerts(
 
 // ─── GET Handler ──────────────────────────────────────────────────────────────
 
-export async function GET() {
+async function getHandler() {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -815,3 +820,5 @@ export async function GET() {
     )
   }
 }
+
+export const GET = withQuerySchema('coach/client-completion', CoachClientCompletionQuerySchema, getHandler)

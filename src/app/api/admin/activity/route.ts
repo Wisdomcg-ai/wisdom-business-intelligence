@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
 // Use service role client for unrestricted access
 const getServiceClient = () => createClient(
@@ -10,7 +12,12 @@ const getServiceClient = () => createClient(
   getSupabaseSecretKey()
 )
 
-export async function GET(request: Request) {
+const AdminActivityQuerySchema = z.object({
+  range: z.string().optional(),
+  limit: z.string().optional(),
+})
+
+async function getHandler(request: Request) {
   const authClient = await createRouteHandlerClient()
 
   try {
@@ -303,3 +310,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('admin/activity', AdminActivityQuerySchema, getHandler)

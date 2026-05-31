@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -10,8 +10,19 @@ import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 import { matchEmployeeName, tokenSortKey } from './_helpers'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// VALID-05a (observe mode): POST returns wages detail for a report month.
+const WagesDetailPostSchema = z.object({
+  business_id: z.string(),
+  report_month: z.string(),
+  fiscal_year: z.number(),
+  wages_account_names: z.array(z.string()).optional(),
+  budget_forecast_id: z.string().optional(),
+})
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -53,7 +64,7 @@ const FREQUENCY_LABELS: Record<string, string> = {
  * - Account-level totals (actual vs budget from P&L lines)
  * - Employee-level detail from Xero PayRuns with budget comparison
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
     // The module-level service-role `supabase` continues to be used for data fetching below.
@@ -676,3 +687,5 @@ function estimatePayRunsInMonth(frequency: string): number {
     default: return 2 // default fortnightly
   }
 }
+
+export const POST = withSchema('monthly-report/wages-detail', WagesDetailPostSchema, postHandler)
