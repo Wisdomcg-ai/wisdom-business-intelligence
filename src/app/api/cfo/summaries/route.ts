@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -14,8 +14,18 @@ import {
   getFiscalYear,
   DEFAULT_YEAR_START_MONTH,
 } from '@/lib/utils/fiscal-year-utils'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// GET searchParams: ?month=YYYY-MM (handler still enforces presence/format; this
+// observe-mode schema just models the shape — permissive so reads never reject).
+const QuerySchema = z
+  .object({
+    month: z.string().optional(),
+  })
+  .passthrough()
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -112,7 +122,7 @@ function sumMonthlyValues(lines: any[], monthKey: string, key: 'monthly_values' 
  * - financial_metrics (cash + unreconciled)
  * - cfo_report_status (report state)
  */
-export async function GET(request: NextRequest) {
+async function getHandler(request: Request) {
   try {
     const authClient = await createRouteHandlerClient()
     const { data: { user }, error: authError } = await authClient.auth.getUser()
@@ -423,3 +433,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('cfo/summaries', QuerySchema, getHandler)

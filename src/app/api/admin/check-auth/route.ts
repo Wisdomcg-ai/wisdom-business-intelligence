@@ -1,8 +1,13 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
-export async function GET() {
+// Auth check consumes no body or query — permissive observe-mode schema.
+const QuerySchema = z.object({}).passthrough()
+
+async function getHandler() {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -47,3 +52,5 @@ export async function GET() {
     }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('admin/check-auth', QuerySchema, getHandler)

@@ -1,11 +1,29 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withQuerySchema, withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
 
+// GET searchParams: ?unread_only=true&limit=50 (both optional, string-typed query).
+const GetQuerySchema = z
+  .object({
+    unread_only: z.string().optional(),
+    limit: z.string().optional(),
+  })
+  .passthrough()
+
+// PUT body: { notification_id?, mark_all_read? } — one of the two drives the update.
+const PutBodySchema = z
+  .object({
+    notification_id: z.string().optional(),
+    mark_all_read: z.boolean().optional(),
+  })
+  .passthrough()
+
 // GET /api/notifications - List user's notifications
-export async function GET(request: Request) {
+async function getHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -45,8 +63,10 @@ export async function GET(request: Request) {
   }
 }
 
+export const GET = withQuerySchema('notifications', GetQuerySchema, getHandler)
+
 // PUT /api/notifications - Mark notification(s) as read
-export async function PUT(request: Request) {
+async function putHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -96,3 +116,5 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
+
+export const PUT = withSchema('notifications', PutBodySchema, putHandler)
