@@ -168,6 +168,16 @@ ALTER TABLE "public"."sprint_key_actions"
 -- Per docs/db/fk-policy.md Bucket A row #32
 ALTER TABLE "public"."strategic_initiatives"
   ALTER COLUMN "user_id" DROP NOT NULL;
+-- Orphan pre-clean: this FK was never enforced in production (the only
+-- strategic_initiatives_user_id_fkey constraint lived on the *_backup table),
+-- so user_id accumulated rows referencing deleted auth.users. The ADD
+-- CONSTRAINT below validates existing rows and would abort on those orphans.
+-- Nulling them is exactly what ON DELETE SET NULL would have done had the FK
+-- been enforced. No-op on clean/fresh databases (forks, new tenants).
+UPDATE "public"."strategic_initiatives" si
+   SET "user_id" = NULL
+ WHERE si."user_id" IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM "auth"."users" u WHERE u.id = si."user_id");
 ALTER TABLE "public"."strategic_initiatives"
   DROP CONSTRAINT IF EXISTS "strategic_initiatives_user_id_fkey";
 ALTER TABLE "public"."strategic_initiatives"
