@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react'
+import { APP_NAME } from '@/lib/config/brand'
 
 interface Coach {
   name: string
@@ -63,7 +64,7 @@ export function ClientSidebar({ businessName = 'My Business', userName = 'User',
         <Link href="/dashboard" className={`flex items-center ${isExpanded ? '' : 'justify-center'}`}>
           <Image
             src="/images/logo-wbi.png"
-            alt="WisdomBi"
+            alt={APP_NAME}
             width={410}
             height={170}
             className={`${isExpanded ? 'h-12' : 'h-10'} w-auto`}

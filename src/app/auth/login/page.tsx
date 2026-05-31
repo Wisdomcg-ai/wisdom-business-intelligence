@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Loader2, Mail, Lock, Building2, AlertCircle } from 'lucide-react'
 import { getUserSystemRole } from '@/lib/auth/roles'
 import { isLockTimeoutError, recoverFromLockTimeout } from '@/lib/auth/lock-recovery'
+import { APP_NAME } from '@/lib/config/brand'
 
 function safeNext(raw: string | null): string | null {
   if (!raw) return null
@@ -150,7 +151,7 @@ function LoginPageInner() {
         <div className="text-center mb-8">
           <Image
             src="/images/logo-tight.png"
-            alt="WisdomBi"
+            alt={APP_NAME}
             width={550}
             height={300}
             className="h-24 w-auto mx-auto mb-4"

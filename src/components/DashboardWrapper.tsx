@@ -42,6 +42,7 @@ import {
   HeartHandshake,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { APP_NAME } from '@/lib/config/brand';
 
 interface BusinessData {
   name: string;
@@ -235,7 +236,7 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
           <Link href="/dashboard" className="block">
             <Image
               src="/images/logo-tight.png"
-              alt="WisdomBi"
+              alt={APP_NAME}
               width={550}
               height={300}
               className="h-16 w-auto"
@@ -316,7 +317,7 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
             </Link>
           </div>
           <p className="text-xs text-gray-400 text-center">
-            © 2025 WisdomBi
+            © 2025 {APP_NAME}
           </p>
         </div>
       </div>

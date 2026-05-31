@@ -4,6 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/resend";
 import * as Sentry from '@sentry/nextjs'
 import { recordHeartbeat } from '@/lib/cron/heartbeat'
+import { APP_NAME } from '@/lib/config/brand'
 
 const CRON_PATH = '/api/cron/daily-health-report'
 
@@ -156,7 +157,7 @@ export async function GET(request: NextRequest) {
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;background:#f9fafb;">
   <div style="text-align:center;margin-bottom:24px;">
-    <img src="${LOGO_URL}" alt="WisdomBI" style="max-width:160px;height:auto;" />
+    <img src="${LOGO_URL}" alt="${APP_NAME}" style="max-width:160px;height:auto;" />
   </div>
   <h2 style="color:${BRAND_NAVY};text-align:center;margin-bottom:4px;">Daily Health Report</h2>
   <p style="text-align:center;color:#6b7280;margin-top:0;">${dateStr}</p>
@@ -192,14 +193,14 @@ export async function GET(request: NextRequest) {
 
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
   <p style="color:#9ca3af;font-size:12px;text-align:center;">
-    WisdomBI - Daily Health Report<br>Generated at ${now.toISOString()}
+    ${APP_NAME} - Daily Health Report<br>Generated at ${now.toISOString()}
   </p>
 </body>
 </html>`;
 
     const result = await sendEmail({
       to: adminEmail,
-      subject: `WisdomBI Health Report — ${statusLabel} — ${dateStr}`,
+      subject: `${APP_NAME} Health Report — ${statusLabel} — ${dateStr}`,
       html,
     });
 

@@ -3,6 +3,8 @@
  * Compatible with Google Calendar, Outlook, and Apple Calendar
  */
 
+import { APP_NAME } from '@/lib/config/brand'
+
 interface ICSEvent {
   title: string
   description?: string
@@ -32,7 +34,7 @@ export function generateICS(event: ICSEvent): string {
   let ics = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//WisdomBI//Coaching Session//EN',
+    `PRODID:-//${APP_NAME}//Coaching Session//EN`,
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',

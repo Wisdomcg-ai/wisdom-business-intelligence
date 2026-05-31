@@ -2,6 +2,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { NextResponse } from 'next/server'
 import { sendClientInvitation } from '@/lib/email/resend'
+import { getAppBaseUrl } from '@/lib/config/brand'
 import * as Sentry from '@sentry/nextjs'
 
 // Generate a secure random password
@@ -87,7 +88,7 @@ export async function POST(request: Request) {
     const clientName = business.owner_name?.split(' ')[0] || 'there'
 
     // Send invitation email
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+    const baseUrl = getAppBaseUrl()
 
     const emailResult = await sendClientInvitation({
       to: email,

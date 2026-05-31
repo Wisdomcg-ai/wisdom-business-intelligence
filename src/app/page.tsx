@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { ArrowRight, Play, CheckCircle2 } from 'lucide-react'
+import { APP_NAME } from '@/lib/config/brand'
 
 export default function HomePage() {
   return (
@@ -15,7 +16,7 @@ export default function HomePage() {
             <Link href="/" className="flex-shrink-0">
               <Image
                 src="/images/logo-tight.png"
-                alt="WisdomBi"
+                alt={APP_NAME}
                 width={550}
                 height={300}
                 className="h-28 lg:h-36 w-auto"
@@ -105,7 +106,7 @@ export default function HomePage() {
                 </div>
                 <Image
                   src="/images/screenshot1.png"
-                  alt="WisdomBi Platform"
+                  alt={`${APP_NAME} Platform`}
                   width={800}
                   height={500}
                   className="w-full"
@@ -238,7 +239,7 @@ export default function HomePage() {
               <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
                 <Image
                   src="/images/screenshot6.png"
-                  alt="WisdomBi Dashboard"
+                  alt={`${APP_NAME} Dashboard`}
                   width={700}
                   height={500}
                   className="w-full"
@@ -253,7 +254,7 @@ export default function HomePage() {
       <section className="py-24 lg:py-32 bg-brand-navy">
         <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
           <blockquote className="text-2xl lg:text-3xl text-white font-medium leading-relaxed">
-            "After coaching over 1,000 businesses, we saw the same pattern — owners drowning in data and ideas but lacking clarity, focus, and execution. WisdomBi closes the gap between knowing and doing."
+            "After coaching over 1,000 businesses, we saw the same pattern — owners drowning in data and ideas but lacking clarity, focus, and execution. {APP_NAME} closes the gap between knowing and doing."
           </blockquote>
           <p className="mt-8 text-gray-300">
             — Wisdom Consulting Group
@@ -268,7 +269,7 @@ export default function HomePage() {
             Ready to Build a Business That Runs on Clarity?
           </h2>
           <p className="mt-6 text-xl text-gray-600">
-            Join business owners who use WisdomBi to turn goals into action — every single week.
+            Join business owners who use {APP_NAME} to turn goals into action — every single week.
           </p>
           <Link
             href="/auth/login"
@@ -289,7 +290,7 @@ export default function HomePage() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <Image
               src="/images/logo-tight.png"
-              alt="WisdomBi"
+              alt={APP_NAME}
               width={550}
               height={300}
               className="h-20 w-auto"
@@ -299,7 +300,7 @@ export default function HomePage() {
               <Link href="/terms" className="hover:text-gray-900 transition-colors">Terms</Link>
             </div>
             <p className="text-gray-400">
-              © {new Date().getFullYear()} WisdomBi. All rights reserved.
+              © {new Date().getFullYear()} {APP_NAME}. All rights reserved.
             </p>
           </div>
         </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import { APP_NAME } from '@/lib/config/brand'
 
 interface BrandedLoaderProps {
   message?: string
@@ -38,7 +39,7 @@ export default function BrandedLoader({
       <div className="relative">
         <Image
           src="/images/logo-wbi.png"
-          alt="WisdomBi"
+          alt={APP_NAME}
           width={410}
           height={170}
           className={`${sizeClasses[size]} w-auto animate-pulse`}

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { HelpCircle, Book, Mail, MessageSquare, FileText, Search, ChevronDown, ChevronUp } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
+import { SUPPORT_EMAIL } from '@/lib/config/brand'
 
 interface FAQItem {
   question: string
@@ -95,7 +96,7 @@ export default function HelpPage() {
           {/* Quick Links */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             <a
-              href="mailto:support@wisdombi.ai"
+              href={`mailto:${SUPPORT_EMAIL}`}
               className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 hover:border-brand-orange-400 hover:shadow-md transition-all"
             >
               <div className="flex items-start gap-3">
@@ -103,7 +104,7 @@ export default function HelpPage() {
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-1 text-sm sm:text-base">Email Support</h3>
                   <p className="text-xs sm:text-sm text-gray-600">Get help via email</p>
-                  <p className="text-xs text-brand-orange mt-2">support@wisdombi.ai</p>
+                  <p className="text-xs text-brand-orange mt-2">{SUPPORT_EMAIL}</p>
                 </div>
               </div>
             </a>
@@ -195,7 +196,7 @@ export default function HelpPage() {
               Can't find what you're looking for? Our support team is here to help.
             </p>
             <a
-              href="mailto:support@wisdombi.ai"
+              href={`mailto:${SUPPORT_EMAIL}`}
               className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange text-white text-sm font-medium rounded-lg hover:bg-brand-orange-600 transition-colors"
             >
               <Mail className="w-4 h-4" />
