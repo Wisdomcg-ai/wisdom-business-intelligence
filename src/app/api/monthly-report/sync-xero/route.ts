@@ -14,6 +14,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids';
 import { syncBusinessXeroPL } from '@/lib/xero/sync-orchestrator';
+import { replaceTenantBSRows } from './bs-writer';
 import { parseSingleMonthBSReport } from './report-parsers';
 import * as Sentry from '@sentry/nextjs'
 
@@ -256,27 +257,25 @@ export async function POST(request: NextRequest) {
         (l) => Object.keys(l.monthly_values).length > 0,
       );
 
-      // Replace this tenant's BS rows (scoped)
-      stage = `db_delete_bs:${tenantId}`;
-      const { error: bsDeleteError } = await supabaseAdmin
-        .from('xero_balance_sheet_lines')
-        .delete()
-        .in('business_id', ids.all)
-        .eq('tenant_id', tenantId);
-      if (bsDeleteError) {
-        Sentry.captureMessage(`[Sync Xero BS] ${tenantLabel}: delete failed — ${bsDeleteError.message}`, 'warning' as any);
-      } else if (tenantBSLines.length > 0) {
-        stage = `db_insert_bs:${tenantId}`;
-        const { error: bsInsertError } = await supabaseAdmin
-          .from('xero_balance_sheet_lines')
-          .insert(tenantBSLines);
-        if (bsInsertError) {
-          Sentry.captureMessage(`[Sync Xero BS] ${tenantLabel}: insert failed — ${bsInsertError.message}`, 'warning' as any);
-        } else {
-          if (process.env.NODE_ENV !== 'production') {
-            console.log(`[Sync Xero BS] ${tenantLabel}: ${tenantBSLines.length} BS accounts (${bsMonths.length} months)`);
-          }
-        }
+      // Replace this tenant's BS rows atomically-enough (R25 / DM-N5).
+      // delete + insert are scoped to the same id-space (ids.bizId — the table
+      // FK is businesses(id)); an empty fetch never wipes good rows; and a
+      // failed insert restores the prior rows + surfaces as a tenant error
+      // instead of silently returning success with an empty balance sheet.
+      stage = `db_swap_bs:${tenantId}`;
+      const bsSwap = await replaceTenantBSRows(supabaseAdmin, {
+        businessId: ids.bizId,
+        tenantId,
+        tenantLabel,
+        newRows: tenantBSLines,
+      });
+      if (bsSwap.status === 'delete_failed' || bsSwap.status === 'insert_failed') {
+        perTenantErrors.push({
+          tenant_id: tenantId,
+          error: `BS sync failed (${bsSwap.status}${bsSwap.status === 'insert_failed' ? `, restored=${bsSwap.restored ?? false}` : ''}): ${bsSwap.error ?? 'unknown'}`,
+        });
+      } else if (bsSwap.status === 'written' && process.env.NODE_ENV !== 'production') {
+        console.log(`[Sync Xero BS] ${tenantLabel}: ${bsSwap.written} BS accounts (${bsMonths.length} months)`);
       }
 
       await supabaseAdmin
