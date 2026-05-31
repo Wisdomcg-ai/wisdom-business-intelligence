@@ -68,7 +68,7 @@ vi.mock('@supabase/supabase-js', () => ({
     auth: { admin: { updateUserById: mockAdminUpdateUser } },
   })),
 }))
-const mockSendEmail = vi.fn(async () => ({ success: true, id: 'e1' }))
+const mockSendEmail = vi.fn(async (..._a: any[]) => ({ success: true, id: 'e1' }))
 vi.mock('@/lib/email/resend', () => ({
   sendEmail: (...a: any[]) => mockSendEmail(...a),
   sendPasswordReset: vi.fn(async () => ({ success: true })),

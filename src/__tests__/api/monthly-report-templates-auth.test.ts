@@ -18,17 +18,19 @@ import { NextRequest } from 'next/server';
 
 // ─── Auth-gate mocks ─────────────────────────────────────────────────────────
 
-const mockGetUser = vi.fn(async () => ({
-  data: { user: { id: 'user-1' } },
-  error: null,
-}));
+const mockGetUser = vi.fn(
+  async (): Promise<{ data: { user: { id: string } | null }; error: null }> => ({
+    data: { user: { id: 'user-1' } },
+    error: null,
+  })
+);
 vi.mock('@/lib/supabase/server', () => ({
   createRouteHandlerClient: vi.fn(async () => ({
     auth: { getUser: mockGetUser },
   })),
 }));
 
-const mockVerifyBusinessAccess = vi.fn(async () => true);
+const mockVerifyBusinessAccess = vi.fn(async (..._args: any[]) => true);
 vi.mock('@/lib/utils/verify-business-access', () => ({
   verifyBusinessAccess: (...args: any[]) => mockVerifyBusinessAccess(...args),
 }));
