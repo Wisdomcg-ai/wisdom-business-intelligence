@@ -27,6 +27,27 @@ vi.mock('@/lib/utils/resolve-xero-business-id', () => ({
   resolveXeroBusinessId: vi.fn(async (id: string) => id),
 }));
 
+// R24 (SEC-N1): the route now requires an authenticated user with access to
+// the requested business. Default both mocks to the happy path (authed user +
+// access granted) so the existing payroll-mapping tests below exercise the
+// data path unchanged. The auth-gate tests at the bottom override these.
+const mockGetUser = vi.fn(
+  async (): Promise<{ data: { user: { id: string } | null }; error: null }> => ({
+    data: { user: { id: 'user-1' } },
+    error: null,
+  })
+);
+vi.mock('@/lib/supabase/server', () => ({
+  createRouteHandlerClient: vi.fn(async () => ({
+    auth: { getUser: mockGetUser },
+  })),
+}));
+
+const mockVerifyBusinessAccess = vi.fn(async (..._args: any[]) => true);
+vi.mock('@/lib/utils/verify-business-access', () => ({
+  verifyBusinessAccess: (...args: any[]) => mockVerifyBusinessAccess(...args),
+}));
+
 // Module-level Supabase client (`const supabase = createClient(...)`) — mock
 // `@supabase/supabase-js` to return a stub whose `.from('xero_connections')`
 // chain resolves to a single active connection.
@@ -85,6 +106,16 @@ describe('GET /api/Xero/employees — PayrollCalendars join + new fields', () =>
     vi.restoreAllMocks();
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local';
     process.env.SUPABASE_SERVICE_KEY = 'service-key';
+    // R24: clear accumulated call history, then re-establish auth-gate defaults
+    // after restoreAllMocks() so each data-path test sees an authenticated user
+    // with access granted and a clean per-test call count.
+    mockGetUser.mockReset();
+    mockVerifyBusinessAccess.mockReset();
+    mockGetUser.mockImplementation(async () => ({
+      data: { user: { id: 'user-1' } },
+      error: null,
+    }));
+    mockVerifyBusinessAccess.mockImplementation(async () => true);
   });
 
   it('Test A — fetches PayrollCalendars first, then PayRuns list, then joins CalendarType to populate pay_frequency + standard_hours + calculation_type', async () => {
@@ -609,5 +640,48 @@ describe('GET /api/Xero/employees — PayrollCalendars join + new fields', () =>
     expect(byId['emp-f'].annual_salary).toBe(164814);
     expect(byId['emp-f'].pay_frequency).toBe('fortnightly');
     expect(byId['emp-f'].derived_from).toBe('payrun_history');
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // R24 (SEC-N1) — auth gate
+  //
+  // This route returns live Xero payroll PII. Before R24 it was reachable by
+  // any unauthenticated caller with a business_id. These tests lock the gate:
+  //   - no authenticated user → 401, no Xero fetch attempted
+  //   - authenticated but no access to the business → 403, no Xero fetch
+  //   - the data-path tests above implicitly cover the authed+access case.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  it('Test K — returns 401 and fetches nothing when there is no authenticated user', async () => {
+    mockGetUser.mockImplementation(async () => ({
+      data: { user: null },
+      error: null,
+    }));
+    const fetchSpy = vi.spyOn(global, 'fetch');
+
+    const { GET } = await import('@/app/api/Xero/employees/route');
+    const res = await GET(makeRequest());
+    expect(res.status).toBe(401);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mockVerifyBusinessAccess).not.toHaveBeenCalled();
+  });
+
+  it('Test L — returns 403 and fetches nothing when the user lacks access to the business', async () => {
+    mockVerifyBusinessAccess.mockImplementation(async () => false);
+    const fetchSpy = vi.spyOn(global, 'fetch');
+
+    const { GET } = await import('@/app/api/Xero/employees/route');
+    const res = await GET(makeRequest());
+    expect(res.status).toBe(403);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mockVerifyBusinessAccess).toHaveBeenCalledWith('user-1', 'biz-1');
+  });
+
+  it('Test M — still 400 (no auth work) when business_id is absent', async () => {
+    const { GET } = await import('@/app/api/Xero/employees/route');
+    const res = await GET(makeRequest('http://test.local/api/Xero/employees'));
+    expect(res.status).toBe(400);
+    // The presence check runs before the auth gate, so no access check fires.
+    expect(mockVerifyBusinessAccess).not.toHaveBeenCalled();
   });
 });

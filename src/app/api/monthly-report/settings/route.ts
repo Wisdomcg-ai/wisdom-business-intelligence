@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -84,6 +85,15 @@ export async function GET(request: NextRequest) {
       businessId,
     )
     if (_sectionBlocked) return _sectionBlocked
+
+    // R29 (SEC-N2): hard authorization gate. The section-permission check above
+    // is LOG_ONLY by default, so it does not block cross-tenant access on its
+    // own. The module-level Supabase client is service-role and bypasses RLS,
+    // making this the only durable tenant-isolation enforcement on this route.
+    const _hasAccess = await verifyBusinessAccess(user.id, businessId)
+    if (!_hasAccess) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const { data: settings, error } = await supabase
       .from('monthly_report_settings')
@@ -176,6 +186,15 @@ export async function POST(request: NextRequest) {
       business_id,
     )
     if (_sectionBlocked) return _sectionBlocked
+
+    // R29 (SEC-N2): hard authorization gate. The section-permission check above
+    // is LOG_ONLY by default, so it does not block cross-tenant access on its
+    // own. The module-level Supabase client is service-role and bypasses RLS,
+    // making this the only durable tenant-isolation enforcement on this route.
+    const _hasAccess = await verifyBusinessAccess(user.id, business_id)
+    if (!_hasAccess) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     // Merge provided sections with defaults (so partial updates work)
     const mergedSections = sections

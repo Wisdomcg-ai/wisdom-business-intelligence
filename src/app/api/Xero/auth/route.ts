@@ -4,13 +4,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { createSignedOAuthState } from '@/lib/utils/encryption';
+import { getAppBaseUrl } from '@/lib/config/brand'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
 // Get environment variables
 const XERO_CLIENT_ID = process.env.XERO_CLIENT_ID!;
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const APP_URL = getAppBaseUrl();
 const REDIRECT_URI = `${APP_URL}/api/Xero/callback`;
 
 // Xero OAuth URL

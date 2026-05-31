@@ -7,6 +7,7 @@ import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { SUPERANNUATION } from '@/app/finances/forecast/constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +32,10 @@ const DEFAULT_SETTINGS = {
   payg_wh_schedule: 'quarterly_bas_au',
   super_expense_account_id: null,
   super_payable_account_id: null,
-  super_rate: 0.115,
+  // Statutory AU Superannuation Guarantee rate. Sourced from the single
+  // source of truth (SUPERANNUATION.DEFAULT_RATE = 0.12) rather than a stale
+  // hardcoded 0.115 (the FY2024-25 rate, superseded from 1 July 2025). (R36)
+  super_rate: SUPERANNUATION.DEFAULT_RATE,
   super_schedule: 'quarterly_super_au',
   depreciation_expense_account_id: null,
   depreciation_accumulated_account_ids: [] as string[],

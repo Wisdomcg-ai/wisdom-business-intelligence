@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runHealthChecks } from "@/lib/health-checks";
+import { runHealthChecks, getLastSyncByTenant } from "@/lib/health-checks";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/resend";
 import * as Sentry from '@sentry/nextjs'
 import { recordHeartbeat } from '@/lib/cron/heartbeat'
+import { APP_NAME } from '@/lib/config/brand'
 
 const CRON_PATH = '/api/cron/daily-health-report'
 
@@ -67,11 +68,19 @@ export async function GET(request: NextRequest) {
         .from("businesses")
         .select("id, name, updated_at")
         .lt("updated_at", thirtyDaysAgo),
-      // Xero connections with issues
+      // Xero connections with issues.
+      // REL-N1: the column is `expires_at`, not the nonexistent `token_expires_at`
+      // (which silently errored this query). tenant_id enables the sync_jobs
+      // freshness join below.
       supabase
         .from("xero_connections")
-        .select("id, business_id, is_active, token_expires_at, last_synced_at"),
+        .select("id, business_id, tenant_id, is_active, expires_at, last_synced_at"),
     ]);
+
+    // REL-N2: cron-safe sync freshness keyed on the stable Xero tenant_id.
+    // last_synced_at alone false-positives "stale" on cron-only tenants because
+    // the nightly cron never writes it.
+    const lastSyncByTenant = await getLastSyncByTenant(supabase);
 
     // Process error summary
     const errorCounts: Record<string, number> = {};
@@ -88,10 +97,15 @@ export async function GET(request: NextRequest) {
       const oneDayMs = 24 * 60 * 60 * 1000;
       const activeConnections = xeroConnectionsResult.data.filter((c: any) => c.is_active);
       for (const conn of activeConnections) {
-        if (conn.token_expires_at && new Date(conn.token_expires_at).getTime() < now.getTime() + oneDayMs) {
+        if (conn.expires_at && new Date(conn.expires_at).getTime() < now.getTime() + oneDayMs) {
           xeroIssues.push(`Xero token expiring soon (business ${conn.business_id})`);
         }
-        if (conn.last_synced_at && now.getTime() - new Date(conn.last_synced_at).getTime() > oneDayMs) {
+        const lastConnSync = conn.last_synced_at ? new Date(conn.last_synced_at).getTime() : 0;
+        const lastJobSync = conn.tenant_id ? lastSyncByTenant.get(conn.tenant_id) ?? 0 : 0;
+        const freshest = Math.max(lastConnSync, lastJobSync);
+        // Only flag tenants that have synced before but not within the last day;
+        // a never-synced new connection (freshest === 0) is not "stale".
+        if (freshest > 0 && now.getTime() - freshest > oneDayMs) {
           xeroIssues.push(`Xero sync stale (business ${conn.business_id})`);
         }
       }
@@ -143,7 +157,7 @@ export async function GET(request: NextRequest) {
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;background:#f9fafb;">
   <div style="text-align:center;margin-bottom:24px;">
-    <img src="${LOGO_URL}" alt="WisdomBI" style="max-width:160px;height:auto;" />
+    <img src="${LOGO_URL}" alt="${APP_NAME}" style="max-width:160px;height:auto;" />
   </div>
   <h2 style="color:${BRAND_NAVY};text-align:center;margin-bottom:4px;">Daily Health Report</h2>
   <p style="text-align:center;color:#6b7280;margin-top:0;">${dateStr}</p>
@@ -179,14 +193,14 @@ export async function GET(request: NextRequest) {
 
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
   <p style="color:#9ca3af;font-size:12px;text-align:center;">
-    WisdomBI - Daily Health Report<br>Generated at ${now.toISOString()}
+    ${APP_NAME} - Daily Health Report<br>Generated at ${now.toISOString()}
   </p>
 </body>
 </html>`;
 
     const result = await sendEmail({
       to: adminEmail,
-      subject: `WisdomBI Health Report — ${statusLabel} — ${dateStr}`,
+      subject: `${APP_NAME} Health Report — ${statusLabel} — ${dateStr}`,
       html,
     });
 

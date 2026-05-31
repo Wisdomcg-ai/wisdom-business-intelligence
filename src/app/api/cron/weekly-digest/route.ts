@@ -3,6 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { sendEmail } from '@/lib/email/resend'
 import * as Sentry from '@sentry/nextjs'
 import { recordHeartbeat } from '@/lib/cron/heartbeat'
+import { APP_NAME } from '@/lib/config/brand'
 
 const CRON_PATH = '/api/cron/weekly-digest'
 
@@ -272,7 +273,7 @@ function buildDigestEmail(data: {
       <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
         <!-- Header -->
         <div style="background: ${BRAND_NAVY}; padding: 24px; text-align: center;">
-          <img src="${LOGO_URL}" alt="WisdomBI" style="max-width: 150px; height: auto; margin-bottom: 12px;" />
+          <img src="${LOGO_URL}" alt="${APP_NAME}" style="max-width: 150px; height: auto; margin-bottom: 12px;" />
           <h1 style="color: white; margin: 0; font-size: 20px;">Weekly Coaching Digest</h1>
         </div>
 
@@ -348,7 +349,7 @@ function buildDigestEmail(data: {
         <!-- Footer -->
         <div style="padding: 16px 24px; background: #f9fafb; border-top: 1px solid #e5e7eb; text-align: center;">
           <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-            WisdomBI — Weekly Coaching Digest<br>
+            ${APP_NAME} — Weekly Coaching Digest<br>
             Sent every Monday at 7:00 AM AEST
           </p>
         </div>

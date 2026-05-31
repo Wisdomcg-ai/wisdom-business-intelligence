@@ -2,6 +2,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { NextResponse } from 'next/server'
 import { sendClientInvitation } from '@/lib/email/resend'
+import { getAppBaseUrl } from '@/lib/config/brand'
 import * as Sentry from '@sentry/nextjs'
 
 // Generate a secure random password
@@ -223,7 +224,7 @@ export async function POST(request: Request) {
         ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
         : user.email?.split('@')[0] || 'Your Coach'
 
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+      const baseUrl = getAppBaseUrl()
 
       const emailResult = await sendClientInvitation({
         to: ownerEmail,
@@ -257,7 +258,7 @@ export async function POST(request: Request) {
       const coachName = user.user_metadata?.first_name && user.user_metadata?.last_name
         ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
         : user.email?.split('@')[0] || 'Your Coach'
-      const teamBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+      const teamBaseUrl = getAppBaseUrl()
 
       for (const member of teamMembers) {
         try {

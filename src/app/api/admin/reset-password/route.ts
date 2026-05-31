@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { sendPasswordReset } from '@/lib/email/resend'
+import { getAppBaseUrl } from '@/lib/config/brand'
 import crypto from 'crypto'
 import { checkRateLimit, getClientIP, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 import { csrfProtection } from '@/lib/security/csrf'
@@ -60,14 +61,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if user is admin
-    const { data: userData } = await supabase
-      .from('users')
-      .select('system_role')
-      .eq('id', user.id)
-      .single()
+    // Check if user is admin.
+    // R31 (SEC-N4): gate on the canonical `system_roles` table — the single
+    // super-admin source of truth used by every other privileged route — NOT
+    // the legacy `users.system_role` column, which can drift out of sync.
+    const { data: roleData } = await supabase
+      .from('system_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-    if (userData?.system_role !== 'super_admin') {
+    if (roleData?.role !== 'super_admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -110,7 +114,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       const userName = targetUser?.first_name || email.split('@')[0]
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://wisdombi.ai'
+      const appUrl = getAppBaseUrl()
       const resetUrl = `${appUrl}/auth/update-password?token=${token}`
 
       // Send email

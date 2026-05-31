@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import * as Sentry from '@sentry/nextjs'
 
@@ -29,6 +30,14 @@ export async function GET(request: NextRequest) {
     const business_id = searchParams.get('business_id')
     if (!business_id) {
       return NextResponse.json({ error: 'business_id required' }, { status: 400 })
+    }
+
+    // R29 (SEC-N3): hard authorization gate. This debug route dumps a tenant's
+    // full P&L via a service-role client that bypasses RLS, with auth-only and
+    // no access check — a cross-tenant IDOR without this gate.
+    const _hasAccess = await verifyBusinessAccess(user.id, business_id)
+    if (!_hasAccess) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     // 1. Find active forecast (resolve business_profiles.id from businesses.id)

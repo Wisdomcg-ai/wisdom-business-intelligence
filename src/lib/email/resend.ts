@@ -1,10 +1,12 @@
 import { Resend } from 'resend';
+import { SENDER_FROM, BRAND_COLORS, BRAND_LOGO_URL, APP_NAME } from '@/lib/config/brand';
 
 // Initialize Resend client
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Default from address - update this to your verified domain
-const DEFAULT_FROM = 'WisdomBI <noreply@mail.wisdombi.ai>';
+// Default from address — env-driven via the brand config (R7). Override with
+// SENDER_FROM / SENDER_EMAIL for the fork.
+const DEFAULT_FROM = SENDER_FROM;
 
 /**
  * Escape HTML entities to prevent XSS in email templates
@@ -20,14 +22,14 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, char => htmlEntities[char]);
 }
 
-// Brand colors
-const BRAND_ORANGE = '#F5821F';
-const BRAND_NAVY = '#172238';
-const BRAND_ORANGE_LIGHT = '#fff8f1';
-const BRAND_NAVY_LIGHT = '#f4f6f9';
+// Brand colors — env-driven via the brand config (R7).
+const BRAND_ORANGE = BRAND_COLORS.orange;
+const BRAND_NAVY = BRAND_COLORS.navy;
+const BRAND_ORANGE_LIGHT = BRAND_COLORS.orangeLight;
+const BRAND_NAVY_LIGHT = BRAND_COLORS.navyLight;
 
 // Logo URL - uses production domain for email compatibility
-const LOGO_URL = 'https://wisdombi.ai/images/logo-main.png';
+const LOGO_URL = BRAND_LOGO_URL;
 
 export interface SendEmailOptions {
   to: string | string[];
@@ -50,7 +52,7 @@ export interface EmailResult {
  */
 const getEmailHeader = () => `
   <div style="text-align: center; margin-bottom: 30px;">
-    <img src="${LOGO_URL}" alt="WisdomBI" style="max-width: 180px; height: auto;" />
+    <img src="${LOGO_URL}" alt="${APP_NAME}" style="max-width: 180px; height: auto;" />
   </div>
 `;
 
@@ -60,7 +62,7 @@ const getEmailHeader = () => `
 const getEmailFooter = (to?: string) => `
   <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
   <p style="color: #9ca3af; font-size: 12px; text-align: center;">
-    WisdomBI - Business Intelligence Platform<br>
+    ${APP_NAME} - Business Intelligence Platform<br>
     ${to ? `This email was sent to ${to}` : ''}
   </p>
 `;
@@ -140,7 +142,7 @@ export async function sendClientInvitation(params: {
 
       <p>Hi ${safeClientName},</p>
 
-      <p><strong>${safeCoachName}</strong> has invited you to join <strong>${safeBusinessName}</strong> on WisdomBI - your dedicated platform for tracking business goals, metrics, and growth.</p>
+      <p><strong>${safeCoachName}</strong> has invited you to join <strong>${safeBusinessName}</strong> on ${APP_NAME} - your dedicated platform for tracking business goals, metrics, and growth.</p>
 
       <div style="background: ${BRAND_ORANGE_LIGHT}; border: 1px solid #fcd5b8; border-radius: 8px; padding: 20px; margin: 20px 0;">
         <p style="margin: 0 0 10px 0;"><strong>What you can do:</strong></p>
@@ -174,7 +176,7 @@ export async function sendClientInvitation(params: {
 
   return sendEmail({
     to,
-    subject: `${safeCoachName} invited you to ${safeBusinessName} on WisdomBI`,
+    subject: `${safeCoachName} invited you to ${safeBusinessName} on ${APP_NAME}`,
     html,
     replyTo: undefined, // Could add coach's email here
   });
@@ -220,7 +222,7 @@ export async function sendPasswordReset(params: {
 
   return sendEmail({
     to,
-    subject: 'Reset your WisdomBI password',
+    subject: `Reset your ${APP_NAME} password`,
     html,
   });
 }
@@ -352,7 +354,7 @@ export async function sendTestEmail(params: {
 
       <p>Hi ${safeName},</p>
 
-      <p>This is a test email to verify that the WisdomBI email branding is working correctly.</p>
+      <p>This is a test email to verify that the ${APP_NAME} email branding is working correctly.</p>
 
       <div style="background: ${BRAND_ORANGE_LIGHT}; border: 1px solid #fcd5b8; border-radius: 8px; padding: 20px; margin: 20px 0;">
         <p style="margin: 0 0 10px 0;"><strong>Brand Colors:</strong></p>
@@ -382,7 +384,7 @@ export async function sendTestEmail(params: {
 
   return sendEmail({
     to,
-    subject: 'WisdomBI - Email Branding Test',
+    subject: `${APP_NAME} - Email Branding Test`,
     html,
   });
 }

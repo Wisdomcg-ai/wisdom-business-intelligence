@@ -30,6 +30,7 @@ import {
   Layers
 } from 'lucide-react'
 import { useUnreadMessages } from '@/hooks/useUnreadMessages'
+import { APP_NAME } from '@/lib/config/brand'
 
 // Context for coach data sharing
 interface CoachContextType {
@@ -252,7 +253,7 @@ export default function CoachLayoutNew({ children }: CoachLayoutNewProps) {
           <div className="relative">
             <Image
               src="/images/logo-wbi.png"
-              alt="WisdomBi"
+              alt={APP_NAME}
               width={410}
               height={170}
               className="h-14 w-auto animate-pulse"
@@ -293,7 +294,7 @@ export default function CoachLayoutNew({ children }: CoachLayoutNewProps) {
                 <Link href="/coach/dashboard" className="block">
                   <Image
                     src="/images/logo-wbi.png"
-                    alt="WisdomBi"
+                    alt={APP_NAME}
                     width={410}
                     height={170}
                     className="h-12 w-auto"
@@ -555,7 +556,7 @@ export default function CoachLayoutNew({ children }: CoachLayoutNewProps) {
           {/* Footer */}
           <footer className="border-t border-slate-200 bg-white px-4 sm:px-6 py-4">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-500">
-              <p>&copy; 2025 WisdomBi. All rights reserved.</p>
+              <p>&copy; 2025 {APP_NAME}. All rights reserved.</p>
               <div className="flex items-center gap-3">
                 <Link href="/privacy" className="hover:text-brand-orange">Privacy</Link>
                 <span>•</span>
