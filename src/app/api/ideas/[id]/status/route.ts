@@ -19,12 +19,17 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
 
 type Body = { status?: unknown }
 
-export async function PATCH(
+// PATCH body: { status } — validated against IdeaStatus union by the RPC; modeled as string here.
+const PatchBodySchema = z.object({ status: z.string() }).passthrough()
+
+async function patchHandler(
   request: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
@@ -83,3 +88,5 @@ export async function PATCH(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const PATCH = withSchema('ideas/[id]/status', PatchBodySchema, patchHandler)
