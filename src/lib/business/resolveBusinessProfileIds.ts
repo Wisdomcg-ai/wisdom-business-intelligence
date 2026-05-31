@@ -8,12 +8,21 @@
  * this function and un-brands the result. There is exactly ONE implementation —
  * this one — so the two id-spaces can never silently drift.
  *
- * Behaviour is preserved verbatim from the legacy resolver:
+ * Behaviour is preserved verbatim from the legacy resolver, with ONE
+ * deliberate change in R1 PR-6 (see below):
  *   - two `business_profiles` lookups (by `business_id`, then by `id`),
- *   - the module-level memo (never invalidated — request-scoping is R1 PR-6),
  *   - the input-echo fallback for unresolvable ids (kept until R14's data
  *     cleanse; see below),
  *   - the load-bearing `all` ordering for `.in('business_id', …)` money queries.
+ *
+ * R1 PR-6 — module-level memo removed. The legacy resolver carried a
+ * process-level `Map` that was never invalidated: a warm serverless instance
+ * could serve a stale id pair indefinitely (e.g. after a business_profiles row
+ * is created or repaired), and it grew unbounded across the process lifetime.
+ * Each resolution is a single indexed PK/FK lookup against `business_profiles`,
+ * and call sites invoke the resolver once per request, so the cache bought
+ * almost nothing while creating warm-vs-cold nondeterminism. It is now gone —
+ * every call resolves fresh.
  *
  * IMPORTANT: the input-echo fallback is preserved on purpose. For a tenant whose
  * stored `business_id` is a polluted wrong-id-class value, this keeps money
@@ -48,25 +57,16 @@ export interface ResolvedBusinessProfileIds {
 }
 
 /**
- * Module-level memo — keyed by EITHER id-space. Carried over UNCHANGED from the
- * legacy resolver: it is a process-level singleton and is never invalidated by
- * design. R1 PR-6 will flip it to request-scoped / off; until then the
- * behaviour (and its warm-vs-cold-process quirk) must be identical to legacy.
- */
-const cache = new Map<string, ResolvedBusinessProfileIds>()
-
-/**
  * Accepts EITHER a `businesses.id` or a `business_profiles.id` and returns both,
  * branded, plus the `all` array used by `.in('business_id', …)` money queries.
+ *
+ * No memoization (R1 PR-6): every call performs the lookups fresh. The lookups
+ * are single indexed PK/FK queries and call sites resolve once per request.
  */
 export async function resolveBusinessProfileIds(
   supabase: { from: (table: string) => any },
   businessId: string,
 ): Promise<ResolvedBusinessProfileIds> {
-  // Check cache first.
-  const cached = cache.get(businessId)
-  if (cached) return cached
-
   // Try 1: input is businesses.id → look up business_profiles.id.
   const { data: profile } = await supabase
     .from('business_profiles')
@@ -75,14 +75,11 @@ export async function resolveBusinessProfileIds(
     .maybeSingle()
 
   if (profile?.id) {
-    const result: ResolvedBusinessProfileIds = {
+    return {
       businessId: toBusinessId(businessId),
       profileId: toBusinessProfileId(profile.id),
       all: [profile.id, businessId],
     }
-    cache.set(businessId, result)
-    cache.set(profile.id, result)
-    return result
   }
 
   // Try 2: input is business_profiles.id → look up businesses.id.
@@ -93,19 +90,15 @@ export async function resolveBusinessProfileIds(
     .maybeSingle()
 
   if (profileRow?.business_id) {
-    const result: ResolvedBusinessProfileIds = {
+    return {
       businessId: toBusinessId(profileRow.business_id),
       profileId: toBusinessProfileId(businessId),
       all: [businessId, profileRow.business_id],
     }
-    cache.set(businessId, result)
-    cache.set(profileRow.business_id, result)
-    return result
   }
 
-  // Fallback: couldn't resolve → echo the input as both ids. NOT cached
-  // (preserved as-is from legacy), so a later sync that creates the
-  // business_profiles row can still resolve correctly.
+  // Fallback: couldn't resolve → echo the input as both ids, so a later sync
+  // that creates the business_profiles row can still resolve correctly.
   return {
     businessId: toBusinessId(businessId),
     profileId: toBusinessProfileId(businessId),
