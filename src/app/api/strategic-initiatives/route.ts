@@ -1,8 +1,17 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    annual_plan_only: z.string().optional(),
+  })
+  .passthrough()
 
 // Columns that always exist
 const CORE_COLUMNS = 'id, title, description, priority, step_type, category, timeline, notes'
@@ -21,7 +30,7 @@ function mapInitiative(d: any, hasExtendedCols: boolean) {
   }
 }
 
-export async function GET(request: Request) {
+async function getHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -143,3 +152,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('strategic-initiatives', GetQuerySchema, getHandler)
