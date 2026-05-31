@@ -96,7 +96,7 @@ async function resolveBusiness(
       process.exit(1)
     }
     if (!data) {
-      // The orchestrator's resolveBusinessIds() can also accept a
+      // The orchestrator's resolveBusinessProfileIds() can also accept a
       // business_profiles.id. We pass through unchanged and let the
       // orchestrator handle the dual-id resolution — but report what we
       // found for operator visibility.

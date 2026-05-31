@@ -58,15 +58,6 @@ vi.mock('@/lib/xero/token-manager', () => ({
   })),
 }))
 
-// resolve-business-ids fallback for budget-forecast lookup.
-vi.mock('@/lib/utils/resolve-business-ids', () => ({
-  resolveBusinessIds: vi.fn(async (_supabase: any, id: string) => ({
-    businessId: id,
-    businessProfileId: null,
-    all: [id],
-  })),
-}))
-
 // Auth route-handler client — authenticated user.
 vi.mock('@/lib/supabase/server', () => ({
   createRouteHandlerClient: vi.fn(async () => ({

@@ -1,14 +1,14 @@
 /**
  * R1 — canonical branded bidirectional business↔profile id mapping.
  *
- * This module now OWNS the resolver implementation. It was introduced in PR-0
- * as a thin re-brand that delegated to the legacy role-blind `resolveBusinessIds`
- * (`src/lib/utils/resolve-business-ids.ts`); in PR-4 the implementation moved
- * here and the legacy file became a `@deprecated` shim that delegates BACK to
- * this function and un-brands the result. There is exactly ONE implementation —
+ * This module is the SOLE business↔profile id resolver. It was introduced in
+ * PR-0 as a thin re-brand that delegated to the legacy role-blind
+ * `resolveBusinessIds`; in PR-4 the implementation moved here and the legacy
+ * file became a `@deprecated` shim, and in the R1 cleanup that shim was deleted
+ * outright once every caller had migrated. There is exactly ONE implementation —
  * this one — so the two id-spaces can never silently drift.
  *
- * Behaviour is preserved verbatim from the legacy resolver, with ONE
+ * Behaviour is preserved verbatim from the original resolver, with ONE
  * deliberate change in R1 PR-6 (see below):
  *   - two `business_profiles` lookups (by `business_id`, then by `id`),
  *   - the input-echo fallback for unresolvable ids (kept until R14's data
@@ -32,9 +32,8 @@
  *
  * The branded `{ businessId, profileId }` shape gives callers TypeScript
  * protection against the `businesses.id` ⇄ `business_profiles.id` ⇄ `user.id`
- * confusion (the #1 incident class). New code should import THIS function;
- * `resolveBusinessIds` remains only as a deprecated bridge for un-migrated
- * call sites.
+ * confusion (the #1 incident class). This is the only resolver — all code
+ * imports THIS function.
  */
 import {
   type BusinessId,

@@ -54,7 +54,7 @@ config({ path: path.resolve(process.cwd(), '.env.local') })
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { v5 as uuidv5 } from 'uuid'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 
 // Stable Phase-44.2-06A namespace for synthetic AccountID derivation.
 // Generated once and frozen here so re-runs produce identical UUIDs for the
@@ -220,7 +220,7 @@ async function backfillAccountIds(
   // Resolve dual-ID: xero_connections.business_id may be either businesses.id
   // (legacy) or business_profiles.id; xero_pl_lines.business_id is always
   // business_profiles.id per orchestrator convention. Search across both.
-  const ids = await resolveBusinessIds(supabase as any, businessId)
+  const ids = await resolveBusinessProfileIds(supabase as any, businessId)
   // Paginate via .range() — PostgREST caps a single SELECT at 1000 rows.
   // Tenants like Efficient Living have 1800+ rows; without pagination the
   // backfill silently skips the tail.
@@ -304,7 +304,7 @@ async function repurposeAccountCodes(
   // Resolve dual-ID for both catalog (xero_accounts) and P&L (xero_pl_lines)
   // queries. Catalog rows are keyed by xero_connections.business_id (whichever
   // form it stores); xero_pl_lines is keyed by orchestrator's profile_id.
-  const ids = await resolveBusinessIds(supabase as any, businessId)
+  const ids = await resolveBusinessProfileIds(supabase as any, businessId)
 
   // 1. Catalog snapshot keyed by xero_account_id (cast lower for case safety).
   const { data: catalog, error: catErr } = await supabase

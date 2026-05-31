@@ -13,17 +13,6 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// resolveBusinessIds is called inside getMonthlyComposite. We stub it to
-// pass through the business_id verbatim so tests don't need to mock the
-// dual-ID resolution path.
-vi.mock('@/lib/utils/resolve-business-ids', () => ({
-  resolveBusinessIds: vi.fn(async (_supabase: any, id: string) => ({
-    bizId: id,
-    profileId: id,
-    all: [id],
-  })),
-}))
-
 import { ForecastReadService } from '@/lib/services/forecast-read-service'
 
 // ─── Mock supabase chain ───────────────────────────────────────────────────

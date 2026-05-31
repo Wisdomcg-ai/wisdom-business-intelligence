@@ -11,9 +11,9 @@
  *   Test 2: When the body sends a businesses.id (the live-tenant case),
  *           ids.businessId equals the input — no behavior change for Dragon/IICT.
  *
- * R1 PR-4: the route now imports the canonical branded resolver
- * (`@/lib/business/resolveBusinessProfileIds`); the legacy
- * `resolveBusinessIds` is a @deprecated shim that delegates here. These tests
+ * R1 PR-4: the route imports the canonical branded resolver
+ * (`@/lib/business/resolveBusinessProfileIds`), now the sole resolver after the
+ * legacy `resolveBusinessIds` shim was deleted in the R1 cleanup. These tests
  * mock the branded module directly.
  *
  * Strategy: mock resolveBusinessProfileIds to return a controlled shape,

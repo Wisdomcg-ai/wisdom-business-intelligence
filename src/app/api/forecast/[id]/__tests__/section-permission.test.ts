@@ -42,13 +42,6 @@ let currentAuthMock: any = {}
 vi.mock('@/lib/supabase/server', () => ({
   createRouteHandlerClient: vi.fn(async () => currentAuthMock),
 }))
-vi.mock('@/lib/utils/resolve-business-ids', () => ({
-  resolveBusinessIds: vi.fn(async (_supabase: any, id: string) => ({
-    bizId: id,
-    profileId: id,
-    all: [id],
-  })),
-}))
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const OWNER_ID = 'owner-uuid-forecast-01'

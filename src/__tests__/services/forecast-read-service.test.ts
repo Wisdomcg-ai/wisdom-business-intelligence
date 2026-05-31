@@ -33,15 +33,6 @@ vi.hoisted(() => {
 
 import * as Sentry from '@sentry/nextjs'
 
-// Hoist the resolveBusinessIds mock so it applies before service import.
-vi.mock('@/lib/utils/resolve-business-ids', () => ({
-  resolveBusinessIds: vi.fn(async (_supabase: unknown, businessId: string) => ({
-    bizId: businessId,
-    profileId: businessId,
-    all: [businessId],
-  })),
-}))
-
 vi.mock('@sentry/nextjs', () => ({
   captureException: vi.fn(),
   captureMessage: vi.fn(),

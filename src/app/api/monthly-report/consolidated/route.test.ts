@@ -24,10 +24,6 @@ vi.mock('@/lib/utils/rate-limiter', () => ({
   createRateLimitKey: vi.fn((prefix: string, id: string) => `${prefix}:${id}`),
   RATE_LIMIT_CONFIGS: { report: {} },
 }))
-vi.mock('@/lib/utils/resolve-business-ids', async (importOriginal) => {
-  const actual = (await importOriginal()) as any
-  return actual
-})
 
 let currentServiceMock: any = { from: () => ({}) }
 let currentAuthMock: any = {}

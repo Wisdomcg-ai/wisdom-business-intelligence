@@ -193,7 +193,7 @@ describe('computeTranslationReserve — CTA residual math', () => {
  * Minimal Supabase mock supporting the exact query chains used by:
  *   - loadBusinessContext — businesses.single() + xero_connections.in/eq chain
  *   - loadBSTenantSnapshots — xero_balance_sheet_lines.in().in()
- *   - resolveBusinessIds — business_profiles chains
+ *   - resolveBusinessProfileIds — business_profiles chains
  *   - loadEliminationRulesForBusiness — consolidation_elimination_rules.eq().eq()
  */
 function mockSupabase(rowsByTable: Record<string, any[]>) {

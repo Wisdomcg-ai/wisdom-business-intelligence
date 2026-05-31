@@ -7,7 +7,7 @@
  *   - resolve silently (no throw) when profileId is a real business_profiles row;
  *   - throw loudly with diagnostics when profileId resolves to nothing
  *     (the wrong-id-class case: a businesses.id or user-auth id leaking through
- *     resolveBusinessIds()'s echo fallback);
+ *     resolveBusinessProfileIds()'s echo fallback);
  *   - throw when the lookup itself errors (fail closed, never write on doubt);
  *   - throw on a missing / non-string profileId without even hitting the DB.
  *

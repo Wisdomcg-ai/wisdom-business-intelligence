@@ -3,11 +3,12 @@
  *
  * `xero_pl_lines` and `xero_bs_lines` key their `business_id` column on
  * `business_profiles.id` — NOT `businesses.id`, and NOT a user-auth id. The
- * platform carries three disjoint UUID id-spaces (see resolve-business-ids.ts),
- * and `resolveBusinessIds()` has a deliberate fallback branch: when it cannot
- * resolve the input against `business_profiles`, it returns the SAME unresolved
- * id for both `bizId` and `profileId` so that read paths (`.in(all)`) degrade to
- * "no rows" rather than throwing.
+ * platform carries three disjoint UUID id-spaces (see
+ * business/resolveBusinessProfileIds.ts), and `resolveBusinessProfileIds()` has
+ * a deliberate fallback branch: when it cannot resolve the input against
+ * `business_profiles`, it returns the SAME unresolved id for both `businessId`
+ * and `profileId` so that read paths (`.in(all)`) degrade to "no rows" rather
+ * than throwing.
  *
  * That fallback is safe for reads but dangerous for writes. If a wrong-id-class
  * value (a `businesses.id` or a user-auth id) reaches a money-table upsert via
