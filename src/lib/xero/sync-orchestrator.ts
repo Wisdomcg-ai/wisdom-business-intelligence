@@ -33,7 +33,7 @@
 import * as Sentry from '@sentry/nextjs'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { assertBusinessProfileId } from '@/lib/utils/assert-profile-id'
 import {
   computeCoverage,
@@ -435,15 +435,15 @@ export async function syncBusinessXeroPL(
   opts: SyncOptions = {},
 ): Promise<SyncResult> {
   const supabase = createServiceRoleClient()
-  const ids = await resolveBusinessIds(supabase as any, businessId)
+  const ids = await resolveBusinessProfileIds(supabase as any, businessId)
   const profileId = ids.profileId
   // xero_accounts.business_id FK targets businesses(id) (legacy); xero_pl_lines.business_id FK targets business_profiles(id) (post-06A). Use bizId for the former, profileId for the latter.
-  const bizId = ids.bizId
+  const bizId = ids.businessId
 
   console.log('[syncBusinessXeroPL] start', { input: businessId, bizId, profileId })
 
   // R1b — write-path id guardrail. profileId is what every xero_pl_lines /
-  // xero_bs_lines upsert below keys business_id on, and resolveBusinessIds()
+  // xero_bs_lines upsert below keys business_id on, and resolveBusinessProfileIds()
   // falls back to echoing an unresolvable input for both ids. Assert profileId
   // is a real business_profiles row BEFORE claiming a sync job or writing any
   // money rows, so a wrong-id-class value fails loudly here instead of being
