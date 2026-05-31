@@ -1,0 +1,23 @@
+[dotenv@17.2.3] injecting env (41) from .env.local -- tip: 🔄 add secrets lifecycle management: https://dotenvx.com/ops
+[dotenv@17.2.3] injecting env (0) from .env -- tip: 📡 add observability to secrets: https://dotenvx.com/ops
+[71-D4] Mode: APPLY
+[71-D4] Source: https://uudfstpvndurzwnapibf.supabase.co
+
+[71-D4] Loaded 4 snapshot rows
+
+  - id=248dcb7c-c4f4-4df1-be1e-7f784dfdaadc biz=8c8c63b2-bdc4-4115-9375-8d0fd89acc00 month=2026-01: REMAP array[3] → revenue, operating_expenses, other_income
+  - id=56840db4-fa6b-44eb-99b2-87965f583a91 biz=8c8c63b2-bdc4-4115-9375-8d0fd89acc00 month=2026-03: REMAP array[3] → revenue, operating_expenses, other_income
+  - id=8aad86f3-9520-4259-8d00-1a9c4a743e13 biz=fea253dd-3dfa-447b-8f9b-8dff68aeac0a month=2026-04: REMAP array[4] → revenue, cost_of_sales, operating_expenses, other_income
+  - id=d985a091-9378-443a-83eb-c7268acb7c46 biz=8c8c63b2-bdc4-4115-9375-8d0fd89acc00 month=2026-04: REMAP array[3] → revenue, operating_expenses, other_income
+
+[71-D4] Summary:
+  total           : 4
+  need remap      : 4
+  already named   : 0
+  no sections     : 0
+  mixed (skipped) : 0
+  invalid (skipped): 0
+  applied         : 4
+  failed          : 0
+
+[71-D4] APPLY complete.
