@@ -40,7 +40,7 @@ import {
   loadClosingSpotRate,
   translateBSAtClosingSpot,
 } from '@/lib/consolidation/fx'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 
 export const dynamic = 'force-dynamic'
 
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     // Resolve dual IDs using the module-level service-role client — business_profiles
     // may be RLS-restricted for the auth-bound client.
     stage = 'resolve_business_ids'
-    const ids = await resolveBusinessIds(supabase, business_id)
+    const ids = await resolveBusinessProfileIds(supabase, business_id)
 
     stage = 'rate_limit'
     const rl = checkRateLimit(
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     const { data: bizAccess } = await authSupabase
       .from('businesses')
       .select('id')
-      .eq('id', ids.bizId)
+      .eq('id', ids.businessId)
       .or(`owner_id.eq.${user.id},assigned_coach_id.eq.${user.id}`)
       .maybeSingle()
 
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
     const _sectionVerdict = await requireSectionPermission(
       authSupabase,        // auth-bound client; NEVER pass a service-role client here
       user.id,
-      ids.bizId,
+      ids.businessId,
       'finances',
     )
     const _sectionBlocked = enforceSectionPermission(
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
       'finances',
       'api/monthly-report/consolidated-bs',
       user.id,
-      ids.bizId,
+      ids.businessId,
     )
     if (_sectionBlocked) return _sectionBlocked
 
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
     const { data: parentProfile } = await supabase
       .from('business_profiles')
       .select('fiscal_year_start')
-      .eq('business_id', ids.bizId)
+      .eq('business_id', ids.businessId)
       .maybeSingle()
     const yearStartMonth = parentProfile?.fiscal_year_start ?? DEFAULT_YEAR_START_MONTH
     // We don't need the fiscal year keys for BS math (single as-of date), but
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
     // --- ENGINE ---
     stage = 'engine'
     const report = await buildConsolidatedBalanceSheet(supabase, {
-      businessId: ids.bizId,
+      businessId: ids.businessId,
       asOfDate,
       translate: async (tenant, lines) => {
         const pair = `${tenant.functional_currency}/${presentationCurrency}`

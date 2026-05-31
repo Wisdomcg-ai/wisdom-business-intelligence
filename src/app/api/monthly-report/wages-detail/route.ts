@@ -5,7 +5,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { buildFuzzyLookup, isAccountMatch } from '@/lib/utils/account-matching'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ===== 1. Resolve dual business IDs and forecast ID =====
-    const ids = await resolveBusinessIds(supabase, business_id)
+    const ids = await resolveBusinessProfileIds(supabase, business_id)
 
     let forecastId = budget_forecast_id
     if (!forecastId) {

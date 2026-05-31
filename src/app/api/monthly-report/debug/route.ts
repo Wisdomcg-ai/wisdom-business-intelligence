@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 1. Find active forecast (resolve business_profiles.id from businesses.id)
-    const ids = await resolveBusinessIds(supabaseAdmin, business_id)
+    const ids = await resolveBusinessProfileIds(supabaseAdmin, business_id)
     let forecast: any = null
     const { data: fc } = await supabaseAdmin
       .from('financial_forecasts')

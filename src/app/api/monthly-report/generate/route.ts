@@ -5,7 +5,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
     //    aggregation across tenants and asserts the D-18 freshness invariant.
     //    Fall back to a direct xero_pl_lines_wide_compat read only when no active
     //    forecast exists (e.g. very new business).
-    const ids = await resolveBusinessIds(supabase, business_id)
+    const ids = await resolveBusinessProfileIds(supabase, business_id)
     let xeroLines: { account_name: string; account_type: string; section: string; monthly_values: Record<string, number> }[] = []
 
     // The active forecast for actuals routing is independent of `budgetForecast`
