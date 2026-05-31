@@ -5,6 +5,8 @@ import { sendEmail } from "@/lib/email/resend";
 import * as Sentry from '@sentry/nextjs'
 import { recordHeartbeat } from '@/lib/cron/heartbeat'
 import { APP_NAME } from '@/lib/config/brand'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
 const CRON_PATH = '/api/cron/daily-health-report'
 
@@ -12,7 +14,7 @@ const BRAND_ORANGE = "#F5821F";
 const BRAND_NAVY = "#172238";
 const LOGO_URL = "https://wisdombi.ai/images/logo-main.png";
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   // Verify cron auth
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -227,3 +229,10 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// Input-less cron GET (auth via Bearer header) — observe wrapper, permissive empty schema.
+export const GET = withQuerySchema(
+  'cron/daily-health-report',
+  z.object({}),
+  getHandler as unknown as (request: Request) => Promise<Response>
+);

@@ -6,6 +6,8 @@ import {
 } from '@/lib/xero/token-manager'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { recordHeartbeat } from '@/lib/cron/heartbeat'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
 /**
  * Phase 69-04 — Pre-expiry early-warning threshold.
@@ -118,7 +120,7 @@ function safeSentryCapture(err: unknown, tags: Record<string, string | undefined
   }
 }
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   // Fail-closed auth gate (SEC-02). Mirrors src/app/api/Xero/sync-all/route.ts:46-50.
   // The looser form `auth !== \`Bearer ${process.env.CRON_SECRET}\`` passes
   // when both sides are undefined — see SEC-02 regression test
@@ -361,3 +363,10 @@ export async function GET(req: NextRequest) {
     )
   }
 }
+
+// Input-less cron GET (auth via Bearer header) — observe wrapper, permissive empty schema.
+export const GET = withQuerySchema(
+  'cron/refresh-xero-tokens',
+  z.object({}),
+  getHandler as unknown as (request: Request) => Promise<Response>
+)

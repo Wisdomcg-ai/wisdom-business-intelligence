@@ -23,6 +23,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { recordHeartbeat } from '@/lib/cron/heartbeat'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
 const CRON_PATH = '/api/cron/reconciliation-watch'
 
@@ -39,7 +41,7 @@ interface DriftEvent {
   bs_unbalanced_dates: string[]
 }
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   const auth = req.headers.get('authorization')
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -135,3 +137,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: String(err?.message ?? err) }, { status: 500 })
   }
 }
+
+// Input-less cron GET (auth via Bearer header) — observe wrapper, permissive empty schema.
+export const GET = withQuerySchema(
+  'cron/reconciliation-watch',
+  z.object({}),
+  getHandler as unknown as (request: Request) => Promise<Response>
+)
