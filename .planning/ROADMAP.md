@@ -942,7 +942,13 @@ Plans:
   3. Every read-only route in VALID-02 reports zero `zod:would-reject` events for 7 consecutive days before being added to `ZOD_ENFORCE_ROUTES`.
   4. Every admin write route in VALID-03 is in `ZOD_ENFORCE_ROUTES` with the same 7-days-zero-events evidence per route.
   5. `ZOD_ENFORCE_ROUTES` contains all 120 routes by phase end — an unknown-shape body to any route returns 400 with a Zod `error.flatten()`, not a 500 or silent acceptance.
-**Plans:** TBD
+**Plans:** 6 plans
+- [ ] 47-01-PLAN.md — Build `with-schema.ts` (withSchema/withQuerySchema/isEnforced) + unit tests — VALID-01 fork-gate (TDD)
+- [ ] 47-02-PLAN.md — Observe-mode schemas on 5 read-only routes — VALID-02
+- [ ] 47-03-PLAN.md — Observe-mode schemas on 8 admin/team write routes (incl. legacy sync-params) — VALID-03
+- [ ] 47-04-PLAN.md — Observe-mode schemas on ~29 forecast/Xero/consolidation write routes — VALID-04
+- [ ] 47-05-PLAN.md — Observe-mode sweep of all remaining routes (full-surface grep target) — VALID-05
+- [ ] 47-06-PLAN.md — Enforce-flip CI test + runbook + staged human env flips — VALID-06
 **Phase dir:** [.planning/phases/47-input-validation-rollout/](phases/47-input-validation-rollout/PHASE.md)
 
 #### Phase 48: Decimal Money Arithmetic
