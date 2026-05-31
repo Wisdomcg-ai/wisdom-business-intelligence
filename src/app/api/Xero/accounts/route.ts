@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids';
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds';
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get the latest forecast (resolve business_profiles.id from businesses.id)
-    const ids = await resolveBusinessIds(supabase, businessId);
+    const ids = await resolveBusinessProfileIds(supabase, businessId);
     const { data: forecast } = await supabase
       .from('financial_forecasts')
       .select('id, fiscal_year')
