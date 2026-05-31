@@ -106,14 +106,6 @@ vi.mock('@/lib/supabase/server', () => ({
   createRouteHandlerClient: vi.fn(async () => supabaseMock),
 }))
 
-vi.mock('@/lib/utils/resolve-business-ids', () => ({
-  resolveBusinessIds: vi.fn(async () => ({
-    bizId: 'biz-1',
-    profileId: 'profile-1',
-    all: ['profile-1', 'biz-1'],
-  })),
-}))
-
 vi.mock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
   convertAssumptionsToPLLines: vi.fn(() => [
     {

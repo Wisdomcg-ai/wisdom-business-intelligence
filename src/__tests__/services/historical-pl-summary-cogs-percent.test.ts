@@ -19,14 +19,6 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@/lib/utils/resolve-business-ids', () => ({
-  resolveBusinessIds: vi.fn(async (_supabase: any, id: string) => ({
-    bizId: id,
-    profileId: id,
-    all: [id],
-  })),
-}))
-
 import { getHistoricalSummary } from '@/lib/services/historical-pl-summary'
 
 // Minimal supabase chain stub. The service calls financial_forecasts

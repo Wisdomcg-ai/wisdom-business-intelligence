@@ -93,13 +93,6 @@ vi.mock('@/lib/utils/rate-limiter', () => ({
   createRateLimitKey: vi.fn((p: string, id: string) => `${p}:${id}`),
   RATE_LIMIT_CONFIGS: { report: {} },
 }))
-vi.mock('@/lib/utils/resolve-business-ids', () => ({
-  resolveBusinessIds: vi.fn(async (_supabase: any, id: string) => ({
-    bizId: id,
-    profileId: id,
-    all: [id],
-  })),
-}))
 vi.mock('@/lib/services/forecast-read-service', () => ({
   createForecastReadService: vi.fn(() => ({
     getMonthlyComposite: vi.fn(async () => ({

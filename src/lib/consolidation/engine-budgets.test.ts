@@ -300,7 +300,7 @@ describe('buildConsolidation integration — budget piping via tenantBudgets opt
             }),
           }
         }
-        // resolveBusinessIds uses 'businesses' + 'business_profiles'
+        // resolveBusinessProfileIds uses 'businesses' + 'business_profiles'
         if (table === 'business_profiles') {
           return {
             select: () => ({

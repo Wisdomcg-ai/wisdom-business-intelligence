@@ -35,7 +35,7 @@ export function evenSpread(months: readonly string[], amount: number): Record<st
 }
 
 // Hardcoded business IDs for fixture purposes — production uses
-// resolveBusinessIds() to fetch real UUIDs from the businesses table.
+// resolveBusinessProfileIds() to fetch real UUIDs from the businesses table.
 export const IICT_AUST_BIZ = '00000000-0000-0000-0000-iictaust0aust'
 export const IICT_GROUP_PTY_BIZ = '00000000-0000-0000-0000-iictgrp0ptyl'
 export const IICT_HK_BIZ = '00000000-0000-0000-0000-iicthkltd00hk'

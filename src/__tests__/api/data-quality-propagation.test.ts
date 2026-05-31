@@ -17,14 +17,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { readFileSync } from 'fs'
 import path from 'path'
 
-vi.mock('@/lib/utils/resolve-business-ids', () => ({
-  resolveBusinessIds: vi.fn(async (_supabase: any, id: string) => ({
-    bizId: id,
-    profileId: id,
-    all: [id],
-  })),
-}))
-
 import { getHistoricalSummary } from '@/lib/services/historical-pl-summary'
 
 // ─── Service-level: chain mock identical to forecast-read-service-data-quality.test.ts ─

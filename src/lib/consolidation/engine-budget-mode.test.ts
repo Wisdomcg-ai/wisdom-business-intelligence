@@ -34,7 +34,7 @@ type Mode = 'single' | 'per_tenant'
 /**
  * Minimal fake supabase covering every table buildConsolidation touches
  * (businesses, xero_connections, xero_pl_lines, consolidation_elimination_rules,
- * business_profiles via resolveBusinessIds). The budget mode is injected per
+ * business_profiles via resolveBusinessProfileIds). The budget mode is injected per
  * test so we can verify both branches.
  */
 function makeFakeSupabase(mode: Mode) {

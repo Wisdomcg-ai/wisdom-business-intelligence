@@ -1,22 +1,27 @@
 /**
- * R1 PR-0 — equivalence lock for the branded `resolveBusinessProfileIds`.
+ * R1 — characterization lock for the canonical `resolveBusinessProfileIds`
+ * (`src/lib/business/resolveBusinessProfileIds.ts`).
  *
- * `resolveBusinessProfileIds` (`src/lib/business/resolveBusinessProfileIds.ts`)
- * is a pure re-brand of the legacy `resolveBusinessIds`
- * (`src/lib/utils/resolve-business-ids.ts`). This suite proves the ONLY
- * difference is the branding: for every resolution path the branded result's
- * fields equal the legacy result's fields (`businessId == bizId`,
- * `profileId == profileId`, `all == all`), and the load-bearing `all` ordering
- * + the input-echo fallback are carried through unchanged.
+ * This is the SOLE business↔profile id resolver (the legacy role-blind
+ * `resolveBusinessIds` shim was deleted in the R1 cleanup once every caller had
+ * migrated). The suite pins the three resolution paths, the load-bearing `all`
+ * ordering, and the post-PR-6 no-memoization contract:
+ *   1. forward  — input is `businesses.id`        → look up the matching profile
+ *   2. reverse  — input is `business_profiles.id` → look up the parent business
+ *   3. fallback — input resolves to neither        → businessId == profileId == input
+ *   4. no memoization — every call re-queries (the module-level cache was
+ *      removed in R1 PR-6; a warm serverless instance must never serve a stale
+ *      id pair)
  *
- * The fake Supabase client mirrors the one in
- * `resolve-business-ids-characterization.test.ts` — it only models the
- * `business_profiles` lookups by `business_id` and by `id`, which is all the
- * underlying resolver touches. Distinct ids per test keep the resolver's
- * module-level cache from bleeding between cases.
+ * Note on `all` ordering (load-bearing for `.in('business_id', …)` queries):
+ *   - forward/reverse path: all = [profileId, bizId]
+ *   - fallback path:        all = [input]   (single element)
+ *
+ * The fake Supabase client models only the `business_profiles` lookups by
+ * `business_id` and by `id`, which is all the resolver touches. It exposes a
+ * `calls` counter so the no-memo cases can assert DB round-trips.
  */
 import { describe, it, expect } from 'vitest'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 
 type ProfileRow = { id: string; business_id: string }
@@ -52,7 +57,7 @@ function makeClient(rows: ProfileRow[]) {
   return client
 }
 
-describe('resolveBusinessProfileIds — branded equivalence (R1 PR-0)', () => {
+describe('resolveBusinessProfileIds — canonical resolver (R1)', () => {
   it('forward: businesses.id input → branded { businessId, profileId, all:[profileId,bizId] }', async () => {
     const bizId = 'biz-bp-fwd'
     const profileId = 'prof-bp-fwd'
@@ -85,28 +90,42 @@ describe('resolveBusinessProfileIds — branded equivalence (R1 PR-0)', () => {
     expect(res.all).toEqual([orphan])
   })
 
-  it('field-for-field equivalence with the legacy resolveBusinessIds (forward)', async () => {
-    const bizId = 'biz-bp-eq'
-    const profileId = 'prof-bp-eq'
-    const rows = [{ id: profileId, business_id: bizId }]
+  it('no memoization: a repeat call for the same input re-queries the DB (PR-6)', async () => {
+    const bizId = 'biz-bp-memo'
+    const profileId = 'prof-bp-memo'
+    const client = makeClient([{ id: profileId, business_id: bizId }])
 
-    const legacy = await resolveBusinessIds(makeClient(rows) as any, bizId)
-    const branded = await resolveBusinessProfileIds(makeClient(rows) as any, bizId)
+    await resolveBusinessProfileIds(client as any, bizId)
+    const callsAfterFirst = client.calls.count
+    await resolveBusinessProfileIds(client as any, bizId)
 
-    // Same values, only the field names/brands differ.
-    expect(branded.businessId as string).toBe(legacy.bizId)
-    expect(branded.profileId as string).toBe(legacy.profileId)
-    expect(branded.all).toEqual(legacy.all)
+    // Module cache removed in PR-6 → the second call hits the DB again.
+    expect(client.calls.count).toBeGreaterThan(callsAfterFirst)
   })
 
-  it('field-for-field equivalence with the legacy resolveBusinessIds (fallback)', async () => {
-    const orphan = 'orphan-bp-eq'
+  it('no cross-key memo: resolving by the other id re-queries (PR-6)', async () => {
+    const bizId = 'biz-bp-memo2'
+    const profileId = 'prof-bp-memo2'
+    const client = makeClient([{ id: profileId, business_id: bizId }])
 
-    const legacy = await resolveBusinessIds(makeClient([]) as any, orphan)
-    const branded = await resolveBusinessProfileIds(makeClient([]) as any, orphan)
+    await resolveBusinessProfileIds(client as any, bizId) // forward resolve, no caching
+    const callsAfterFirst = client.calls.count
 
-    expect(branded.businessId as string).toBe(legacy.bizId)
-    expect(branded.profileId as string).toBe(legacy.profileId)
-    expect(branded.all).toEqual(legacy.all)
+    // Ask by the OTHER key — re-queries; nothing is memoized.
+    const res = await resolveBusinessProfileIds(client as any, profileId)
+    expect(client.calls.count).toBeGreaterThan(callsAfterFirst)
+    expect(res.businessId).toBe(bizId)
+    expect(res.profileId).toBe(profileId)
+  })
+
+  it('fallback path re-queries on the next call (PR-6: no path is cached)', async () => {
+    const orphan = 'orphan-bp-memo'
+    const client = makeClient([])
+
+    await resolveBusinessProfileIds(client as any, orphan)
+    const callsAfterFirst = client.calls.count
+    await resolveBusinessProfileIds(client as any, orphan)
+
+    expect(client.calls.count).toBeGreaterThan(callsAfterFirst)
   })
 })

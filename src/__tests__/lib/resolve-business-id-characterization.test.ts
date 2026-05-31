@@ -8,9 +8,9 @@
  *   2. `src/lib/utils/resolve-xero-business-id.ts` — Xero connection id resolver
  *
  * Both take the Supabase client as an injectable parameter, so (mirroring the
- * sibling `resolve-business-ids-characterization.test.ts`) we model only the
- * tables each resolver touches with a small `makeClient(...)` fake. No live DB,
- * no network — pure/mocked.
+ * sibling `resolve-business-profile-ids.test.ts`) we model only the tables each
+ * resolver touches with a small `makeClient(...)` fake. No live DB, no
+ * network — pure/mocked.
  */
 
 import { describe, it, expect, vi } from 'vitest'

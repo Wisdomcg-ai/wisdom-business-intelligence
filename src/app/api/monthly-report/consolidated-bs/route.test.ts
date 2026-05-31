@@ -34,13 +34,6 @@ vi.mock('@/lib/utils/rate-limiter', () => ({
   RATE_LIMIT_CONFIGS: { report: {} },
 }))
 
-// resolveBusinessIds has a module-level cache — clear it before each test so
-// a prior test's business_id doesn't bleed into the next test's mock.
-vi.mock('@/lib/utils/resolve-business-ids', async (importOriginal) => {
-  const actual = (await importOriginal()) as any
-  return actual
-})
-
 // Per-test state — reassigned by each test via `setServiceMock` / `setAuthMock`
 let currentServiceMock: any = { from: () => ({}) }
 let currentAuthMock: any = {}
