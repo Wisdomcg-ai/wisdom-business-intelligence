@@ -25,7 +25,7 @@ import type {
   XeroPLLineLike,
   EliminationRule,
 } from './types'
-import { loadBusinessContext } from './engine'
+import { loadBusinessContext, reportMissingCurrencyTenants } from './engine'
 import { loadEliminationRulesForBusiness, matchRuleToLines } from './eliminations'
 import {
   buildAlignedAccountUniverse,
@@ -88,6 +88,12 @@ export interface ConsolidatedBalanceSheet {
     eliminations_applied_count: number
     eliminations_total_amount: number
     processing_ms: number
+    /**
+     * Consolidation-included tenants whose xero_connections.functional_currency
+     * was NULL/empty (defaulted to presentation currency, FX-translation
+     * skipped). Their balances may be summed 1:1 from a foreign currency.
+     */
+    tenants_missing_currency: string[]
   }
 }
 
@@ -307,6 +313,10 @@ export async function buildConsolidatedBalanceSheet(
   // 1. Load business + tenants (reuse P&L engine helper).
   const { business, tenants } = await loadBusinessContext(supabase, opts.businessId)
 
+  // 1b. Invariant: flag (and alert on) any included tenant whose functional
+  //     currency is unknown — it skips FX translation and may be summed 1:1.
+  const tenantsMissingCurrency = reportMissingCurrencyTenants(opts.businessId, tenants)
+
   // 2. Load BS lines per tenant.
   const snapshots = await loadBSTenantSnapshots(supabase, opts.businessId, tenants)
 
@@ -417,6 +427,7 @@ export async function buildConsolidatedBalanceSheet(
       eliminations_applied_count: eliminations.length,
       eliminations_total_amount: eliminations.reduce((acc, e) => acc + Math.abs(e.amount), 0),
       processing_ms: Date.now() - startedAt,
+      tenants_missing_currency: tenantsMissingCurrency,
     },
   }
 }
