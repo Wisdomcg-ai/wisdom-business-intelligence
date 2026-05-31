@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Send, Sparkles, Loader2, TrendingUp, Users, DollarSign, Target, BarChart3, Settings, PiggyBank, CheckCircle } from 'lucide-react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 import { WizardStep, ForecastWizardState, formatCurrency } from '../types';
 
 // Generate a unique session ID for grouping conversation messages
@@ -958,7 +958,14 @@ export function AICFOPanel({
   state,
   businessId,
 }: AICFOPanelProps) {
-  const supabase = createClientComponentClient();
+  // Use the app's shared @supabase/ssr singleton (src/lib/supabase/client.ts).
+  // Previously this used the deprecated @supabase/auth-helpers-nextjs
+  // `createClientComponentClient()`, which spun up a SECOND GoTrueClient on the
+  // same storage key and parsed the session cookie as raw JSON — throwing
+  // "Failed to parse cookie string … base64-eyJ…" because @supabase/ssr writes
+  // base64-prefixed cookies. That broke session recovery in this panel and
+  // emitted "Multiple GoTrueClient instances detected".
+  const supabase = createClient();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
