@@ -801,9 +801,18 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-function getLineValue(line: PLLine, monthKey: string, forecast: FinancialForecast): number {
-  // Check actual months first, then forecast months
-  if (line.actual_months?.[monthKey] !== undefined && line.actual_months[monthKey] !== 0) {
+function getLineValue(line: PLLine, monthKey: string, _forecast: FinancialForecast): number {
+  // Check actual months first, then forecast months.
+  //
+  // R6/DM-N6: `actual_months` is a SPARSE map — a month key is present only
+  // when that month has been actualized (see PLLine type). Therefore PRESENCE
+  // (`!== undefined`), not non-zero-ness, is the signal for "use the actual".
+  // The previous `&& !== 0` clause treated a legitimate $0 actual (an account
+  // that genuinely printed zero in a closed month) as "no actual" and fell
+  // through to the FORECAST figure — overstating actualized cash. A stored 0 is
+  // a real actual and must win; months with no actual are simply absent from
+  // the map and still fall through to the forecast below.
+  if (line.actual_months?.[monthKey] !== undefined) {
     return line.actual_months[monthKey]
   }
   if (line.forecast_months?.[monthKey] !== undefined) {
