@@ -23,6 +23,12 @@ import { encrypt, decrypt } from '@/lib/utils/encryption';
 export const REFRESH_THRESHOLD_MINUTES = 15;
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1000;
+// Upper bound on how long we'll sleep on a 429 Retry-After inside a single
+// invocation (REL-N3). Xero's daily-limit 429 can carry a multi-hour
+// Retry-After; sleeping that long would just burn the function (and time out)
+// only to wake up still throttled, so beyond this we defer the retry to the
+// caller / next cron tick instead.
+const MAX_RETRY_AFTER_MS = 60000;
 
 // Error types for better handling
 export type TokenRefreshError =
@@ -110,6 +116,31 @@ function extractErrorCode(errorText: string): string {
 function truncate(s: string, maxLen: number): string {
   if (s.length <= maxLen) return s;
   return s.slice(0, maxLen - 1) + '…';
+}
+
+/**
+ * Parse an HTTP Retry-After header into milliseconds (REL-N3).
+ * Supports both RFC-7231 forms: delta-seconds (e.g. "30") and an HTTP-date
+ * (e.g. "Wed, 21 Oct 2026 07:28:00 GMT"). Returns null when the header is
+ * absent or unparseable; clamps past dates to 0.
+ */
+function parseRetryAfterMs(header: string | null): number | null {
+  if (!header) return null;
+  const trimmed = header.trim();
+  if (trimmed === '') return null;
+
+  // delta-seconds form — a bare non-negative integer count of seconds.
+  if (/^\d+$/.test(trimmed)) {
+    return parseInt(trimmed, 10) * 1000;
+  }
+
+  // HTTP-date form — wait until the given instant (never negative).
+  const dateMs = Date.parse(trimmed);
+  if (!Number.isNaN(dateMs)) {
+    return Math.max(0, dateMs - Date.now());
+  }
+
+  return null;
 }
 
 /**
@@ -547,10 +578,33 @@ async function refreshTokenWithRetry(
       return errorInfo;
     }
 
-    // For transient errors, retry with backoff
+    // For transient errors, retry with backoff. On a 429 (rate limit), honor
+    // Xero's Retry-After header instead of blindly using exponential backoff —
+    // otherwise we retry too soon and trip the limiter again (REL-N3).
     if (attempt < MAX_RETRIES) {
-      const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-      console.log(`[Token Manager] Retrying in ${delay}ms (attempt ${attempt}/${MAX_RETRIES})...`);
+      const backoffMs = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+      const retryAfterMs =
+        response.status === 429 ? parseRetryAfterMs(response.headers.get('retry-after')) : null;
+
+      if (retryAfterMs != null && retryAfterMs > MAX_RETRY_AFTER_MS) {
+        // Xero is rate-limiting us for longer than we can usefully wait inside a
+        // single invocation. Don't burn the function on a sleep that will still
+        // be throttled on wake — surface the transient error so the caller (or
+        // the next cron tick) retries later.
+        console.warn(
+          `[Token Manager] 429 Retry-After ${retryAfterMs}ms exceeds max ${MAX_RETRY_AFTER_MS}ms — deferring retry to caller.`,
+        );
+        return errorInfo;
+      }
+
+      // Wait at least our own exponential backoff, but honor a longer
+      // server-supplied Retry-After so we don't immediately re-trip the limiter.
+      const delay = retryAfterMs != null ? Math.max(retryAfterMs, backoffMs) : backoffMs;
+      console.log(
+        `[Token Manager] Retrying in ${delay}ms (attempt ${attempt}/${MAX_RETRIES})${
+          retryAfterMs != null ? ` — honoring 429 Retry-After (${retryAfterMs}ms)` : ''
+        }...`,
+      );
       await sleep(delay);
       return refreshTokenWithRetry(refreshToken, connectionId, supabase, ctx, attempt + 1);
     }
