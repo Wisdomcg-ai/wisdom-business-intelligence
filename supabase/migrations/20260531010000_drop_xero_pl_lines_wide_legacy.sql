@@ -1,0 +1,50 @@
+-- R1a (revised) — drop the abandoned xero_pl_lines_wide_legacy snapshot table.
+--
+-- Why this replaces the original "drop stale FK" approach
+-- -------------------------------------------------------
+-- The first attempt at R1a tried to DROP a constraint named
+-- `xero_pl_lines_business_id_fkey` directly off `xero_pl_lines`. That was
+-- based on a misdiagnosis. The real history is:
+--
+--   1. baseline_schema (00000000000000) created `xero_pl_lines` WITH
+--      constraint `xero_pl_lines_business_id_fkey` FK -> businesses(id) CASCADE.
+--   2. Phase 44 long-format migration (20260428000001) created a brand-new
+--      table `xero_pl_lines_v2` (NO business_id FK), then atomically swapped:
+--        ALTER TABLE xero_pl_lines     RENAME TO xero_pl_lines_wide_legacy;
+--        ALTER TABLE xero_pl_lines_v2  RENAME TO xero_pl_lines;
+--      A constraint travels with its table on rename and KEEPS its name. So
+--      `xero_pl_lines_business_id_fkey` now lives on `xero_pl_lines_wide_legacy`,
+--      NOT on the live `xero_pl_lines`. The live table only ever gets the
+--      canonical `xero_pl_lines_business_id_fk` -> business_profiles(id)
+--      (added later by 20260430000002).
+--   3. `xero_pl_lines_wide_legacy` was meant to be dropped in "Phase 45" once
+--      long-format stability was proven (see its TABLE comment). That cleanup
+--      never happened — the snapshot table is still present in production and
+--      in every fresh build.
+--
+-- The consequence
+-- ---------------
+-- The stale `_fkey` -> businesses constraint is NOT a live hazard: nothing
+-- reads from or writes to `xero_pl_lines_wide_legacy`, no view/function/trigger
+-- references it, and no other table has an FK pointing at it (all verified
+-- read-only, 2026-05-31). It is pure cruft. But it is the source of the
+-- "constraint xero_pl_lines_business_id_fkey does not exist" failure that broke
+-- fresh-build CI / `supabase db reset` / the inLIFE Pulse fork, because any
+-- pg_constraint lookup by name (without a conrelid filter) still finds it.
+--
+-- The right fix is to remove the abandoned snapshot table at its source. That
+-- deletes the table, its old RLS policy (`xero_pl_lines_access`), and the stale
+-- `_fkey` constraint in one stroke.
+--
+-- Safety
+-- ------
+--   - Long-format `xero_pl_lines` has been the system of record since Phase 44
+--     (Apr 2026); the snapshot's rollback purpose is long expired.
+--   - `IF EXISTS` makes this idempotent and a clean no-op on any DB where the
+--     table is already gone.
+--   - NO `CASCADE`: if some object we did not anticipate depends on this table,
+--     the migration fails loudly instead of silently dropping dependents. Given
+--     the verified zero dependents, the plain DROP succeeds.
+--   - Single shared multi-tenant Postgres: this is ONE table drop, not per-tenant.
+
+DROP TABLE IF EXISTS public.xero_pl_lines_wide_legacy;
