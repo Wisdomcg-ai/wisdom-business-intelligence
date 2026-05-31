@@ -24,6 +24,17 @@ export const REFRESH_THRESHOLD_MINUTES = 15;
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1000;
 
+// Refresh-lock coordination (REL-N4).
+//   LOCK_TTL_MS — how long a held refresh lock stays valid before it is
+//     considered stale. A waiter polls for *exactly* this window: that is the
+//     longest a healthy lock-holder could legitimately be mid-refresh (Xero
+//     backoff/retries included) before its lock ages out and a waiter may take
+//     over. acquireRefreshLock uses the same constant for its staleness cutoff.
+//   LOCK_POLL_INTERVAL_MS — how often a waiter re-checks for the sibling's
+//     rotated token / a freed lock.
+const LOCK_TTL_MS = 30000;
+const LOCK_POLL_INTERVAL_MS = 2000;
+
 // REL-N5: persisting a freshly-rotated token is mandatory — Xero has already
 // invalidated the previous refresh token by the time we get a 200, so the new
 // token is the ONLY valid one. Retry the save a few times (short backoff) so a
@@ -223,7 +234,7 @@ export async function getValidAccessToken(
   console.log(`[Token Manager] Token expires at ${expiry.toISOString()}, refreshing...`);
 
   // Check if another process is already refreshing (race condition prevention)
-  const lockResult = await acquireRefreshLock(connection.id, supabase);
+  let lockResult = await acquireRefreshLock(connection.id, supabase);
 
   // Snapshot of the row state we're going to use for the refresh.
   // If we acquire the lock, we re-fetch (closing Hole A); otherwise we use
@@ -231,44 +242,103 @@ export async function getValidAccessToken(
   let workingRow: any = connection;
 
   if (!lockResult.acquired) {
-    // Another process is refreshing, wait and re-fetch
-    console.log('[Token Manager] Another process is refreshing, waiting...');
-    await sleep(2000);
+    // ─── REL-N4: poll for the lock-holder's result up to the lock TTL ──────
+    // A sibling holds the refresh lock. The previous code slept a fixed 2s
+    // ONCE and, if the holder hadn't finished, fell straight through to an
+    // UNLOCKED self-refresh. Under Xero backoff the holder's refresh routinely
+    // takes >2s, so every concurrent caller would then refresh in parallel —
+    // each rotating the single-use refresh token out from under the others
+    // (a rotated-token stampede that bricks the connection).
+    //
+    // Instead, poll for up to ~LOCK_TTL_MS — the longest a healthy holder can
+    // legitimately be mid-refresh:
+    //   - if the sibling rotates the token (expires_at advances past the
+    //     threshold) → return that fresh token immediately;
+    //   - if the lock frees up (sibling released it, or its lock aged past the
+    //     TTL) → take it over and do a *locked* refresh via the acquired path;
+    //   - only if the entire TTL window elapses with neither happening (holder
+    //     wedged) do we fall through to a best-effort unlocked self-refresh, so
+    //     a stuck sibling can't block this caller forever.
+    console.log('[Token Manager] Another process is refreshing, waiting for it to finish...');
 
-    // Re-fetch connection to get updated tokens
-    const { data: updatedConnection } = await supabase
-      .from('xero_connections')
-      .select('*')
-      .eq('id', connection.id)
-      .single();
+    const pollDeadline = Date.now() + LOCK_TTL_MS;
+    while (Date.now() < pollDeadline) {
+      await sleep(LOCK_POLL_INTERVAL_MS);
 
-    if (updatedConnection && new Date(updatedConnection.expires_at) > thresholdTime) {
-      try {
-        return {
-          success: true,
-          accessToken: decrypt(updatedConnection.access_token)
-        };
-      } catch (err) {
-        console.error('[Token Manager] Failed to decrypt sibling-rotated access token:', err);
-        return {
-          success: false,
-          error: 'database_error',
-          message: 'Failed to decrypt sibling-rotated tokens',
-          shouldDeactivate: false,
-        };
+      const { data: updatedConnection } = await supabase
+        .from('xero_connections')
+        .select('*')
+        .eq('id', connection.id)
+        .single();
+
+      // Sibling completed the refresh — use its rotated token.
+      if (updatedConnection && new Date(updatedConnection.expires_at) > thresholdTime) {
+        try {
+          return {
+            success: true,
+            accessToken: decrypt(updatedConnection.access_token)
+          };
+        } catch (err) {
+          console.error('[Token Manager] Failed to decrypt sibling-rotated access token:', err);
+          return {
+            success: false,
+            error: 'database_error',
+            message: 'Failed to decrypt sibling-rotated tokens',
+            shouldDeactivate: false,
+          };
+        }
+      }
+
+      // Token still stale. Try to take over the lock — this succeeds once the
+      // sibling releases it (or its lock ages past the TTL). If we get it, drop
+      // into the locked-refresh path below (which re-fetches the freshest row).
+      lockResult = await acquireRefreshLock(connection.id, supabase);
+      if (lockResult.acquired) {
+        break;
       }
     }
 
-    // Still expired, fall through and try ourselves (best-effort, no lock).
-    if (updatedConnection) {
-      workingRow = updatedConnection;
-      try {
-        decryptedRefreshToken = decrypt(updatedConnection.refresh_token);
-      } catch {
-        // Keep stale rt; refreshTokenWithRetry will fail and surface error.
+    if (!lockResult.acquired) {
+      // TTL elapsed and the lock never cleared — the holder is wedged. Best-effort
+      // UNLOCKED self-refresh with the freshest row we can read, so this caller
+      // isn't blocked indefinitely by a stuck sibling.
+      console.warn('[Token Manager] Refresh lock did not clear within TTL; attempting best-effort unlocked refresh.');
+      const { data: latestRow } = await supabase
+        .from('xero_connections')
+        .select('*')
+        .eq('id', connection.id)
+        .single();
+
+      if (latestRow) {
+        // One last check: a sibling may have rotated right at the deadline.
+        if (new Date(latestRow.expires_at) > thresholdTime) {
+          try {
+            return {
+              success: true,
+              accessToken: decrypt(latestRow.access_token)
+            };
+          } catch (err) {
+            console.error('[Token Manager] Failed to decrypt sibling-rotated access token (post-TTL):', err);
+            return {
+              success: false,
+              error: 'database_error',
+              message: 'Failed to decrypt sibling-rotated tokens',
+              shouldDeactivate: false,
+            };
+          }
+        }
+
+        workingRow = latestRow;
+        try {
+          decryptedRefreshToken = decrypt(latestRow.refresh_token);
+        } catch {
+          // Keep stale rt; refreshTokenWithRetry will fail and surface error.
+        }
       }
     }
-  } else {
+  }
+
+  if (lockResult.acquired) {
     // ─── Hole A close: re-fetch row immediately after acquiring the lock. ──
     // A sibling may have completed a full refresh between our initial fetch
     // and our lock acquire. If expires_at advanced past threshold, short-circuit
@@ -757,7 +827,7 @@ async function acquireRefreshLock(
   supabase: SupabaseClient
 ): Promise<{ acquired: boolean }> {
   const now = new Date();
-  const lockExpiry = new Date(now.getTime() - 30000); // Lock expires after 30 seconds
+  const lockExpiry = new Date(now.getTime() - LOCK_TTL_MS); // Lock expires after LOCK_TTL_MS
 
   // Try to acquire lock by setting token_refreshing_at
   // Only succeed if no other process has the lock
