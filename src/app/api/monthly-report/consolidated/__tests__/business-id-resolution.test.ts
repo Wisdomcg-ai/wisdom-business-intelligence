@@ -1,27 +1,32 @@
 /**
- * Regression tests: Phase 66-02 — resolveBusinessIds normalization
+ * Regression tests: Phase 66-02 — resolveBusinessProfileIds normalization
  * for POST /api/monthly-report/consolidated.
  *
  * Pins that:
  *   Test 1: When the request body sends a business_profiles.id,
- *           resolveBusinessIds is invoked with the raw input and the
- *           section-permission gate receives ids.bizId (the resolved
+ *           resolveBusinessProfileIds is invoked with the raw input and the
+ *           section-permission gate receives ids.businessId (the resolved
  *           businesses.id), NOT the raw input id.
  *
  *   Test 2: When the body sends a businesses.id (the live-tenant case),
- *           ids.bizId equals the input — no behavior change for Dragon/IICT.
+ *           ids.businessId equals the input — no behavior change for Dragon/IICT.
  *
- * Strategy: mock resolveBusinessIds to return a controlled shape,
+ * R1 PR-4: the route now imports the canonical branded resolver
+ * (`@/lib/business/resolveBusinessProfileIds`); the legacy
+ * `resolveBusinessIds` is a @deprecated shim that delegates here. These tests
+ * mock the branded module directly.
+ *
+ * Strategy: mock resolveBusinessProfileIds to return a controlled shape,
  * mock requireSectionPermission to spy on its third argument,
  * mock the engine and FX helpers so the route reaches 200 without a real DB.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// ── resolveBusinessIds mock ───────────────────────────────────────────────────
-const resolveBusinessIdsMock = vi.fn()
-vi.mock('@/lib/utils/resolve-business-ids', () => ({
-  resolveBusinessIds: resolveBusinessIdsMock,
+// ── resolveBusinessProfileIds mock ────────────────────────────────────────────
+const resolveBusinessProfileIdsMock = vi.fn()
+vi.mock('@/lib/business/resolveBusinessProfileIds', () => ({
+  resolveBusinessProfileIds: resolveBusinessProfileIdsMock,
 }))
 
 // ── requireSectionPermission spy ──────────────────────────────────────────────
@@ -164,8 +169,8 @@ describe('POST /api/monthly-report/consolidated — Phase 66-02 ID resolution', 
 
   it('Test 1: when body sends a business_profiles.id, section gate receives the resolved businesses.id', async () => {
     // The body sends PROFILE_ID (business_profiles.id form — different from BIZ_ID)
-    resolveBusinessIdsMock.mockResolvedValueOnce({
-      bizId: BIZ_ID,
+    resolveBusinessProfileIdsMock.mockResolvedValueOnce({
+      businessId: BIZ_ID,
       profileId: PROFILE_ID,
       all: [PROFILE_ID, BIZ_ID],
     })
@@ -174,18 +179,18 @@ describe('POST /api/monthly-report/consolidated — Phase 66-02 ID resolution', 
 
     expect(status).toBe(200)
 
-    // resolveBusinessIds was called with the RAW input from the request body
-    expect(resolveBusinessIdsMock).toHaveBeenCalledWith(
+    // resolveBusinessProfileIds was called with the RAW input from the request body
+    expect(resolveBusinessProfileIdsMock).toHaveBeenCalledWith(
       expect.anything(),  // service-role supabase client
       PROFILE_ID,         // the raw body business_id
     )
 
-    // requireSectionPermission received ids.bizId (the RESOLVED businesses.id)
+    // requireSectionPermission received ids.businessId (the RESOLVED businesses.id)
     // NOT the raw PROFILE_ID that was in the request body
     expect(requireSectionPermissionMock).toHaveBeenCalledWith(
       expect.anything(),  // auth-bound client
       USER_ID,
-      BIZ_ID,             // third arg must be the resolved bizId, NOT PROFILE_ID
+      BIZ_ID,             // third arg must be the resolved businessId, NOT PROFILE_ID
       'finances',
     )
 
@@ -195,11 +200,11 @@ describe('POST /api/monthly-report/consolidated — Phase 66-02 ID resolution', 
     expect(thirdArg).not.toBe(PROFILE_ID)
   })
 
-  it('Test 2: when body sends businesses.id (live-tenant case), behavior is unchanged — ids.bizId equals the input', async () => {
+  it('Test 2: when body sends businesses.id (live-tenant case), behavior is unchanged — ids.businessId equals the input', async () => {
     // For live tenants (Dragon, IICT), the frontend sends businesses.id.
-    // resolveBusinessIds resolves it to the same bizId — no behavior change.
-    resolveBusinessIdsMock.mockResolvedValueOnce({
-      bizId: BIZ_ID,
+    // resolveBusinessProfileIds resolves it to the same businessId — no behavior change.
+    resolveBusinessProfileIdsMock.mockResolvedValueOnce({
+      businessId: BIZ_ID,
       profileId: 'some-profile-id',
       all: ['some-profile-id', BIZ_ID],
     })
@@ -208,13 +213,13 @@ describe('POST /api/monthly-report/consolidated — Phase 66-02 ID resolution', 
 
     expect(status).toBe(200)
 
-    // resolveBusinessIds was called with the businesses.id input
-    expect(resolveBusinessIdsMock).toHaveBeenCalledWith(
+    // resolveBusinessProfileIds was called with the businesses.id input
+    expect(resolveBusinessProfileIdsMock).toHaveBeenCalledWith(
       expect.anything(),
       BIZ_ID,
     )
 
-    // requireSectionPermission receives ids.bizId which equals the input — no change
+    // requireSectionPermission receives ids.businessId which equals the input — no change
     const thirdArg = requireSectionPermissionMock.mock.calls[0][2]
     expect(thirdArg).toBe(BIZ_ID)
   })
