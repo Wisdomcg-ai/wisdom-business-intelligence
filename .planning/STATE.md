@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: — Codebase Hardening
 status: Milestone complete
-last_updated: "2026-05-31T11:50:00.000Z"
+last_updated: "2026-05-31T01:56:15.903Z"
 last_activity: 2026-05-31
 progress:
   total_phases: 60
   completed_phases: 28
   total_plans: 170
-  completed_plans: 159
+  completed_plans: 158
 ---
 
 # Project State

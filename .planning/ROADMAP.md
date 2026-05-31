@@ -1087,7 +1087,7 @@ Plans:
 **Goal:** Make Step 3 (Revenue & COGS) render the full plan-Y1 month range for extended-period plans (e.g. Armstrong: 13 months, plan_start_date 2026-06-01). Today Step 3 hardcodes 12 current-FY months and locks current-FY YTD as "actuals" — for Armstrong this surfaces only 3 editable months instead of 13.
 **Requirements**: TBD
 **Depends on:** Phase 71
-**Plans:** 2/2 plans complete
+**Plans:** 2/1 plans complete
 
 Plans:
 - [x] 72-01 — Read-only diagnosis: produce 72-DIAGNOSIS.md naming root cause as "wizard-blind-to-plan-period" + fix scope + Steps 4-8 same-family audit (commit `bb02009d`)
