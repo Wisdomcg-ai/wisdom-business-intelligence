@@ -1,8 +1,10 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
-export async function GET(
+async function getHandler(
   request: Request,
   { params }: { params: { id: string } }
 ) {
@@ -58,3 +60,7 @@ export async function GET(
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
+
+// Param-only GET (no body/query) — observe wrapper, permissive empty schema.
+// ctx ({ params: { id } }) is forwarded verbatim by the wrapper.
+export const GET = withQuerySchema('documents/[id]/download', z.object({}), getHandler)

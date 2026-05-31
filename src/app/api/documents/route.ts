@@ -2,10 +2,24 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { notifyDocumentShared } from '@/lib/notifications'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: Request) {
+// GET searchParams: { business_id? } (string-typed query).
+const GetQuerySchema = z.object({ business_id: z.string().optional() }).passthrough()
+
+// POST is multipart/form-data (file upload). The wrapper's clone().json() no-ops on
+// multipart so this stays observe-only; we still model the known form text fields.
+const PostBodySchema = z
+  .object({
+    business_id: z.string().optional(),
+    folder: z.string().optional(),
+  })
+  .passthrough()
+
+async function getHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
   const { searchParams } = new URL(request.url)
   const businessId = searchParams.get('business_id')
@@ -62,6 +76,8 @@ export async function GET(request: Request) {
   }
 }
 
+export const GET = withQuerySchema('documents', GetQuerySchema, getHandler)
+
 // Allowed file types for upload
 const ALLOWED_MIME_TYPES = [
   'application/pdf',
@@ -81,7 +97,7 @@ const ALLOWED_MIME_TYPES = [
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -201,3 +217,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('documents', PostBodySchema, postHandler)
