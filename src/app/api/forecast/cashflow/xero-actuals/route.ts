@@ -18,7 +18,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
     )
     if (_sectionBlocked) return _sectionBlocked
 
-    const ids = await resolveBusinessIds(supabase, businessId)
+    const ids = await resolveBusinessProfileIds(supabase, businessId)
 
     // If no explicit forecast_id, look up the active forecast for this business.
     if (!forecastId) {

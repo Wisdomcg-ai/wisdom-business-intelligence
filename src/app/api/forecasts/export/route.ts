@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { ExcelExportService } from '@/app/finances/forecast/services/excel-export-service'
 import { PDFExportService } from '@/app/finances/forecast/services/pdf-export-service'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     // Verify access - user owns forecast, has business access, or is coach/admin
     if (forecast && forecast.user_id !== user.id) {
       // Resolve both ID formats so access check works regardless of which was stored
-      const ids = await resolveBusinessIds(supabaseAdmin, forecast.business_id)
+      const ids = await resolveBusinessProfileIds(supabaseAdmin, forecast.business_id)
       const { data: bizAccess } = await supabase
         .from('businesses')
         .select('id')

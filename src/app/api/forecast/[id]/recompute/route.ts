@@ -23,7 +23,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -69,7 +69,7 @@ export async function POST(
     // ── Access check ──────────────────────────────────────────────────────
     // financial_forecasts.business_id is a business_profiles.id; resolve to
     // both businesses.id and business_profiles.id (Phase 21 dual-ID system).
-    const ids = await resolveBusinessIds(supabase, forecast.business_id as string)
+    const ids = await resolveBusinessProfileIds(supabase, forecast.business_id as string)
 
     // Owner / coach via the businesses row.
     const { data: bizRow } = await supabase
@@ -113,7 +113,7 @@ export async function POST(
     const _sectionVerdict = await requireSectionPermission(
       supabase,            // auth-bound client (assigned from createRouteHandlerClient() above)
       user.id,
-      ids.bizId,
+      ids.businessId,
       'finances',
     )
     const _sectionBlocked = enforceSectionPermission(
@@ -121,7 +121,7 @@ export async function POST(
       'finances',
       'api/forecast/[id]/recompute',
       user.id,
-      ids.bizId,
+      ids.businessId,
     )
     if (_sectionBlocked) return _sectionBlocked
 

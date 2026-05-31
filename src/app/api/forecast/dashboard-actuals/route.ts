@@ -29,7 +29,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { generateFiscalMonthKeys, getCurrentFiscalYear, getFiscalMonthLabels } from '@/lib/utils/fiscal-year-utils'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -105,7 +105,7 @@ export async function GET(request: Request) {
     }
 
     // Dual-ID resolution — CRITICAL: financial_forecasts.business_id is FK to business_profiles.id
-    const ids = await resolveBusinessIds(supabase, businessId)
+    const ids = await resolveBusinessProfileIds(supabase, businessId)
 
     // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
     const _sectionVerdict = await requireSectionPermission(

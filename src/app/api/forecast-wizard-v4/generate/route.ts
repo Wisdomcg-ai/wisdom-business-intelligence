@@ -1,7 +1,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
 
     // financial_forecasts.business_id FK references business_profiles(id),
     // but the wizard passes businesses.id — resolve both IDs
-    const ids = await resolveBusinessIds(supabase, businessId)
+    const ids = await resolveBusinessProfileIds(supabase, businessId)
     const profileId = ids.profileId
 
     // Build the forecast data to upsert

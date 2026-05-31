@@ -37,10 +37,10 @@ vi.mock('next/headers', () => ({
   cookies: () => ({}),
 }))
 
-// resolveBusinessIds → echo the id into the id-set (mirrors prod shape)
-vi.mock('@/lib/utils/resolve-business-ids', () => ({
-  resolveBusinessIds: vi.fn(async (_supabase: any, id: string) => ({
-    bizId: id,
+// resolveBusinessProfileIds → echo the id into the id-set (mirrors prod shape)
+vi.mock('@/lib/business/resolveBusinessProfileIds', () => ({
+  resolveBusinessProfileIds: vi.fn(async (_supabase: any, id: string) => ({
+    businessId: id,
     profileId: id,
     all: [id],
   })),
