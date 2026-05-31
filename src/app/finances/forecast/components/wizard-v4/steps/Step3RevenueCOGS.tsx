@@ -3,7 +3,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Trash2, Info, Lock, ChevronDown, ChevronRight, Calendar } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, generateMonthKeys, getRevenueLineYearTotal, MonthlyData } from '../types';
-import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
+import { DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
+import { getPlanY1MonthKeys } from '@/lib/utils/plan-period';
 import { DataIntegrityBanner } from '@/components/data-integrity/DataIntegrityBanner';
 import type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read-service';
 import { useEditableValue } from '../hooks/useEditableValue';
@@ -244,7 +245,7 @@ interface Step3RevenueCOGSProps {
 }
 
 export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOGSProps) {
-  const { revenuePattern, revenueLines, cogsLines, activeYear, goals, priorYear, currentYTD, businessId } = state;
+  const { revenuePattern, revenueLines, cogsLines, activeYear, goals, priorYear, currentYTD, businessId, planPeriod } = state;
 
   // D-44.2-03 read-path quality gate; surfaces in DataIntegrityBanner.
   // Refetches on tab focus / visibility change so a sync triggered from the
@@ -306,9 +307,44 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   const [viewMode, setViewMode] = useState<'summary' | 'monthly'>('summary');
   const [expandedRevLines, setExpandedRevLines] = useState<Set<string>>(new Set());
 
-  const months = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
-  // Generate month keys for the active year (Y1 starts at fiscalYear-1, Y2 at fiscalYear, Y3 at fiscalYear+1)
-  const monthKeys = generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
+  // Phase 72-02 — plan-period-aware month range.
+  //
+  // For Y1: consult planPeriod (sourced from business_financial_goals'
+  // is_extended_period / year1_months / plan_start_date / year1_end_date). For
+  // an extended plan like Armstrong (Y1=13mo, plan_start=2026-06-01) this
+  // yields 13 keys spanning Jun 2026 .. Jun 2027 instead of the old hardcoded
+  // 12-key FY26 window (Jul 2025 .. Jun 2026) which dropped 12 of the 13
+  // planned months off the editable grid.
+  //
+  // For Y2/Y3: planPeriod doesn't apply (Phase 14's extended period is a Y1
+  // concept only), so fall through to the existing 12-month FY-aligned range
+  // — no regression for any standard plan or for Y2/Y3 views of an extended
+  // plan.
+  //
+  // Labels are derived from the keys themselves so a 13+ month grid renders
+  // 13+ matching <th> cells. Using the static getFiscalMonthLabels(yearStart)
+  // helper would have produced only 12 labels regardless of how many keys
+  // monthKeys held — the bug the header alignment depends on.
+  const monthKeys = useMemo(() => {
+    if (activeYear === 1) {
+      return getPlanY1MonthKeys(fiscalYear, planPeriod ?? null, DEFAULT_YEAR_START_MONTH);
+    }
+    return generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
+  }, [activeYear, fiscalYear, planPeriod]);
+
+  const MONTH_ABBREVS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Labels derived from monthKeys so the header always matches the body.
+  // For the standard 12-month FY-aligned path this produces the same strings
+  // as getFiscalMonthLabels(7) (['Jul', 'Aug', ..., 'Jun']); for extended Y1
+  // it produces 13+ labels starting at the plan_start_date month.
+  const months = useMemo(() => {
+    return monthKeys.map((key) => {
+      const monthNum = parseInt(key.slice(5, 7), 10);
+      return MONTH_ABBREVS[monthNum - 1];
+    });
+    // MONTH_ABBREVS is a stable constant in module scope — no need to depend on it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthKeys]);
 
   // ─── Peak/Low helpers (Summary view) ─────────────────────────────────────
   // Surfaces the highest and lowest month from a line's monthly distribution.
@@ -542,9 +578,36 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   };
 
   // Calculate totals for actuals vs projections
+  //
+  // Phase 72-02 — plan-period-aware actuals lock.
+  //
+  // OLD: `completedMonthsCount = currentYTD?.months_count` (current-FY YTD
+  // months count) and `remainingMonthsCount = 12 - completedMonthsCount`.
+  // For Armstrong (extended Y1=13mo, plan_start=2026-06-01) this returned
+  // remaining=3 — only the calendar tail of current FY26 was editable, and
+  // 12 of the 13 plan-Y1 months never appeared on the grid at all.
+  //
+  // NEW: count actuals as the intersection of plan-Y1 monthKeys with the
+  // months actually present in currentYTD.revenue_by_month. Remaining =
+  // monthKeys.length - completed. For standard 12-month plans this is
+  // byte-identical to the old behaviour (monthKeys.length === 12 and the
+  // intersection equals currentYTD.months_count). For extended plans whose
+  // planStartDate is in the future, completed=0 and the whole plan is
+  // editable.
+  //
+  // ytdActualTotal stays sourced from currentYTD.total_revenue — that figure
+  // is informational only (banner text "X/Y months actual · $T YTD") and
+  // re-aggregating from per-month entries would produce identical results.
   const ytdActualTotal = currentYTD?.total_revenue || 0;
-  const completedMonthsCount = currentYTD?.months_count || 0;
-  const remainingMonthsCount = 12 - completedMonthsCount;
+  const completedMonthsCount = useMemo(() => {
+    if (activeYear !== 1) return 0;
+    if (!currentYTD?.revenue_by_month) return 0;
+    const ytdKeys = new Set(Object.keys(currentYTD.revenue_by_month));
+    let n = 0;
+    for (const k of monthKeys) if (ytdKeys.has(k)) n += 1;
+    return n;
+  }, [activeYear, currentYTD, monthKeys]);
+  const remainingMonthsCount = monthKeys.length - completedMonthsCount;
 
   const handlePatternChange = (pattern: 'seasonal' | 'straight-line' | 'manual') => {
     actions.setRevenuePattern(pattern);
@@ -1561,7 +1624,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         <div className="bg-gray-50 border border-gray-200 rounded-xl px-5 py-3 flex items-center justify-between text-sm">
           <div className="flex items-center gap-4 text-gray-600">
             {completedMonthsCount > 0 && activeYear === 1 && (
-              <span>{completedMonthsCount}/12 months actual &bull; {formatCurrency(ytdActualTotal)} YTD</span>
+              <span>{completedMonthsCount}/{monthKeys.length} months actual &bull; {formatCurrency(ytdActualTotal)} YTD</span>
             )}
             {hasImportedData && (
               <span className="text-gray-400">Lines from Xero</span>
@@ -1824,7 +1887,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                     {isExpanded && (
                       <tr className="bg-gray-50 border-b border-gray-100">
                         <td colSpan={7} className="px-6 py-3">
-                          <div className="grid grid-cols-12 gap-1">
+                          {/* Phase 72-02 — dynamic column count to support
+                              extended-period plans (Armstrong: 13mo Y1).
+                              Standard 12mo plans still render a 12-column grid
+                              (identical to the previous grid-cols-12 layout). */}
+                          <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${monthKeys.length}, minmax(0, 1fr))` }}>
                             {monthKeys.map((key, idx) => {
                               const isActual = activeYear === 1 && isActualMonth(key);
                               const yearMonthly = activeYear === 1
@@ -2107,7 +2174,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
               <tbody>
                 {/* REVENUE header */}
                 <tr className="bg-gray-50">
-                  <td colSpan={16} className="px-4 py-2">
+                  <td colSpan={monthKeys.length + 4} className="px-4 py-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Revenue</span>
                       <button
@@ -2240,11 +2307,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                 </tr>
 
                 {/* Spacer */}
-                <tr><td colSpan={16} className="py-2"></td></tr>
+                <tr><td colSpan={monthKeys.length + 4} className="py-2"></td></tr>
 
                 {/* COST OF SALES header */}
                 <tr className="bg-gray-50">
-                  <td colSpan={16} className="px-4 py-2">
+                  <td colSpan={monthKeys.length + 4} className="px-4 py-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Cost of Sales</span>
                       <div className="flex items-center gap-2">
@@ -2385,7 +2452,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
                 {cogsLines.length === 0 && (
                   <tr>
-                    <td colSpan={15} className="px-4 py-8 text-center text-sm text-gray-500">
+                    <td colSpan={monthKeys.length + 3} className="px-4 py-8 text-center text-sm text-gray-500">
                       {priorYear && priorYear.cogs.byLine.length === 0 ? (
                         <>
                           <div className="font-medium text-gray-700 mb-1">No Cost of Sales accounts found in Xero</div>

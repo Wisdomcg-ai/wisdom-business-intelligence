@@ -24,6 +24,7 @@ import {
   ForecastSummary,
   YearlySummary,
   BusinessProfile,
+  PlanPeriod,
   calculateSuper,
   calculateNewSalary,
   calculateLoanPayment,
@@ -143,6 +144,9 @@ const createInitialState = (fiscalYearStart: number, businessId: string): Foreca
   currentStep: 1,
   activeYear: 1,
   businessProfile: null,
+  // Phase 72-02 — plan-period slice. Null on fresh state; populated by
+  // ForecastWizardV4.tsx's goals-loader on every wizard mount.
+  planPeriod: null,
   goals: {
     year1: { revenue: 0, grossProfitPct: 50, netProfitPct: 15 },
     year2: { revenue: 0, grossProfitPct: 52, netProfitPct: 17 },
@@ -585,6 +589,12 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
   // Business Profile
   const setBusinessProfile = useCallback((profile: BusinessProfile | null) => {
     setState((prev) => ({ ...prev, businessProfile: profile }));
+  }, []);
+
+  // Phase 72-02 — plan-period slice. Pure persistence; no derived side effects.
+  // Read by Step 3 (and any future plan-Y1 consumer) via getPlanY1MonthKeys.
+  const setPlanPeriod = useCallback((period: PlanPeriod | null) => {
+    setState((prev) => ({ ...prev, planPeriod: period }));
   }, []);
 
   // Step 2: Prior Year - also creates revenue/COGS/OpEx lines from the data
@@ -2147,6 +2157,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     prevStep,
     setActiveYear,
     setBusinessProfile,
+    setPlanPeriod,
     setForecastDuration,
     updateGoals,
     setPriorYear,

@@ -164,6 +164,20 @@ export function ForecastWizardV4({
               };
               console.log('[ForecastWizardV4] Refreshed goals from One Page Plan:', freshGoals);
               actionsRef.current.updateGoals(freshGoals);
+
+              // Phase 72-02 — surface the extended-period plan-period fields
+              // that the /api/goals payload has always returned but the wizard
+              // previously discarded. Step 3 (and any future plan-Y1
+              // consumer) reads state.planPeriod via getPlanY1MonthKeys to
+              // render the correct month range — Armstrong's 13-month Y1
+              // (plan_start_date=2026-06-01) was rendering as 3 editable
+              // months before this slice landed.
+              actionsRef.current.setPlanPeriod({
+                isExtendedPeriod: goalsData.goals.is_extended_period ?? false,
+                year1Months: goalsData.goals.year1_months ?? 12,
+                planStartDate: (goalsData.goals.plan_start_date as string | null) ?? null,
+                year1EndDate: (goalsData.goals.year1_end_date as string | null) ?? null,
+              });
             }
           }
 
