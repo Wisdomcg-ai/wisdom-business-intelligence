@@ -1,8 +1,21 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
-export async function GET(
+// VALID-03 (observe mode): GET carries no body; permissive query schema.
+const CoachClientGetQuerySchema = z.object({})
+
+// VALID-03 (observe mode): PUT updates a coach's client (all fields optional).
+const CoachClientPutSchema = z.object({
+  status: z.string().optional(),
+  program_type: z.string().optional(),
+  session_frequency: z.string().optional(),
+  enabled_modules: z.record(z.string(), z.unknown()).optional(),
+})
+
+async function getHandler(
   request: Request,
   { params }: { params: { id: string } }
 ) {
@@ -96,7 +109,7 @@ export async function GET(
   }
 }
 
-export async function PUT(
+async function putHandler(
   request: Request,
   { params }: { params: { id: string } }
 ) {
@@ -157,3 +170,6 @@ export async function PUT(
     )
   }
 }
+
+export const GET = withQuerySchema('coach/clients/[id]', CoachClientGetQuerySchema, getHandler)
+export const PUT = withSchema('coach/clients/[id]', CoachClientPutSchema, putHandler)

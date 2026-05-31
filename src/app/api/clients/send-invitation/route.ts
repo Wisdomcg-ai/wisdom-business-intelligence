@@ -4,8 +4,15 @@ import { NextResponse } from 'next/server'
 import { sendClientInvitation } from '@/lib/email/resend'
 import { getAppBaseUrl } from '@/lib/config/brand'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
-export async function POST(request: Request) {
+// VALID-03 (observe mode): POST sends a stored invitation for a business.
+const SendInvitationPostSchema = z.object({
+  businessId: z.string().min(1),
+})
+
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -149,3 +156,5 @@ export async function POST(request: Request) {
     )
   }
 }
+
+export const POST = withSchema('clients/send-invitation', SendInvitationPostSchema, postHandler)

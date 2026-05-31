@@ -4,8 +4,17 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { NextResponse } from 'next/server'
 import { csrfProtection } from '@/lib/security/csrf'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
-export async function POST(request: Request) {
+// VALID-03 (observe mode): POST removes a team member from a business.
+const RemoveMemberPostSchema = z.object({
+  memberId: z.string().min(1),
+  businessId: z.string().min(1),
+  deleteCompletely: z.boolean().optional(),
+})
+
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
   const adminSupabase = createServiceRoleClient()
 
@@ -170,3 +179,5 @@ export async function POST(request: Request) {
     )
   }
 }
+
+export const POST = withSchema('team/remove-member', RemoveMemberPostSchema, postHandler)
