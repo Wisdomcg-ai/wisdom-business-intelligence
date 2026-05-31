@@ -329,11 +329,27 @@ export interface VendorSummary {
   transactions?: VendorTransaction[]
 }
 
+/**
+ * Phase 71-04 (S1) — TriggerReason names WHY a commentary row appeared.
+ * Defined inline (rather than imported from utils/commentary-triggers) so the
+ * types.ts module has no runtime dependency on a UI util.
+ */
+export type CommentaryTriggerReason =
+  | 'expense_over_budget_dollar'
+  | 'revenue_under_budget_dollar'
+  | 'revenue_under_budget_percent'
+  | 'expense_favourable_significant'
+  | 'bs_movement_dollar'
+  | 'bs_movement_percent'
+
 export interface VarianceCommentaryEntry {
   vendor_summary: VendorSummary[]  // Grouped by vendor, sorted by amount desc
   coach_note: string               // Editable coach note (can override or supplement)
   is_edited: boolean
   detail_tab_ref?: 'subscriptions' | 'wages' | null
+  // Phase 71-04 (S1): why this commentary row was surfaced. Optional for
+  // backward-compat with pre-71-04 snapshots that lack the field.
+  trigger_reason?: CommentaryTriggerReason
 }
 
 export interface VarianceCommentary {
@@ -351,6 +367,12 @@ export interface SubscriptionVendorLine {
   actual: number
   budget: number
   variance: number
+  /**
+   * Number of current-month bank-transaction lines that contributed to `actual`.
+   * Zero means the vendor surfaced solely from `subscription_budgets` backfill
+   * (Phase 71-05 / S2) and the UI should render a "not billed this month" badge.
+   */
+  transaction_count: number
 }
 
 export interface SubscriptionAccountGroup {
