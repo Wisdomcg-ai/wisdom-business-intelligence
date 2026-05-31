@@ -1,6 +1,7 @@
 'use client'
 
-import { Loader2, Users, Settings } from 'lucide-react'
+import { Fragment, useState } from 'react'
+import { ChevronRight, Loader2, Users, Settings } from 'lucide-react'
 import type { WagesDetailData } from '../types'
 
 interface WagesAnalysisTabProps {
@@ -28,6 +29,10 @@ function formatPayRunDate(dateStr: string): string {
 }
 
 export default function WagesAnalysisTab({ data, isLoading, error, onOpenSettings }: WagesAnalysisTabProps) {
+  // Phase 71-06 (S3): track which employee row (if any) is currently expanded
+  // to show per-payrun detail underneath. Null = all collapsed.
+  const [expandedEmployeeName, setExpandedEmployeeName] = useState<string | null>(null)
+
   if (isLoading) {
     return (
       <div className="bg-white rounded-lg shadow-sm p-8 text-center">
@@ -147,24 +152,75 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
                     if (pr.date) payByDate[pr.date] = (payByDate[pr.date] || 0) + pr.gross_earnings
                   }
 
+                  const isExpanded = expandedEmployeeName === emp.name
+                  // colSpan width for the detail row: Employee + pay-run cols + Total + Budget + Var
+                  const detailColSpan = 1 + payRunDates.length + 3
+
                   return (
-                    <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="px-4 py-2 text-sm text-gray-900">{emp.name}</td>
-                      {payRunDates.map(d => (
-                        <td key={d} className="px-4 py-2 text-sm text-right text-gray-700">
-                          {payByDate[d] ? fmt(payByDate[d]) : '—'}
+                    <Fragment key={`${emp.name}-${idx}`}>
+                      <tr className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="px-4 py-2 text-sm text-gray-900">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedEmployeeName(prev => (prev === emp.name ? null : emp.name))
+                              }
+                              aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${emp.name}`}
+                              aria-expanded={isExpanded}
+                              className="p-1 -m-1 rounded hover:bg-gray-200 transition-colors"
+                            >
+                              <ChevronRight
+                                className={`w-4 h-4 text-gray-500 transition-transform ${
+                                  isExpanded ? 'rotate-90' : ''
+                                }`}
+                              />
+                            </button>
+                            <span>{emp.name}</span>
+                          </div>
                         </td>
-                      ))}
-                      <td className="px-4 py-2 text-sm text-right font-medium text-gray-900">
-                        {emp.actual_total ? fmt(emp.actual_total) : '—'}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-right text-gray-600">
-                        {emp.budget_total ? fmt(emp.budget_total) : '—'}
-                      </td>
-                      <td className={`px-4 py-2 text-sm text-right font-medium ${varianceColor(emp.variance)}`}>
-                        {emp.budget_total || emp.actual_total ? fmt(emp.variance) : '—'}
-                      </td>
-                    </tr>
+                        {payRunDates.map(d => (
+                          <td key={d} className="px-4 py-2 text-sm text-right text-gray-700">
+                            {payByDate[d] ? fmt(payByDate[d]) : '—'}
+                          </td>
+                        ))}
+                        <td className="px-4 py-2 text-sm text-right font-medium text-gray-900">
+                          {emp.actual_total ? fmt(emp.actual_total) : '—'}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-right text-gray-600">
+                          {emp.budget_total ? fmt(emp.budget_total) : '—'}
+                        </td>
+                        <td className={`px-4 py-2 text-sm text-right font-medium ${varianceColor(emp.variance)}`}>
+                          {emp.budget_total || emp.actual_total ? fmt(emp.variance) : '—'}
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="bg-gray-50 border-b border-gray-100">
+                          <td colSpan={detailColSpan} className="px-0 py-0">
+                            <div className="px-4 py-3 sm:px-6">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">
+                                Pay runs for {emp.name}
+                              </div>
+                              {emp.pay_runs.length === 0 ? (
+                                <p className="text-xs text-gray-500 italic">No pay runs recorded this period.</p>
+                              ) : (
+                                <ul className="space-y-1">
+                                  {emp.pay_runs.map((pr, i) => (
+                                    <li
+                                      key={`${pr.date}-${i}`}
+                                      className="flex justify-between text-sm text-gray-700"
+                                    >
+                                      <span className="font-mono text-xs sm:text-sm">{pr.date || '—'}</span>
+                                      <span className="font-medium">{fmt(pr.gross_earnings)}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   )
                 })}
 

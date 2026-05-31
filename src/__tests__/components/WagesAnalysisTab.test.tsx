@@ -54,11 +54,10 @@ function makeData(employees: WagesEmployeeLine[], payRunDates: string[]): WagesD
     accounts: [
       {
         account_name: 'Wages & Salaries',
-        account_code: '6000',
-        budget: budget,
+        budget,
         actual,
         variance: budget - actual,
-      } as WagesDetailData['accounts'][number],
+      } as unknown as WagesDetailData['accounts'][number],
     ],
     employees,
     employee_totals: { actual, budget, variance: budget - actual },
