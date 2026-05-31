@@ -8,8 +8,20 @@ import {
   sendSessionReminder,
   sendMessageNotification
 } from '@/lib/email/resend';
+import { z } from 'zod';
+import { withSchema } from '@/lib/api/with-schema';
 
-export async function POST(request: NextRequest) {
+// POST body: { to, name?, type?, all? } — `to` required; type/all select which test send(s).
+const PostBodySchema = z
+  .object({
+    to: z.string(),
+    name: z.string().optional(),
+    type: z.string().optional(),
+    all: z.boolean().optional(),
+  })
+  .passthrough();
+
+async function postHandler(request: NextRequest) {
   try {
     // Authentication check - require super_admin role
     const supabase = await createRouteHandlerClient();
@@ -158,3 +170,9 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withSchema(
+  'email/test',
+  PostBodySchema,
+  postHandler as unknown as (request: Request) => Promise<Response>
+);
