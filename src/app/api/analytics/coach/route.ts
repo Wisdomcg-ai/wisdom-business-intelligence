@@ -1,8 +1,13 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
-export async function GET(request: Request) {
+// Input-less GET — derives scope from the authenticated coach, reads no query string.
+const GetQuerySchema = z.object({})
+
+async function getHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -108,6 +113,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('analytics/coach', GetQuerySchema, getHandler)
 
 // Helper functions
 
