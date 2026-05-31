@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,6 +12,13 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   getSupabaseSecretKey()
 )
+
+const PostBodySchema = z
+  .object({
+    business_id: z.string(),
+    is_cfo_client: z.boolean(),
+  })
+  .passthrough()
 
 /**
  * POST /api/cfo/flag-client
@@ -19,7 +28,7 @@ const supabase = createClient(
  *
  * Body: { business_id: string, is_cfo_client: boolean }
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     const authClient = await createRouteHandlerClient()
     const { data: { user }, error: authError } = await authClient.auth.getUser()
@@ -73,3 +82,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('cfo/flag-client', PostBodySchema, postHandler)
