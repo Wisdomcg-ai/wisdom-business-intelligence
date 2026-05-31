@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -7,6 +7,8 @@ import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfile
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,11 +17,33 @@ const supabase = createClient(
   getSupabaseSecretKey()
 )
 
+// VALID-05a (observe mode): GET filters by business; POST creates a mapping; PUT confirms mappings.
+const AccountMappingsGetQuerySchema = z.object({
+  business_id: z.string().optional(),
+})
+
+const AccountMappingsPostSchema = z.object({
+  business_id: z.string(),
+  xero_account_name: z.string(),
+  xero_account_code: z.string().optional(),
+  xero_account_type: z.string().optional(),
+  report_category: z.string(),
+  report_subcategory: z.string().optional(),
+  forecast_pl_line_id: z.string().nullable().optional(),
+  forecast_pl_line_name: z.string().nullable().optional(),
+  is_confirmed: z.boolean().optional(),
+})
+
+const AccountMappingsPutSchema = z.object({
+  business_id: z.string(),
+  mapping_ids: z.array(z.string()),
+})
+
 /**
  * GET /api/monthly-report/account-mappings?business_id=xxx
  * Returns all mappings for the business plus any unmapped Xero accounts
  */
-export async function GET(request: NextRequest) {
+async function getHandler(request: Request) {
   try {
     // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
     // The module-level service-role `supabase` continues to be used for data fetching below.
@@ -121,7 +145,7 @@ export async function GET(request: NextRequest) {
  * POST /api/monthly-report/account-mappings
  * Upsert a single mapping
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
     const authClient = await createRouteHandlerClient()
@@ -220,7 +244,7 @@ export async function POST(request: NextRequest) {
  * Bulk update — "Confirm All" flow
  * Sets is_confirmed = true and mapped_at = now() for all given mapping IDs
  */
-export async function PUT(request: NextRequest) {
+async function putHandler(request: Request) {
   try {
     // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
     const authClient = await createRouteHandlerClient()
@@ -293,3 +317,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema('monthly-report/account-mappings', AccountMappingsGetQuerySchema, getHandler)
+export const POST = withSchema('monthly-report/account-mappings', AccountMappingsPostSchema, postHandler)
+export const PUT = withSchema('monthly-report/account-mappings', AccountMappingsPutSchema, putHandler)

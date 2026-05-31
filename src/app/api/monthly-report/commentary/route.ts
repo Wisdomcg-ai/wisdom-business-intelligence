@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -9,6 +9,19 @@ import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
+
+// VALID-05a (observe mode): POST persists report commentary / over-budget line sets.
+const CommentaryPostSchema = z.object({
+  business_id: z.string(),
+  report_month: z.string(),
+  expense_lines: z.array(z.any()),
+  revenue_lines: z.array(z.any()).optional(),
+  favourable_expense_lines: z.array(z.any()).optional(),
+  bs_lines: z.array(z.any()).optional(),
+  trigger_reasons: z.record(z.string(), z.any()).optional(),
+})
 
 export const dynamic = 'force-dynamic'
 
@@ -105,7 +118,7 @@ async function fetchAllXeroPages(
  * Only processes expense lines where actual > budget.
  * Format: "Vendor ($amount), Vendor ($amount), Others ($amount)"
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     // Phase 65-02: introduce user auth so requireSectionPermission has a userId.
     // The module-level service-role `supabase` continues to be used for data fetching below.
@@ -471,3 +484,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to generate commentary' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('monthly-report/commentary', CommentaryPostSchema, postHandler)

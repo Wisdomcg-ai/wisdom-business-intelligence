@@ -25,7 +25,7 @@
  * - Stage-tracked error shape
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -47,15 +47,24 @@ import {
   translatePLAtMonthlyAverage,
 } from '@/lib/consolidation/fx'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// VALID-05a (observe mode): POST builds the consolidated P&L. Body may be empty.
+const ConsolidatedPostSchema = z.object({
+  business_id: z.string().optional(),
+  report_month: z.string().optional(),
+  fiscal_year: z.union([z.string(), z.number()]).optional(),
+})
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   getSupabaseSecretKey(),
 )
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   let stage = 'init'
   try {
     stage = 'auth'
@@ -176,3 +185,5 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const POST = withSchema('monthly-report/consolidated', ConsolidatedPostSchema, postHandler)

@@ -19,7 +19,7 @@
  *   - Stage-tracked error responses
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -37,15 +37,23 @@ import {
 } from '@/lib/utils/fiscal-year-utils'
 import { buildConsolidatedCashflow } from '@/lib/consolidation/cashflow'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// VALID-05a (observe mode): POST builds the consolidated cashflow. Body may be empty.
+const ConsolidatedCashflowPostSchema = z.object({
+  business_id: z.string().optional(),
+  fiscal_year: z.union([z.string(), z.number()]).optional(),
+})
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   getSupabaseSecretKey(),
 )
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   let stage = 'init'
   try {
     stage = 'auth'
@@ -152,3 +160,5 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const POST = withSchema('monthly-report/consolidated-cashflow', ConsolidatedCashflowPostSchema, postHandler)

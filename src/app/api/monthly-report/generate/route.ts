@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -19,8 +19,18 @@ import {
   getPriorYearMonth,
   type ReportLine,
 } from '@/lib/monthly-report/shared'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// VALID-05a (observe mode): POST generates a Budget vs Actual report for a month.
+const GeneratePostSchema = z.object({
+  business_id: z.string(),
+  report_month: z.string(),
+  fiscal_year: z.union([z.string(), z.number()]).optional(),
+  force_draft: z.boolean().optional(),
+})
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,7 +41,7 @@ const supabase = createClient(
  * POST /api/monthly-report/generate
  * Generates a Budget vs Actual report for a given month
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: Request) {
   try {
     // Auth check
     const authSupabase = await createRouteHandlerClient()
@@ -679,3 +689,5 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const POST = withSchema('monthly-report/generate', GeneratePostSchema, postHandler)

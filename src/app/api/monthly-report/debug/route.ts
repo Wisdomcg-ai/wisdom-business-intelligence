@@ -2,22 +2,29 @@
 // Diagnostic endpoint to debug the forecast → monthly report pipeline
 // Shows forecast_pl_lines, xero_pl_lines, account_mappings, and match analysis
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// VALID-05a (observe mode): GET diagnostic reads `business_id` query param.
+const DebugGetQuerySchema = z.object({
+  business_id: z.string().optional(),
+})
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   getSupabaseSecretKey()
 )
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: Request) {
   try {
     // Auth check
     const supabase = await createRouteHandlerClient()
@@ -192,3 +199,5 @@ function normalizeName(name: string): string {
     .replace(/\s+/g, ' ')
     .trim()
 }
+
+export const GET = withQuerySchema('monthly-report/debug', DebugGetQuerySchema, getHandler)
