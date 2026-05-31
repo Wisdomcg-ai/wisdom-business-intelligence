@@ -8,21 +8,23 @@
  * resolver id-mapping outputs so the migration has a safety net. This suite is
  * that net for the resolver.
  *
- * It pins the three resolution paths and the within-process memoization:
+ * It pins the three resolution paths and the (post-PR-6) no-memoization
+ * contract:
  *   1. forward  — input is `businesses.id`        → look up the matching profile
  *   2. reverse  — input is `business_profiles.id` → look up the parent business
  *   3. fallback — input resolves to neither        → bizId == profileId == input
- *   4. memoization — a second call for either key does not re-query
+ *   4. no memoization — every call re-queries (the module-level cache was
+ *      removed in R1 PR-6; see resolveBusinessProfileIds.ts)
  *
  * Note on `all` ordering (load-bearing for `.in()` queries):
  *   - forward path:  all = [profileId, bizId]
  *   - reverse path:  all = [inputProfileId, bizId]
  *   - fallback path: all = [input]   (single element)
  *
- * ⚠ This suite intentionally does NOT bless the resolver's module-level cache
- * as safe across requests — it only characterizes that, within one process, a
- * resolved id is memoized. The cross-request persistence of that cache is a
- * separate concern tracked outside R1.
+ * ⚠ R1 PR-6 removed the resolver's never-invalidated module-level cache. A warm
+ * serverless instance could otherwise serve a stale id pair indefinitely. The
+ * tests below now lock the OPPOSITE of the old behaviour: no call is memoized,
+ * so a repeat resolution always re-queries the DB.
  */
 
 import { describe, it, expect, vi } from 'vitest'
@@ -67,8 +69,6 @@ function makeClient(rows: ProfileRow[]) {
   return client
 }
 
-// Distinct ids per test so the resolver's module-level cache never bleeds
-// between cases.
 describe('resolveBusinessIds — characterization (R1 prerequisite)', () => {
   it('forward: businesses.id input resolves to the matching profile; all = [profileId, bizId]', async () => {
     const bizId = 'biz-fwd-1'
@@ -107,7 +107,7 @@ describe('resolveBusinessIds — characterization (R1 prerequisite)', () => {
     expect(res.all).toEqual([orphan])
   })
 
-  it('memoization: a repeat call for the same input does not re-query the DB', async () => {
+  it('no memoization: a repeat call for the same input re-queries the DB (PR-6)', async () => {
     const bizId = 'biz-memo-1'
     const profileId = 'prof-memo-1'
     const client = makeClient([{ id: profileId, business_id: bizId }])
@@ -116,27 +116,28 @@ describe('resolveBusinessIds — characterization (R1 prerequisite)', () => {
     const callsAfterFirst = client.calls.count
     await resolveBusinessIds(client as any, bizId)
 
-    expect(client.calls.count).toBe(callsAfterFirst)
+    // Module cache removed in PR-6 → the second call hits the DB again.
+    expect(client.calls.count).toBeGreaterThan(callsAfterFirst)
   })
 
-  it('memoization is bidirectional: resolving by bizId also caches the profileId key', async () => {
+  it('no cross-key memo: resolving by the other id re-queries (PR-6)', async () => {
     const bizId = 'biz-memo-2'
     const profileId = 'prof-memo-2'
     const client = makeClient([{ id: profileId, business_id: bizId }])
 
-    await resolveBusinessIds(client as any, bizId) // forward resolve caches both keys
+    await resolveBusinessIds(client as any, bizId) // forward resolve, no caching
     const callsAfterFirst = client.calls.count
 
-    // Now ask by the OTHER key — should be served from cache, no new query.
+    // Ask by the OTHER key — re-queries; nothing is memoized.
     const res = await resolveBusinessIds(client as any, profileId)
-    expect(client.calls.count).toBe(callsAfterFirst)
+    expect(client.calls.count).toBeGreaterThan(callsAfterFirst)
     expect(res.bizId).toBe(bizId)
     expect(res.profileId).toBe(profileId)
   })
 
-  it('fallback path is NOT cached: an unresolvable id re-queries on the next call', async () => {
-    // Documents current behavior: the fallback branch returns without writing
-    // to the cache, so a later call (e.g. after the row is created) is re-run.
+  it('fallback path re-queries on the next call (PR-6: no path is cached)', async () => {
+    // The fallback branch never resolved a row, and with the module cache gone
+    // a later call (e.g. after the row is created) is always re-run.
     const orphan = 'orphan-unresolvable-2'
     const client = makeClient([])
 
