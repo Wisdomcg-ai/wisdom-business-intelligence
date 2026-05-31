@@ -135,15 +135,24 @@ describe('withSchema — params forwarding (Pitfall 4)', () => {
 
 // ─── withSchema: empty / non-JSON body (Pitfall 2) ────────────────────────────
 describe('withSchema — empty / non-JSON body', () => {
-  it('no body + permissive schema z.object({}) → no throw, handler runs', async () => {
+  it('empty JSON body {} + permissive schema z.object({}) → no throw, no warning, handler runs', async () => {
     const handler = vi.fn(async () => NextResponse.json({ ok: true }))
     const wrapped = withSchema('test/route', z.object({}), handler)
-    const req = new Request('http://x/y', { method: 'POST' }) // no body
-    const res = await wrapped(req)
-
+    const res = await wrapped(makeRequest({})) // valid empty object body
     expect(res.status).toBe(200)
     expect(handler).toHaveBeenCalledTimes(1)
     expect(Sentry.captureMessage).not.toHaveBeenCalled()
+  })
+
+  it('no body at all → clone().json() throws, raw=undefined, no crash; schema decides', async () => {
+    const handler = vi.fn(async () => NextResponse.json({ ok: true }))
+    // z.object({}) rejects undefined (it expects an object) → observe logs, but never throws.
+    const wrapped = withSchema('test/route', z.object({}), handler)
+    const req = new Request('http://x/y', { method: 'POST' }) // no body → raw undefined
+    const res = await wrapped(req)
+    expect(res.status).toBe(200)
+    expect(handler).toHaveBeenCalledTimes(1) // handler still runs in observe
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1)
   })
 
   it('no body + required-field schema → logs in observe, handler still runs', async () => {
