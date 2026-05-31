@@ -1,10 +1,28 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: Request) {
+// GET searchParams: { business_id?, limit? } (string-typed query).
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    limit: z.string().optional(),
+  })
+  .passthrough()
+
+// POST body: { business_id, message } — create a chat message.
+const PostBodySchema = z
+  .object({
+    business_id: z.string(),
+    message: z.string(),
+  })
+  .passthrough()
+
+async function getHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
   const { searchParams } = new URL(request.url)
   const businessId = searchParams.get('business_id')
@@ -70,7 +88,9 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export const GET = withQuerySchema('chat/messages', GetQuerySchema, getHandler)
+
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -137,3 +157,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('chat/messages', PostBodySchema, postHandler)
