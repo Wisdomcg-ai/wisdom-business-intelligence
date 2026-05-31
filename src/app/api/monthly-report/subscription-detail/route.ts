@@ -171,8 +171,13 @@ export async function POST(request: NextRequest) {
       Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch accounts" } } as any)
     }
 
-    // Vendor totals: accountCode → vendorKey → { vendor_name, actual, prior_actual }
-    const vendorData = new Map<string, Map<string, { vendor_name: string; actual: number; prior_actual: number }>>()
+    // Vendor totals: accountCode → vendorKey → { vendor_name, actual, prior_actual, transaction_count }
+    // transaction_count tracks current-month bank-tx lines so the UI can flag
+    // budget-only vendors ("not billed this month") that surface with 0 actual.
+    const vendorData = new Map<
+      string,
+      Map<string, { vendor_name: string; actual: number; prior_actual: number; transaction_count: number }>
+    >()
     for (const code of account_codes) {
       vendorData.set(code, new Map())
     }
@@ -184,13 +189,18 @@ export async function POST(request: NextRequest) {
       const vendorKey = createVendorKey(vendorName)
       const existing = accountVendors.get(vendorKey)
       if (existing) {
-        if (isCurrent) existing.actual += amount
-        else existing.prior_actual += amount
+        if (isCurrent) {
+          existing.actual += amount
+          existing.transaction_count += 1
+        } else {
+          existing.prior_actual += amount
+        }
       } else {
         accountVendors.set(vendorKey, {
           vendor_name: vendorName,
           actual: isCurrent ? amount : 0,
           prior_actual: isCurrent ? 0 : amount,
+          transaction_count: isCurrent ? 1 : 0,
         })
       }
     }
@@ -238,20 +248,60 @@ export async function POST(request: NextRequest) {
       Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch prior bank txns" } } as any)
     }
 
-    // Fetch per-vendor budgets from subscription_budgets
+    // Fetch per-vendor budgets from subscription_budgets.
+    // Need vendor_name + account_codes so we can backfill budget-only vendors
+    // into vendorData (S2 — Phase 71-05): a budgeted vendor with no current-
+    // month bank txn should still surface with actual=$0 and a "not billed"
+    // badge in the UI, rather than vanishing from the response entirely.
     const budgetMap = new Map<string, number>()
+    type BudgetRow = {
+      vendor_name: string
+      vendor_key: string
+      monthly_budget: number
+      account_codes: string[] | null
+    }
+    let budgetRows: BudgetRow[] = []
     try {
       const { data: budgets } = await supabase
         .from('subscription_budgets')
-        .select('vendor_key, monthly_budget')
+        .select('vendor_name, vendor_key, monthly_budget, account_codes')
         .eq('business_id', business_id)
         .eq('is_active', true)
 
-      for (const b of (budgets || [])) {
+      budgetRows = (budgets || []) as BudgetRow[]
+      for (const b of budgetRows) {
         budgetMap.set(b.vendor_key, b.monthly_budget || 0)
       }
     } catch (err) {
       Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch budgets" } } as any)
+    }
+
+    // S2 — Backfill budget-only vendors as zero-actual entries so the response
+    // surfaces them. Iterates active subscription_budgets rows; for each
+    // (account_code ∈ row.account_codes) that is in the requested account_codes
+    // set, insert a placeholder if no bank-tx vendor already exists for that key.
+    //
+    // Keying: prefer the persisted `row.vendor_key` over a fresh
+    // `createVendorKey(row.vendor_name)` because the bank-tx side keys by
+    // `createVendorKey(extractVendorName(contact, desc))` — and extractVendorName
+    // collapses through VENDOR_MAPPINGS (e.g. "Stripe Au" → "Stripe"), which
+    // raw createVendorKey on the budget display name would NOT do. The persisted
+    // `vendor_key` was originally derived through the same canonical path on save.
+    for (const row of budgetRows) {
+      const codes = Array.isArray(row.account_codes) ? row.account_codes : []
+      for (const code of codes) {
+        if (!account_codes.includes(code)) continue
+        const accountVendors = vendorData.get(code)
+        if (!accountVendors) continue
+        const key = row.vendor_key || createVendorKey(row.vendor_name)
+        if (accountVendors.has(key)) continue
+        accountVendors.set(key, {
+          vendor_name: row.vendor_name,
+          actual: 0,
+          prior_actual: 0,
+          transaction_count: 0,
+        })
+      }
     }
 
     // ── Authoritative P&L actuals from xero_pl_lines (matches main report) ──
@@ -375,6 +425,7 @@ export async function POST(request: NextRequest) {
               actual: Math.round(data.actual * 100) / 100,
               budget: Math.round(budget * 100) / 100,
               variance: Math.round((budget - data.actual) * 100) / 100,
+              transaction_count: data.transaction_count,
             }
           })
           .sort((a, b) => a.vendor_name.localeCompare(b.vendor_name))

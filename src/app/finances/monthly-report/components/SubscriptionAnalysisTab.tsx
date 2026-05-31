@@ -126,13 +126,25 @@ function AccountGroup({ account }: { account: SubscriptionDetailData['accounts']
       {/* Vendor rows */}
       {account.vendors.map((vendor) => {
         const isUnbudgeted = vendor.budget === 0 && vendor.actual > 0
+        // Phase 71-05 / S2: budget-only vendor — has a budget but no current-
+        // month bank transactions. Surface visibly so the coach can tell
+        // "vendor genuinely $0 this month" apart from "vendor missing".
+        const isBudgetOnly = (vendor.transaction_count ?? 0) === 0 && vendor.budget > 0
         return (
-          <tr key={vendor.vendor_key} className={`border-b border-gray-100 hover:bg-gray-50 ${isUnbudgeted ? 'bg-amber-50/30' : ''}`}>
+          <tr
+            key={vendor.vendor_key}
+            className={`border-b border-gray-100 hover:bg-gray-50 ${isUnbudgeted ? 'bg-amber-50/30' : ''} ${isBudgetOnly ? 'bg-amber-50/20' : ''}`}
+          >
             <td className="px-4 py-1.5 text-sm text-gray-900 pl-6">
               {vendor.vendor_name}
               {isUnbudgeted && (
                 <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">
                   NEW
+                </span>
+              )}
+              {isBudgetOnly && (
+                <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">
+                  not billed this month
                 </span>
               )}
             </td>
@@ -142,7 +154,9 @@ function AccountGroup({ account }: { account: SubscriptionDetailData['accounts']
             <td className="px-4 py-1.5 text-sm text-right text-gray-500">
               {vendor.budget !== 0 ? fmt(vendor.budget) : '—'}
             </td>
-            <td className="px-4 py-1.5 text-sm text-right font-medium text-gray-900">{fmt(vendor.actual)}</td>
+            <td className={`px-4 py-1.5 text-sm text-right font-medium ${isBudgetOnly ? 'text-gray-500' : 'text-gray-900'}`}>
+              {fmt(vendor.actual)}
+            </td>
             <td className={`px-4 py-1.5 text-sm text-right font-medium ${varianceColor(vendor.variance)}`}>
               {vendor.budget !== 0 ? fmt(vendor.variance) : '—'}
             </td>

@@ -38,6 +38,41 @@ const A4_LONG = 297
 const TINT_GREEN: [number, number, number] = [240, 253, 244]
 const TINT_RED: [number, number, number] = [254, 242, 242]
 
+// =====================================================================
+// Phase 71-07 (S4) — Variance polarity helper
+// =====================================================================
+// Track variance polarity in raw data; tint decision reads structured
+// metadata (`_polarity`) instead of brittle string parsing of formatted
+// display text. Backward-compat string fallback preserved so legacy code
+// paths that still emit plain strings continue to tint correctly during
+// rollout.
+//
+// LOCK: this helper MUST live in this file (no sibling helper module) so
+// the PDF service class can call it directly without import cycles and the
+// vitest spec can import it via a single named export from this module.
+//
+// See `.planning/phases/71-.../71-07-PLAN.md` for the full design.
+
+export type VariancePolarity = 'positive' | 'negative' | 'neutral'
+
+export function decideTintColor(
+  polarity: VariancePolarity | undefined,
+  displayText: string,
+): 'red' | 'green' | 'none' {
+  const text = String(displayText || '')
+  // Zero is always neutral regardless of polarity metadata.
+  if (!text || text === '—' || text === '$0' || text === '($0)' || text === '+0.0%') return 'none'
+  // Prefer explicit polarity metadata when available.
+  if (polarity === 'negative') return 'red'
+  if (polarity === 'positive') return 'green'
+  if (polarity === 'neutral') return 'none'
+  // Backward-compat: fall back to string parsing when polarity is missing
+  // (older code paths still building plain strings).
+  if (text.startsWith('(') || text.startsWith('-')) return 'red'
+  if (text.startsWith('$') || text.startsWith('+')) return 'green'
+  return 'none'
+}
+
 // Row highlight colors
 const NAVY: [number, number, number] = [30, 41, 59]
 const GP_BLUE: [number, number, number] = [219, 234, 254]
@@ -2427,15 +2462,32 @@ export class MonthlyReportPDFService {
   // Helpers
   // =====================================================================
 
-  /** Apply green/red cell background tint based on variance value */
+  /**
+   * Apply green/red cell background tint based on variance polarity.
+   *
+   * Phase 71-07 (S4): polarity is sourced from structured cell metadata
+   * (`data.cell.raw._polarity`) attached upstream by `buildLineRow`. When
+   * the metadata is absent (legacy code paths), `decideTintColor` falls
+   * back to parsing the formatted display text so existing call sites
+   * continue to work.
+   */
   private applyVarianceTint(data: any): void {
-    const text = String(data.cell.text || '')
-    if (!text || text === '—' || text === '$0' || text === '($0)' || text === '+0.0%') return
-    if (text.startsWith('(') || text.startsWith('-')) {
-      data.cell.styles.fillColor = [...TINT_RED]
-    } else if (text.startsWith('$') || text.startsWith('+')) {
-      data.cell.styles.fillColor = [...TINT_GREEN]
-    }
+    const polarity = data?.cell?.raw?._polarity as VariancePolarity | undefined
+    const text = String(data?.cell?.text || '')
+    const color = decideTintColor(polarity, text)
+    if (color === 'red') data.cell.styles.fillColor = [...TINT_RED]
+    else if (color === 'green') data.cell.styles.fillColor = [...TINT_GREEN]
+  }
+
+  /**
+   * Compute the polarity bucket for a numeric variance value.
+   * Phase 71-07 (S4) — emitted alongside the formatted display string so
+   * `applyVarianceTint` can decide colour from structured metadata.
+   */
+  private polarityOf(value: number): VariancePolarity {
+    if (value < 0) return 'negative'
+    if (value > 0) return 'positive'
+    return 'neutral'
   }
 
   private buildLineRow(line: ReportLine, settings: MonthlyReportSettings): any[] {
@@ -2443,15 +2495,17 @@ export class MonthlyReportPDFService {
       line.is_budget_only ? `${line.account_name} (budget only)` : line.account_name,
       this.fmtCurrency(line.budget),
       this.fmtCurrency(line.actual),
-      this.fmtVariance(line.variance_amount),
-      this.fmtPct(line.variance_percent),
+      // Phase 71-07 (S4): tag variance cells with structured polarity so
+      // `applyVarianceTint` no longer depends on parsing formatted text.
+      { content: this.fmtVariance(line.variance_amount), _polarity: this.polarityOf(line.variance_amount) },
+      { content: this.fmtPct(line.variance_percent), _polarity: this.polarityOf(line.variance_percent) },
     ]
     if (settings.show_ytd) {
       row.push(
         this.fmtCurrency(line.ytd_budget),
         this.fmtCurrency(line.ytd_actual),
-        this.fmtVariance(line.ytd_variance_amount),
-        this.fmtPct(line.ytd_variance_percent)
+        { content: this.fmtVariance(line.ytd_variance_amount), _polarity: this.polarityOf(line.ytd_variance_amount) },
+        { content: this.fmtPct(line.ytd_variance_percent), _polarity: this.polarityOf(line.ytd_variance_percent) }
       )
     }
     if (settings.show_unspent_budget) row.push(this.fmtCurrency(line.unspent_budget))

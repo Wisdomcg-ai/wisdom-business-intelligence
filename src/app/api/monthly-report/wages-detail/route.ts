@@ -8,6 +8,7 @@ import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { matchEmployeeName, tokenSortKey } from './_helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,11 +16,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   getSupabaseSecretKey()
 )
-
-// Normalize employee name for matching
-function normEmployeeName(name: string): string {
-  return name.toLowerCase().replace(/\s+/g, ' ').trim()
-}
 
 // Parse Xero .NET date format: "/Date(1609459200000+0000)/"
 function parseXeroDate(dateStr: string): Date | null {
@@ -459,9 +455,26 @@ export async function POST(request: NextRequest) {
 
     // ===== 6. Build employee result rows =====
     const employees: any[] = []
-    const matchedForecastNames = new Set<string>()
+    const matchedForecastKeys = new Set<string>()
     let empActualTotal = 0
     let empBudgetTotal = 0
+
+    // Re-fetch connection tenant_id for Sentry tagging on fuzzy matches.
+    // (Connection was fetched inside the try block above; pull it again for
+    // metadata only — if it's missing, Sentry tags fall back to undefined.)
+    let sentryTenantId: string | undefined
+    try {
+      const { data: connRow } = await supabase
+        .from('xero_connections')
+        .select('tenant_id')
+        .in('business_id', ids.all)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle()
+      sentryTenantId = connRow?.tenant_id || undefined
+    } catch {
+      // non-fatal — tag will just be undefined
+    }
 
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[WagesDetail] employeePayMap has ${employeePayMap.size} Xero employees:`, Array.from(employeePayMap.values()).map(e => ({
@@ -470,22 +483,55 @@ export async function POST(request: NextRequest) {
       })))
     }
 
+    // Build candidate list once per request (haystack of forecast employee names).
+    const forecastNameList = forecastEmployees.map(fe => fe.employee_name)
+
     // Process Xero payroll employees
     for (const [, xeData] of employeePayMap) {
       const totalActual = xeData.payslips.reduce((sum, ps) => sum + ps.gross, 0)
       const calType = xeData.calendarType
       const frequencyLabel = FREQUENCY_LABELS[calType] || calType
 
-      // Match to forecast employee
-      const forecastMatch = forecastEmployees.find(fe =>
-        normEmployeeName(fe.employee_name) === normEmployeeName(xeData.name)
-      )
+      // Match Xero name → forecast employee via layered matcher
+      // (exact → token_sort → fuzzy fallback). See _helpers.ts.
+      const matchResult = matchEmployeeName(xeData.name, forecastNameList)
+      const forecastMatch = matchResult.matched
+        ? forecastEmployees.find(fe => fe.employee_name === matchResult.matched) || null
+        : null
+
+      // B1 invariant: when the layered matcher had to fall back to fuzzy
+      // (Levenshtein), capture to Sentry so we can observe real-world
+      // divergence patterns between Xero payroll names and forecast names.
+      if (forecastMatch && matchResult.via === 'fuzzy') {
+        try {
+          Sentry.captureMessage('Xero payroll name fuzzy match', {
+            level: 'warning',
+            tags: {
+              invariant: 'xero_payroll_name_fuzzy_match',
+              business_id: business_id,
+              tenant_id: sentryTenantId,
+            },
+            extra: {
+              xero_name: xeData.name,
+              forecast_name: matchResult.matched,
+              distance: matchResult.distance,
+              report_month,
+              fiscal_year,
+            },
+          } as any)
+        } catch (sentryErr) {
+          // Sentry failure must never abort the request
+          if (process.env.NODE_ENV !== 'production') {
+            console.warn('[wages-detail] Sentry capture failed', sentryErr)
+          }
+        }
+      }
 
       let budgetTotal = 0
       let category = forecastMatch?.category || 'Wages Admin'
 
       if (forecastMatch) {
-        matchedForecastNames.add(normEmployeeName(forecastMatch.employee_name))
+        matchedForecastKeys.add(tokenSortKey(forecastMatch.employee_name))
         category = forecastMatch.category
 
         // Budget priority:
@@ -529,7 +575,7 @@ export async function POST(request: NextRequest) {
 
     // Add forecast-only employees (not in Xero payroll)
     for (const fe of forecastEmployees) {
-      if (matchedForecastNames.has(normEmployeeName(fe.employee_name))) continue
+      if (matchedForecastKeys.has(tokenSortKey(fe.employee_name))) continue
 
       const frequencyLabel = FREQUENCY_LABELS[forecastFrequency] || forecastFrequency
 

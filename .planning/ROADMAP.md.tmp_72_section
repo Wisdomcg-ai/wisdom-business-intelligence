@@ -1,0 +1,11 @@
+### Phase 72: Forecast wizard Step 3 extended-period bug — Y1 month range honors plan_start_date through full Y1 duration
+
+**Goal:** Fix forecast wizard Step 3 so the Y1 month range honors `business_profiles.is_extended_period` + `plan_start_date` + Y1 duration. Armstrong (plan_start_date=2026-06-01, is_extended_period=true, Y1=13mo) currently sees only ~3 editable months in Step 3 because the wizard conflates "current FY YTD actuals" with "plan Y1 actuals"; expected behavior is 13 editable months (Jun 2026 - Jun 2027). Same family as Phase 68 B15/B16 (which fixed the goals wizard); this phase brings the forecast wizard into the same extended-period contract.
+**Requirements**: PHASE-72-DIAG, PHASE-72-FIX (emergent — no roadmap-mapped REQ-IDs)
+**Depends on:** Phase 14 (extended-period schema), Phase 68 B15/B16 (adjacent goals-wizard fix — reference math)
+**Plans:** 2 plans
+
+Plans:
+- [ ] 72-01-PLAN.md — Investigation + diagnosis (read-only): produce 72-DIAGNOSIS.md naming the root cause + concrete fix scope for 72-02. Also enumerates any Step 4/5/6/7 same-family bugs as `## Related Bugs Found` (documented for follow-up, NOT fixed here).
+- [ ] 72-02-PLAN.md — Fix + 4 regression tests under src/__tests__/forecast/phase-72-step3-extended-period.test.tsx (Armstrong 13-mo, standard 12-mo no-regression, FY-boundary edge, 15-mo max edge). RED → GREEN atomic commits.
+
