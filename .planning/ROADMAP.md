@@ -874,7 +874,7 @@ Plans:
 - [ ] **Phase 44 — Test Gate & CI Hardening** — every PR is automatically blocked on lint + typecheck + tests + build; nightly Playwright smoke. Precondition for everything else. ([phase dir](phases/44-test-gate-ci-hardening/PHASE.md))
 - [ ] **Phase 45 — Invisible Cleanup** — delete what no one references (~192 files / 2.1 MB / ~6,000 LOC), drop `axios`, rewrite README, archive stale `docs/*.md`. ([phase dir](phases/45-invisible-cleanup/PHASE.md))
 - [ ] **Phase 46 — Server-Side Hardening** — delete dead `/api/migrate` routes, fix Xero cron-secret fail-open, harden encryption keys, adopt Sentry as the structured-logging sink, decide the onboarding gate. ([phase dir](phases/46-server-side-hardening/PHASE.md))
-- [ ] **Phase 47 — Input Validation Rollout** — `withSchema()` middleware + Zod schemas across 120 API routes in observe → enforce mode. ([phase dir](phases/47-input-validation-rollout/PHASE.md))
+- [ ] **Phase 47 — Input Validation Rollout** — `withSchema()` middleware + Zod schemas across the live API route count (130 at plan time) in observe → enforce mode. ([phase dir](phases/47-input-validation-rollout/PHASE.md))
 - [ ] **Phase 48 — Decimal Money Arithmetic** — `consolidatePrecise()` shadow-compute + reconciliation log + per-tenant flag rollout (Fit2Shine → Dragon → IICT). ([phase dir](phases/48-decimal-money-arithmetic/PHASE.md))
 - [ ] **Phase 49 — Database Integrity Hygiene** — additive soft-delete + audit columns on 8 financial tables, ON DELETE clauses on 56 orphan-prone FKs, migration-naming hygiene, RLS intent documentation. ([phase dir](phases/49-database-integrity-hygiene/PHASE.md))
 
@@ -935,14 +935,22 @@ Plans:
 **Success Criteria** (what must be TRUE):
 
 *Observe-mode adoption (VALID-01..05):*
-  1. `grep -rln "withSchema(" src/app/api/ | wc -l` reports 120 routes — every route has a schema attached.
-  2. Sentry's `zod:would-reject` events show baseline traffic across all 120 routes within 7 days of full observe rollout, giving us the data needed to refine schemas before flipping to enforce.
+  1. `grep -rln "withSchema\|withQuerySchema" src/app/api/ | wc -l` reports the live route count (130 at plan time) — every input route has a schema attached.
+  2. Sentry's `zod:would-reject` events show baseline traffic across the wrapped routes within 7 days of full observe rollout, giving us the data needed to refine schemas before flipping to enforce.
 
 *Enforce-mode adoption (VALID-06):*
   3. Every read-only route in VALID-02 reports zero `zod:would-reject` events for 7 consecutive days before being added to `ZOD_ENFORCE_ROUTES`.
   4. Every admin write route in VALID-03 is in `ZOD_ENFORCE_ROUTES` with the same 7-days-zero-events evidence per route.
-  5. `ZOD_ENFORCE_ROUTES` contains all 120 routes by phase end — an unknown-shape body to any route returns 400 with a Zod `error.flatten()`, not a 500 or silent acceptance.
-**Plans:** TBD
+  5. `ZOD_ENFORCE_ROUTES` contains all routes (or the `*` sentinel) by phase end — an unknown-shape body to any route returns 400 with a Zod `error.flatten()`, not a 500 or silent acceptance.
+**Plans:** 8 plans (05 split into 3 parallel subtree slices per plan-checker WARNING A)
+- [ ] 47-01-PLAN.md — Build `with-schema.ts` (withSchema/withQuerySchema/isEnforced) + unit tests — VALID-01 fork-gate (TDD)
+- [ ] 47-02-PLAN.md — Observe-mode schemas on 5 read-only routes — VALID-02
+- [ ] 47-03-PLAN.md — Observe-mode schemas on 8 admin/team write routes (incl. legacy sync-params) — VALID-03
+- [ ] 47-04-PLAN.md — Observe-mode schemas on ~29 forecast/Xero/consolidation write routes — VALID-04
+- [ ] 47-05a-PLAN.md — Observe-mode sweep: admin/coach/clients/sessions/team/monthly-report subtree — VALID-05
+- [ ] 47-05b-PLAN.md — Observe-mode sweep: cfo/goals/kpis/planning/analytics/business-profile/wizards subtree — VALID-05
+- [ ] 47-05c-PLAN.md — Observe-mode sweep: cron/auth/ai/chat/todos/notifications/ideas/email/documents/activity-log/processes subtree — VALID-05
+- [ ] 47-06-PLAN.md — Enforce-flip CI test + runbook + staged human env flips — VALID-06
 **Phase dir:** [.planning/phases/47-input-validation-rollout/](phases/47-input-validation-rollout/PHASE.md)
 
 #### Phase 48: Decimal Money Arithmetic

@@ -6,7 +6,7 @@
 
 ## Goal
 
-Every API boundary validates its input. Use **observe → enforce** to ship safely: log violations 1-2 weeks per route before rejecting, then flip enforcement on per-route via env var. End state: 120/120 API routes have a Zod schema and the `ZOD_ENFORCE_ROUTES` allowlist contains every route in the codebase.
+Every API boundary validates its input. Use **observe → enforce** to ship safely: log violations 1-2 weeks per route before rejecting, then flip enforcement on per-route via env var. End state: every API route at the live route count (130 at plan time — RESEARCH Pitfall 5; re-measure with `find src/app/api -name route.ts | wc -l`) has a Zod schema and the `ZOD_ENFORCE_ROUTES` allowlist contains every route in the codebase.
 
 ## Why now
 
@@ -60,4 +60,13 @@ Every API boundary validates its input. Use **observe → enforce** to ship safe
 
 ## Plans
 
-TBD — to be drafted at `/gsd-plan-phase 47`.
+7 plans (05 split into 3 parallel subtree slices per checker WARNING A):
+
+- [ ] 47-01-PLAN.md — VALID-01: build `withSchema`/`withQuerySchema`/`isEnforced` wrapper + unit tests (wave 1)
+- [ ] 47-02-PLAN.md — VALID-02: observe-mode schemas on 5 read-only routes (wave 2)
+- [ ] 47-03-PLAN.md — VALID-03: observe-mode schemas on 8 admin/team write routes (wave 2)
+- [ ] 47-04-PLAN.md — VALID-04: observe-mode schemas on ~29 forecast/Xero/consolidation routes (wave 3)
+- [ ] 47-05a-PLAN.md — VALID-05: sweep admin/coach/clients/sessions/team/monthly-report subtree (wave 4)
+- [ ] 47-05b-PLAN.md — VALID-05: sweep cfo/goals/kpis/planning/analytics/business-profile/wizards subtree (wave 4)
+- [ ] 47-05c-PLAN.md — VALID-05: sweep cron/auth/ai/chat/todos/notifications/ideas/email/documents/activity-log/processes subtree (wave 4)
+- [ ] 47-06-PLAN.md — VALID-06: enforce-flip CI test + human-gated runbook (wave 5)
