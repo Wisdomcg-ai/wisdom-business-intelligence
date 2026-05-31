@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react'
 import { usePathname } from 'next/navigation'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import ForecastService from '../services/forecast-service'
 import type { PLLine, XeroConnection } from '../types'
 
@@ -172,7 +172,7 @@ export function useXeroSync({
       }
 
       // Delete all forecasts for this business (resolve both businesses.id and business_profiles.id)
-      const ids = await resolveBusinessIds(supabase, businessId)
+      const ids = await resolveBusinessProfileIds(supabase, businessId)
       await supabase
         .from('financial_forecasts')
         .delete()
