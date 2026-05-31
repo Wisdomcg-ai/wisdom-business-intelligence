@@ -13,6 +13,7 @@
  * xero_pl_lines query uses the resolved IDs + filters by tenant_id per tenant.
  */
 
+import * as Sentry from '@sentry/nextjs'
 import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
 import type {
   ConsolidationBusiness,
@@ -114,15 +115,27 @@ export async function loadBusinessContext(
     throw new Error(`[Consolidation Engine] Failed to load tenants: ${cErr.message}`)
   }
 
-  const tenants: ConsolidationTenant[] = (connections ?? []).map((c: any) => ({
-    connection_id: c.id,
-    business_id: c.business_id,
-    tenant_id: c.tenant_id,
-    display_name: c.display_name || c.tenant_name || c.tenant_id,
-    display_order: c.display_order ?? 0,
-    functional_currency: c.functional_currency || 'AUD',
-    include_in_consolidation: c.include_in_consolidation ?? true,
-  }))
+  const tenants: ConsolidationTenant[] = (connections ?? []).map((c: any) => {
+    // CRITICAL: distinguish a genuinely-AUD tenant from one whose currency is
+    // unknown. The DB default is 'AUD' and the Xero callback/sync repopulate
+    // this from org.baseCurrency, but legacy connections can still be NULL.
+    // Coalescing NULL→'AUD' here used to silently pass a foreign-currency
+    // tenant through the FX short-circuit (summed 1:1 — a wrong number, no
+    // error). We still default to the presentation currency so the report
+    // renders, but flag `currency_known: false` so the engine can surface it.
+    const rawCurrency = (c.functional_currency ?? '').toString().trim()
+    const currencyKnown = rawCurrency.length > 0
+    return {
+      connection_id: c.id,
+      business_id: c.business_id,
+      tenant_id: c.tenant_id,
+      display_name: c.display_name || c.tenant_name || c.tenant_id,
+      display_order: c.display_order ?? 0,
+      functional_currency: currencyKnown ? rawCurrency : 'AUD',
+      include_in_consolidation: c.include_in_consolidation ?? true,
+      currency_known: currencyKnown,
+    }
+  })
 
   // Normalise budget mode. Anything unrecognised → 'single' (safest default).
   const rawMode = (business as any).consolidation_budget_mode
@@ -138,6 +151,40 @@ export async function loadBusinessContext(
     },
     tenants,
   }
+}
+
+/**
+ * Consolidation invariant: every consolidation-included tenant MUST have a known
+ * functional currency. When xero_connections.functional_currency is NULL/empty
+ * the engine cannot decide whether to FX-translate, and silently assuming the
+ * presentation currency would sum foreign-currency figures 1:1 (a wrong number,
+ * no error). This returns the offending tenant_ids AND fires a Sentry alert so
+ * the bad rows are actionable — the connection should be re-synced so Xero's
+ * BaseCurrency repopulates the column. Best-effort: never throws (observability
+ * must not break consolidation), and the report still renders.
+ */
+export function reportMissingCurrencyTenants(
+  businessId: string,
+  tenants: ConsolidationTenant[],
+): string[] {
+  const missing = tenants
+    .filter((t) => t.currency_known === false)
+    .map((t) => t.tenant_id)
+  if (missing.length > 0) {
+    try {
+      Sentry.captureMessage('Consolidation tenant missing functional_currency', {
+        level: 'warning',
+        tags: {
+          invariant: 'consolidation_missing_functional_currency',
+          business_id: businessId,
+        },
+        extra: { tenant_ids: missing },
+      } as any)
+    } catch {
+      /* never let observability break consolidation */
+    }
+  }
+  return missing
 }
 
 /**
@@ -503,6 +550,10 @@ export async function buildConsolidation(
   // 1. Load business + tenants
   const { business, tenants } = await loadBusinessContext(supabase, opts.businessId)
 
+  // 1b. Invariant: flag (and alert on) any included tenant whose functional
+  //     currency is unknown — it skips FX translation and may be summed 1:1.
+  const tenantsMissingCurrency = reportMissingCurrencyTenants(opts.businessId, tenants)
+
   // 2. Load P&L for all tenants in one query, grouped by tenant_id
   const snapshots = await loadTenantSnapshots(supabase, opts.businessId, tenants)
 
@@ -706,6 +757,7 @@ export async function buildConsolidation(
       processing_ms: Date.now() - startedAt,
       tenants_with_budget: tenantsWithBudget,
       tenants_without_budget: tenantsWithoutBudget,
+      tenants_missing_currency: tenantsMissingCurrency,
       budget_mode: budgetMode,
       // Only surface single_budget_found in 'single' mode. In 'per_tenant'
       // mode the flag isn't meaningful (even if the fallback fired).
