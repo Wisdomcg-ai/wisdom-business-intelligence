@@ -679,7 +679,7 @@ export default function MonthlyReportPage() {
       return
     }
 
-    if (result) {
+    if (result && !('needsMappings' in result)) {
       toast.success('Report generated')
       // Load persisted commentary to merge with fresh vendor data
       const snapshot = await loadSnapshot(selectedMonth)
@@ -689,8 +689,30 @@ export default function MonthlyReportPage() {
       // a regenerate after a prior 'final' month would inherit stale lock state.
       setLoadedSnapshotStatus((snapshot?.status as 'draft' | 'final' | undefined) ?? 'draft')
       fetchCommentary(result, persistedCommentary)
+
+      // Phase 71 Plan 03 (B3: Proceed-as-Draft persistence) — when the coach
+      // clicks "Generate Draft Report" we immediately POST a snapshot at
+      // status='draft' so closing the tab doesn't lose the report. Auto-save
+      // can't rescue this case because it watches commentary, which is empty
+      // on a fresh draft. Idempotent via the route's upsert on
+      // (business_id, report_month). Reconciled-then-finalise happy path
+      // (forceDraft=false on a clean month) is untouched.
+      if (forceDraft) {
+        try {
+          await saveSnapshot(result, {
+            status: 'draft',
+            generatedBy: userId,
+            commentary: persistedCommentary,
+          })
+          setLoadedSnapshotStatus('draft')
+          toast.success('Saved as draft')
+        } catch (err) {
+          console.error('[MonthlyReport] B3 draft persistence failed', err)
+          toast.error('Draft generated but not saved — refresh to retry')
+        }
+      }
     }
-  }, [selectedMonth, fiscalYear, reconciliation, generateReport, fetchCommentary, loadSnapshot])
+  }, [selectedMonth, fiscalYear, reconciliation, generateReport, fetchCommentary, loadSnapshot, saveSnapshot, userId])
 
   const handleMonthChange = async (month: string) => {
     setSelectedMonth(month)
