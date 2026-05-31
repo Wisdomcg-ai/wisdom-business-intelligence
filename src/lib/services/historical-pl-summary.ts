@@ -19,7 +19,7 @@
  * Used by: /api/Xero/pl-summary → Forecast Wizard Step 2
  */
 
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import {
   calculateForecastPeriods,
   DEFAULT_YEAR_START_MONTH,
@@ -66,7 +66,7 @@ export async function getHistoricalSummary(
   yearStartMonth: number = DEFAULT_YEAR_START_MONTH,
 ): Promise<HistoricalPLSummary> {
   // Resolve dual business IDs (Phase 21+ pattern).
-  const ids = await resolveBusinessIds(supabase, businessId)
+  const ids = await resolveBusinessProfileIds(supabase, businessId)
 
   // Phase 67-02 — multi-currency consolidation gate.
   // When any active included tenant has a non-AUD functional_currency, route
@@ -76,7 +76,7 @@ export async function getHistoricalSummary(
   // FORECAST_FX_VIA_ENGINE_DISABLE=true is an emergency rollback flag.
   const fxEngineEnabled = process.env.FORECAST_FX_VIA_ENGINE_DISABLE !== 'true'
   const useFxEngine =
-    fxEngineEnabled && (await needsFxConsolidation(supabase, ids.bizId))
+    fxEngineEnabled && (await needsFxConsolidation(supabase, ids.businessId))
 
   let composite: MonthlyComposite | null = null
   let xeroLines: WideXeroRow[] = []
@@ -125,21 +125,21 @@ export async function getHistoricalSummary(
 
     const [currentRep, priorRep, baselineRep] = await Promise.all([
       buildConsolidation(supabase, {
-        businessId: ids.bizId,
+        businessId: ids.businessId,
         reportMonth: currentFyMonths[currentFyMonths.length - 1],
         fiscalYear,
         fyMonths: currentFyMonths,
         translate,
       }),
       buildConsolidation(supabase, {
-        businessId: ids.bizId,
+        businessId: ids.businessId,
         reportMonth: priorFyMonths[priorFyMonths.length - 1],
         fiscalYear: fiscalYear - 1,
         fyMonths: priorFyMonths,
         translate,
       }),
       buildConsolidation(supabase, {
-        businessId: ids.bizId,
+        businessId: ids.businessId,
         reportMonth: baselineFyMonths[baselineFyMonths.length - 1],
         fiscalYear: fiscalYear - 2,
         fyMonths: baselineFyMonths,

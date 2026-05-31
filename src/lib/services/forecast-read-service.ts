@@ -30,7 +30,7 @@
 
 import * as Sentry from '@sentry/nextjs'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { resolveBusinessIds } from '@/lib/utils/resolve-business-ids'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 // Phase 67-03 — FX engine wiring for multi-currency consolidated businesses.
 import { needsFxConsolidation } from '@/lib/utils/needs-fx-consolidation'
 import { buildConsolidation } from '@/lib/consolidation/engine'
@@ -210,7 +210,7 @@ export class ForecastReadService {
     }
 
     // 2. Resolve dual IDs at the API boundary (Phase 21+ pattern).
-    const ids = await resolveBusinessIds(this.supabase, forecast.business_id)
+    const ids = await resolveBusinessProfileIds(this.supabase, forecast.business_id)
 
     // Phase 67-03 — multi-currency consolidation gate. Mirrors the gate in
     // historical-pl-summary.ts (Phase 67-02). When any active included tenant
@@ -221,7 +221,7 @@ export class ForecastReadService {
     // FORECAST_FX_VIA_ENGINE_DISABLE=true.
     const fxEngineEnabled = process.env.FORECAST_FX_VIA_ENGINE_DISABLE !== 'true'
     const useFxEngine =
-      fxEngineEnabled && (await needsFxConsolidation(this.supabase, ids.bizId))
+      fxEngineEnabled && (await needsFxConsolidation(this.supabase, ids.businessId))
 
     // 3. Load forecast_pl_lines + xero rows in parallel. Forecast rows always
     //    come from the direct table (the wizard saves in AUD); xero rows
@@ -245,7 +245,7 @@ export class ForecastReadService {
         .select('account_code, account_name, category, forecast_months, computed_at')
         .eq('forecast_id', forecastId),
       useFxEngine
-        ? this.loadXeroRowsViaFxEngine(ids.bizId, forecast.fiscal_year as number)
+        ? this.loadXeroRowsViaFxEngine(ids.businessId, forecast.fiscal_year as number)
         : this.fetchAllXeroRows(ids.all).then((raw) => this.aggregateXeroRows(raw)),
     ])
 
@@ -311,7 +311,7 @@ export class ForecastReadService {
    * so consumers without a forecast (cashflow xero-actuals fallback,
    * coach dashboard aggregation) can still get the quality signal.
    *
-   * Args: businessIds — already resolved via resolveBusinessIds at the
+   * Args: businessIds — already resolved via resolveBusinessProfileIds at the
    * caller boundary (avoids duplicate dual-ID resolution).
    */
   public async getDataQualityForBusiness(
@@ -761,7 +761,7 @@ export async function aggregateDataQualityAcrossBusinesses(
   const service = createForecastReadService(supabase)
   const perBusiness = await Promise.all(
     businessIds.map(async (bid) => {
-      const ids = await resolveBusinessIds(supabase, bid)
+      const ids = await resolveBusinessProfileIds(supabase, bid)
       const result = await service.getDataQualityForBusiness(ids.all)
       return { business_id: bid, quality: result.data_quality }
     }),
