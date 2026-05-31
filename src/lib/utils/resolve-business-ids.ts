@@ -1,13 +1,18 @@
 /**
- * Bidirectional business ID resolver.
+ * @deprecated Use `resolveBusinessProfileIds` from
+ * `@/lib/business/resolveBusinessProfileIds`, which returns the same data with
+ * branded `{ businessId, profileId }` types that protect against the
+ * `businesses.id` ⇄ `business_profiles.id` ⇄ `user.id` confusion.
  *
- * The platform has two ID types:
- *   - businesses.id ("bizId") — used by BusinessContext, business_users, business_kpis
- *   - business_profiles.id ("profileId") — used by xero_connections, financial_forecasts, xero_pl_lines
- *
- * This utility accepts EITHER type and returns both, so queries always use the correct one.
- * Results are cached per-request to avoid repeated DB lookups.
+ * R1 PR-4 — deprecation shim. The real implementation (the two
+ * `business_profiles` lookups, the module memo, and the input-echo fallback)
+ * now lives in `resolveBusinessProfileIds`. This file is a thin bridge that
+ * delegates there and un-brands the result back to the legacy
+ * `{ bizId, profileId, all }` shape, so the remaining un-migrated callers keep
+ * working unchanged during the R1 consolidation. Remove this file once the last
+ * caller has migrated to the branded resolver.
  */
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 
 interface ResolvedIds {
   /** The businesses.id (used by business_users, business_kpis, etc.) */
@@ -18,57 +23,20 @@ interface ResolvedIds {
   all: string[]
 }
 
-const cache = new Map<string, ResolvedIds>()
-
+/**
+ * @deprecated Use `resolveBusinessProfileIds` from
+ * `@/lib/business/resolveBusinessProfileIds`. This delegates there and
+ * un-brands the result.
+ */
 export async function resolveBusinessIds(
   supabase: { from: (table: string) => any },
-  businessId: string
+  businessId: string,
 ): Promise<ResolvedIds> {
-  // Check cache first
-  const cached = cache.get(businessId)
-  if (cached) return cached
-
-  // Try 1: businessId is businesses.id → look up business_profiles.id
-  const { data: profile } = await supabase
-    .from('business_profiles')
-    .select('id, business_id')
-    .eq('business_id', businessId)
-    .maybeSingle()
-
-  if (profile?.id) {
-    const result: ResolvedIds = {
-      bizId: businessId,
-      profileId: profile.id,
-      all: [profile.id, businessId],
-    }
-    cache.set(businessId, result)
-    cache.set(profile.id, result)
-    return result
-  }
-
-  // Try 2: businessId is business_profiles.id → look up businesses.id
-  const { data: profileRow } = await supabase
-    .from('business_profiles')
-    .select('id, business_id')
-    .eq('id', businessId)
-    .maybeSingle()
-
-  if (profileRow?.business_id) {
-    const result: ResolvedIds = {
-      bizId: profileRow.business_id,
-      profileId: businessId,
-      all: [businessId, profileRow.business_id],
-    }
-    cache.set(businessId, result)
-    cache.set(profileRow.business_id, result)
-    return result
-  }
-
-  // Fallback: couldn't resolve, use the same ID for both
-  const result: ResolvedIds = {
-    bizId: businessId,
-    profileId: businessId,
-    all: [businessId],
-  }
-  return result
+  const { businessId: bizId, profileId, all } = await resolveBusinessProfileIds(
+    supabase,
+    businessId,
+  )
+  // Un-brand: BusinessId / BusinessProfileId are string subtypes, so these
+  // assignments are safe and the runtime values are unchanged.
+  return { bizId, profileId, all }
 }
