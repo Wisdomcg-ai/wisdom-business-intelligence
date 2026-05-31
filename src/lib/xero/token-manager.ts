@@ -24,6 +24,14 @@ export const REFRESH_THRESHOLD_MINUTES = 15;
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1000;
 
+// REL-N5: persisting a freshly-rotated token is mandatory — Xero has already
+// invalidated the previous refresh token by the time we get a 200, so the new
+// token is the ONLY valid one. Retry the save a few times (short backoff) so a
+// transient write blip can't strand the connection on a dead token. Kept small
+// to avoid materially adding to the refresh cron's per-tenant time budget.
+const MAX_TOKEN_SAVE_ATTEMPTS = 3;
+const TOKEN_SAVE_RETRY_DELAY_MS = 200;
+
 // Error types for better handling
 export type TokenRefreshError =
   | 'token_expired_permanently' // Refresh token expired (60 days), need to reconnect
@@ -398,30 +406,75 @@ async function refreshTokenWithRetry(
       const newExpiry = new Date();
       newExpiry.setSeconds(newExpiry.getSeconds() + tokens.expires_in);
 
-      // Save new tokens to database
-      const { error: updateError } = await supabase
-        .from('xero_connections')
-        .update({
-          access_token: encrypt(tokens.access_token),
-          refresh_token: encrypt(tokens.refresh_token),
-          expires_at: newExpiry.toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', connectionId);
+      // ─── REL-N5: persist the rotated token, with retry. ────────────────────
+      // Xero rotates refresh tokens: the moment this 200 came back, the OLD
+      // refresh token was invalidated and the only valid one is the freshly
+      // issued `tokens.refresh_token`. If we fail to persist it, the DB is left
+      // holding a now-dead token; the next refresh reads it, gets invalid_grant,
+      // and a perfectly healthy tenant is deactivated by a transient write blip.
+      //
+      // So we MUST persist before reporting success. The new token is valid and
+      // in-hand, so a write blip is fully recoverable — retry a few times.
+      const encryptedAccessToken = encrypt(tokens.access_token);
+      const encryptedRefreshToken = encrypt(tokens.refresh_token);
+      const newExpiryIso = newExpiry.toISOString();
+
+      let updateError: unknown = null;
+      for (let saveAttempt = 1; saveAttempt <= MAX_TOKEN_SAVE_ATTEMPTS; saveAttempt++) {
+        const { error } = await supabase
+          .from('xero_connections')
+          .update({
+            access_token: encryptedAccessToken,
+            refresh_token: encryptedRefreshToken,
+            expires_at: newExpiryIso,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', connectionId);
+
+        if (!error) {
+          updateError = null;
+          break;
+        }
+
+        updateError = error;
+        console.error(
+          `[Token Manager] Failed to save refreshed tokens (attempt ${saveAttempt}/${MAX_TOKEN_SAVE_ATTEMPTS}):`,
+          error,
+        );
+        if (saveAttempt < MAX_TOKEN_SAVE_ATTEMPTS) {
+          await sleep(TOKEN_SAVE_RETRY_DELAY_MS);
+        }
+      }
 
       if (updateError) {
-        console.error('[Token Manager] Failed to save refreshed tokens:', updateError);
-        // Return the new token anyway - it's valid even if we couldn't save it
-        // Next request will refresh again
+        // Rotation succeeded at Xero but we could NOT persist the new token
+        // after every retry. Do NOT report success — that would mask a real
+        // token desync and strand the connection on a dead DB token. Return a
+        // transient, NON-deactivating failure so the caller retries (Xero keeps
+        // the previous refresh token valid for a short grace window) instead of
+        // committing to an unpersisted rotation. The connection stays active.
+        try {
+          Sentry.captureMessage('Xero token rotated but failed to persist', {
+            level: 'error',
+            tags: {
+              invariant: 'xero_token_persist_failed',
+              connection_id: connectionId,
+              tenant_id: ctx.tenant_id ?? 'unknown',
+              business_id: ctx.business_id ?? 'unknown',
+            },
+          } as any);
+        } catch {
+          // Sentry outage must never change the return contract below.
+        }
         return {
-          success: true,
-          accessToken: tokens.access_token,
+          success: false,
           error: 'database_error',
-          message: 'Token refreshed but failed to save to database'
+          message: 'Token refreshed but failed to save to database after retries',
+          shouldDeactivate: false,
         };
       }
 
-      console.log('[Token Manager] Token refreshed successfully, expires:', newExpiry.toISOString());
+      console.log('[Token Manager] Token refreshed successfully, expires:', newExpiryIso);
       return {
         success: true,
         accessToken: tokens.access_token
