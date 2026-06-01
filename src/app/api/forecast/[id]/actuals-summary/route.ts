@@ -13,8 +13,12 @@ import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
+
+const GetQuerySchema = z.object({}).passthrough()
 
 // Categories that map to Revenue in the P&L
 const REVENUE_CATEGORIES = ['Revenue', 'revenue', 'Trading Revenue', 'Other Revenue']
@@ -37,7 +41,7 @@ function sumActualMonths(actual_months: Record<string, number> | null | undefine
   return Object.values(actual_months).reduce((sum, v) => sum + (v || 0), 0)
 }
 
-export async function GET(
+async function getHandler(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -264,3 +268,12 @@ export async function GET(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema(
+  'forecast/[id]/actuals-summary',
+  GetQuerySchema,
+  getHandler as unknown as (
+    request: Request,
+    ctx: { params: Promise<{ id: string }> },
+  ) => Promise<Response>,
+)

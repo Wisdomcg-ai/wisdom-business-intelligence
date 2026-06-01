@@ -3,10 +3,15 @@ import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(
+const GetQuerySchema = z.object({}).passthrough()
+const DeleteQuerySchema = z.object({}).passthrough()
+
+async function getHandler(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -146,7 +151,7 @@ export async function GET(
  * Access: owner of the business OR coach/super_admin. Team members get 403
  * — deletion is destructive and stays an owner-level capability.
  */
-export async function DELETE(
+async function deleteHandler(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -252,3 +257,21 @@ export async function DELETE(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema(
+  'forecast/[id]',
+  GetQuerySchema,
+  getHandler as unknown as (
+    request: Request,
+    ctx: { params: Promise<{ id: string }> },
+  ) => Promise<Response>,
+)
+
+export const DELETE = withQuerySchema(
+  'forecast/[id]',
+  DeleteQuerySchema,
+  deleteHandler as unknown as (
+    request: Request,
+    ctx: { params: Promise<{ id: string }> },
+  ) => Promise<Response>,
+)
