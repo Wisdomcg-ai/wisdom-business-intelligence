@@ -1,10 +1,21 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: Request) {
+const GetQuerySchema = z
+  .object({
+    forecast_id: z.string().optional(),
+    action: z.string().optional(),
+    user_id: z.string().optional(),
+    date_range: z.string().optional(),
+  })
+  .passthrough()
+
+async function getHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -112,3 +123,9 @@ export async function GET(request: Request) {
     )
   }
 }
+
+export const GET = withQuerySchema(
+  'forecasts/audit-log',
+  GetQuerySchema,
+  getHandler
+)
