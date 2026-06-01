@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { buildReportUrl } from '../build-report-url'
-import { signReportToken, verifyReportToken } from '../report-token'
+import { verifyReportToken } from '../report-token'
 
 const VALID_SECRET = 'test-secret-0123456789abcdef0123456789abcdef'
 const APP_URL = 'https://wisdombi.ai'
@@ -130,12 +130,12 @@ describe('buildReportUrl + signReportToken integration', () => {
     vi.unstubAllEnvs()
   })
 
-  it('token in URL is identical to signReportToken(statusId)', () => {
+  it('token in URL verifies back to the statusId', () => {
     const statusId = 'same-status-id'
     const url = buildReportUrl({ statusId, portalSlug: null, periodMonth: '2026-03-01' })
     const tokenFromUrl = url.slice(`${APP_URL}/reports/view/`.length)
-    // Token payload must decode back to statusId (signatures may differ on re-sign if non-deterministic,
-    // but HMAC is deterministic so they should match byte-for-byte)
-    expect(tokenFromUrl).toBe(signReportToken(statusId))
+    // R9: the token now embeds a time-based expiry, so two independent sign calls
+    // are no longer byte-identical. Assert the URL's token round-trips instead.
+    expect(verifyReportToken(tokenFromUrl)).toBe(statusId)
   })
 })
