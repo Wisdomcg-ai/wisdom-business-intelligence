@@ -10,8 +10,20 @@ import type { BalanceSheetRow, BalanceSheetData, BalanceSheetCompare } from '@/a
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
+
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    month: z.string().optional(),
+    compare: z.string().optional(),
+    cash_only: z.string().optional(),
+    as_of: z.string().optional(),
+  })
+  .passthrough()
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -159,7 +171,7 @@ async function fetchBalanceSheetForTenant(
  * by looking inside the Assets section for sub-sections titled "Bank" — this
  * is how Xero's standardLayout BS groups bank accounts.
  */
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     const authClient = await createRouteHandlerClient()
     const { data: { user }, error: authError } = await authClient.auth.getUser()
@@ -482,3 +494,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema(
+  'Xero/balance-sheet',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+)

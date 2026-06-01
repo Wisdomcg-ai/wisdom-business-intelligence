@@ -23,8 +23,17 @@ import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
+
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    forecast_id: z.string().optional(),
+  })
+  .passthrough()
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, getSupabaseSecretKey())
 
@@ -42,7 +51,7 @@ const toPLLine = (r: { account_name: string; account_code: string | null; accoun
   actual_months: r.monthly_values || {}, forecast_months: {},
 })
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     const authClient = await createRouteHandlerClient()
     const { data: { user }, error: authError } = await authClient.auth.getUser()
@@ -123,3 +132,9 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export const GET = withQuerySchema(
+  'forecast/cashflow/xero-actuals',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+)

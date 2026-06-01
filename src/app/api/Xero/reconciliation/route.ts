@@ -7,6 +7,8 @@ import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,11 +17,18 @@ const supabase = createClient(
   getSupabaseSecretKey()
 )
 
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    month: z.string().optional(),
+  })
+  .passthrough()
+
 /**
  * GET /api/Xero/reconciliation?business_id=xxx[&month=YYYY-MM]
  * Checks unreconciled transaction count from Xero
  */
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     // Auth check
     const authClient = await createRouteHandlerClient();
@@ -189,3 +198,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to check reconciliation status' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema(
+  'Xero/reconciliation',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+)

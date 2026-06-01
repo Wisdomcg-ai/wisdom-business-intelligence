@@ -27,10 +27,14 @@ import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfile
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
-export async function POST(
+const PostQuerySchema = z.object({}).passthrough()
+
+async function postHandler(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -196,3 +200,12 @@ export async function POST(
     )
   }
 }
+
+export const POST = withQuerySchema(
+  'forecast/[id]/recompute',
+  PostQuerySchema,
+  postHandler as unknown as (
+    request: Request,
+    ctx: { params: Promise<{ id: string }> },
+  ) => Promise<Response>,
+)

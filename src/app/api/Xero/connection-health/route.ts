@@ -48,8 +48,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { withQuerySchema } from '@/lib/api/with-schema';
+import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
+
+const GetQuerySchema = z
+  .object({
+    'business_ids[]': z.union([z.string(), z.array(z.string())]).optional(),
+  })
+  .passthrough();
 
 // Service-role client to bypass RLS — endpoint enforces RBAC in code.
 const supabaseAdmin = createClient(
@@ -81,7 +89,7 @@ interface XeroConnectionRow {
   expires_at: string | null;
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   // 1. Auth — must be a logged-in user.
   const supabase = await createRouteHandlerClient();
   const {
@@ -217,3 +225,9 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ results });
 }
+
+export const GET = withQuerySchema(
+  'Xero/connection-health',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+);

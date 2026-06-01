@@ -17,8 +17,19 @@ import { getMonthKeysForQuarter, sumMonthsForKeys } from '@/lib/utils/fiscal-yea
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
+
+const GetQuerySchema = z
+  .object({
+    forecastId: z.string().optional(),
+    quarter: z.string().optional(),
+    fiscalYear: z.string().optional(),
+    yearStartMonth: z.string().optional(),
+  })
+  .passthrough()
 
 // Categories that map to Revenue in the P&L
 const REVENUE_CATEGORIES = ['Revenue', 'revenue', 'Trading Revenue', 'Other Revenue']
@@ -36,7 +47,7 @@ function isRevenue(category?: string, accountType?: string): boolean {
   return REVENUE_CATEGORIES.some(c => c.toLowerCase() === category.toLowerCase())
 }
 
-export async function GET(request: Request) {
+async function getHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -224,3 +235,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema(
+  'forecast/quarterly-summary',
+  GetQuerySchema,
+  getHandler
+)

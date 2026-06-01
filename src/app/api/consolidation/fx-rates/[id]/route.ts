@@ -15,9 +15,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
+
+const DeleteQuerySchema = z.object({}).passthrough()
 
 const adminDb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -56,7 +60,7 @@ async function requireCoachOrSuperAdmin(): Promise<
   return { allowed: true }
 }
 
-export async function DELETE(
+async function deleteHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -94,3 +98,12 @@ export async function DELETE(
     )
   }
 }
+
+export const DELETE = withQuerySchema(
+  'consolidation/fx-rates/[id]',
+  DeleteQuerySchema,
+  deleteHandler as unknown as (
+    request: Request,
+    ctx: { params: Promise<{ id: string }> },
+  ) => Promise<Response>,
+)

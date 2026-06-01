@@ -24,6 +24,8 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
@@ -33,7 +35,13 @@ const supabaseAdmin = createClient(
   getSupabaseSecretKey(),
 )
 
-export async function GET(request: NextRequest) {
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+  })
+  .passthrough()
+
+async function getHandler(request: NextRequest) {
   try {
     const authClient = await createRouteHandlerClient()
     const { data: { user }, error: authError } = await authClient.auth.getUser()
@@ -78,3 +86,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema(
+  'Xero/active-tenants',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+)

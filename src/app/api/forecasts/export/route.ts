@@ -5,6 +5,8 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { ExcelExportService } from '@/app/finances/forecast/services/excel-export-service'
 import { PDFExportService } from '@/app/finances/forecast/services/pdf-export-service'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
@@ -14,12 +16,19 @@ const supabaseAdmin = createClient(
   getSupabaseSecretKey()
 )
 
+const GetQuerySchema = z
+  .object({
+    forecast_id: z.string().optional(),
+    format: z.string().optional(),
+  })
+  .passthrough()
+
 /**
  * GET /api/forecasts/export?forecast_id=xxx&format=pdf|excel
  * Export forecast to PDF or Excel
  * User ID is determined from authenticated session (not from query param)
  */
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     // Authentication check - use session user ID instead of query param
     const supabase = await createRouteHandlerClient()
@@ -155,3 +164,9 @@ export async function GET(request: NextRequest) {
     }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema(
+  'forecasts/export',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+)

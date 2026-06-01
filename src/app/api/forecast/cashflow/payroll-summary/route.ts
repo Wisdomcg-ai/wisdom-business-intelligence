@@ -3,8 +3,16 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
+
+const GetQuerySchema = z
+  .object({
+    forecast_id: z.string().optional(),
+  })
+  .passthrough()
 
 /**
  * GET /api/forecast/cashflow/payroll-summary?forecast_id=xxx
@@ -15,7 +23,7 @@ export const dynamic = 'force-dynamic'
  * Returns { data: null } if no summary exists (e.g. forecast was built
  * without the payroll wizard step).
  */
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     const supabase = await createRouteHandlerClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -70,3 +78,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const GET = withQuerySchema(
+  'forecast/cashflow/payroll-summary',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+)
