@@ -15,8 +15,8 @@
  *      business_profiles  .select('id, business_id').eq('id', businessId).maybeSingle()
  *      then businesses    .select(...).eq('id', profile.business_id).maybeSingle()
  *        → owner_id === userId || assigned_coach_id === userId  ⇒ true   (dual-ID)
- *   3. business_users    .select('id').eq('business_id', businessId).eq('user_id', userId).maybeSingle()
- *        → any row ⇒ true   (NO status filter — see CHARACTERIZATION note below)
+ *   3. business_users    .select('id').eq('business_id', businessId).eq('user_id', userId).eq('status', 'active').maybeSingle()
+ *        → an ACTIVE membership row ⇒ true   (C-34 fix: status filter — see note below)
  *   4. system_roles      .select('role').eq('user_id', userId).maybeSingle()
  *        → role === 'super_admin' ⇒ true, else false
  *
@@ -72,7 +72,15 @@ vi.mock('@supabase/supabase-js', () => {
         return { data: tableResponses.business_profiles ?? null, error: null };
       }
       if (table === 'business_users') {
-        return { data: tableResponses.business_users ?? null, error: null };
+        const row = tableResponses.business_users ?? null;
+        // Honor a status filter if the source applied one (C-34 fix): the real
+        // PostgREST query `.eq('status', 'active')` would not return a row whose
+        // status differs, so the fake must drop a non-matching row here.
+        const statusFilter = ctx._eq['status'];
+        if (row && statusFilter !== undefined && row.status !== statusFilter) {
+          return { data: null, error: null };
+        }
+        return { data: row, error: null };
       }
       if (table === 'system_roles') {
         return { data: tableResponses.system_roles ?? null, error: null };
@@ -180,7 +188,7 @@ describe('verifyBusinessAccess — 4×2 access matrix (characterization)', () =>
       id === BUSINESS_ID
         ? { owner_id: 'owner-y', assigned_coach_id: 'coach-x' }
         : null;
-    tableResponses.business_users = { id: 'membership-1' };
+    tableResponses.business_users = { id: 'membership-1', status: 'active' };
 
     await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(true);
   });
@@ -200,7 +208,7 @@ describe('verifyBusinessAccess — 4×2 access matrix (characterization)', () =>
       id === RESOLVED_BUSINESS_ID
         ? { owner_id: 'owner-y', assigned_coach_id: 'coach-x' }
         : null;
-    tableResponses.business_users = { id: 'membership-2' };
+    tableResponses.business_users = { id: 'membership-2', status: 'active' };
 
     await expect(verifyBusinessAccess(USER, PROFILE_ID)).resolves.toBe(true);
   });
@@ -258,34 +266,28 @@ describe('verifyBusinessAccess — negatives & latent-bug characterization', () 
     await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(false);
   });
 
-  // CHARACTERIZATION: pins current no-status-filter behavior — flagged for R16/C-34
-  //
-  // Confirmed against the source (lines 48-57): the business_users query is
-  //   .from('business_users').select('id').eq('business_id', businessId).eq('user_id', userId).maybeSingle()
-  // It selects ONLY `id` and filters ONLY on business_id + user_id. There is NO
-  // `.eq('status', ...)` / `.in('status', ...)` / `.is('deactivated_at', null)`
-  // predicate. Therefore ANY membership row — including a deactivated or pending
-  // member — grants access. This is a latent bug. We lock the buggy behavior so
-  // the upcoming refactor is provably behavior-preserving; the fix (adding a
-  // status filter) should be made deliberately and will flip these assertions.
-  it('LATENT BUG: deactivated team member still GRANTS (no status filter) ⇒ true', async () => {
+  // C-34 FIX (R16): these two assertions used to pin the latent bug (a
+  // deactivated or pending member was still granted because the membership
+  // query had no status filter). The source now applies `.eq('status', 'active')`
+  // in verify-business-access.ts, so only an ACTIVE membership grants. These were
+  // deliberately flipped from `.toBe(true)` to `.toBe(false)` as part of the fix.
+  it('C-34: deactivated team member is DENIED (status filter) ⇒ false', async () => {
     tableResponses.businesses = (id) =>
       id === BUSINESS_ID
         ? { owner_id: 'owner-y', assigned_coach_id: 'coach-x' }
         : null;
-    // A membership row exists but is deactivated. The source's query returns it
-    // regardless of status because it never filters on status. Whatever extra
-    // fields the row carries, the source only reads truthiness of the row.
+    // A membership row exists but is deactivated. The source's `.eq('status',
+    // 'active')` filter excludes it, so access is denied.
     tableResponses.business_users = {
       id: 'membership-deactivated',
       status: 'deactivated',
       deactivated_at: '2025-01-01T00:00:00Z',
     };
 
-    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(true);
+    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(false);
   });
 
-  it('LATENT BUG: pending team member still GRANTS (no status filter) ⇒ true', async () => {
+  it('C-34: pending team member is DENIED (status filter) ⇒ false', async () => {
     tableResponses.businesses = (id) =>
       id === BUSINESS_ID
         ? { owner_id: 'owner-y', assigned_coach_id: 'coach-x' }
@@ -295,6 +297,6 @@ describe('verifyBusinessAccess — negatives & latent-bug characterization', () 
       status: 'pending',
     };
 
-    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(true);
+    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(false);
   });
 });

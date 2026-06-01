@@ -44,12 +44,17 @@ export async function verifyBusinessAccess(userId: string, businessId: string): 
     }
   }
 
-  // Check if user is a business member
+  // Check if user is an ACTIVE business member.
+  // C-34 fix: only an active membership grants access. Without the status
+  // filter, a deactivated or pending member would still be granted — see
+  // verify-business-access-characterization.test.ts. Valid statuses are
+  // 'pending' | 'active' | 'inactive' (business_users.status CHECK constraint).
   const { data: membership } = await supabaseAdmin
     .from('business_users')
     .select('id')
     .eq('business_id', businessId)
     .eq('user_id', userId)
+    .eq('status', 'active')
     .maybeSingle();
 
   if (membership) {
