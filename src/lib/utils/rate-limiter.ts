@@ -74,16 +74,29 @@ export const RATE_LIMIT_CONFIGS = {
 
 // ─── Upstash backing (production) ───────────────────────────────────────────
 // Built lazily and cached per (window,max) so each config reuses one Ratelimit.
-const upstashEnabled = Boolean(
-  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
-)
+
+/**
+ * Resolve Upstash REST credentials from env, supporting BOTH naming conventions:
+ *   - KV_REST_API_URL / KV_REST_API_TOKEN — injected by the Vercel Marketplace
+ *     Upstash (KV) integration. This is what our prod project actually has.
+ *   - UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN — the @upstash default
+ *     (manual setups / the fork). Checked first so an explicit override wins.
+ * Returns null (→ in-memory fallback) when neither pair is present.
+ */
+export function resolveUpstashCreds(): { url: string; token: string } | null {
+  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN
+  if (url && token) return { url, token }
+  return null
+}
 
 let redisClient: Redis | null = null
 function getRedis(): Redis | null {
-  if (!upstashEnabled) return null
+  const creds = resolveUpstashCreds()
+  if (!creds) return null
   if (!redisClient) {
     try {
-      redisClient = Redis.fromEnv()
+      redisClient = new Redis({ url: creds.url, token: creds.token })
     } catch {
       redisClient = null
     }
