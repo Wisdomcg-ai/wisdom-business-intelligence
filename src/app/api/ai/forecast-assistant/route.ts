@@ -43,7 +43,7 @@ async function postHandler(request: Request) {
 
     // Rate limit
     const rateLimitKey = createRateLimitKey('/api/ai/forecast-assistant', user.id)
-    const rateLimit = checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.ai)
+    const rateLimit = await checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.ai)
     if (!rateLimit.allowed) {
       return NextResponse.json(
         { error: 'Rate limit exceeded. Please wait before making more AI requests.', retryAfter: Math.ceil(rateLimit.resetIn / 1000) },

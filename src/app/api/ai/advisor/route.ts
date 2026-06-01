@@ -46,7 +46,7 @@ async function postHandler(request: Request) {
     }
 
     const rateLimitKey = createRateLimitKey('/api/ai/advisor', user.id)
-    const rateLimit = checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.ai)
+    const rateLimit = await checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.ai)
     if (!rateLimit.allowed) {
       return NextResponse.json(
         { error: 'Rate limit exceeded.', retryAfter: Math.ceil(rateLimit.resetIn / 1000) },

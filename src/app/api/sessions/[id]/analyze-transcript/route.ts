@@ -36,7 +36,7 @@ async function postHandler(
 
     // Rate limiting - prevent AI cost abuse (30 requests per hour per user)
     const rateLimitKey = createRateLimitKey('/api/sessions/analyze-transcript', user.id)
-    const rateLimit = checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.ai)
+    const rateLimit = await checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.ai)
 
     if (!rateLimit.allowed) {
       return NextResponse.json(

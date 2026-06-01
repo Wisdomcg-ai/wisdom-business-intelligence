@@ -61,7 +61,7 @@ async function postHandler(request: NextRequest) {
     }
 
     // Rate limit: 10 emails per hour per user
-    const rateLimit = checkRateLimit(
+    const rateLimit = await checkRateLimit(
       createRateLimitKey('email-send', user.id),
       RATE_LIMIT_CONFIGS.email
     );
