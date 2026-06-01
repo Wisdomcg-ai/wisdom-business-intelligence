@@ -9,8 +9,20 @@ import {
   logSuspiciousInput,
   AI_INPUT_LIMITS,
 } from '@/lib/utils/ai-sanitizer'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// POST body: { message, systemPrompt?, context?, history? } — AI CFO chat turn.
+const PostBodySchema = z
+  .object({
+    message: z.string(),
+    systemPrompt: z.string().optional(),
+    context: z.unknown().optional(),
+    history: z.array(z.unknown()).optional(),
+  })
+  .passthrough()
 
 /**
  * AI Forecast Assistant — powers the AI CFO chat panel in the V4 forecast wizard.
@@ -19,7 +31,7 @@ export const dynamic = 'force-dynamic'
  * builder), and conversation history, then returns an AI response via Anthropic
  * Claude (preferred) or falls back to OpenAI.
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -132,3 +144,5 @@ Remember: Help them think through decisions, don't make decisions for them.`
     )
   }
 }
+
+export const POST = withSchema('ai/forecast-assistant', PostBodySchema, postHandler)

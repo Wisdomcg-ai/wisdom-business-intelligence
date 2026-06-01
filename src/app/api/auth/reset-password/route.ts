@@ -7,6 +7,8 @@ import crypto from 'crypto'
 import { checkRateLimit, getClientIP, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 import { csrfProtection } from '@/lib/security/csrf'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 // Use service role for admin operations
 const supabase = createClient(
@@ -15,7 +17,10 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 )
 
-export async function POST(request: NextRequest) {
+// POST body: { email } — the account to send a reset link to.
+const PostBodySchema = z.object({ email: z.string() }).passthrough()
+
+async function postHandler(request: NextRequest) {
   try {
     // Rate limiting - 3 password reset requests per hour per IP
     const clientIP = getClientIP(request)
@@ -125,3 +130,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to process request' }, { status: 500 })
   }
 }
+
+export const POST = withSchema(
+  'auth/reset-password',
+  PostBodySchema,
+  postHandler as unknown as (request: Request) => Promise<Response>
+)

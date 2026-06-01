@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
 /**
  * POST /api/auth/logout
  * Server-side logout endpoint to properly terminate sessions
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   try {
     const supabase = await createRouteHandlerClient()
 
@@ -40,3 +42,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to sign out' }, { status: 500 })
   }
 }
+
+// Input-less POST (no body read) — observe wrapper with permissive empty schema.
+export const POST = withQuerySchema(
+  'auth/logout',
+  z.object({}),
+  postHandler as unknown as (request: Request) => Promise<Response>
+)

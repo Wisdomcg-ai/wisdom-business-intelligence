@@ -10,8 +10,24 @@ import {
   sendMessageNotification
 } from '@/lib/email/resend';
 import { csrfProtection } from '@/lib/security/csrf';
+import { z } from 'zod';
+import { withSchema } from '@/lib/api/with-schema';
 
-export async function POST(request: NextRequest) {
+// POST body: { type, ...params } — `type` selects the email template; the per-type
+// params (to/subject/html/from/replyTo/clientName/...) are forwarded to the resend
+// helpers, so the named fields are modeled and the rest passthrough.
+const PostBodySchema = z
+  .object({
+    type: z.string(),
+    to: z.string().optional(),
+    subject: z.string().optional(),
+    html: z.string().optional(),
+    from: z.string().optional(),
+    replyTo: z.string().optional(),
+  })
+  .passthrough();
+
+async function postHandler(request: NextRequest) {
   try {
     // CSRF protection
     const csrf = await csrfProtection(request);
@@ -138,3 +154,9 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withSchema(
+  'email/send',
+  PostBodySchema,
+  postHandler as unknown as (request: Request) => Promise<Response>
+);

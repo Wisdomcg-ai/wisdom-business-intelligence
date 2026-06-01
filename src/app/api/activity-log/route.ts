@@ -1,8 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 
-export async function POST(request: NextRequest) {
+// POST body: audit-log entry. business_id/table_name/record_id/action required; rest optional metadata.
+const PostBodySchema = z
+  .object({
+    business_id: z.string(),
+    table_name: z.string(),
+    record_id: z.string(),
+    action: z.string(),
+    field_name: z.string().nullish(),
+    old_value: z.unknown().optional(),
+    new_value: z.unknown().optional(),
+    changes: z.unknown().optional(),
+    description: z.string().nullish(),
+    page_path: z.string().nullish(),
+  })
+  .passthrough()
+
+// GET searchParams: business_id required; filters + pagination optional (all string-typed query).
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    table_name: z.string().optional(),
+    user_id: z.string().optional(),
+    limit: z.string().optional(),
+    offset: z.string().optional(),
+  })
+  .passthrough()
+
+async function postHandler(request: NextRequest) {
   try {
     const supabase = await createRouteHandlerClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -79,7 +108,13 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
+export const POST = withSchema(
+  'activity-log',
+  PostBodySchema,
+  postHandler as unknown as (request: Request) => Promise<Response>
+)
+
+async function getHandler(request: NextRequest) {
   try {
     const supabase = await createRouteHandlerClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -138,3 +173,9 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export const GET = withQuerySchema(
+  'activity-log',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+)

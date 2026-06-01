@@ -9,13 +9,24 @@ import {
   logSuspiciousInput,
   AI_INPUT_LIMITS
 } from '@/lib/utils/ai-sanitizer';
+import { z } from 'zod';
+import { withSchema } from '@/lib/api/with-schema';
 
 // Initialize OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function POST(request: Request) {
+// POST body: { fieldType, currentValue?, businessContext? } — drives the AI suggestion prompt.
+const PostBodySchema = z
+  .object({
+    fieldType: z.string(),
+    currentValue: z.record(z.string(), z.unknown()).optional(),
+    businessContext: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+
+async function postHandler(request: Request) {
   try {
     // Authentication check - only authenticated users can use AI
     const supabase = await createRouteHandlerClient();
@@ -132,3 +143,5 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export const POST = withSchema('ai-assist', PostBodySchema, postHandler);

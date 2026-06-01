@@ -1,6 +1,21 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
+
+// PUT body: partial update — every field optional; modeled with real types.
+const PutBodySchema = z
+  .object({
+    name: z.string().optional(),
+    description: z.string().nullish(),
+    status: z.string().optional(),
+    process_data: z.unknown().optional(),
+    step_count: z.number().optional(),
+    decision_count: z.number().optional(),
+    swimlane_count: z.number().optional(),
+  })
+  .passthrough()
 
 // Helper: verify the authenticated user has access to a process
 async function verifyProcessAccess(
@@ -53,7 +68,7 @@ async function verifyProcessAccess(
 }
 
 // GET /api/processes/[id] — get a single process
-export async function GET(
+async function getHandler(
   request: Request,
   { params }: { params: { id: string } }
 ) {
@@ -91,8 +106,11 @@ export async function GET(
   }
 }
 
+// Param-only GET (no body/query) — observe wrapper, permissive empty schema; ctx forwarded.
+export const GET = withQuerySchema('processes/[id]', z.object({}), getHandler)
+
 // PUT /api/processes/[id] — update a process
-export async function PUT(
+async function putHandler(
   request: Request,
   { params }: { params: { id: string } }
 ) {
@@ -143,8 +161,10 @@ export async function PUT(
   }
 }
 
+export const PUT = withSchema('processes/[id]', PutBodySchema, putHandler)
+
 // DELETE /api/processes/[id] — delete a process
-export async function DELETE(
+async function deleteHandler(
   request: Request,
   { params }: { params: { id: string } }
 ) {
@@ -180,3 +200,6 @@ export async function DELETE(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+// DELETE reads no body — observe wrapper with permissive empty schema; ctx forwarded.
+export const DELETE = withSchema('processes/[id]', z.object({}), deleteHandler)

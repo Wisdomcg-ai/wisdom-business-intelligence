@@ -1,9 +1,24 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
+
+// GET searchParams: { user_id? } (string-typed query).
+const GetQuerySchema = z.object({ user_id: z.string().optional() }).passthrough()
+
+// POST body: { name, description?, process_data?, user_id? } — create a process diagram.
+const PostBodySchema = z
+  .object({
+    name: z.string(),
+    description: z.string().nullish(),
+    process_data: z.unknown().optional(),
+    user_id: z.string().optional(),
+  })
+  .passthrough()
 
 // GET /api/processes — list all processes for the user
-export async function GET(request: Request) {
+async function getHandler(request: Request) {
   try {
     const supabase = await createRouteHandlerClient()
     const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -58,8 +73,10 @@ export async function GET(request: Request) {
   }
 }
 
+export const GET = withQuerySchema('processes', GetQuerySchema, getHandler)
+
 // POST /api/processes — create a new process
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   try {
     const supabase = await createRouteHandlerClient()
     const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -126,3 +143,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const POST = withSchema('processes', PostBodySchema, postHandler)

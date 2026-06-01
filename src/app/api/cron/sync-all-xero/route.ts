@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { runSyncForAllBusinesses } from '@/lib/xero/sync-orchestrator'
 import { recordHeartbeat } from '@/lib/cron/heartbeat'
+import { z } from 'zod'
+import { withQuerySchema } from '@/lib/api/with-schema'
 
 const CRON_PATH = '/api/cron/sync-all-xero'
 
@@ -29,7 +31,7 @@ const CRON_PATH = '/api/cron/sync-all-xero'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 minutes; matches sync-all/route.ts
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   const auth = req.headers.get('authorization')
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -82,3 +84,10 @@ export async function GET(req: NextRequest) {
     )
   }
 }
+
+// Input-less cron GET (auth via Bearer header) — observe wrapper, permissive empty schema.
+export const GET = withQuerySchema(
+  'cron/sync-all-xero',
+  z.object({}),
+  getHandler as unknown as (request: Request) => Promise<Response>
+)

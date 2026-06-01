@@ -2,8 +2,32 @@ import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 import * as Sentry from '@sentry/nextjs'
+import { z } from 'zod'
+import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
+
+// POST body: { type } discriminates 'salary_estimate' (position, employmentType?) vs
+// 'project_cost' (projectType, scope?, complexity?). Modeled as a flat optional union.
+const PostBodySchema = z
+  .object({
+    type: z.string(),
+    position: z.string().optional(),
+    employmentType: z.string().optional(),
+    projectType: z.string().optional(),
+    scope: z.string().optional(),
+    complexity: z.string().optional(),
+  })
+  .passthrough()
+
+// PATCH body: analytics feedback on a suggestion.
+const PatchBodySchema = z
+  .object({
+    interactionId: z.string().optional(),
+    action: z.string().optional(),
+    userValue: z.unknown().optional(),
+  })
+  .passthrough()
 
 /**
  * AI Advisor — provides salary estimates and role-specific advice
@@ -12,7 +36,7 @@ export const dynamic = 'force-dynamic'
  * POST: Get a salary suggestion for a given role
  * PATCH: Record whether the user used/adjusted/ignored the suggestion (analytics)
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -161,10 +185,12 @@ Use current Australian market rates for small businesses.`
   }
 }
 
+export const POST = withSchema('ai/advisor', PostBodySchema, postHandler)
+
 /**
  * PATCH: Record user action on a suggestion (for analytics/feedback loop)
  */
-export async function PATCH(request: Request) {
+async function patchHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
   try {
@@ -186,3 +212,5 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export const PATCH = withSchema('ai/advisor', PatchBodySchema, patchHandler)
