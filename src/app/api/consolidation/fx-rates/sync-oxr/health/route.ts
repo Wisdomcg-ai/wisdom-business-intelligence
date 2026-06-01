@@ -10,10 +10,14 @@
 
 import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+const GetQuerySchema = z.object({}).passthrough()
+
+async function getHandler() {
   try {
     const authSupabase = await createRouteHandlerClient()
     const {
@@ -52,3 +56,9 @@ export async function GET() {
     )
   }
 }
+
+export const GET = withQuerySchema(
+  'consolidation/fx-rates/sync-oxr/health',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+)
