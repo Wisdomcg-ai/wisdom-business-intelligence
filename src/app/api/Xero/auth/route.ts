@@ -5,9 +5,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { createSignedOAuthState } from '@/lib/utils/encryption';
 import { getAppBaseUrl } from '@/lib/config/brand'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
+
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    return_to: z.string().optional(),
+  })
+  .passthrough()
 
 // Get environment variables
 const XERO_CLIENT_ID = process.env.XERO_CLIENT_ID!;
@@ -32,7 +41,7 @@ const SCOPES = [
   'payroll.settings.read'     // Read payroll settings
 ].join(' ');
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     // Verify user is authenticated before initiating OAuth
     const supabase = await createRouteHandlerClient();
@@ -152,3 +161,9 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withQuerySchema(
+  'Xero/auth',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+)

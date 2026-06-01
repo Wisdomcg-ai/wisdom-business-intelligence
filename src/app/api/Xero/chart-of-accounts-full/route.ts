@@ -5,9 +5,20 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
+
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    refresh: z.string().optional(),
+  })
+  .passthrough()
+
+const PostQuerySchema = z.object({}).passthrough()
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -96,7 +107,7 @@ async function fetchFromXeroAndCache(businessId: string, accessToken: string, te
  * Uses a local cache (xero_accounts table) to avoid hitting Xero on every request.
  * Re-syncs from Xero if cache is >24h old or refresh=true is passed.
  */
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     const authClient = await createRouteHandlerClient()
     const { data: { user }, error: authError } = await authClient.auth.getUser()
@@ -190,9 +201,21 @@ export async function GET(request: NextRequest) {
  * Forces an immediate refresh from Xero, ignoring cache freshness.
  * Returns the new accounts list.
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const url = new URL(request.url)
   url.searchParams.set('refresh', 'true')
   const newReq = new NextRequest(url.toString(), { method: 'GET', headers: request.headers })
-  return GET(newReq)
+  return getHandler(newReq)
 }
+
+export const GET = withQuerySchema(
+  'Xero/chart-of-accounts-full',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+)
+
+export const POST = withQuerySchema(
+  'Xero/chart-of-accounts-full',
+  PostQuerySchema,
+  postHandler as unknown as (request: Request) => Promise<Response>
+)

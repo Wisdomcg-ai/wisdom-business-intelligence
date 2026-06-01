@@ -8,9 +8,18 @@ import { encrypt, verifySignedOAuthState } from '@/lib/utils/encryption';
 import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
 import { getXeroOrgTimezone } from '@/lib/xero/organisation';
 import { getAppBaseUrl } from '@/lib/config/brand'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
+
+const GetQuerySchema = z
+  .object({
+    code: z.string().optional(),
+    state: z.string().optional(),
+  })
+  .passthrough()
 
 // Initialize Supabase with service key for server-side operations
 const supabase = createClient(
@@ -261,7 +270,7 @@ async function triggerInitialSync(businessId: string, accessToken: string, tenan
   }
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     // Get code and state from query params
     const searchParams = request.nextUrl.searchParams;
@@ -483,3 +492,9 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withQuerySchema(
+  'Xero/callback',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+)

@@ -17,8 +17,17 @@ import {
   // period-factor constants are encapsulated inside it.
   deriveHoursAndSalaryFromPayRun,
 } from '@/app/finances/forecast/components/wizard-v4/utils/xero-payroll-mapping';
+import { withQuerySchema } from '@/lib/api/with-schema';
+import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
+
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    include_terminated: z.string().optional(),
+  })
+  .passthrough();
 
 // Helper to parse Xero's date format: /Date(timestamp+0000)/ or /Date(timestamp)/
 function parseXeroDate(dateStr: string | undefined | null): string | undefined {
@@ -107,7 +116,7 @@ interface XeroEmployee {
 }
 
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const business_id = searchParams.get('business_id');
@@ -757,3 +766,9 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withQuerySchema(
+  'Xero/employees',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+);

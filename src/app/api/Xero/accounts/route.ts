@@ -6,11 +6,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds';
+import { withQuerySchema } from '@/lib/api/with-schema';
+import { z } from 'zod';
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    type: z.string().optional(),
+  })
+  .passthrough();
+
+async function getHandler(request: NextRequest) {
   const supabase = await createRouteHandlerClient();
 
   // Check authentication
@@ -160,3 +169,9 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withQuerySchema(
+  'Xero/accounts',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+);

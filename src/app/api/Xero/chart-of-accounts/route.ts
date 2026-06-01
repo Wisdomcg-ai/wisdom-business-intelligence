@@ -9,9 +9,18 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
+import { withQuerySchema } from '@/lib/api/with-schema';
+import { z } from 'zod';
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
+
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    filter: z.string().optional(),
+  })
+  .passthrough();
 
 // Service client with cache disabled to prevent stale token reads
 const supabase = createClient(
@@ -77,7 +86,7 @@ async function fetchXeroAccounts(accessToken: string, tenantId: string, filterTy
   );
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   try {
     // Auth check
     const authClient = await createRouteHandlerClient();
@@ -202,3 +211,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch chart of accounts' }, { status: 500 });
   }
 }
+
+export const GET = withQuerySchema(
+  'Xero/chart-of-accounts',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+);

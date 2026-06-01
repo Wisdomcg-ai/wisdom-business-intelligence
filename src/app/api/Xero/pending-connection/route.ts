@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { withQuerySchema } from '@/lib/api/with-schema';
+import { z } from 'zod';
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +15,13 @@ const supabaseAdmin = createClient(
 
 const PENDING_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-export async function GET(request: NextRequest) {
+const GetQuerySchema = z
+  .object({
+    pending_id: z.string().optional(),
+  })
+  .passthrough();
+
+async function getHandler(request: NextRequest) {
   try {
     // Verify user is authenticated
     const supabase = await createRouteHandlerClient();
@@ -105,3 +113,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
+export const GET = withQuerySchema(
+  'Xero/pending-connection',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+);

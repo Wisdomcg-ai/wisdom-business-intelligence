@@ -31,10 +31,19 @@ import type { HistoricalPLSummary } from '@/app/finances/forecast/types'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: NextRequest) {
+const GetQuerySchema = z
+  .object({
+    business_id: z.string().optional(),
+    fiscal_year: z.string().optional(),
+  })
+  .passthrough()
+
+async function getHandler(request: NextRequest) {
   try {
     const supabase = await createRouteHandlerClient()
 
@@ -124,3 +133,9 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export const GET = withQuerySchema(
+  'Xero/pl-summary',
+  GetQuerySchema,
+  getHandler as unknown as (request: Request) => Promise<Response>
+)
