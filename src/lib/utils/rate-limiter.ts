@@ -1,7 +1,18 @@
 /**
- * Simple in-memory rate limiter for API routes
- * For production with multiple servers, consider using Redis
+ * Rate limiter for API routes.
+ *
+ * R11: backed by Upstash Redis (shared state across all Vercel function
+ * instances) when UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN are present;
+ * otherwise falls back to a per-instance in-memory map so local dev, CI, and
+ * preview (without Upstash provisioned) keep working. The in-memory path is
+ * leaky across instances — Upstash is the correct production backing.
+ *
+ * `checkRateLimit` is async (the Upstash call is a network round-trip). On an
+ * Upstash error it falls back to the in-memory check rather than failing open.
  */
+import { Ratelimit } from '@upstash/ratelimit'
+import { Redis } from '@upstash/redis'
+import { ipAddress } from '@vercel/functions'
 
 interface RateLimitRecord {
   count: number
@@ -19,7 +30,7 @@ interface RateLimitResult {
   resetIn: number
 }
 
-// In-memory storage for rate limit records
+// In-memory storage for rate limit records (fallback when Upstash is absent).
 const rateLimitMap = new Map<string, RateLimitRecord>()
 
 // Default configurations for different route types
@@ -61,68 +72,124 @@ export const RATE_LIMIT_CONFIGS = {
   }
 } as const
 
-/**
- * Check if a request is allowed under rate limiting
- * @param identifier - Unique identifier (usually IP address or user ID)
- * @param config - Rate limit configuration
- * @returns Object with allowed status, remaining requests, and reset time
- */
-export function checkRateLimit(
+// ─── Upstash backing (production) ───────────────────────────────────────────
+// Built lazily and cached per (window,max) so each config reuses one Ratelimit.
+const upstashEnabled = Boolean(
+  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+)
+
+let redisClient: Redis | null = null
+function getRedis(): Redis | null {
+  if (!upstashEnabled) return null
+  if (!redisClient) {
+    try {
+      redisClient = Redis.fromEnv()
+    } catch {
+      redisClient = null
+    }
+  }
+  return redisClient
+}
+
+const limiterCache = new Map<string, Ratelimit>()
+function getUpstashLimiter(config: RateLimitConfig): Ratelimit | null {
+  const redis = getRedis()
+  if (!redis) return null
+  const key = `${config.windowMs}:${config.maxRequests}`
+  let limiter = limiterCache.get(key)
+  if (!limiter) {
+    limiter = new Ratelimit({
+      redis,
+      // Sliding window keyed on the caller-supplied identifier.
+      limiter: Ratelimit.slidingWindow(config.maxRequests, `${config.windowMs} ms`),
+      prefix: 'rl',
+      analytics: false,
+    })
+    limiterCache.set(key, limiter)
+  }
+  return limiter
+}
+
+/** In-memory fallback check (per-instance). */
+function checkRateLimitInMemory(
   identifier: string,
-  config: RateLimitConfig = RATE_LIMIT_CONFIGS.api
+  config: RateLimitConfig
 ): RateLimitResult {
   const now = Date.now()
   const record = rateLimitMap.get(identifier)
 
-  // If no record exists or window has expired, create new record
   if (!record || now > record.resetTime) {
-    rateLimitMap.set(identifier, {
-      count: 1,
-      resetTime: now + config.windowMs
-    })
-    return {
-      allowed: true,
-      remaining: config.maxRequests - 1,
-      resetIn: config.windowMs
-    }
+    rateLimitMap.set(identifier, { count: 1, resetTime: now + config.windowMs })
+    return { allowed: true, remaining: config.maxRequests - 1, resetIn: config.windowMs }
   }
 
-  // Check if limit exceeded
   if (record.count >= config.maxRequests) {
-    return {
-      allowed: false,
-      remaining: 0,
-      resetIn: record.resetTime - now
-    }
+    return { allowed: false, remaining: 0, resetIn: record.resetTime - now }
   }
 
-  // Increment count and allow request
   record.count++
   return {
     allowed: true,
     remaining: config.maxRequests - record.count,
-    resetIn: record.resetTime - now
+    resetIn: record.resetTime - now,
   }
 }
 
 /**
- * Get client IP from request headers
- * Handles both direct connections and proxy forwarded headers
+ * Check if a request is allowed under rate limiting.
+ * @param identifier - Unique identifier (IP address, user ID, or route+id key)
+ * @param config - Rate limit configuration
+ * @returns allowed status, remaining requests, and reset-in (ms)
+ */
+export async function checkRateLimit(
+  identifier: string,
+  config: RateLimitConfig = RATE_LIMIT_CONFIGS.api
+): Promise<RateLimitResult> {
+  const limiter = getUpstashLimiter(config)
+  if (limiter) {
+    try {
+      const res = await limiter.limit(identifier)
+      return {
+        allowed: res.success,
+        remaining: Math.max(0, res.remaining),
+        resetIn: Math.max(0, res.reset - Date.now()),
+      }
+    } catch (err) {
+      // Transient Upstash error → fall back to the in-memory limiter so we still
+      // throttle rather than failing open.
+      console.error('[rate-limiter] Upstash error, falling back to in-memory:', err)
+    }
+  }
+  return checkRateLimitInMemory(identifier, config)
+}
+
+/**
+ * Get the client IP from a request.
+ *
+ * R11: prefer Vercel's verified client IP (`ipAddress`) over the raw
+ * `x-forwarded-for` header. The leftmost `x-forwarded-for` value is
+ * attacker-controllable (a client can prepend a forged IP), which let callers
+ * trivially evade IP-keyed limits. `ipAddress` reads the platform-set client IP
+ * on Vercel. Off-Vercel we fall back to `x-real-ip`, then the LAST hop of
+ * `x-forwarded-for` (closest trusted proxy), then 'unknown'.
  */
 export function getClientIP(request: Request): string {
-  // Check forwarded headers (in order of trust)
-  const forwardedFor = request.headers.get('x-forwarded-for')
-  if (forwardedFor) {
-    // x-forwarded-for can contain multiple IPs, take the first one
-    return forwardedFor.split(',')[0].trim()
+  try {
+    const verified = ipAddress(request)
+    if (verified) return verified
+  } catch {
+    // ipAddress throws off-Vercel / on unsupported request types — fall through.
   }
 
   const realIP = request.headers.get('x-real-ip')
-  if (realIP) {
-    return realIP
+  if (realIP) return realIP.trim()
+
+  const forwardedFor = request.headers.get('x-forwarded-for')
+  if (forwardedFor) {
+    const parts = forwardedFor.split(',').map((p) => p.trim()).filter(Boolean)
+    if (parts.length) return parts[parts.length - 1]
   }
 
-  // Fallback
   return 'unknown'
 }
 
@@ -133,7 +200,8 @@ export function createRateLimitKey(route: string, identifier: string): string {
   return `${route}:${identifier}`
 }
 
-// Cleanup old entries every 5 minutes to prevent memory leaks
+// Cleanup old in-memory entries every 5 minutes to prevent memory leaks.
+// (No-op when Upstash is handling state — the map simply stays empty.)
 if (typeof setInterval !== 'undefined') {
   setInterval(() => {
     const now = Date.now()

@@ -41,7 +41,7 @@ async function postHandler(request: Request) {
     // Rate limiting - 5 admin password reset requests per 15 minutes per IP
     const clientIP = getClientIP(request)
     const rateLimitKey = createRateLimitKey('admin-password-reset', clientIP)
-    const rateLimit = checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.auth)
+    const rateLimit = await checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.auth)
 
     if (!rateLimit.allowed) {
       return NextResponse.json(

@@ -69,7 +69,7 @@ async function postHandler(request: Request) {
     }
 
     const rateLimitKey = createRateLimitKey('/api/processes/ai-mapper', user.id)
-    const rateLimit = checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.ai)
+    const rateLimit = await checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.ai)
 
     if (!rateLimit.allowed) {
       return NextResponse.json(

@@ -81,7 +81,7 @@ async function postHandler(request: Request) {
     const ids = await resolveBusinessProfileIds(supabase, business_id)
 
     stage = 'rate_limit'
-    const rl = checkRateLimit(
+    const rl = await checkRateLimit(
       createRateLimitKey('consolidated-cashflow', user.id),
       RATE_LIMIT_CONFIGS.report,
     )

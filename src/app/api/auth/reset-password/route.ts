@@ -25,7 +25,7 @@ async function postHandler(request: NextRequest) {
     // Rate limiting - 3 password reset requests per hour per IP
     const clientIP = getClientIP(request)
     const rateLimitKey = createRateLimitKey('password-reset', clientIP)
-    const rateLimit = checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.passwordReset)
+    const rateLimit = await checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.passwordReset)
 
     if (!rateLimit.allowed) {
       return NextResponse.json(

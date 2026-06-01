@@ -25,7 +25,7 @@ async function getHandler(request: NextRequest) {
     // Rate limiting - 10 token verification requests per 15 minutes per IP
     const clientIP = getClientIP(request)
     const rateLimitKey = createRateLimitKey('update-password-verify', clientIP)
-    const rateLimit = checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.auth)
+    const rateLimit = await checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.auth)
 
     if (!rateLimit.allowed) {
       return NextResponse.json(
@@ -81,7 +81,7 @@ async function postHandler(request: NextRequest) {
     // Rate limiting - 5 password update attempts per 15 minutes per IP
     const clientIP = getClientIP(request)
     const rateLimitKey = createRateLimitKey('update-password', clientIP)
-    const rateLimit = checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.auth)
+    const rateLimit = await checkRateLimit(rateLimitKey, RATE_LIMIT_CONFIGS.auth)
 
     if (!rateLimit.allowed) {
       return NextResponse.json(

@@ -61,7 +61,7 @@ async function postHandler(request: Request) {
     }
 
     // Rate limit: 20 reports per hour per user
-    const rateLimit = checkRateLimit(
+    const rateLimit = await checkRateLimit(
       createRateLimitKey('report-generate', user.id),
       RATE_LIMIT_CONFIGS.report
     )
