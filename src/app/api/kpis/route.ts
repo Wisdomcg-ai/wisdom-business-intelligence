@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
@@ -42,28 +43,11 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = getSupabaseSecretKey()
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
-// Helper to verify user has access to business
-async function verifyBusinessAccess(userId: string, businessId: string): Promise<boolean> {
-  // Check if user owns the business
-  const { data: business } = await supabaseAdmin
-    .from('businesses')
-    .select('id')
-    .eq('id', businessId)
-    .or(`owner_id.eq.${userId},assigned_coach_id.eq.${userId}`)
-    .maybeSingle()
-
-  if (business) return true
-
-  // Check if user has a business_profile for this business
-  const { data: profile } = await supabaseAdmin
-    .from('business_profiles')
-    .select('id')
-    .eq('id', businessId)
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  return !!profile
-}
+// Access checks use the canonical verifyBusinessAccess from
+// @/lib/utils/verify-business-access (owner / assigned coach / active
+// business_users member / super_admin, with dual-ID bridging). R16-C34: the
+// previous local copy here only checked owner/coach + a business_profiles
+// user_id match — it missed active team members and super_admins.
 
 // GET endpoint - Fetch existing KPIs for a business
 async function getHandler(request: Request) {
