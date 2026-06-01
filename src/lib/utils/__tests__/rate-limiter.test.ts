@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { checkRateLimit, getClientIP, createRateLimitKey } from '../rate-limiter'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { checkRateLimit, getClientIP, createRateLimitKey, resolveUpstashCreds } from '../rate-limiter'
 
 // No UPSTASH_REDIS_REST_URL/TOKEN in the test env → checkRateLimit uses the
 // in-memory fallback, which is deterministic.
@@ -55,5 +55,47 @@ describe('getClientIP — spoof-resistant precedence (R11)', () => {
 
   it('returns "unknown" when no IP headers are present', () => {
     expect(getClientIP(req({}))).toBe('unknown')
+  })
+})
+
+describe('resolveUpstashCreds — supports KV_ and UPSTASH_ env naming (R11 fix)', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('reads the Vercel Marketplace KV_REST_API_* names', () => {
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', '')
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', '')
+    vi.stubEnv('KV_REST_API_URL', 'https://kv.example.upstash.io')
+    vi.stubEnv('KV_REST_API_TOKEN', 'kv-token')
+    expect(resolveUpstashCreds()).toEqual({
+      url: 'https://kv.example.upstash.io',
+      token: 'kv-token',
+    })
+  })
+
+  it('reads the @upstash default UPSTASH_REDIS_REST_* names', () => {
+    vi.stubEnv('KV_REST_API_URL', '')
+    vi.stubEnv('KV_REST_API_TOKEN', '')
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://up.example.upstash.io')
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'up-token')
+    expect(resolveUpstashCreds()).toEqual({
+      url: 'https://up.example.upstash.io',
+      token: 'up-token',
+    })
+  })
+
+  it('prefers the explicit UPSTASH_ override when both are set', () => {
+    vi.stubEnv('KV_REST_API_URL', 'https://kv.example.upstash.io')
+    vi.stubEnv('KV_REST_API_TOKEN', 'kv-token')
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://up.example.upstash.io')
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'up-token')
+    expect(resolveUpstashCreds()?.url).toBe('https://up.example.upstash.io')
+  })
+
+  it('returns null when no credentials are present', () => {
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', '')
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', '')
+    vi.stubEnv('KV_REST_API_URL', '')
+    vi.stubEnv('KV_REST_API_TOKEN', '')
+    expect(resolveUpstashCreds()).toBeNull()
   })
 })
