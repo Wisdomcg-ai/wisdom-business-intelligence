@@ -13,20 +13,22 @@ const GetQuerySchema = z
   })
   .passthrough()
 
-// Columns that always exist
-const CORE_COLUMNS = 'id, title, description, priority, step_type, category, timeline, notes'
-// Extended columns that may not exist on older schemas
-const EXTENDED_COLUMNS = CORE_COLUMNS + ', estimated_cost, is_monthly_cost'
+// R12: estimated_cost + is_monthly_cost have been part of the canonical schema
+// since baseline, so the previous per-request "do these columns exist?" probe
+// (an extra DB round-trip on EVERY request, always succeeding) was dead weight.
+// Always select them.
+const COLUMNS =
+  'id, title, description, priority, step_type, category, timeline, notes, estimated_cost, is_monthly_cost'
 
-function mapInitiative(d: any, hasExtendedCols: boolean) {
+function mapInitiative(d: any) {
   return {
     id: d.id,
     title: d.title,
     description: d.description,
     priority: d.priority,
     step_type: d.step_type,
-    estimated_cost: hasExtendedCols ? (d.estimated_cost ?? undefined) : undefined,
-    is_monthly_cost: hasExtendedCols ? (d.is_monthly_cost ?? undefined) : undefined,
+    estimated_cost: d.estimated_cost ?? undefined,
+    is_monthly_cost: d.is_monthly_cost ?? undefined,
   }
 }
 
@@ -47,28 +49,19 @@ async function getHandler(request: Request) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 })
     }
 
-    // Collect all IDs to try
     const userIdsToTry: string[] = [user.id]
     const businessIdsToTry: string[] = [businessId]
 
-    // Look up business owner
-    const { data: business } = await supabase
-      .from('businesses')
-      .select('owner_id')
-      .eq('id', businessId)
-      .maybeSingle()
+    // R12: the business-owner lookup and the business_profiles lookup are
+    // independent — run them in parallel instead of serially.
+    const [{ data: business }, { data: profile }] = await Promise.all([
+      supabase.from('businesses').select('owner_id').eq('id', businessId).maybeSingle(),
+      supabase.from('business_profiles').select('id, user_id').eq('business_id', businessId).maybeSingle(),
+    ])
 
     if (business?.owner_id && business.owner_id !== user.id) {
       userIdsToTry.push(business.owner_id)
     }
-
-    // Look up business_profiles.id
-    const { data: profile } = await supabase
-      .from('business_profiles')
-      .select('id, user_id')
-      .eq('business_id', businessId)
-      .maybeSingle()
-
     if (profile?.id) {
       businessIdsToTry.push(profile.id)
     }
@@ -76,32 +69,15 @@ async function getHandler(request: Request) {
       userIdsToTry.push(profile.user_id)
     }
 
-    // Detect if extended columns exist by trying once
-    let columns = EXTENDED_COLUMNS
-    let hasExtendedCols = true
-    {
-      const { error: testErr } = await supabase
-        .from('strategic_initiatives')
-        .select(EXTENDED_COLUMNS)
-        .limit(0)
-      if (testErr) {
-        columns = CORE_COLUMNS
-        hasExtendedCols = false
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[API /strategic-initiatives] Extended columns NOT available:', testErr.message)
-        }
-      } else {
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[API /strategic-initiatives] Extended columns available (estimated_cost, is_monthly_cost)')
-        }
-      }
-    }
-
-    // Try by user_id first
+    // Try by user_id first. NOTE: strategic_initiatives is one of the dual-ID
+    // "MIXED" tables (rows live under multiple id-spaces); this returns the first
+    // id-space that has data. Collapsing these into a single OR query is
+    // deliberately deferred to the R14 data cleanse so we don't merge polluted
+    // rows from different id-spaces and surface duplicates.
     for (const userId of userIdsToTry) {
       let query = supabase
         .from('strategic_initiatives')
-        .select(columns)
+        .select(COLUMNS)
         .eq('user_id', userId)
 
       if (annualPlanOnly) {
@@ -111,37 +87,33 @@ async function getHandler(request: Request) {
       const { data, error } = await query.order('created_at', { ascending: false })
 
       if (!error && data && data.length > 0) {
-        const mapped = data.map(d => mapInitiative(d, hasExtendedCols))
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[API /strategic-initiatives] Returning', mapped.length, 'initiatives. Sample costs:', mapped.slice(0, 3).map(m => ({ title: m.title, estimated_cost: m.estimated_cost, is_monthly_cost: m.is_monthly_cost })))
-        }
-        return NextResponse.json({ initiatives: mapped })
+        return NextResponse.json({ initiatives: data.map(mapInitiative) })
       }
 
-      // If the filtered query returned nothing, try without the annual plan filter
+      // If the filtered query returned nothing, try without the annual-plan filter.
       if (annualPlanOnly) {
         const { data: allData, error: allErr } = await supabase
           .from('strategic_initiatives')
-          .select(columns)
+          .select(COLUMNS)
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
 
         if (!allErr && allData && allData.length > 0) {
-          return NextResponse.json({ initiatives: allData.map(d => mapInitiative(d, hasExtendedCols)) })
+          return NextResponse.json({ initiatives: allData.map(mapInitiative) })
         }
       }
     }
 
-    // Fallback: try by business_id
+    // Fallback: try by business_id.
     for (const bizId of businessIdsToTry) {
       const { data, error } = await supabase
         .from('strategic_initiatives')
-        .select(columns)
+        .select(COLUMNS)
         .eq('business_id', bizId)
         .order('created_at', { ascending: false })
 
       if (!error && data && data.length > 0) {
-        return NextResponse.json({ initiatives: data.map(d => mapInitiative(d, hasExtendedCols)) })
+        return NextResponse.json({ initiatives: data.map(mapInitiative) })
       }
     }
 
