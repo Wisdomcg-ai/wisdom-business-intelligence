@@ -1,15 +1,18 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 import { withQuerySchema } from '@/lib/api/with-schema'
+import { archiveBeforeDelete, deleteArchiveRow, FORECAST_CASCADE_CHILDREN } from '@/lib/data/archive-before-delete'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
 const GetQuerySchema = z.object({}).passthrough()
-const DeleteQuerySchema = z.object({}).passthrough()
+// R27: `confirm=true` is required to proceed with the destructive delete.
+const DeleteQuerySchema = z.object({ confirm: z.string().optional() }).passthrough()
 
 async function getHandler(
   request: Request,
@@ -241,17 +244,60 @@ async function deleteHandler(
     )
     if (_sectionBlockedDel) return _sectionBlockedDel
 
+    // R27: require explicit confirmation for this destructive, cascading delete.
+    const confirm = new URL(request.url).searchParams.get('confirm')
+    if (confirm !== 'true') {
+      return NextResponse.json(
+        { error: 'Confirmation required: pass ?confirm=true to delete this forecast.' },
+        { status: 400 },
+      )
+    }
+
+    // R27: archive the forecast + all cascade-deleted children BEFORE deleting,
+    // so the deletion is recoverable. If archiving fails, abort — never hard
+    // delete without a snapshot.
+    const admin = createServiceRoleClient()
+    const { data: fullForecast, error: fullErr } = await admin
+      .from('financial_forecasts')
+      .select('*')
+      .eq('id', forecastId)
+      .maybeSingle()
+    if (fullErr || !fullForecast) {
+      Sentry.captureException(fullErr ?? new Error('forecast vanished before archive'), { tags: { route: 'forecast/[id]' }, extra: { context: '[API DELETE /forecast/[id]] pre-archive fetch' } } as any)
+      return NextResponse.json({ error: 'Failed to load forecast for archiving' }, { status: 500 })
+    }
+
+    const archived = await archiveBeforeDelete({
+      admin,
+      entityType: 'forecast',
+      entityId: forecastId,
+      businessId: forecast.business_id,
+      deletedBy: user.id,
+      parent: fullForecast as Record<string, unknown>,
+      children: FORECAST_CASCADE_CHILDREN,
+    })
+    if (!archived.ok) {
+      Sentry.captureMessage('R27: forecast delete aborted — archive failed', {
+        level: 'error',
+        tags: { route: 'forecast/[id]', invariant: 'archive_before_delete_failed' },
+        extra: { forecastId, error: archived.error },
+      } as any)
+      return NextResponse.json({ error: 'Deletion aborted: could not archive forecast' }, { status: 500 })
+    }
+
     const { error: deleteError } = await supabase
       .from('financial_forecasts')
       .delete()
       .eq('id', forecastId)
 
     if (deleteError) {
+      // Roll back the now-orphaned archive snapshot (best effort).
+      await deleteArchiveRow(admin, archived.archiveId)
       Sentry.captureException(deleteError, { tags: { route: 'forecast/[id]' }, extra: { context: '[API DELETE /forecast/[id]] delete error' } } as any)
       return NextResponse.json({ error: 'Failed to delete forecast' }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, deleted: forecastId })
+    return NextResponse.json({ success: true, deleted: forecastId, archiveId: archived.archiveId })
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'forecast/[id]' }, extra: { context: '[API DELETE /forecast/[id]] unexpected error' } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
