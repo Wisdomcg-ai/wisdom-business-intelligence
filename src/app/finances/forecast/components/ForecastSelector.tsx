@@ -193,7 +193,9 @@ export function ForecastSelector({
       // (owner / coach / super_admin) and lets the DB cascade child rows
       // (forecast_pl_lines, forecast_employees, cashflow_*, …) — no need
       // for client-side staged deletes.
-      const res = await fetch(`/api/forecast/${forecast.id}`, { method: 'DELETE' });
+      // R27: ?confirm=true is required by the API for this destructive delete
+      // (the modal above is the user-facing confirmation).
+      const res = await fetch(`/api/forecast/${forecast.id}?confirm=true`, { method: 'DELETE' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error || `HTTP ${res.status}`);
