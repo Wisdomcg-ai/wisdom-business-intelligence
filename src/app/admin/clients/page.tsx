@@ -267,7 +267,9 @@ function ClientsContent() {
 
     setDeletingClient(client.id)
     try {
-      const response = await fetch(`/api/admin/clients?id=${client.id}`, { method: 'DELETE' })
+      // R27: ?confirm=true is required by the API (the confirm() dialog above is
+      // the user-facing confirmation).
+      const response = await fetch(`/api/admin/clients?id=${client.id}&confirm=true`, { method: 'DELETE' })
 
       if (!response.ok) {
         const data = await response.json()
