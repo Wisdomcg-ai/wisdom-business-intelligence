@@ -7,10 +7,13 @@ import { getAppBaseUrl } from '@/lib/config/brand'
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
+import { archiveBusinessBeforeDelete, deleteArchiveRow } from '@/lib/data/archive-before-delete'
 
 // VALID-05a (observe mode): DELETE reads the `id` query param.
+// R27: `confirm=true` is required to proceed with this destructive delete.
 const AdminClientsDeleteQuerySchema = z.object({
   id: z.string().optional(),
+  confirm: z.string().optional(),
 })
 
 // VALID-03 (observe mode): models the POST create-client body.
@@ -558,12 +561,39 @@ async function deleteHandler(request: Request) {
       return NextResponse.json({ error: 'Client ID is required' }, { status: 400 })
     }
 
+    // R27: require explicit confirmation for this destructive, cascading delete.
+    const confirm = new URL(request.url).searchParams.get('confirm')
+    if (confirm !== 'true') {
+      return NextResponse.json(
+        { error: 'Confirmation required: pass ?confirm=true to delete this client.' },
+        { status: 400 },
+      )
+    }
+
     // Get business to find owner_id for auth user deletion
     const { data: business } = await supabase
       .from('businesses')
       .select('owner_id')
       .eq('id', clientId)
       .maybeSingle()
+
+    // R27: archive the business + every cascade-deleted child (across the dual-ID
+    // system) BEFORE deleting anything. If archiving fails, abort — never wipe a
+    // tenant without a recoverable snapshot.
+    const admin = createServiceRoleClient()
+    const archived = await archiveBusinessBeforeDelete({
+      admin,
+      businessId: clientId,
+      deletedBy: user.id,
+    })
+    if (!archived.ok) {
+      Sentry.captureMessage('R27: client delete aborted — archive failed', {
+        level: 'error',
+        tags: { route: 'admin/clients', invariant: 'archive_before_delete_failed' },
+        extra: { clientId, error: archived.error },
+      } as any)
+      return NextResponse.json({ error: 'Deletion aborted: could not archive client data' }, { status: 500 })
+    }
 
     // Delete in order to handle foreign key constraints
     // 1. Delete user_permissions
@@ -603,6 +633,8 @@ async function deleteHandler(request: Request) {
       .eq('id', clientId)
 
     if (businessError) {
+      // Roll back the now-orphaned archive snapshot (best effort).
+      await deleteArchiveRow(admin, archived.archiveId)
       Sentry.captureException(businessError, { tags: { route: 'admin/clients' }, extra: { context: 'Error deleting business' } } as any)
       return NextResponse.json({ error: 'Failed to delete client business' }, { status: 500 })
     }

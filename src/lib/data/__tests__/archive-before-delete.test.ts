@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { archiveBeforeDelete, deleteArchiveRow, type ChildSpec } from '../archive-before-delete'
+import {
+  archiveBeforeDelete,
+  archiveBusinessBeforeDelete,
+  deleteArchiveRow,
+  type ChildSpec,
+} from '../archive-before-delete'
 
 /**
  * Fake service-role client. `childRows` maps table → rows (or an error);
@@ -128,5 +133,104 @@ describe('archiveBeforeDelete', () => {
     })
     await deleteArchiveRow(admin, 'arc-1')
     expect(captured.deletedId).toBe('arc-1')
+  })
+})
+
+// ─── archiveBusinessBeforeDelete (generic, dual-ID) ──────────────────────────
+
+interface BizCfg {
+  business: Record<string, unknown> | null
+  businessErr?: { message: string } | null
+  profiles?: Record<string, unknown>[]
+  profilesErr?: { message: string } | null
+  fkByParent: Record<string, Array<{ child_table: string; child_column: string }>>
+  rpcErr?: { message: string } | null
+  childRows?: Record<string, unknown[]>
+  childErr?: Record<string, { message: string }>
+}
+
+function makeBizAdmin(cfg: BizCfg): { admin: SupabaseClient; captured: { archiveRow?: Record<string, unknown> } } {
+  const captured: { archiveRow?: Record<string, unknown> } = {}
+  const admin = {
+    from(table: string) {
+      if (table === 'deleted_records_archive') {
+        return {
+          insert(row: Record<string, unknown>) {
+            captured.archiveRow = row
+            return { select: () => ({ single: async () => ({ data: { id: 'biz-arc-1' }, error: null }) }) }
+          },
+          delete: () => ({ eq: async () => ({ error: null }) }),
+        }
+      }
+      return {
+        select: () => ({
+          eq: (_col: string, _val: string) => {
+            const res =
+              table === 'businesses'
+                ? { data: cfg.business, error: cfg.businessErr ?? null }
+                : { data: cfg.profiles ?? [], error: cfg.profilesErr ?? null }
+            return { maybeSingle: async () => res, then: (r: (v: unknown) => void) => r(res) }
+          },
+          in: (_col: string, _ids: string[]) => {
+            const res = { data: cfg.childRows?.[table] ?? [], error: cfg.childErr?.[table] ?? null }
+            return { then: (r: (v: unknown) => void) => r(res) }
+          },
+        }),
+      }
+    },
+    rpc: (_name: string, args: { parent_table: string }) =>
+      Promise.resolve({ data: cfg.fkByParent[args.parent_table] ?? [], error: cfg.rpcErr ?? null }),
+  } as unknown as SupabaseClient
+  return { admin, captured }
+}
+
+describe('archiveBusinessBeforeDelete (dual-ID)', () => {
+  it('snapshots business + profiles + direct children + profile children', async () => {
+    const { admin, captured } = makeBizAdmin({
+      business: { id: 'biz-1', name: 'Acme' },
+      profiles: [{ id: 'prof-1', business_id: 'biz-1' }],
+      fkByParent: {
+        businesses: [{ child_table: 'coaching_sessions', child_column: 'business_id' }],
+        business_profiles: [{ child_table: 'xero_pl_lines', child_column: 'business_id' }],
+      },
+      childRows: {
+        coaching_sessions: [{ id: 's1' }, { id: 's2' }],
+        xero_pl_lines: [{ id: 'pl1' }],
+      },
+    })
+
+    const res = await archiveBusinessBeforeDelete({ admin, businessId: 'biz-1', deletedBy: 'admin-1' })
+
+    expect(res).toEqual({ ok: true, archiveId: 'biz-arc-1' })
+    const payload = captured.archiveRow?.payload as {
+      parent: unknown
+      business_profiles: unknown[]
+      children: Record<string, unknown[]>
+      profile_children: Record<string, unknown[]>
+    }
+    expect(payload.parent).toEqual({ id: 'biz-1', name: 'Acme' })
+    expect(payload.business_profiles).toHaveLength(1)
+    expect(payload.children['coaching_sessions.business_id']).toHaveLength(2)
+    expect(payload.profile_children['xero_pl_lines.business_id']).toHaveLength(1)
+    expect(captured.archiveRow?.entity_type).toBe('business')
+    expect(captured.archiveRow?.entity_id).toBe('biz-1')
+  })
+
+  it('returns ok:false when the business is not found', async () => {
+    const { admin } = makeBizAdmin({ business: null, fkByParent: {} })
+    const res = await archiveBusinessBeforeDelete({ admin, businessId: 'missing', deletedBy: 'admin-1' })
+    expect(res.ok).toBe(false)
+  })
+
+  it('returns ok:false when fk_children_of (rpc) fails', async () => {
+    const { admin } = makeBizAdmin({
+      business: { id: 'biz-1' },
+      profiles: [],
+      fkByParent: { businesses: [] },
+      rpcErr: { message: 'rpc down' },
+    })
+    const res = await archiveBusinessBeforeDelete({ admin, businessId: 'biz-1', deletedBy: 'admin-1' })
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error).toMatch(/fk_children_of/)
   })
 })
