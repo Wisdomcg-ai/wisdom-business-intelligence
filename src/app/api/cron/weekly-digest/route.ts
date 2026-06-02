@@ -206,6 +206,17 @@ async function getHandler(request: NextRequest) {
       }
     }
 
+    // REL-N7: per-coach send failures were previously only counted in the
+    // heartbeat (status='partial') — buried where nobody watches. Surface them
+    // to Sentry so a partial run actually pages.
+    if (errors.length > 0) {
+      Sentry.captureMessage('Weekly digest: per-coach send failures', {
+        level: 'warning',
+        tags: { route: 'cron/weekly-digest', invariant: 'cron_weekly_digest_send_failures' },
+        extra: { failures: errors, sent: sentCount, coaches: coaches.length },
+      } as any)
+    }
+
     // Phase 69-04 — invocation heartbeat. status='partial' if any per-coach
     // send errored; 'success' when every coach got their digest.
     await recordHeartbeat({
