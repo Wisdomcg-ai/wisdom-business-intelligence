@@ -15,6 +15,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import * as Sentry from '@sentry/nextjs';
 import { encrypt, decrypt } from '@/lib/utils/encryption';
+import { getXeroClientCredentials } from './oauth-credentials';
 
 // Standardized refresh threshold - refresh if token expires within 15 minutes.
 // Exported (53-04 F2) so cron consumers can infer still_valid vs refreshed
@@ -486,12 +487,13 @@ async function refreshTokenWithRetry(
   attempt: number = 1
 ): Promise<TokenRefreshResult> {
   try {
+    const { clientId: xeroClientId, clientSecret: xeroClientSecret } = getXeroClientCredentials()
     const response = await fetch('https://identity.xero.com/connect/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `Basic ${Buffer.from(
-          `${process.env.XERO_CLIENT_ID}:${process.env.XERO_CLIENT_SECRET}`
+          `${xeroClientId}:${xeroClientSecret}`
         ).toString('base64')}`
       },
       body: new URLSearchParams({
