@@ -206,6 +206,17 @@ async function getHandler(request: NextRequest) {
       html,
     });
 
+    // REL-N7: a failed health-report send was previously only recorded as a
+    // 'partial' heartbeat — so the report silently failing to reach the admin
+    // alerted no one. Surface it to Sentry so the missing report pages.
+    if (!result.success) {
+      Sentry.captureMessage('Daily health report: email send failed', {
+        level: 'warning',
+        tags: { route: 'cron/daily-health-report', invariant: 'cron_daily_health_report_send_failed' },
+        extra: { error: (result as { error?: unknown }).error, health_overall: health.overall },
+      } as any);
+    }
+
     // Phase 69-04 — invocation heartbeat. Health.overall feeds metadata so a
     // cadence query can also observe the system-wide health summary the
     // report emailed out.
