@@ -247,6 +247,11 @@ export type Gate4Result = {
   net_assets: number
   equity: number
   delta: number
+  // R34/DM-N9: rows whose account_type is none of asset/liability/equity.
+  // Previously these were silently dropped, so the equation could "balance"
+  // while real balances were excluded. Surfaced here and folded into `pass`.
+  uncategorized_count: number
+  uncategorized_total: number
 }
 
 /**
@@ -254,24 +259,42 @@ export type Gate4Result = {
  * accounting equation. Catches BS classification bugs, system-account
  * miscalculation, and the kind of layout-vs-catalog mismatch that
  * triggered the 06D.1 hot-fix.
+ *
+ * R34/DM-N9: a row with an unexpected `account_type` is itself a classification
+ * bug. Rather than silently dropping it (which can let the equation pass while a
+ * balance-bearing row is excluded), we count it and FAIL the gate when the
+ * dropped rows carry a material balance.
  */
 export function assertGate4(bsRows: ParsedBSRow[], toleranceCents: number = 0.01): Gate4Result {
   let assets = 0
   let liabilities = 0
   let equity = 0
+  let uncategorizedCount = 0
+  let uncategorizedAbs = 0
+  let uncategorizedTotal = 0
   for (const r of bsRows) {
     if (r.account_type === 'asset') assets += r.balance
     else if (r.account_type === 'liability') liabilities += r.balance
     else if (r.account_type === 'equity') equity += r.balance
+    else {
+      uncategorizedCount += 1
+      uncategorizedTotal += r.balance
+      uncategorizedAbs += Math.abs(r.balance)
+    }
   }
   const netAssets = assets - liabilities
   const delta = Math.round((netAssets - equity) * 100) / 100
+  const equationBalances = Math.abs(delta) <= toleranceCents
+  // Use the sum of ABSOLUTE balances so canceling misclassified rows can't hide.
+  const noMaterialUncategorized = uncategorizedAbs <= toleranceCents
   return {
-    pass: Math.abs(delta) <= toleranceCents,
+    pass: equationBalances && noMaterialUncategorized,
     assets,
     liabilities,
     net_assets: netAssets,
     equity,
     delta,
+    uncategorized_count: uncategorizedCount,
+    uncategorized_total: Math.round(uncategorizedTotal * 100) / 100,
   }
 }
