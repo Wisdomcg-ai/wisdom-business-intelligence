@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
-import type { QuarterlyReview, RockReviewItem, RockReviewDecision, Rock, YearType } from '../../types';
-import { getCurrentQuarter } from '../../types';
+import type { QuarterlyReview, RockReviewItem, RockReviewDecision, Rock } from '../../types';
+import { getPreviousQuarterOf } from '../../types';
 import {
   Mountain, ChevronDown, ChevronUp, CheckCircle2, ArrowRightCircle,
   Trash2, PenLine, Loader2, AlertCircle, Target, User
@@ -58,25 +58,15 @@ export function RocksReviewStep({ review, onUpdate }: RocksReviewStepProps) {
       console.log('[RocksReview] business_profiles.id:', profileId, 'for user:', targetUserId);
 
       if (profileId) {
-        // Look up yearType to calculate the correct current/previous quarter
-        const { data: goalsData } = await supabase
-          .from('business_financial_goals')
-          .select('year_type')
-          .eq('business_id', profileId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        // Rocks Review is backward-looking: it reviews the rocks set for the quarter
+        // being REFLECTED on — i.e. the quarter before the one being planned
+        // (review.quarter). Derived from the review itself, never the live clock, so a
+        // "plan Q1 FY27" review reviews Q4 FY26 whether run in June or July.
+        const reviewedQ = getPreviousQuarterOf(review.quarter, review.year);
+        const prevQuarterKey = `q${reviewedQ.quarter}`;
+        const currentQuarterKey = `q${review.quarter}`;
 
-        const yearType: YearType = goalsData?.year_type || 'CY';
-        const currentQtr = getCurrentQuarter(yearType);
-        const currentQuarterNum = currentQtr.quarter;
-
-        // Rocks Review is backward-looking: reviewing what was planned for the PREVIOUS quarter.
-        const prevQuarterNum = currentQuarterNum === 1 ? 4 : currentQuarterNum - 1;
-        const prevQuarterKey = `q${prevQuarterNum}`;
-        const currentQuarterKey = `q${currentQuarterNum}`;
-
-        console.log('[RocksReview] yearType:', yearType, '| current quarter:', currentQuarterNum, '| reviewing previous:', prevQuarterKey);
+        console.log('[RocksReview] planning quarter:', review.quarter, '| reviewing rocks for:', prevQuarterKey);
 
         // Source 1 (Primary): Quarterly initiatives from the Goals Wizard
         // Check previous quarter first (backward-looking), then current quarter as fallback

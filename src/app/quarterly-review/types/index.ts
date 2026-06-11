@@ -792,6 +792,51 @@ export const getPreviousQuarter = (yearType: YearType = 'CY'): { quarter: Quarte
   return { quarter: (current.quarter - 1) as QuarterNumber, year: current.year };
 };
 
+/**
+ * Previous quarter relative to a SPECIFIC quarter/year (not the live clock).
+ * Q1 rolls back to Q4 of the prior year — e.g. previous of Q1 FY27 = Q4 FY26.
+ * The quarterly-review steps use this so the quarter being reflected on is derived
+ * from the review itself, never from today's date (which breaks across 1 July).
+ */
+export const getPreviousQuarterOf = (
+  quarter: QuarterNumber,
+  year: number
+): { quarter: QuarterNumber; year: number } => {
+  if (quarter === 1) {
+    return { quarter: 4, year: year - 1 };
+  }
+  return { quarter: (quarter - 1) as QuarterNumber, year };
+};
+
+/**
+ * Next quarter relative to a SPECIFIC quarter/year (not the live clock).
+ * Q4 rolls forward to Q1 of the next year — e.g. next of Q4 FY26 = Q1 FY27.
+ */
+export const getNextQuarterOf = (
+  quarter: QuarterNumber,
+  year: number
+): { quarter: QuarterNumber; year: number } => {
+  if (quarter === 4) {
+    return { quarter: 1, year: year + 1 };
+  }
+  return { quarter: (quarter + 1) as QuarterNumber, year };
+};
+
+/**
+ * Default "quarter being planned" for a new review, based on today.
+ * In the FINAL month of a quarter you plan the NEXT quarter; otherwise the current one.
+ * This lands on the correct quarter across the whole ~45-day review window that spans
+ * the FY rollover — e.g. it returns Q1 FY27 from late-June through ~mid-August 2026.
+ * The landing-page selector lets the coach/client override it.
+ */
+export const getPlanningQuarter = (yearType: YearType = 'CY'): { quarter: QuarterNumber; year: number } => {
+  const calMonth = new Date().getMonth() + 1; // 1-12
+  const ysm = _ysm(yearType);
+  const monthsIntoYear = ((calMonth - ysm) + 12) % 12; // 0-11
+  const monthInQuarter = monthsIntoYear % 3; // 0,1,2
+  return monthInQuarter === 2 ? getNextQuarter(yearType) : getCurrentQuarter(yearType);
+};
+
 // Helper to get default Rock (aligned with Goals Wizard QuarterlyRock)
 export const getDefaultRock = (): Rock => ({
   id: `rock-${Date.now()}`,

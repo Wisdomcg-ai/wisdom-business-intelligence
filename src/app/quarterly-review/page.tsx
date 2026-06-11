@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { quarterlyReviewService } from './services/quarterly-review-service';
-import { getCurrentQuarter, getQuarterLabel, isLastQuarterOfYear, type YearType, type QuarterNumber } from './types';
+import { getPlanningQuarter, getNextQuarterOf, getPreviousQuarterOf, getQuarterLabel, isLastQuarterOfYear, type YearType, type QuarterNumber } from './types';
 import {
   Calendar,
   Clock,
@@ -33,8 +33,10 @@ export default function QuarterlyReviewPage() {
   const [reviews, setReviews] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [businessId, setBusinessId] = useState<string | null>(null);
-  const [quarter, setQuarter] = useState<QuarterNumber>(() => getCurrentQuarter().quarter);
-  const [year, setYear] = useState<number>(() => getCurrentQuarter().year);
+  // quarter/year = the quarter being PLANNED (the review is named after it).
+  const [quarter, setQuarter] = useState<QuarterNumber>(() => getPlanningQuarter().quarter);
+  const [year, setYear] = useState<number>(() => getPlanningQuarter().year);
+  const [yearType, setYearType] = useState<YearType>('FY');
   const isQ4 = isLastQuarterOfYear(quarter);
 
   useEffect(() => {
@@ -58,15 +60,25 @@ export default function QuarterlyReviewPage() {
         if (bizId) {
           setBusinessId(bizId);
 
-          // Resolve yearType from business_financial_goals to get correct quarter
+          // Resolve yearType from business_financial_goals to get correct quarter.
+          // business_financial_goals is keyed by business_profiles.id (NOT businesses.id),
+          // so resolve the profile id first; fall back to bizId only if no profile exists.
           try {
+            const ownerUserId = activeBusiness?.ownerId || user.id;
+            const { data: profile } = await supabase
+              .from('business_profiles')
+              .select('id')
+              .eq('user_id', ownerUserId)
+              .maybeSingle();
+            const goalsBusinessId = profile?.id || bizId;
             const { data: goals } = await supabase
               .from('business_financial_goals')
               .select('year_type')
-              .eq('business_id', bizId)
+              .eq('business_id', goalsBusinessId)
               .maybeSingle();
-            const yearType: YearType = (goals?.year_type as YearType) || 'FY';
-            const resolved = getCurrentQuarter(yearType);
+            const resolvedYearType: YearType = (goals?.year_type as YearType) || 'FY';
+            setYearType(resolvedYearType);
+            const resolved = getPlanningQuarter(resolvedYearType);
             setQuarter(resolved.quarter);
             setYear(resolved.year);
           } catch (ytError) {
@@ -103,6 +115,19 @@ export default function QuarterlyReviewPage() {
   const viewReview = (reviewId: string) => {
     router.push(getPath(`/quarterly-review/summary/${reviewId}`));
   };
+
+  // FY-aware quarter label, e.g. "Q1 FY2027" (FY) or "Q1 2027" (CY).
+  const fmtQuarter = (q: number, y: number) => (yearType === 'FY' ? `Q${q} FY${y}` : `Q${q} ${y}`);
+
+  // Quarters offered in the "Planning for" selector — a window around the default
+  // planning quarter so the coach/client can start/continue any nearby quarter's review.
+  const planningOptions = useMemo(() => {
+    const anchor = getPlanningQuarter(yearType);
+    const prev = getPreviousQuarterOf(anchor.quarter, anchor.year);
+    const n1 = getNextQuarterOf(anchor.quarter, anchor.year);
+    const n2 = getNextQuarterOf(n1.quarter, n1.year);
+    return [prev, anchor, n1, n2];
+  }, [yearType]);
 
   const currentQuarterReview = reviews.find(r => r.quarter === quarter && r.year === year);
   const pastReviews = reviews.filter(r => !(r.quarter === quarter && r.year === year));
@@ -143,7 +168,23 @@ export default function QuarterlyReviewPage() {
           <div className="flex-1">
             <div className="flex items-center gap-2 text-brand-orange mb-2">
               <Calendar className="w-5 h-5" />
-              <span className="font-semibold">{getQuarterLabel(quarter, year)}</span>
+              <label htmlFor="planning-quarter" className="font-semibold">Planning for:</label>
+              <select
+                id="planning-quarter"
+                value={`${quarter}-${year}`}
+                onChange={(e) => {
+                  const [q, y] = e.target.value.split('-').map(Number);
+                  setQuarter(q as QuarterNumber);
+                  setYear(y);
+                }}
+                className="font-semibold bg-white border border-brand-orange/40 rounded-md px-2 py-1 text-brand-orange focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+              >
+                {planningOptions.map((o) => (
+                  <option key={`${o.quarter}-${o.year}`} value={`${o.quarter}-${o.year}`}>
+                    {fmtQuarter(o.quarter, o.year)}
+                  </option>
+                ))}
+              </select>
             </div>
             <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
               {currentQuarterReview
@@ -220,7 +261,7 @@ export default function QuarterlyReviewPage() {
                   className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
                 >
                   <PlayCircle className="w-5 h-5" />
-                  Start {getQuarterLabel(quarter, year)} Review
+                  Start {fmtQuarter(quarter, year)} Review
                   <ChevronRight className="w-4 h-4" />
                 </button>
 

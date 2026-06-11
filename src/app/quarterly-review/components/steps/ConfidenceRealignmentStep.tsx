@@ -5,8 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, AnnualPlanSnapshot, RealignmentData, QuarterlyTargets } from '../../types';
-import { getDefaultRealignmentData, getDefaultAnnualPlanSnapshot, getCurrentQuarter } from '../../types';
-import { getCurrentFiscalYear, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils';
+import { getDefaultRealignmentData, getDefaultAnnualPlanSnapshot } from '../../types';
 import {
   Target,
   DollarSign,
@@ -103,8 +102,10 @@ export function ConfidenceRealignmentStep({
 
   const realignment = { ...getDefaultRealignmentData(), ...(review.realignment_decision || {}) };
 
-  // Use actual current quarter based on today's date + year type (not review.quarter)
-  const { quarter: currentQuarter, year: currentYear } = getCurrentQuarter(yearType);
+  // Anchor to the quarter being PLANNED (review.quarter) so the annual YTD / remaining-
+  // quarters view is deterministic and does not flip when the calendar crosses 1 July.
+  const currentQuarter = review.quarter;
+  const currentYear = review.year;
   const remainingQuarters = 4 - currentQuarter;
 
   // ═══════════════════════════════════════════════════════════════
@@ -147,10 +148,9 @@ export function ConfidenceRealignmentStep({
         setYearType(goalsData.year_type || 'CY');
       }
 
-      // Fetch completed quarterly reviews for YTD
-      // Use actual current quarter based on year type so we get all prior quarters
-      const resolvedYearType = goalsData?.year_type || 'CY';
-      const actualQ = getCurrentQuarter(resolvedYearType);
+      // Fetch completed quarterly reviews for YTD — prior quarters in the review's year,
+      // anchored to the review (not today) so YTD is stable across the FY boundary.
+      const actualQ = { quarter: review.quarter, year: review.year };
 
       const { data: completedReviews } = await supabase
         .from('quarterly_reviews')
@@ -384,7 +384,7 @@ export function ConfidenceRealignmentStep({
     if (initiatives.length === 0) return null;
 
     // Filter to current fiscal year (with NULL fallback for pre-Phase-13 data)
-    const currentFY = getCurrentFiscalYear(startMonthFromYearType(yearType));
+    const currentFY = review.year;
     const yearFiltered = initiatives.filter(
       i => i.fiscal_year === currentFY || i.fiscal_year === null || i.fiscal_year === undefined
     );
