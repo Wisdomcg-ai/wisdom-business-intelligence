@@ -424,7 +424,7 @@ export function ConfidenceRealignmentStep({
       : 0;
 
     return { overall, quarters, completionPct };
-  }, [initiatives, yearType]);
+  }, [initiatives, yearType, review.year]);
 
   // ═══════════════════════════════════════════════════════════════
   // Forecast Variance (Phase 17-02)
