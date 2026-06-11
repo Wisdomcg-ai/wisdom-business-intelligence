@@ -1101,6 +1101,16 @@ Plans:
 - [x] 72-01 — Read-only diagnosis: produce 72-DIAGNOSIS.md naming root cause as "wizard-blind-to-plan-period" + fix scope + Steps 4-8 same-family audit (commit `bb02009d`)
 - [x] 72-02 — Implement fix: plumb PlanPeriod into ForecastWizardState; extract shared util `src/lib/utils/plan-period.ts`; replace Step3RevenueCOGS.tsx L311 monthKeys + L545-547 actuals lock; vitest coverage for standard + extended + future-start + mid-Y1
 
+### Phase 73: Annual plan reset (full-year reset reusing the goals wizard; data-driven entry off year1_end_date; snapshot before overwrite; zero impact to clients with a current plan)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 72
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 73 to break down)
+
 ---
 
 ### Phase 59: Forecast Seed from Prior FY
