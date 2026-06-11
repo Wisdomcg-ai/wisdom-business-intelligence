@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuarterlyReview } from '../hooks/useQuarterlyReview';
 import { WorkshopProgress } from '../components/WorkshopProgress';
 import { WorkshopNav } from '../components/WorkshopNav';
+import { CoachNotesPanel } from '../components/CoachNotesPanel';
 import { QuarterNumber, ReviewType, getWorkshopSteps } from '../types';
 
 // Step Components
@@ -96,6 +97,7 @@ function ReviewContent() {
     updateVisionStrategy,
     updateNextYearTargets,
     updateAnnualInitiativePlan,
+    updateCoachNotes,
   } = useQuarterlyReview({ reviewId, quarter, year, reviewType });
 
   // Use the review's actual type (may differ from URL param if resuming existing review)
@@ -405,6 +407,14 @@ function ReviewContent() {
           <div className="bg-white rounded-2xl border border-gray-200 p-4 lg:p-6">
             {renderStep()}
           </div>
+          {/* Shared session notes — coach + client, autosaved. Hidden on the summary step. */}
+          {review && currentStep !== 'complete' && (
+            <CoachNotesPanel
+              currentStep={currentStep}
+              notes={review.coach_notes}
+              onUpdate={updateCoachNotes}
+            />
+          )}
         </main>
       </div>
 

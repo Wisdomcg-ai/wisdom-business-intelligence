@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { formatDollar, parseDollarInput } from '@/app/goals/utils/formatting';
 import { calculateQuarters } from '@/app/goals/utils/quarters';
-import { getCurrentFiscalYear, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils';
 import { getInitials, getColorForName, parseTeamFromProfile, type TeamMember } from '@/app/goals/utils/team';
 import { getCategoryStyle, getCardClasses } from '@/app/goals/utils/design-tokens';
 import type {
@@ -132,7 +131,9 @@ export function QuarterlyPlanStep({
   // ─── State ──────────────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(true);
   const [yearType, setYearType] = useState<YearType>('CY');
-  const [planYear, setPlanYear] = useState<number>(new Date().getFullYear());
+  // Plan step: the plan year is the review's year (the quarter being planned), not the
+  // live clock — so a "plan Q1 FY27" review shows FY27 whether run in June or July.
+  const [planYear, setPlanYear] = useState<number>(review.year);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [showAddForm, setShowAddForm] = useState<string | null>(null);
   const [newInitTitle, setNewInitTitle] = useState('');
@@ -334,7 +335,6 @@ export function QuarterlyPlanStep({
         .maybeSingle();
 
       const businessId = profile?.id || review.business_id;
-      const businessesId = review.business_id;
 
       const { data: goalsData } = await supabase
         .from('business_financial_goals')
@@ -347,7 +347,7 @@ export function QuarterlyPlanStep({
       const resolvedYearType: YearType = goalsData?.year_type || 'CY';
       setYearType(resolvedYearType);
 
-      const resolvedPlanYear = getCurrentFiscalYear(startMonthFromYearType(resolvedYearType as 'FY' | 'CY'));
+      const resolvedPlanYear = review.year;
       setPlanYear(resolvedPlanYear);
 
       if (goalsData) {
@@ -372,11 +372,13 @@ export function QuarterlyPlanStep({
         }
       }
 
-      // Load KPIs (uses businesses.id, not business_profiles.id)
+      // Load KPIs — business_kpis is keyed by business_profiles.id (NOT businesses.id),
+      // same as ScorecardReviewStep/QuarterlyTargetsStep. Using review.business_id here
+      // returned zero KPIs for every client (the list rendered empty in the workshop).
       const { data: kpiData } = await supabase
         .from('business_kpis')
         .select('kpi_id, name, friendly_name, unit, current_value, year1_target, year2_target, year3_target')
-        .eq('business_id', businessesId);
+        .eq('business_id', businessId);
 
       if (kpiData && kpiData.length > 0) {
         setKpis(kpiData.map((k: any) => ({

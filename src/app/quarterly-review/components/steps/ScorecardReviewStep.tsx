@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, DashboardSnapshot, CoreMetricsSnapshot } from '../../types';
-import { calculateQuarters, determinePlanYear, QuarterInfo } from '@/app/goals/utils/quarters';
+import { getPreviousQuarterOf } from '../../types';
+import { calculateQuarters, QuarterInfo } from '@/app/goals/utils/quarters';
 import { YearType } from '@/app/goals/types';
 import {
   DollarSign, TrendingUp, TrendingDown, Minus,
@@ -116,9 +117,12 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
       const loadedYearType = (goalsData?.year_type as YearType) || 'FY';
       setYearType(loadedYearType);
 
-      const planYear = determinePlanYear(loadedYearType);
+      // Scorecard is a reflect step: score the quarter being REVIEWED (the one before
+      // the quarter being planned), derived from the review itself, not the live clock.
+      const reviewedQ = getPreviousQuarterOf(review.quarter, review.year);
+      const planYear = reviewedQ.year;
       const quarters = calculateQuarters(loadedYearType, planYear);
-      const quarterKey = `q${review.quarter}` as 'q1' | 'q2' | 'q3' | 'q4';
+      const quarterKey = `q${reviewedQ.quarter}` as 'q1' | 'q2' | 'q3' | 'q4';
       const currentQuarterInfo = quarters.find(q => q.id === quarterKey) || quarters[0];
       setQuarterInfo(currentQuarterInfo);
 
@@ -304,7 +308,9 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
     return 'text-gray-600 bg-gray-50';
   };
 
-  const planYear = useMemo(() => determinePlanYear(yearType), [yearType]);
+  // Reflect step: the displayed/scored quarter is the one before the planned quarter.
+  const reviewed = getPreviousQuarterOf(review.quarter, review.year);
+  const planYear = reviewed.year;
 
   if (isLoading) {
     return (
@@ -335,12 +341,12 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
             <h2 className="text-xl font-bold text-gray-800 mb-1">Quarter Performance Review</h2>
             <p className="text-gray-600 flex items-center gap-2">
               <Calendar className="w-4 h-4" />
-              {quarterInfo ? <span>{quarterInfo.label} • {quarterInfo.months} • {yearType} {planYear}</span> : <span>Q{review.quarter} {review.year}</span>}
+              {quarterInfo ? <span>{quarterInfo.label} • {quarterInfo.months} • {yearType} {planYear}</span> : <span>Q{reviewed.quarter} {reviewed.year}</span>}
             </p>
           </div>
           <div className="text-right">
             <div className="text-sm text-gray-600 mb-1">Reviewing</div>
-            <div className="text-3xl font-bold text-brand-secondary">{quarterInfo?.label || `Q${review.quarter}`}</div>
+            <div className="text-3xl font-bold text-brand-secondary">{quarterInfo?.label || `Q${reviewed.quarter}`}</div>
           </div>
         </div>
       </div>
@@ -356,7 +362,7 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
               </div>
               <p className="text-sm text-gray-600 mt-1">
                 {hasTargetsFromPlan && targetsSource === 'quarterly'
-                  ? `Your ${quarterInfo?.label || `Q${review.quarter}`} targets from your 90-day sprint`
+                  ? `Your ${quarterInfo?.label || `Q${reviewed.quarter}`} targets from your 90-day sprint`
                   : hasTargetsFromPlan && targetsSource === 'annual'
                   ? 'Using annual targets ÷ 4 (set specific quarterly targets in Goals)'
                   : 'Enter your quarterly targets and actuals'}
@@ -384,8 +390,8 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
 
           <div className="grid grid-cols-12 gap-4 mb-3 px-2">
             <div className="col-span-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Metric</div>
-            <div className="col-span-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center">{quarterInfo?.label || `Q${review.quarter}`} Target</div>
-            <div className="col-span-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center">{quarterInfo?.label || `Q${review.quarter}`} Actual</div>
+            <div className="col-span-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center">{quarterInfo?.label || `Q${reviewed.quarter}`} Target</div>
+            <div className="col-span-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center">{quarterInfo?.label || `Q${reviewed.quarter}`} Actual</div>
             <div className="col-span-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center">Variance</div>
           </div>
 

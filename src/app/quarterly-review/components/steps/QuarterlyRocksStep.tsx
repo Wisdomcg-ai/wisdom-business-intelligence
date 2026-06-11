@@ -4,8 +4,6 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { formatDollar, parseDollarInput } from '@/app/goals/utils/formatting';
-import { calculateQuarters } from '@/app/goals/utils/quarters';
-import { getCurrentFiscalYear, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils';
 import { getCategoryStyle } from '@/app/goals/utils/design-tokens';
 import { getInitials, getColorForName, parseTeamFromProfile, type TeamMember } from '@/app/goals/utils/team';
 import { OperationalActivitiesService, type OperationalActivity } from '@/app/goals/services/operational-activities-service';
@@ -185,29 +183,13 @@ export function QuarterlyRocksStep({ review, onUpdateInitiativeDecisions }: Quar
       const bId = profile?.id || review.business_id;
       setBusinessId(bId);
 
-      // Load year_type to determine the correct sprint quarter (same as Step 4.2)
-      const { data: goalsData } = await supabase
-        .from('business_financial_goals')
-        .select('year_type')
-        .eq('business_id', bId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      const yearType = goalsData?.year_type || 'CY';
-      const planYear = getCurrentFiscalYear(startMonthFromYearType(yearType as 'FY' | 'CY'));
-
-      const quarters = calculateQuarters(yearType, planYear);
-      const currentQ = quarters.find((q) => q.isCurrent);
-      const nextQ = quarters.find((q) => q.isNextQuarter)
-        || (currentQ ? quarters[quarters.indexOf(currentQ) + 1] : null);
-      const sprintQ = nextQ || currentQ || quarters[0];
-
-      const resolvedKey = sprintQ.id; // e.g. 'q4'
-      const resolvedNum = parseInt(resolvedKey.replace('q', ''));
+      // Sprint rocks are planned FOR the quarter being planned (review.quarter),
+      // derived from the review itself, not the live clock — so a "plan Q1 FY27" review
+      // always plans Q1 FY27 rocks whether the session runs in June or July.
+      const resolvedKey = `q${review.quarter}`;
       setSprintQuarterKey(resolvedKey);
-      setSprintQuarterNum(resolvedNum);
-      setSprintYear(planYear);
+      setSprintQuarterNum(review.quarter);
+      setSprintYear(review.year);
 
       // Now filter initiatives for the sprint quarter
       const decisions = review.initiative_decisions || [];
