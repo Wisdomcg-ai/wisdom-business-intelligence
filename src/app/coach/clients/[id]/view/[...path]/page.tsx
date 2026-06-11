@@ -40,7 +40,8 @@ const getPageComponent = (path: string[]) => {
     // EXECUTE
     'business-dashboard': () => import('@/app/business-dashboard/page'),
     'reviews/weekly': () => import('@/app/reviews/weekly/page'),
-    'reviews/quarterly': () => import('@/app/reviews/quarterly/page'),
+    // 'reviews/quarterly' (legacy single-page review) removed — superseded by the
+    // quarterly-review workshop below; the old route now redirects there.
     'issues-list': () => import('@/app/issues-list/page'),
     'ideas': () => import('@/app/ideas/page'),
     'open-loops': () => import('@/app/open-loops/page'),
