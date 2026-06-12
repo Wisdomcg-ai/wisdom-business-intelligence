@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
  *
  * Dual-ID split:
  *   business_financial_goals — keyed on business_profiles.id (businessId / profileId)
- *   business_kpis + strategic_initiatives — keyed on businesses.id (businessesId)
+ *   business_kpis + strategic_initiatives — keyed on business_profiles.id
  */
 
 // ---------------------------------------------------------------------------
@@ -228,7 +228,6 @@ import {
 // Fixtures
 // ---------------------------------------------------------------------------
 const PROFILE_ID = 'profile-uuid-001'       // business_financial_goals key
-const BUSINESSES_ID = 'business-uuid-001'   // business_kpis + initiatives key
 const USER_ID = 'user-uuid-001'
 const ENDING_FY = 2026
 
@@ -333,7 +332,6 @@ describe('Phase 73-01 — AnnualResetSnapshotService', () => {
     snapshotsRows = [] // no prior snapshots
     const result = await annualResetSnapshotService.captureAnnualResetSnapshot({
       businessId: PROFILE_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       endingFY: ENDING_FY,
     })
@@ -345,7 +343,6 @@ describe('Phase 73-01 — AnnualResetSnapshotService', () => {
     snapshotsRows = [{ id: 'snap-old', version_number: 3, business_id: PROFILE_ID }]
     const result = await annualResetSnapshotService.captureAnnualResetSnapshot({
       businessId: PROFILE_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       endingFY: ENDING_FY,
     })
@@ -359,7 +356,6 @@ describe('Phase 73-01 — AnnualResetSnapshotService', () => {
   it('captures snapshot with snapshot_type=quarterly_review_pre_sync', async () => {
     await annualResetSnapshotService.captureAnnualResetSnapshot({
       businessId: PROFILE_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       endingFY: ENDING_FY,
     })
@@ -371,7 +367,6 @@ describe('Phase 73-01 — AnnualResetSnapshotService', () => {
   it('stores annual_reset_FY<endingFY> in the label', async () => {
     await annualResetSnapshotService.captureAnnualResetSnapshot({
       businessId: PROFILE_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       endingFY: ENDING_FY,
     })
@@ -383,7 +378,6 @@ describe('Phase 73-01 — AnnualResetSnapshotService', () => {
   it('stores year=endingFY in the snapshot row', async () => {
     await annualResetSnapshotService.captureAnnualResetSnapshot({
       businessId: PROFILE_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       endingFY: ENDING_FY,
     })
@@ -394,7 +388,6 @@ describe('Phase 73-01 — AnnualResetSnapshotService', () => {
   it('includes plan_data.goals with the full goals row', async () => {
     await annualResetSnapshotService.captureAnnualResetSnapshot({
       businessId: PROFILE_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       endingFY: ENDING_FY,
     })
@@ -412,7 +405,6 @@ describe('Phase 73-01 — AnnualResetSnapshotService', () => {
   it('includes plan_data.kpis and plan_data.initiatives arrays', async () => {
     await annualResetSnapshotService.captureAnnualResetSnapshot({
       businessId: PROFILE_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       endingFY: ENDING_FY,
     })
@@ -431,7 +423,6 @@ describe('Phase 73-01 — AnnualResetSnapshotService', () => {
     mutationCalls.length = 0
     await annualResetSnapshotService.captureAnnualResetSnapshot({
       businessId: PROFILE_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       endingFY: ENDING_FY,
     })
@@ -445,7 +436,6 @@ describe('Phase 73-01 — AnnualResetSnapshotService', () => {
     mutationCalls.length = 0
     await annualResetSnapshotService.captureAnnualResetSnapshot({
       businessId: PROFILE_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       endingFY: ENDING_FY,
     })
@@ -459,7 +449,6 @@ describe('Phase 73-01 — AnnualResetSnapshotService', () => {
     mutationCalls.length = 0
     await annualResetSnapshotService.captureAnnualResetSnapshot({
       businessId: PROFILE_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       endingFY: ENDING_FY,
     })
@@ -476,7 +465,6 @@ describe('Phase 73-01 — AnnualResetSnapshotService', () => {
     // 1. Capture
     const captureResult = await annualResetSnapshotService.captureAnnualResetSnapshot({
       businessId: PROFILE_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       endingFY: ENDING_FY,
     })
@@ -511,7 +499,6 @@ describe('Phase 73-01 — AnnualResetSnapshotService', () => {
   it('restore strips id, created_at before writing (no PK conflict)', async () => {
     await annualResetSnapshotService.captureAnnualResetSnapshot({
       businessId: PROFILE_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       endingFY: ENDING_FY,
     })

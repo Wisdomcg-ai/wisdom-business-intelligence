@@ -85,7 +85,6 @@ import { AnnualResetService, annualResetService } from '@/app/goals/services/ann
 // ---------------------------------------------------------------------------
 
 const BUSINESS_ID = 'profile-id-aaa'     // business_profiles.id
-const BUSINESSES_ID = 'business-id-bbb'  // businesses.id
 const USER_ID = 'user-id-ccc'
 const YEAR_START_MONTH = 7  // FY (Australian)
 
@@ -244,7 +243,6 @@ describe('executeAnnualReset — snapshot gate (critical safety gate)', () => {
     const service = new AnnualResetService()
     const result = await service.executeAnnualReset({
       businessId: BUSINESS_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       yearStartMonth: YEAR_START_MONTH,
     })
@@ -265,7 +263,6 @@ describe('executeAnnualReset — snapshot gate (critical safety gate)', () => {
     const service = new AnnualResetService()
     await service.executeAnnualReset({
       businessId: BUSINESS_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       yearStartMonth: YEAR_START_MONTH,
     })
@@ -288,7 +285,6 @@ describe('executeAnnualReset — self-read contract', () => {
     const service = new AnnualResetService()
     const result = await service.executeAnnualReset({
       businessId: BUSINESS_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       yearStartMonth: YEAR_START_MONTH,
     })
@@ -309,7 +305,6 @@ describe('executeAnnualReset — happy path', () => {
     const service = new AnnualResetService()
     const result = await service.executeAnnualReset({
       businessId: BUSINESS_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       yearStartMonth: YEAR_START_MONTH,
     })
@@ -323,7 +318,6 @@ describe('executeAnnualReset — happy path', () => {
     const service = new AnnualResetService()
     await service.executeAnnualReset({
       businessId: BUSINESS_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       yearStartMonth: YEAR_START_MONTH,
     })
@@ -340,7 +334,6 @@ describe('executeAnnualReset — happy path', () => {
     const service = new AnnualResetService()
     await service.executeAnnualReset({
       businessId: BUSINESS_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       yearStartMonth: YEAR_START_MONTH,
     })
@@ -356,7 +349,6 @@ describe('executeAnnualReset — happy path', () => {
     const service = new AnnualResetService()
     await service.executeAnnualReset({
       businessId: BUSINESS_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       yearStartMonth: YEAR_START_MONTH,
     })
@@ -370,7 +362,6 @@ describe('executeAnnualReset — happy path', () => {
     const service = new AnnualResetService()
     await service.executeAnnualReset({
       businessId: BUSINESS_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       yearStartMonth: YEAR_START_MONTH,
     })
@@ -386,7 +377,6 @@ describe('executeAnnualReset — happy path', () => {
     const service = new AnnualResetService()
     await service.executeAnnualReset({
       businessId: BUSINESS_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       yearStartMonth: YEAR_START_MONTH,
     })
@@ -399,7 +389,6 @@ describe('executeAnnualReset — happy path', () => {
     const service = new AnnualResetService()
     const result = await service.executeAnnualReset({
       businessId: BUSINESS_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       yearStartMonth: YEAR_START_MONTH,
     })
@@ -419,7 +408,6 @@ describe('executeAnnualReset — initiative carry-forward (d)', () => {
     const service = new AnnualResetService()
     const result = await service.executeAnnualReset({
       businessId: BUSINESS_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       yearStartMonth: YEAR_START_MONTH,
     })
@@ -452,7 +440,6 @@ describe('executeAnnualReset — initiative carry-forward (d)', () => {
     const service = new AnnualResetService()
     const result = await service.executeAnnualReset({
       businessId: BUSINESS_ID,
-      businessesId: BUSINESSES_ID,
       userId: USER_ID,
       yearStartMonth: YEAR_START_MONTH,
     })

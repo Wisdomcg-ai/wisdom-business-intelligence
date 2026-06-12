@@ -146,5 +146,13 @@ plan dates:
 
 ---
 
+## CORRECTION (2026-06-13, from the Precision dry-run)
+The original plan/services assumed `business_kpis` + `strategic_initiatives` were keyed on
+**businesses.id**. That was WRONG. Verified in prod: both are 100% keyed on
+**business_profiles.id** (`business_kpis` 55/55, `strategic_initiatives` 448/448; 0 by
+businesses.id — and `strategic_initiatives` is FK-constrained to `business_profiles`). The
+snapshot + rollover services now read/query these by `businessId` (profile id); the
+`businessesId` param was removed. Same dual-ID class as PR #287's KPI fix.
+
 *Phase: 73-annual-plan-reset*
 *Context gathered: 2026-06-12 via PRD Express Path from ANNUAL-RESET-DESIGN.md*

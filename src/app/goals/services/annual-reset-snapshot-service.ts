@@ -8,9 +8,12 @@
  * This is the load-bearing reversibility gate for Phase 73's "zero impact to
  * current clients" guarantee.
  *
- * DUAL-ID CONTRACT (critical — do not conflate these IDs):
- *   - business_financial_goals is keyed on business_profiles.id (the `businessId` / profileId arg)
- *   - business_kpis and strategic_initiatives are keyed on businesses.id (the `businessesId` arg)
+ * KEYING (verified in prod — Phase 73 dry-run):
+ *   - business_financial_goals, business_kpis, AND strategic_initiatives are ALL keyed on
+ *     business_profiles.id (the `businessId` / profileId arg). business_kpis 55/55 and
+ *     strategic_initiatives 448/448 rows are profile-keyed; 0 are businesses-keyed.
+ *     (The earlier belief that KPIs/initiatives were keyed on businesses.id was wrong and
+ *     caused them to be silently missed — caught by the Precision dry-run.)
  *
  * SCHEMA CONSTRAINT: plan_snapshots.snapshot_type CHECK allows only
  *   'goals_wizard_complete' | 'quarterly_review_pre_sync' | 'quarterly_review_post_sync'
@@ -34,10 +37,8 @@ import { createClient } from '@/lib/supabase/client'
 // ---------------------------------------------------------------------------
 
 export interface CaptureParams {
-  /** business_profiles.id — key for business_financial_goals */
+  /** business_profiles.id — key for business_financial_goals, business_kpis, strategic_initiatives */
   businessId: string
-  /** businesses.id — key for business_kpis + strategic_initiatives */
-  businessesId: string
   userId: string
   /** The FY year number being ended, e.g. 2026 for FY26 */
   endingFY: number
@@ -73,10 +74,10 @@ export class AnnualResetSnapshotService {
   /**
    * Capture the COMPLETE ending-year plan into plan_snapshots.
    *
-   * Reads:
-   *   - business_financial_goals (by businessId = business_profiles.id)
-   *   - business_kpis (by businessesId = businesses.id, is_active=true)
-   *   - strategic_initiatives (by businessesId = businesses.id)
+   * Reads (ALL keyed by business_profiles.id = businessId):
+   *   - business_financial_goals (by businessId)
+   *   - business_kpis (by businessId, is_active=true)
+   *   - strategic_initiatives (by businessId)
    *
    * Inserts ONE plan_snapshots row:
    *   snapshot_type = 'quarterly_review_pre_sync' (allowed CHECK value)
@@ -87,7 +88,7 @@ export class AnnualResetSnapshotService {
    * NEVER mutates business_financial_goals, business_kpis, or strategic_initiatives.
    */
   async captureAnnualResetSnapshot(params: CaptureParams): Promise<CaptureResult> {
-    const { businessId, businessesId, userId, endingFY } = params
+    const { businessId, userId, endingFY } = params
     const supabase = this.getSupabase()
 
     try {
@@ -102,22 +103,22 @@ export class AnnualResetSnapshotService {
         return { success: false, error: `Failed to read goals: ${goalsError.message}` }
       }
 
-      // 2. Read business_kpis (keyed by businesses.id)
+      // 2. Read business_kpis (keyed by business_profiles.id)
       const { data: kpisData, error: kpisError } = await supabase
         .from('business_kpis')
         .select('id, kpi_id, name, year1_target, year2_target, year3_target, current_value, is_active')
-        .eq('business_id', businessesId)
+        .eq('business_id', businessId)
         .eq('is_active', true)
 
       if (kpisError) {
         return { success: false, error: `Failed to read KPIs: ${kpisError.message}` }
       }
 
-      // 3. Read strategic_initiatives (keyed by businesses.id)
+      // 3. Read strategic_initiatives (keyed by business_profiles.id)
       const { data: initiativesData, error: initiativesError } = await supabase
         .from('strategic_initiatives')
         .select('id, title, step_type, status, fiscal_year, selected, quarter_assigned, category, order_index')
-        .eq('business_id', businessesId)
+        .eq('business_id', businessId)
 
       if (initiativesError) {
         return { success: false, error: `Failed to read initiatives: ${initiativesError.message}` }

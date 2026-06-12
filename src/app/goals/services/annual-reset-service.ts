@@ -14,9 +14,10 @@
  *   6. Carry-forward UPDATE on strategic_initiatives (incomplete → not_started, selected=false)
  *   7. Return { success, snapshotId, newFY, carriedForwardCount }
  *
- * DUAL-ID CONTRACT (critical — do not conflate):
- *   - business_financial_goals keyed on business_profiles.id  (= businessId param)
- *   - strategic_initiatives     keyed on businesses.id         (= businessesId param)
+ * KEYING (verified in prod — Phase 73 dry-run):
+ *   - business_financial_goals AND strategic_initiatives are BOTH keyed on
+ *     business_profiles.id (= businessId param). strategic_initiatives 448/448 rows are
+ *     profile-keyed (and FK-constrained to business_profiles); 0 are businesses-keyed.
  *
  * NO SCHEMA MIGRATION: all writes use existing columns.
  */
@@ -31,10 +32,8 @@ import { getFiscalYear } from '@/lib/utils/fiscal-year-utils'
 // ---------------------------------------------------------------------------
 
 export interface ExecuteResetParams {
-  /** business_profiles.id — key for business_financial_goals */
+  /** business_profiles.id — key for business_financial_goals + strategic_initiatives */
   businessId: string
-  /** businesses.id — key for strategic_initiatives */
-  businessesId: string
   userId: string
   /** Fiscal year start month (1-12; 7 = AU FY, 1 = CY) */
   yearStartMonth: number
@@ -87,11 +86,11 @@ export class AnnualResetService {
    * business_financial_goals row itself via:
    *   .from('business_financial_goals').select('*').eq('business_id', businessId).maybeSingle()
    *
-   * @param params - { businessId, businessesId, userId, yearStartMonth }
+   * @param params - { businessId, userId, yearStartMonth }
    * @returns ExecuteResetResult
    */
   async executeAnnualReset(params: ExecuteResetParams): Promise<ExecuteResetResult> {
-    const { businessId, businessesId, userId, yearStartMonth } = params
+    const { businessId, userId, yearStartMonth } = params
     const supabase = this.getSupabase()
 
     // ── Step 1: SELF-READ the prior business_financial_goals row ──────────────
@@ -126,7 +125,6 @@ export class AnnualResetService {
     // ── Step 3: Capture snapshot BEFORE any write ─────────────────────────────
     const snapshotResult = await annualResetSnapshotService.captureAnnualResetSnapshot({
       businessId,
-      businessesId,
       userId,
       endingFY,
     })
@@ -191,12 +189,12 @@ export class AnnualResetService {
     }
 
     // ── Step 6: Carry-forward incomplete initiatives ──────────────────────────
-    // Query incomplete initiatives keyed on businesses.id (businessesId)
+    // Query incomplete initiatives keyed on business_profiles.id (businessId)
     const { data: incompleteRows, error: fetchInitError } = await supabase
       .from('strategic_initiatives')
       .select('id')
       .in('status', INCOMPLETE_STATUSES)
-      .eq('business_id', businessesId)
+      .eq('business_id', businessId)
 
     let carriedForwardCount = 0
 
@@ -213,7 +211,7 @@ export class AnnualResetService {
           updated_at: new Date().toISOString(),
         })
         .in('id', incompleteRows.map((r: { id: string }) => r.id))
-        .eq('business_id', businessesId)
+        .eq('business_id', businessId)
 
       if (initUpdateError) {
         console.error('[AnnualResetService] Failed to carry forward initiatives:', initUpdateError.message)

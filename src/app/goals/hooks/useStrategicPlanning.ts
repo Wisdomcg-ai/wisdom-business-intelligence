@@ -787,7 +787,6 @@ export function useStrategicPlanning(
             console.log('[AnnualReset] needs-reset detected — executing rollover')
             const resetResult = await annualResetService.executeAnnualReset({
               businessId: bizId,
-              businessesId: localBusinessesId,
               userId: user.id,
               yearStartMonth: localFiscalYearStart,
             })
