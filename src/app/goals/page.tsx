@@ -265,7 +265,7 @@ function StrategicPlanningContent() {
     // Save
     saveAllData,
     markDirty
-  } = useStrategicPlanning(activeBusiness?.id)
+  } = useStrategicPlanning(activeBusiness?.id, { resetMode: searchParams?.get('reset') === 'annual' })
 
   // Phase 42 — assemble planPeriod object for Step 1 banner / getYearLabel
   const planPeriod = (planStartDate && planEndDate && year1EndDate)
