@@ -172,15 +172,41 @@ vi.mock('@/lib/supabase/client', () => ({
     from: (table: string) => {
       const builder = makeBuilder(table)
 
-      // For kpis and initiatives, we need .eq().eq() chains to eventually
-      // resolve with the array. Wrap the builder so that when the consumer
-      // awaits the chained result, it gets the rows array.
+      // For kpis and initiatives, we need .select().eq().eq() chains to
+      // eventually resolve with the array. All chainable methods must return
+      // proxyBuilder (not builder) so the `then` override is preserved.
       if (table === 'business_kpis' || table === 'strategic_initiatives') {
         const rows = table === 'business_kpis' ? kpisRows : initiativesRows
-        const proxyBuilder = {
-          ...builder,
-          // Override then to return rows
-          then: (resolve: (v: { data: unknown[]; error: null }) => void) => {
+        const proxyBuilder: Record<string, unknown> = {
+          select: (_cols?: string) => proxyBuilder,
+          insert: (data: Record<string, unknown>) => {
+            mutationCalls.push({ table, method: 'insert' })
+            void data
+            return proxyBuilder
+          },
+          update: (data: Record<string, unknown>) => {
+            mutationCalls.push({ table, method: 'update' })
+            void data
+            return proxyBuilder
+          },
+          upsert: (data: Record<string, unknown>) => {
+            mutationCalls.push({ table, method: 'upsert' })
+            void data
+            return proxyBuilder
+          },
+          delete: () => {
+            mutationCalls.push({ table, method: 'delete' })
+            return proxyBuilder
+          },
+          eq: (_col: string, _val: unknown) => proxyBuilder,
+          order: () => proxyBuilder,
+          limit: () => proxyBuilder,
+          maybeSingle: vi.fn(async () => ({ data: rows[0] ?? null, error: null })),
+          single: vi.fn(async () => ({ data: rows[0] ?? null, error: null })),
+          // Awaiting the chain directly resolves with the rows array
+          then: (
+            resolve: (v: { data: Record<string, unknown>[]; error: null }) => void,
+          ) => {
             resolve({ data: rows, error: null })
           },
         }
