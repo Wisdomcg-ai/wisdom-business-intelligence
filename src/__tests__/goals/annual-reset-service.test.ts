@@ -65,7 +65,9 @@ vi.mock('@/lib/supabase/client', () => ({
 // Mock: annualResetSnapshotService
 // ---------------------------------------------------------------------------
 
-const mockCaptureAnnualResetSnapshot = vi.fn()
+// Use vi.hoisted so the mock fn is available in the vi.mock factory (which
+// is hoisted to the top of the file by vitest's transform).
+const mockCaptureAnnualResetSnapshot = vi.hoisted(() => vi.fn())
 vi.mock('@/app/goals/services/annual-reset-snapshot-service', () => ({
   annualResetSnapshotService: {
     captureAnnualResetSnapshot: mockCaptureAnnualResetSnapshot,
