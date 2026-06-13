@@ -361,7 +361,9 @@ async function postHandler(request: Request) {
 
     for (const kpi of kpis) {
       await supabase.from('business_kpis').insert({
-        business_id: businessId,
+        // business_kpis is keyed by business_profiles.id (real reads filter by
+        // the profile id); the business_profile_id column is never queried.
+        business_id: profileId,
         business_profile_id: profileId,
         user_id: demoUserId,
         ...kpi,
@@ -534,7 +536,9 @@ async function postHandler(request: Request) {
       weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1) // Monday
 
       weeklyReviews.push({
-        business_id: businessId,
+        // weekly_reviews is keyed by business_profiles.id (the demo client's own
+        // Weekly Review page reads by profile id).
+        business_id: profileId,
         user_id: demoUserId,
         week_start: weekStart.toISOString().split('T')[0],
         status: i === 0 ? 'in_progress' : 'completed',
@@ -585,7 +589,8 @@ async function postHandler(request: Request) {
     const { data: forecast } = await supabase
       .from('financial_forecasts')
       .insert({
-        business_id: businessId,
+        // financial_forecasts.business_id is FK-constrained to business_profiles(id).
+        business_id: profileId,
         user_id: demoUserId,
         name: '2025 Growth Forecast',
         description: 'Primary forecast for scaling to $2.2M revenue',
@@ -818,27 +823,40 @@ async function deleteHandler(request: Request) {
 
     const { id: businessId, owner_id: ownerId } = business
 
+    // Resolve the demo client's business_profiles.id. The seeder writes
+    // weekly_reviews / financial_forecasts / business_kpis keyed by this profile
+    // id (FK → business_profiles), so the matching teardown deletes must use it
+    // too — in LOCKSTEP with the inserts above. Fall back to businessId only if
+    // the profile row is somehow missing (then those deletes are no-ops, same as
+    // before the seeder fix).
+    const { data: demoProfile } = await supabase
+      .from('business_profiles')
+      .select('id')
+      .eq('business_id', businessId)
+      .maybeSingle()
+    const profileId = demoProfile?.id ?? businessId
+
     // Delete in order (foreign key constraints)
     await supabase.from('messages').delete().eq('business_id', businessId)
     await supabase.from('coaching_sessions').delete().eq('business_id', businessId)
-    await supabase.from('weekly_reviews').delete().eq('business_id', businessId)
+    await supabase.from('weekly_reviews').delete().eq('business_id', profileId)
     await supabase.from('quarterly_reviews').delete().eq('business_id', businessId)
 
-    // Get forecast IDs first, then delete
+    // Get forecast IDs first, then delete (financial_forecasts is profile-keyed)
     const { data: forecasts } = await supabase
       .from('financial_forecasts')
       .select('id')
-      .eq('business_id', businessId)
+      .eq('business_id', profileId)
 
     if (forecasts && forecasts.length > 0) {
       const forecastIds = forecasts.map(f => f.id)
       await supabase.from('forecast_pl_lines').delete().in('forecast_id', forecastIds)
     }
-    await supabase.from('financial_forecasts').delete().eq('business_id', businessId)
+    await supabase.from('financial_forecasts').delete().eq('business_id', profileId)
 
     // Delete initiatives by user_id since they were created with profile ID as business_id
     await supabase.from('strategic_initiatives').delete().eq('user_id', ownerId)
-    await supabase.from('business_kpis').delete().eq('business_id', businessId)
+    await supabase.from('business_kpis').delete().eq('business_id', profileId)
     await supabase.from('annual_targets').delete().eq('business_id', businessId)
     await supabase.from('vision_targets').delete().eq('user_id', ownerId)
 
