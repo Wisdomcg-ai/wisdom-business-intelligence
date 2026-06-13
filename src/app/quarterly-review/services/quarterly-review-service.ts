@@ -2,6 +2,8 @@
 // Handles all database operations for quarterly reviews
 
 import { createClient } from '@/lib/supabase/client';
+import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileId';
+import { surfaceSupabaseError } from '@/lib/supabase/surfaceError';
 import type {
   QuarterlyReview,
   QuarterNumber,
@@ -718,12 +720,20 @@ export class QuarterlyReviewService {
     const quarterKey = `Q${review.quarter}`;
     const supabase = this.getSupabase();
 
+    // kpi_actuals is keyed by business_profiles.id, but review.business_id is a businesses.id.
+    // Resolve it; without a profile id the FK would reject every row (the bug that lost actuals).
+    const profileId = await resolveBusinessProfileId(supabase, review.business_id);
+    if (!profileId) {
+      surfaceSupabaseError('saveKpiActuals.resolveProfile', new Error(`No business_profiles.id for review.business_id=${review.business_id}`));
+      return;
+    }
+
     // Prepare KPI actuals for batch upsert
     // Using column names from existing migration schema
     const kpiActuals = snapshot.kpis
       .filter(kpi => kpi.actual > 0)
       .map(kpi => ({
-        business_id: review.business_id,
+        business_id: profileId,
         user_id: review.user_id,
         kpi_id: kpi.id,
         period_year: review.year,
@@ -744,7 +754,7 @@ export class QuarterlyReviewService {
       });
 
     if (error) {
-      console.error('Error saving KPI actuals:', error);
+      surfaceSupabaseError('saveKpiActuals', error);
       // Don't throw - this is supplementary, shouldn't block completion
     }
   }
@@ -754,6 +764,13 @@ export class QuarterlyReviewService {
    */
   async createQuarterlySnapshot(review: QuarterlyReview): Promise<void> {
     const supabase = this.getSupabase();
+
+    // quarterly_snapshots is keyed by business_profiles.id; review.business_id is a businesses.id.
+    const profileId = await resolveBusinessProfileId(supabase, review.business_id);
+    if (!profileId) {
+      surfaceSupabaseError('createQuarterlySnapshot.resolveProfile', new Error(`No business_profiles.id for review.business_id=${review.business_id}`));
+      return;
+    }
 
     // Build financial snapshot
     const financialSnapshot = {
@@ -795,7 +812,7 @@ export class QuarterlyReviewService {
 
     // Build snapshot data matching existing schema
     const snapshotData = {
-      business_id: review.business_id,
+      business_id: profileId,
       user_id: review.user_id,
       snapshot_year: review.year,
       snapshot_quarter: `Q${review.quarter}`,
@@ -827,7 +844,7 @@ export class QuarterlyReviewService {
       });
 
     if (error) {
-      console.error('Error creating quarterly snapshot:', error);
+      surfaceSupabaseError('createQuarterlySnapshot', error);
       // Don't throw - this is supplementary, shouldn't block completion
     }
   }
