@@ -77,9 +77,9 @@ Thread `?reset=annual` query param from `/goals` page into `useStrategicPlanning
 - `npx tsc --noEmit` → clean (no errors in modified files)
 - `npx vitest run src/__tests__/goals` → 87/88 pass (1 pre-existing failure in plan-period-banner date-offset, out of scope)
 
-### Task 2: Human-verify reset end-to-end — AWAITING HUMAN
+### Task 2: Human-verify reset end-to-end — APPROVED ✅ (2026-06-13)
 
-This is a `checkpoint:human-verify` gate. Operator must verify against live Supabase data on a test client before continuing.
+`checkpoint:human-verify` gate. Matt ran the dry-run against the Vercel preview (PR #290) using the read-only [`73-04-DRY-RUN-RUNBOOK.md`](73-04-DRY-RUN-RUNBOOK.md): Precision (year1_end 2026-06-30) rolled correctly (revenue_year1 3.4M→4.5M, FY27 dates, `annual_reset_FY2026` snapshot, 22 initiatives carried) and the already-planned controls (Armstrong, Fit2Shine — year1_end 2027-06-29) were untouched. Signalled **approved**. Phase proceeded to 73-05 + 73-06.
 
 ## Deviations from Plan
 
