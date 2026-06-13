@@ -1,6 +1,7 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
+import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileId'
 
 export interface LastWeekGoal {
   goal: string
@@ -493,10 +494,16 @@ export class WeeklyReviewService {
     try {
       if (!businessId) return []
 
+      // weekly_reviews is keyed by business_profiles.id. Resolve whatever the
+      // caller passed (owner page passes a profile id; coach tab passes a
+      // businesses.id) to the canonical profile id before querying.
+      const profileId = await resolveBusinessProfileId(this.supabase, businessId)
+      if (!profileId) return []
+
       const { data, error } = await this.supabase
         .from('weekly_reviews')
         .select('*')
-        .eq('business_id', businessId)
+        .eq('business_id', profileId)
         .eq('week_start_date', weekStartDate)
         .order('created_at', { ascending: true })
 
@@ -524,6 +531,25 @@ export class WeeklyReviewService {
     try {
       if (!businessId) return []
 
+      // These two tables key on DIFFERENT id-spaces:
+      //   business_users  → businesses.id
+      //   weekly_reviews  → business_profiles.id
+      // Resolve the caller's input (owner page passes a profile id; coach tab
+      // passes a businesses.id) to BOTH canonical forms before querying.
+      const profileId = await resolveBusinessProfileId(this.supabase, businessId)
+      let businessesId: string | null = null
+      if (profileId) {
+        const { data: profileRow } = await this.supabase
+          .from('business_profiles')
+          .select('business_id')
+          .eq('id', profileId)
+          .maybeSingle()
+        businessesId = profileRow?.business_id ?? null
+      }
+      // If resolution failed, fall back to the raw input for business_users so a
+      // caller that already passed a businesses.id still works.
+      const businessUsersId = businessesId ?? businessId
+
       // Get all team members with weekly review enabled
       const { data: teamMembers, error: teamError } = await this.supabase
         .from('business_users')
@@ -537,7 +563,7 @@ export class WeeklyReviewService {
             email
           )
         `)
-        .eq('business_id', businessId)
+        .eq('business_id', businessUsersId)
         .eq('status', 'active')
         .eq('weekly_review_enabled', true)
 
@@ -546,12 +572,14 @@ export class WeeklyReviewService {
         return []
       }
 
-      // Get reviews for this week
-      const { data: reviews, error: reviewError } = await this.supabase
-        .from('weekly_reviews')
-        .select('id, user_id, is_completed, week_rating, energy_rating, completed_at, submitter_name')
-        .eq('business_id', businessId)
-        .eq('week_start_date', weekStartDate)
+      // Get reviews for this week (weekly_reviews is keyed by business_profiles.id)
+      const { data: reviews, error: reviewError } = profileId
+        ? await this.supabase
+            .from('weekly_reviews')
+            .select('id, user_id, is_completed, week_rating, energy_rating, completed_at, submitter_name')
+            .eq('business_id', profileId)
+            .eq('week_start_date', weekStartDate)
+        : { data: [], error: null }
 
       if (reviewError) {
         console.error('[Weekly Review] ❌ Error loading reviews:', reviewError)

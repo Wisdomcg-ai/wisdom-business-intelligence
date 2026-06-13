@@ -351,12 +351,12 @@ async function getHandler() {
           .in('business_id', profileIds.length > 0 ? profileIds : ['__none__'])
       ),
       // ── EXECUTE ──
-      // 13. Weekly Reviews
+      // 13. Weekly Reviews (keyed by business_profiles.id, like strategic_initiatives/forecasts)
       safeQuery<R[]>(() =>
         supabase
           .from('weekly_reviews')
           .select('id, business_id, user_id, is_completed, week_start_date')
-          .in('business_id', businessIds)
+          .in('business_id', profileIds.length > 0 ? profileIds : ['__none__'])
       ),
       // 14. Quarterly Reviews (uses business_id — either profileId or ownerIds)
       safeQuery<R[]>(() =>
@@ -607,8 +607,8 @@ async function getHandler() {
           ? 'in_progress'
           : 'not_started'
 
-      // 13. Weekly Reviews
-      const weeklyReviews = weeklyReviewsByBusiness.get(biz.id) || []
+      // 13. Weekly Reviews (keyed by business_profiles.id — look up by profileId)
+      const weeklyReviews = (profileId ? weeklyReviewsByBusiness.get(profileId) : null) || []
       const completedReviews = weeklyReviews.filter((r) => r.is_completed)
       modules['weekly_reviews'] =
         completedReviews.length >= 4
