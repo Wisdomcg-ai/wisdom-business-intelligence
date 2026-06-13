@@ -16,8 +16,14 @@ progress:
 
 ## Current Position
 
-Phase: 73 (annual-plan-reset) — EXECUTING
-Plan: 4 of 6
+Phase: 73 (annual-plan-reset) — **PAUSED 2026-06-13** pending dual-ID remediation milestone.
+W1-W3 built + committed on branch `plan/phase-73-annual-reset` (73-01 snapshot, 73-03 entry,
+73-02 rollover, 73-04 Task 1 /goals wiring), stopped at the 73-04 human-verify checkpoint. The
+Precision dry-run caught + fixed a dual-ID bug (commit d3c66cdb) and exposed a SYSTEM-WIDE
+dual-ID problem (41 active + 38 latent — see `.planning/codebase/DUAL-ID-AUDIT.md`). Decision:
+pause 73, run the full dual-ID remediation milestone first, then resume 73 (W4 retire annual
+steps + W5 integration tests) on the solid foundation.
+Plan: 4 of 6 (paused at checkpoint)
 
 Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete
