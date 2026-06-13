@@ -13,4 +13,14 @@ Plans:
 - [ ] 73-05-PLAN.md — Retire quarterly-review annual steps + Q4-gated button (keep jsonb columns; don't break getWorkshopSteps) [wave 4]
 - [ ] 73-06-PLAN.md — Integration tests (rollover FY+CY, entry 3 states, snapshot round-trip) + full vitest gate [wave 5]
 
+### Phase 74: Dual-ID remediation foundation and verified fixes
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 73
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 74 to break down)
+
 ---
