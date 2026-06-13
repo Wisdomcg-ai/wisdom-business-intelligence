@@ -1,7 +1,7 @@
 'use client';
 
 import { WorkshopStep, WORKSHOP_STEPS, STEP_LABELS, ReviewType, getWorkshopSteps } from '../types';
-import { ChevronLeft, ChevronRight, Save, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, Loader2 } from 'lucide-react';
 
 interface WorkshopNavProps {
   currentStep: WorkshopStep;
@@ -39,9 +39,10 @@ export function WorkshopNav({
   const isLastStep = currentStep === lastContentStep;
   const isComplete = currentStep === 'complete';
 
-  // Get previous and next step labels
+  // Previous step label (for the Back button). The forward button is a single
+  // consistent "Continue" — it no longer names the next step (that competed with
+  // each step's own internal section nav and read as a second "Next" button).
   const prevStep = currentIndex > 0 ? steps[currentIndex - 1] : null;
-  const nextStep = currentIndex < steps.length - 1 ? steps[currentIndex + 1] : null;
 
   if (isComplete) {
     return null;
@@ -68,28 +69,19 @@ export function WorkshopNav({
           )}
         </div>
 
-        {/* Center - Save Status */}
-        <div className="flex items-center gap-3">
-          {hasUnsavedChanges && (
-            <span className="text-xs text-gray-600 hidden sm:block">Unsaved changes</span>
-          )}
-          {onSave && (
-            <button
-              onClick={onSave}
-              disabled={isSaving || !hasUnsavedChanges}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                hasUnsavedChanges
-                  ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  : 'bg-gray-50 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              {isSaving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              <span className="hidden sm:inline">{isSaving ? 'Saving...' : 'Save'}</span>
-            </button>
+        {/* Center — passive auto-save status. No manual Save button; everything
+            auto-saves. The owner can see at a glance their work is safe. */}
+        <div className="flex items-center gap-2 text-xs" aria-live="polite">
+          {isSaving || hasUnsavedChanges ? (
+            <span className="flex items-center gap-1.5 text-gray-500">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span className="hidden sm:inline">Saving…</span>
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-green-600">
+              <Check className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Saved</span>
+            </span>
           )}
         </div>
 
@@ -114,7 +106,7 @@ export function WorkshopNav({
             ) : (
               <>
                 <span>
-                  {nextLabel || (isLastStep ? 'Complete Review' : nextStep ? STEP_LABELS[nextStep] : 'Next')}
+                  {nextLabel || (isLastStep ? 'Complete Review' : 'Continue')}
                 </span>
                 <ChevronRight className="w-5 h-5" />
               </>

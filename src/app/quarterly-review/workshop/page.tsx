@@ -16,19 +16,16 @@ import { createClient } from '@/lib/supabase/client';
 import { PreWorkStep } from '../components/steps/PreWorkStep';
 import { PreWorkReviewStep } from '../components/steps/PreWorkReviewStep';
 import { ScorecardReviewStep } from '../components/steps/ScorecardReviewStep';
-import { RocksReviewStep } from '../components/steps/RocksReviewStep';
-import { ActionReplayStep } from '../components/steps/ActionReplayStep';
-import { FeedbackLoopStep } from '../components/steps/FeedbackLoopStep';
-import { OpenLoopsStep } from '../components/steps/OpenLoopsStep';
-import { IssuesListStep } from '../components/steps/IssuesListStep';
+import { RocksReviewStep } from '../components/steps/RocksReviewStep';import { FeedbackLoopStep } from '../components/steps/FeedbackLoopStep';import { IssuesListStep } from '../components/steps/IssuesListStep';
 import { CustomerPulseStep } from '../components/steps/CustomerPulseStep';
-import { PeopleReviewStep } from '../components/steps/PeopleReviewStep';
-import { AssessmentRoadmapStep } from '../components/steps/AssessmentRoadmapStep';
-import { SwotUpdateStep } from '../components/steps/SwotUpdateStep';
-import { ConfidenceRealignmentStep } from '../components/steps/ConfidenceRealignmentStep';
+import { PeopleReviewStep } from '../components/steps/PeopleReviewStep';import { ConfidenceRealignmentStep } from '../components/steps/ConfidenceRealignmentStep';
 import { QuarterlyPlanStep } from '../components/steps/QuarterlyPlanStep';
 import { QuarterlyRocksStep } from '../components/steps/QuarterlyRocksStep';
 import { WorkshopCompleteStep } from '../components/steps/WorkshopCompleteStep';
+// v2 merged (composite tab) steps
+import { RetroStep } from '../components/steps/RetroStep';
+import { OpenItemsStep } from '../components/steps/OpenItemsStep';
+import { StrategicCheckStep } from '../components/steps/StrategicCheckStep';
 
 // Phase 73: the annual-only step components (YearInReviewStep, VisionStrategyStep,
 // NextYearTargetsStep, AnnualInitiativePlanStep) are no longer routed into — the
@@ -148,14 +145,14 @@ function ReviewContent() {
       return;
     }
 
-    // Phase 73 v2 — year-end annual-reset gate. On stepping from Part 3 (3.2) INTO
-    // Part 4 (4.1), the SYSTEM checks the client's plan year (data-driven, TZ-safe).
-    // If it has ended, mark this review complete and hand off to the goals wizard
-    // (which auto-rolls the plan) instead of the normal quarterly planning steps —
-    // reflection (Parts 1–3) is already done. No client decision; fires once, on the
-    // deliberate forward step. Uses getPlanningQuarter so it matches the goals hook's
-    // own reset gate exactly. year1EndDate===undefined means "still loading" → no gate.
-    if (currentStep === '3.2' && shouldRouteToAnnualReset(fyType, year1EndDate, getPlanningQuarter(fyType))) {
+    // Phase 73 v2 — year-end annual-reset gate. On stepping from Part 3 (the merged
+    // Strategic Check, id '3.1') INTO Part 4 (4.1), the SYSTEM checks the client's plan
+    // year (data-driven, TZ-safe). If it has ended, mark this review complete and hand
+    // off to the goals wizard (which auto-rolls the plan) instead of the normal
+    // quarterly planning steps — reflection (Parts 1–3) is already done. No client
+    // decision; fires once, on the deliberate forward step. Uses getPlanningQuarter so
+    // it matches the goals hook's own reset gate. year1EndDate===undefined → still loading.
+    if (currentStep === '3.1' && shouldRouteToAnnualReset(fyType, year1EndDate, getPlanningQuarter(fyType))) {
       await markReviewComplete();
       router.push(getPath('/goals?reset=annual'));
       return;
@@ -236,11 +233,13 @@ function ReviewContent() {
             onUpdate={updateRocksReview}
           />
         );
-      case '1.4':
+      case '1.4': // v2: Retro (Action Replay + Feedback Loop)
         return (
-          <ActionReplayStep
+          <RetroStep
             review={review}
-            onUpdate={updateActionReplay}
+            onUpdateActionReplay={updateActionReplay}
+            onUpdateFeedbackLoop={updateFeedbackLoop}
+            onUpdateFeedbackLoopMode={updateFeedbackLoopMode}
           />
         );
 
@@ -253,11 +252,12 @@ function ReviewContent() {
             onUpdateMode={updateFeedbackLoopMode}
           />
         );
-      case '2.2':
+      case '2.2': // v2: Open Items (Open Loops + Issues)
         return (
-          <OpenLoopsStep
+          <OpenItemsStep
             review={review}
-            onUpdate={updateOpenLoopsDecisions}
+            onUpdateOpenLoops={updateOpenLoopsDecisions}
+            onUpdateIssues={updateIssuesResolved}
           />
         );
       case '2.3':
@@ -283,19 +283,13 @@ function ReviewContent() {
         );
 
       // Part 3: Strategic Review
-      case '3.1':
+      case '3.1': // v2: Strategic Check (Assessment & Roadmap + SWOT)
         return (
-          <AssessmentRoadmapStep
+          <StrategicCheckStep
             review={review}
             onUpdateAssessment={updateAssessmentSnapshot}
             onUpdateRoadmap={updateRoadmapSnapshot}
-          />
-        );
-      case '3.2':
-        return (
-          <SwotUpdateStep
-            review={review}
-            onUpdate={updateSwotAnalysisId}
+            onUpdateSwot={updateSwotAnalysisId}
           />
         );
 
