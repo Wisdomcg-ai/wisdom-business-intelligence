@@ -442,26 +442,30 @@ export default function ClientFilePage() {
 
       if (effectiveUserId) {
         // Get recent weekly reviews
-        try {
-          const { data: reviews } = await supabase
-            .from('weekly_reviews')
-            .select('id, completed_at, created_at')
-            .eq('business_id', clientId)
-            .order('created_at', { ascending: false })
-            .limit(5)
+        // weekly_reviews is keyed by business_profiles.id (not businesses.id),
+        // so filter by the resolved profile id, not clientId.
+        if (businessProfileId) {
+          try {
+            const { data: reviews } = await supabase
+              .from('weekly_reviews')
+              .select('id, completed_at, created_at')
+              .eq('business_id', businessProfileId)
+              .order('created_at', { ascending: false })
+              .limit(5)
 
-          reviews?.forEach(r => {
-            const timestamp = r.completed_at || r.created_at
-            if (timestamp) {
-              activities.push({
-                id: `review-${r.id}`,
-                type: 'session',
-                title: r.completed_at ? 'Completed weekly review' : 'Started weekly review',
-                timestamp
-              })
-            }
-          })
-        } catch (e) { /* Ignore */ }
+            reviews?.forEach(r => {
+              const timestamp = r.completed_at || r.created_at
+              if (timestamp) {
+                activities.push({
+                  id: `review-${r.id}`,
+                  type: 'session',
+                  title: r.completed_at ? 'Completed weekly review' : 'Started weekly review',
+                  timestamp
+                })
+              }
+            })
+          } catch (e) { /* Ignore */ }
+        }
 
         // Get recent assessments
         try {
@@ -763,6 +767,7 @@ export default function ClientFilePage() {
   }, [clientId])
 
   // Real-time subscriptions for live updates
+  const weeklyReviewsBusinessId = businessProfile?.id
   useEffect(() => {
     if (!clientId) return
 
@@ -803,13 +808,15 @@ export default function ClientFilePage() {
         }
       )
       // Weekly reviews changes
+      // weekly_reviews is keyed by business_profiles.id, so filter by the
+      // resolved profile id (not clientId, which is a businesses.id).
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'weekly_reviews',
-          filter: `business_id=eq.${clientId}`
+          filter: `business_id=eq.${weeklyReviewsBusinessId}`
         },
         () => {
           refreshData()
@@ -877,7 +884,7 @@ export default function ClientFilePage() {
         clearInterval(refreshIntervalRef.current)
       }
     }
-  }, [clientId, supabase])
+  }, [clientId, supabase, weeklyReviewsBusinessId])
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab)
