@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
+import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileId';
 
 interface ForecastVersion {
   id: string;
@@ -108,11 +109,19 @@ export function ForecastSelector({
     setIsDuplicating(forecast.id);
     setShowMenu(null);
     try {
+      // financial_forecasts.business_id is FK-constrained to business_profiles(id),
+      // but callers pass businesses.id — resolve to the profile id before insert
+      // (mirrors loadForecasts above).
+      const profileBusinessId = await resolveBusinessProfileId(supabase, businessId);
+      if (!profileBusinessId) {
+        throw new Error('Could not resolve business profile for forecast');
+      }
+
       // Create a copy of the forecast
       const { data: newForecast, error } = await supabase
         .from('financial_forecasts')
         .insert({
-          business_id: businessId,
+          business_id: profileBusinessId,
           user_id: (await supabase.auth.getUser()).data.user?.id,
           name: `${forecast.name} (Copy)`,
           fiscal_year: fiscalYear,
@@ -213,11 +222,20 @@ export function ForecastSelector({
   const handleSetActive = async (forecast: ForecastVersion) => {
     setShowMenu(null);
     try {
+      // financial_forecasts is keyed by business_profiles.id — resolve the
+      // profile id so the deactivate-others filter actually matches the rows
+      // (mirrors loadForecasts above). Filtering by businesses.id is a no-op,
+      // which then collides with unique_active_forecast_per_fy on activate.
+      const profileBusinessId = await resolveBusinessProfileId(supabase, businessId);
+      if (!profileBusinessId) {
+        throw new Error('Could not resolve business profile for forecast');
+      }
+
       // Deactivate all other forecasts
       await supabase
         .from('financial_forecasts')
         .update({ is_active: false })
-        .eq('business_id', businessId)
+        .eq('business_id', profileBusinessId)
         .eq('fiscal_year', fiscalYear);
 
       // Activate this one
