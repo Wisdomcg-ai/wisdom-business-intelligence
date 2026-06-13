@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuarterlyReview } from '../hooks/useQuarterlyReview';
 import { WorkshopProgress } from '../components/WorkshopProgress';
 import { WorkshopNav } from '../components/WorkshopNav';
 import { CoachNotesPanel } from '../components/CoachNotesPanel';
-import { QuarterNumber, ReviewType, getWorkshopSteps } from '../types';
+import { QuarterNumber, ReviewType, YearType, getWorkshopSteps, getPlanningQuarter } from '../types';
+// Phase 73 v2 — year-end annual-reset gate (fires at the Part 3 → Part 4 transition).
+import { shouldRouteToAnnualReset } from '../utils/annual-reset-gate';
+import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileIds';
+import { createClient } from '@/lib/supabase/client';
 
 // Step Components
 import { PreWorkStep } from '../components/steps/PreWorkStep';
@@ -63,6 +67,7 @@ function ReviewContent() {
     completeCurrentStep,
     saveReview,
     completeWorkshop,
+    markReviewComplete,
     reviewType: activeReviewType,
     // Pre-work
     updatePreWork,
@@ -103,6 +108,33 @@ function ReviewContent() {
   const effectiveReviewType = activeReviewType || reviewType;
   const workshopSteps = getWorkshopSteps(effectiveReviewType);
 
+  // Phase 73 v2: surface the client's year1_end_date + fiscal year type so the
+  // Part 3 → Part 4 transition can detect a finished plan year (system-decided reset).
+  // goals are keyed by business_profiles.id; resolve it from the review's businesses.id.
+  const [year1EndDate, setYear1EndDate] = useState<Date | null | undefined>(undefined);
+  const [fyType, setFyType] = useState<YearType>('FY');
+
+  useEffect(() => {
+    const bizId = review?.business_id;
+    if (!bizId) return;
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      const profileId = await resolveBusinessProfileId(supabase, bizId);
+      const { data } = await supabase
+        .from('business_financial_goals')
+        .select('year_type, year1_end_date')
+        .eq('business_id', profileId ?? bizId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      setFyType((data?.year_type as YearType) || 'FY');
+      setYear1EndDate(data?.year1_end_date ? new Date(data.year1_end_date as string) : null);
+    })();
+    return () => { cancelled = true; };
+  }, [review?.business_id]);
+
   const handleBack = () => {
     const currentIndex = workshopSteps.indexOf(currentStep);
     if (currentIndex > 0) {
@@ -113,7 +145,23 @@ function ReviewContent() {
   const handleNext = async () => {
     if (currentStep === 'prework') {
       await completePreWork();
-    } else if (currentStep === workshopSteps[workshopSteps.length - 2]) {
+      return;
+    }
+
+    // Phase 73 v2 — year-end annual-reset gate. On stepping from Part 3 (3.2) INTO
+    // Part 4 (4.1), the SYSTEM checks the client's plan year (data-driven, TZ-safe).
+    // If it has ended, mark this review complete and hand off to the goals wizard
+    // (which auto-rolls the plan) instead of the normal quarterly planning steps —
+    // reflection (Parts 1–3) is already done. No client decision; fires once, on the
+    // deliberate forward step. Uses getPlanningQuarter so it matches the goals hook's
+    // own reset gate exactly. year1EndDate===undefined means "still loading" → no gate.
+    if (currentStep === '3.2' && shouldRouteToAnnualReset(fyType, year1EndDate, getPlanningQuarter(fyType))) {
+      await markReviewComplete();
+      router.push(getPath('/goals?reset=annual'));
+      return;
+    }
+
+    if (currentStep === workshopSteps[workshopSteps.length - 2]) {
       // Last content step — complete the review (sync + snapshots + mark complete)
       await completeWorkshop();
       // completeWorkshop() sets review.current_step='complete' via setReview(updated)

@@ -5,8 +5,6 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { quarterlyReviewService } from './services/quarterly-review-service';
 import { getPlanningQuarter, getNextQuarterOf, getPreviousQuarterOf, getQuarterLabel, type YearType, type QuarterNumber } from './types';
-import { calculateQuarters, toUtcDateOnly } from '@/app/goals/utils/quarters';
-import { detectAnnualResetState, type AnnualResetState } from './utils/annual-reset-entry';
 import {
   Calendar,
   Clock,
@@ -17,7 +15,6 @@ import {
   BarChart3,
   Target,
   History,
-  Star,
   Pencil,
   Loader2
 } from 'lucide-react';
@@ -39,28 +36,6 @@ export default function QuarterlyReviewPage() {
   const [quarter, setQuarter] = useState<QuarterNumber>(() => getPlanningQuarter().quarter);
   const [year, setYear] = useState<number>(() => getPlanningQuarter().year);
   const [yearType, setYearType] = useState<YearType>('FY');
-  // year1_end_date from business_financial_goals — drives annual-reset detection.
-  // Starts as undefined (loading) so no reset prompt flashes before data resolves.
-  const [year1EndDate, setYear1EndDate] = useState<Date | null | undefined>(undefined);
-
-  // Compute planning quarter start date from (yearType, year, quarter).
-  // calculateQuarters returns QuarterInfo[] each with a startDate.
-  const planningQuarterStart: Date | null = useMemo(() => {
-    const quarters = calculateQuarters(yearType, year);
-    const start = quarters.find(q => q.id === `q${quarter}`)?.startDate ?? null;
-    // Normalise the LOCAL-built quarter start to UTC-midnight so the date-only
-    // comparison in detectAnnualResetState is timezone-safe (AEST bug fix).
-    return start ? toUtcDateOnly(start) : null;
-  }, [yearType, year, quarter]);
-
-  // Detect annual-reset state — defaults to 'normal-review' while loading
-  // (year1EndDate=undefined) so nothing flashes a reset prompt before data resolves.
-  const resetState: AnnualResetState = useMemo(() => {
-    if (planningQuarterStart == null || year1EndDate === undefined) {
-      return 'normal-review';
-    }
-    return detectAnnualResetState({ planningQuarterStart, year1EndDate });
-  }, [planningQuarterStart, year1EndDate]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -96,16 +71,11 @@ export default function QuarterlyReviewPage() {
             const goalsBusinessId = profile?.id || bizId;
             const { data: goals } = await supabase
               .from('business_financial_goals')
-              .select('year_type, year1_end_date')
+              .select('year_type')
               .eq('business_id', goalsBusinessId)
               .maybeSingle();
             const resolvedYearType: YearType = (goals?.year_type as YearType) || 'FY';
             setYearType(resolvedYearType);
-            // Store year1_end_date for annual-reset detection.
-            // null = plan exists but no date set; undefined signals "not yet loaded".
-            setYear1EndDate(
-              goals?.year1_end_date ? new Date(goals.year1_end_date) : null
-            );
             const resolved = getPlanningQuarter(resolvedYearType);
             setQuarter(resolved.quarter);
             setYear(resolved.year);
@@ -284,64 +254,26 @@ export default function QuarterlyReviewPage() {
               )
             ) : (
               <div className="flex flex-col sm:flex-row gap-3">
-                {/* Data-driven annual-reset entry (Phase 73 Plan 03).
-                    Detection is read-only — no writes occur here.
-                    A reset only begins when the client clicks through to /goals?reset=annual. */}
-                {resetState === 'needs-reset' ? (
-                  <>
-                    {/* Primary CTA: route to the reset wizard */}
-                    <a
-                      href={getPath(`/goals?reset=annual`)}
-                      className="inline-flex items-center gap-2 bg-gradient-to-r from-brand-orange to-amber-500 text-white px-6 py-3 rounded-xl font-semibold hover:from-brand-orange-600 hover:to-amber-600 transition-all shadow-sm"
-                    >
-                      <Star className="w-5 h-5" />
-                      Set your {yearType === 'FY' ? `FY${year}` : String(year)} Annual Plan
-                      <ChevronRight className="w-4 h-4" />
-                    </a>
-                    {/* Secondary: still allow a regular quarterly review */}
-                    <button
-                      onClick={() => startNewReview('quarterly')}
-                      className="inline-flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-xl font-semibold hover:bg-gray-50 transition-colors"
-                    >
-                      <PlayCircle className="w-5 h-5" />
-                      Start {fmtQuarter(quarter, year)} Review
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </>
-                ) : resetState === 'initial-setup' ? (
-                  <>
-                    {/* Primary CTA: route to goals wizard (first-time setup) */}
-                    <a
-                      href={getPath('/goals')}
-                      className="inline-flex items-center gap-2 bg-gradient-to-r from-brand-orange to-amber-500 text-white px-6 py-3 rounded-xl font-semibold hover:from-brand-orange-600 hover:to-amber-600 transition-all shadow-sm"
-                    >
-                      <Star className="w-5 h-5" />
-                      Set up your Annual Plan
-                      <ChevronRight className="w-4 h-4" />
-                    </a>
-                  </>
-                ) : (
-                  <>
-                    {/* normal-review: standard quarterly CTA */}
-                    <button
-                      onClick={() => startNewReview('quarterly')}
-                      className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
-                    >
-                      <PlayCircle className="w-5 h-5" />
-                      Start {fmtQuarter(quarter, year)} Review
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
+                {/* Phase 73 v2: no annual-reset detection here. The year-end reset is
+                    triggered automatically INSIDE the quarterly review at the Part 3 → 4
+                    boundary (workshop). The landing just starts a normal review. */}
+                <button
+                  onClick={() => startNewReview('quarterly')}
+                  className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
+                >
+                  <PlayCircle className="w-5 h-5" />
+                  Start {fmtQuarter(quarter, year)} Review
+                  <ChevronRight className="w-4 h-4" />
+                </button>
 
-                    {/* Secondary: adjust annual plan link */}
-                    <a
-                      href={getPath('/goals')}
-                      className="inline-flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-xl font-semibold hover:bg-gray-50 transition-colors"
-                    >
-                      <Target className="w-5 h-5" />
-                      Adjust annual plan
-                    </a>
-                  </>
-                )}
+                {/* Secondary: adjust annual plan link */}
+                <a
+                  href={getPath('/goals')}
+                  className="inline-flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-xl font-semibold hover:bg-gray-50 transition-colors"
+                >
+                  <Target className="w-5 h-5" />
+                  Adjust annual plan
+                </a>
               </div>
             )}
           </div>

@@ -86,6 +86,7 @@ interface UseQuarterlyReviewReturn {
   completeCurrentStep: () => Promise<void>;
   startWorkshop: () => Promise<void>;
   completeWorkshop: () => Promise<void>;
+  markReviewComplete: () => Promise<void>;
 
   // Pre-work
   updatePreWork: (data: Partial<QuarterlyReview>) => void;
@@ -778,6 +779,22 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     updateLocalState(prev => ({ ...prev, action_items: items }));
   }, [updateLocalState]);
 
+  // Lightweight "mark complete" for the year-end annual-reset handoff (Phase 73 v2).
+  // The planning happens in the goals wizard, so we deliberately DO NOT run
+  // completeWorkshop's quarterly sync/snapshot — that would sync the (skipped, empty)
+  // Part-4 quarterly_targets/initiative_decisions over the live plan right before the
+  // reset clears them. We just flip status → completed so the review isn't left dangling.
+  const markReviewComplete = useCallback(async () => {
+    if (!review) return;
+    const updated = { ...review, status: 'completed', current_step: 'complete' } as QuarterlyReview;
+    try {
+      await quarterlyReviewService.updateReview(review.id, updated);
+      setReview(updated);
+    } catch (e) {
+      console.error('[AnnualReset] failed to mark review complete (non-fatal):', e);
+    }
+  }, [review]);
+
   return {
     // State
     review,
@@ -806,6 +823,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     completeCurrentStep,
     startWorkshop,
     completeWorkshop,
+    markReviewComplete,
 
     // Pre-work
     updatePreWork,

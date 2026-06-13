@@ -1,6 +1,6 @@
 # Annual Reset (full 12-month plan reset) — Design
 
-**Status:** DESIGN for Matt's review. No code until approved.
+**Status:** v1 SHIPPED (landing-CTA entry, #290) + AEST timezone fix (#291). **Entry redesigned 2026-06-14 — see the REVISION section below (LOCKED, approved for build).** The original "Entry logic" and "no reflection phase" decisions are SUPERSEDED by that revision.
 **Context:** After a client finishes their plan year (e.g. FY26), they need to set a fresh
 annual plan for the next year (FY27) — annual goals + quarterly targets + initiatives —
 client-led, mirroring the existing Goals & Targets flow. Origin: 2026-06-12 review of the
@@ -14,6 +14,83 @@ Goals & Targets flow, and the entry was gated to the wrong quarter).
 3. **Year 1 = the new year** on reset (FY27); Year 2 / Year 3 shift forward.
 4. **Entry is data-driven** off the client's plan dates (`year1_end_date`), not the calendar —
    so clients who already planned FY27 (started May/June) are NOT forced to reset.
+
+---
+
+## REVISION — 2026-06-14: entry moves INTO the quarterly review at Part 4 (system-decided)
+
+**Supersedes the "Entry logic" section below and the "no separate reflection phase" decision.**
+Origin: after shipping the landing-CTA version (#290) and the AEST timezone fix (#291), Matt refined
+the design. The reset trigger should NOT sit at the beginning (a landing pre-gate); it sits at the
+**planning stage of the quarterly review — step 4.1 ("Annual Plan & Confidence")** — and the
+**SYSTEM, not the client, decides** to reset.
+
+### Why
+- **Reflect before re-plan.** The review is Reflect (P1) → Analyse (P2) → Strategic Review (P3) →
+  Plan (P4). A landing pre-gate makes a year-end client skip straight to "set new goals" before
+  reflecting on the year. Putting the reset at P4 keeps reflection first.
+- **Restores the year-end reflection we removed.** 73-05 deleted the bolted-on "Year in Review"
+  step. Moving the reset to P4 gives that reflection back via the review's own P1–P3 — WITHOUT
+  re-bolting annual steps onto the workshop (the goals wizard stays the only planning UI).
+- **4.1 is already the annual-plan touchpoint.** 4.1 is literally "Annual Plan & Confidence"
+  (`ConfidenceRealignmentStep`): each quarter the client reviews/realigns their annual plan. A
+  year-end reset is the extreme form of that realignment.
+- **The system decides, not the client.** Target users are "not numbers people" — they should not
+  choose whether to reset. Detection is data-driven off `year1_end_date`.
+
+### New entry + flow (LOCKED)
+- **Landing: no annual-reset awareness.** Remove the data-driven CTA + detection from
+  `/quarterly-review`. The client starts a normal quarterly review like any quarter — no choice.
+- **Parts 1–3:** normal reflect/analyse/strategise (this IS the year-end reflection).
+- **Part 3 → Part 4 boundary (entering 4.1):** the system checks `year1_end_date` vs the
+  planning-quarter start (TZ-safe — `toUtcDateOnly` + `detectAnnualResetState`, per #291):
+  - **needs-reset (year-end):** AUTOMATICALLY perform the rollover (snapshot → roll) and route into
+    the goals wizard (`/goals?reset=annual`), prepopulated with the rolled FY plan. No "reset?"
+    prompt — the client just proceeds into "let's set FY27." Mark the quarterly review **COMPLETE**
+    on handoff. **4.2 (Quarterly Plan) and 4.3 (Quarterly Rocks) are skipped** — the goals wizard
+    already sets the new annual plan + Q1 targets + carried-forward initiatives.
+  - **normal-review:** unchanged — proceed to the existing 4.1 and on through 4.2/4.3.
+- **Safety:** fire the auto-reset on *progressing into* Part 4 (a deliberate forward step), not on
+  merely viewing it — so a coach browsing a year-end client never trips an accidental rollover.
+  Every reset stays reversible via the `annual_reset_FY<yr>` snapshot.
+
+### Reused verbatim (only the entry point moves)
+Snapshot service, `executeAnnualReset` (D3 ladder, rolled dates, cleared quarterly_targets,
+carry-forward initiatives), the `/goals?reset=annual` hook, and the TZ-safe detection (#291). Only
+the ENTRY POINT moves (landing → P4 boundary) and becomes automatic.
+
+### Consequence to respect
+With no confirmation step, detection reliability is safety-critical — a wrong `year1_end_date` would
+auto-mutate. Mitigated by data-driven + TZ-correct detection (#291) and snapshot reversibility. This
+is why the change needs a **Precision dry-run** before going live.
+
+## BUILD PLAN — 2026-06-14 (entry relocation)
+
+- **B-1 — Surface `year1_end_date` in the workshop.** `useQuarterlyReview` already queries
+  `business_financial_goals`; expose `year1EndDate: Date | null | undefined` (UTC-parsed) from the
+  hook (mirror the landing's load). The workshop has `review.quarter/year` for the planning quarter.
+- **B-2 — Year-end gate at the 3.2 → 4.1 transition (`workshop/page.tsx` `handleNext`).** Compute
+  `planningQuarterStart = toUtcDateOnly(calculateQuarters(yearType, review.year).find(q1).startDate)`;
+  `detectAnnualResetState({ planningQuarterStart, year1EndDate })`. If `needs-reset`: mark the review
+  complete (reuse the hook's complete path) → `router.push(getPath('/goals?reset=annual'))`. Else:
+  advance to 4.1 normally. Fire once, on the forward transition only.
+- **B-3 — Remove landing detection/CTA (`quarterly-review/page.tsx`).** Delete `resetState` /
+  `planningQuarterStart` / `year1EndDate` / the "Set your {FY} Annual Plan" CTA + the
+  `setYear1EndDate` load. Landing = normal "Start Q{n} Review" + "Adjust annual plan" link only.
+- **B-4 — Verify coach context + RLS for the routed reset.** Ensure `/goals?reset=annual` operates
+  on the client (`activeBusiness` = the client in a coach-led review) and the writer (super_admin,
+  the assigned coach, or the client) satisfies the `business_financial_goals` / `plan_snapshots` RLS
+  (policies verified 2026-06-14). Pass an explicit client id on the route if `activeBusiness` is not
+  reliably the client.
+- **B-5 — Tests.** Unit: the year-end gate decision (AEST + UTC) at 3.2→4.1 → routes vs not.
+  Integration: year-end review → reset fires once + review marked complete; normal review → 4.1
+  unchanged + 4.2/4.3 reached. Keep all existing annual-reset service/integration/tz tests. Run the
+  full suite under `TZ=Australia/Sydney`.
+- **B-6 — Precision dry-run** (client-facing): a year-end client routes into the reset from P4 and
+  rolls; an already-planned client (Armstrong/Fit2Shine) proceeds through normal 4.1–4.3 untouched.
+  Then ship.
+
+---
 
 ## Why data-driven entry (the May/June problem)
 Verified in prod — `business_financial_goals.year1_end_date` per active client:
