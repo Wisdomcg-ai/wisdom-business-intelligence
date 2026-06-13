@@ -54,6 +54,11 @@ import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { DEFAULT_YEAR_START_MONTH, getCurrentFiscalYear, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils'
 import { suggestPlanPeriod } from '../utils/suggest-plan-period'
 import { derivePeriodInfo } from '../utils/derive-period-info'
+// Phase 73-04: annual reset wiring
+import { calculateQuarters } from '../utils/quarters'
+import { getPlanningQuarter } from '@/app/quarterly-review/types'
+import { detectAnnualResetState } from '@/app/quarterly-review/utils/annual-reset-entry'
+import { annualResetService } from '../services/annual-reset-service'
 
 interface KeyAction {
   id: string
@@ -64,7 +69,13 @@ interface KeyAction {
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
-export function useStrategicPlanning(overrideBusinessId?: string) {
+export function useStrategicPlanning(
+  overrideBusinessId?: string,
+  { resetMode = false }: { resetMode?: boolean } = {},
+) {
+  // Re-roll guard: fires at most once per mount even under StrictMode double-invoke.
+  const resetRanRef = useRef(false)
+
   // Loading & Error States
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -591,6 +602,8 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
         // Local copy of fiscal year start for extended period detection
         // (useState setters are async so we track it synchronously here)
         let localFiscalYearStart: number = DEFAULT_YEAR_START_MONTH
+        // Local copy of businesses.id for annual-reset (mirrors localFiscalYearStart pattern)
+        let localBusinessesId: string = ''
 
         if (overrideBusinessId) {
           // Coach view - overrideBusinessId is businesses.id
@@ -684,6 +697,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           console.log(`[Strategic Planning] 📥 Coach view - profileId: ${bizId}, owner: ${ownerUser}`)
 
           // Track the original businesses.id for FK-constrained tables
+          localBusinessesId = overrideBusinessId
           setBusinessesId(overrideBusinessId)
         } else {
           // Normal user view — route through the shared resolver. Only reachable
@@ -723,6 +737,7 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           console.log(`[Strategic Planning] 🔍 Using bizId: ${bizId}, ownerUser: ${ownerUser}`)
 
           // Track the businesses.id for FK-constrained tables
+          localBusinessesId = resolved.businessId
           setBusinessesId(resolved.businessId)
 
           // Set industry from profile, fallback to default
@@ -742,7 +757,8 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
         console.log(`[Strategic Planning] 📥 Loading data for business: ${bizId}`)
 
         // Load financial data, core metrics, and quarterly targets from Supabase
-        const {
+        // (let — reassigned if annual reset runs and we re-load the rolled row)
+        let {
           financialData: loadedFinancialData,
           coreMetrics: loadedCoreMetrics,
           yearType: loadedYearType,
@@ -750,6 +766,45 @@ export function useStrategicPlanning(overrideBusinessId?: string) {
           extendedPeriod: loadedExtendedPeriod,
           planPeriod: loadedPlanPeriod
         } = await FinancialService.loadFinancialGoals(bizId)
+
+        // ── Phase 73-04: Annual Reset Gate ────────────────────────────────────
+        // Fires at most once per mount (resetRanRef guard) and only when:
+        //   1. ?reset=annual param is present (resetMode = true)
+        //   2. The client's data genuinely has a finished year (detectAnnualResetState → 'needs-reset')
+        // Clients NOT in a reset state are completely unaffected.
+        if (resetMode && !resetRanRef.current) {
+          resetRanRef.current = true
+          const year1EndDateForCheck = loadedPlanPeriod?.year1EndDate
+            ? new Date(loadedPlanPeriod.year1EndDate as string)
+            : null
+          const pq = getPlanningQuarter(loadedYearType)
+          const planningQuarterStart = calculateQuarters(loadedYearType, pq.year)
+            .find(q => q.id === `q${pq.quarter}`)?.startDate ?? null
+          const resetState = planningQuarterStart
+            ? detectAnnualResetState({ planningQuarterStart, year1EndDate: year1EndDateForCheck })
+            : 'normal-review'
+          if (resetState === 'needs-reset') {
+            console.log('[AnnualReset] needs-reset detected — executing rollover')
+            const resetResult = await annualResetService.executeAnnualReset({
+              businessId: bizId,
+              userId: user.id,
+              yearStartMonth: localFiscalYearStart,
+            })
+            if (resetResult.success) {
+              console.log(`[AnnualReset] Rollover complete — snapshot ${resetResult.snapshotId}, FY${resetResult.newFY}`)
+              // Re-load the now-rolled row so the rest of the effect applies rolled values
+              ;({ financialData: loadedFinancialData, coreMetrics: loadedCoreMetrics,
+                  yearType: loadedYearType, quarterlyTargets: loadedQuarterlyTargets,
+                  extendedPeriod: loadedExtendedPeriod, planPeriod: loadedPlanPeriod
+                } = await FinancialService.loadFinancialGoals(bizId))
+            } else {
+              console.error('[AnnualReset] executeAnnualReset failed:', resetResult.error)
+            }
+          } else {
+            console.log(`[AnnualReset] resetMode=true but state='${resetState}' — no rollover needed`)
+          }
+        }
+        // ── End Annual Reset Gate ─────────────────────────────────────────────
 
         // Load KPIs from Supabase
         // business_kpis.business_id references businesses(id), so try that first

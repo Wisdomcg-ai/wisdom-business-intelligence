@@ -25,14 +25,17 @@ export const WORKSHOP_STEPS: WorkshopStep[] = [
   'complete'
 ];
 
-// Annual review steps (includes annual planning between Part 3 and Part 4)
+// Annual review steps. The bolted-on annual planning steps (A4.1–A4.4) were
+// retired in Phase 73 — the goals-wizard reset (/goals?reset=annual) is now the
+// single annual planning path. This sequence is intentionally identical to
+// WORKSHOP_STEPS; the A4.* entries remain in the WorkshopStep union + STEP_LABELS
+// (harmless) but never sequence, so they can no longer be routed into.
 export const ANNUAL_WORKSHOP_STEPS: WorkshopStep[] = [
   'prework',
   '1.1', '1.2', '1.3', '1.4',           // Part 1: Reflect
   '2.1', '2.2', '2.3', '2.4', '2.5',    // Part 2: Analyse
   '3.1', '3.2',                           // Part 3: Strategic Review
-  'A4.1', 'A4.2', 'A4.3', 'A4.4',       // Part 4: Annual Planning (annual-only)
-  '4.1', '4.2', '4.3',                   // Part 5: Next Quarter Sprint
+  '4.1', '4.2', '4.3',                   // Part 4: Next Quarter Sprint
   'complete'
 ];
 

@@ -9,7 +9,14 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { getPreviousQuarterOf, getNextQuarterOf, getPlanningQuarter } from '../types';
+import {
+  getPreviousQuarterOf,
+  getNextQuarterOf,
+  getPlanningQuarter,
+  getWorkshopSteps,
+  WORKSHOP_STEPS,
+  ANNUAL_WORKSHOP_STEPS,
+} from '../types';
 
 describe('getPreviousQuarterOf', () => {
   it('rolls Q1 back to Q4 of the prior year (the 1 July boundary)', () => {
@@ -67,5 +74,27 @@ describe('getPlanningQuarter (FY) across the review window', () => {
 
   it('early August 2026 (mid Q1 FY27) → plan Q1 FY27', () => {
     expectPlanningQuarter('2026-08-05T03:00:00', { quarter: 1, year: 2027 });
+  });
+});
+
+describe('workshop step sequence (Phase 73 — bolted-on annual A4.* retired)', () => {
+  it('quarterly sequence is unchanged (byte-for-byte WORKSHOP_STEPS)', () => {
+    expect(getWorkshopSteps('quarterly')).toEqual(WORKSHOP_STEPS);
+  });
+
+  it('default review type is quarterly', () => {
+    expect(getWorkshopSteps()).toEqual(WORKSHOP_STEPS);
+  });
+
+  it('annual sequence no longer routes into any A4.* step', () => {
+    const annual = getWorkshopSteps('annual');
+    for (const step of ['A4.1', 'A4.2', 'A4.3', 'A4.4'] as const) {
+      expect(annual).not.toContain(step);
+    }
+  });
+
+  it('annual sequence now equals the quarterly sequence (single annual path = goals wizard)', () => {
+    expect(getWorkshopSteps('annual')).toEqual(WORKSHOP_STEPS);
+    expect(ANNUAL_WORKSHOP_STEPS.length).toBe(WORKSHOP_STEPS.length);
   });
 });

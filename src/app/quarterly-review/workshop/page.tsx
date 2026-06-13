@@ -26,11 +26,10 @@ import { QuarterlyPlanStep } from '../components/steps/QuarterlyPlanStep';
 import { QuarterlyRocksStep } from '../components/steps/QuarterlyRocksStep';
 import { WorkshopCompleteStep } from '../components/steps/WorkshopCompleteStep';
 
-// Annual-only step components
-import { YearInReviewStep } from '../components/steps/YearInReviewStep';
-import { VisionStrategyStep } from '../components/steps/VisionStrategyStep';
-import { NextYearTargetsStep } from '../components/steps/NextYearTargetsStep';
-import { AnnualInitiativePlanStep } from '../components/steps/AnnualInitiativePlanStep';
+// Phase 73: the annual-only step components (YearInReviewStep, VisionStrategyStep,
+// NextYearTargetsStep, AnnualInitiativePlanStep) are no longer routed into — the
+// goals-wizard reset replaced this path. The component files remain on disk for
+// historical reviews; they are simply not imported/rendered here.
 
 import { useCoachView } from '@/hooks/useCoachView';
 import { ArrowLeft, Menu, X, PanelLeftClose, PanelLeftOpen, Loader2 } from 'lucide-react';
@@ -249,36 +248,6 @@ function ReviewContent() {
           <SwotUpdateStep
             review={review}
             onUpdate={updateSwotAnalysisId}
-          />
-        );
-
-      // Annual-only steps (Part 4: Annual Planning)
-      case 'A4.1':
-        return (
-          <YearInReviewStep
-            review={review}
-            onUpdate={updateYearInReview}
-          />
-        );
-      case 'A4.2':
-        return (
-          <VisionStrategyStep
-            review={review}
-            onUpdate={updateVisionStrategy}
-          />
-        );
-      case 'A4.3':
-        return (
-          <NextYearTargetsStep
-            review={review}
-            onUpdate={updateNextYearTargets}
-          />
-        );
-      case 'A4.4':
-        return (
-          <AnnualInitiativePlanStep
-            review={review}
-            onUpdate={updateAnnualInitiativePlan}
           />
         );
 
