@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
-import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileId';
+import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileIds';
 
 interface ForecastVersion {
   id: string;

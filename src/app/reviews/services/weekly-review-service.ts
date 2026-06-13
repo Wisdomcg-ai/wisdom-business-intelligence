@@ -1,7 +1,7 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileId'
+import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileIds'
 
 export interface LastWeekGoal {
   goal: string

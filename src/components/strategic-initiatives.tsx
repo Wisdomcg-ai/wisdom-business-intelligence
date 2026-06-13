@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileId';
+import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileIds';
 import { surfaceSupabaseError } from '@/lib/supabase/surfaceError';
 import { Target, Plus, User, AlertCircle, Lightbulb, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { TrendingUp, Package, Heart, Settings, Users, DollarSign, Brain } from 'lucide-react';

@@ -2,7 +2,7 @@
 // Handles all database operations for quarterly reviews
 
 import { createClient } from '@/lib/supabase/client';
-import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileId';
+import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileIds';
 import { surfaceSupabaseError } from '@/lib/supabase/surfaceError';
 import type {
   QuarterlyReview,

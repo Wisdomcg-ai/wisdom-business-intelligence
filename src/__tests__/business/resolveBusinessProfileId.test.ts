@@ -4,7 +4,7 @@
  * business_profiles.id, or null. Must NEVER return a businesses.id.
  */
 import { describe, it, expect } from 'vitest';
-import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileId';
+import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileIds';
 
 const PROFILE_ID = 'profile-aaa';
 const BUSINESSES_ID = 'businesses-bbb';
