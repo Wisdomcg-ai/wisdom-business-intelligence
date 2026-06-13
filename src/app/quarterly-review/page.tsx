@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { quarterlyReviewService } from './services/quarterly-review-service';
 import { getPlanningQuarter, getNextQuarterOf, getPreviousQuarterOf, getQuarterLabel, type YearType, type QuarterNumber } from './types';
-import { calculateQuarters } from '@/app/goals/utils/quarters';
+import { calculateQuarters, toUtcDateOnly } from '@/app/goals/utils/quarters';
 import { detectAnnualResetState, type AnnualResetState } from './utils/annual-reset-entry';
 import {
   Calendar,
@@ -47,7 +47,10 @@ export default function QuarterlyReviewPage() {
   // calculateQuarters returns QuarterInfo[] each with a startDate.
   const planningQuarterStart: Date | null = useMemo(() => {
     const quarters = calculateQuarters(yearType, year);
-    return quarters.find(q => q.id === `q${quarter}`)?.startDate ?? null;
+    const start = quarters.find(q => q.id === `q${quarter}`)?.startDate ?? null;
+    // Normalise the LOCAL-built quarter start to UTC-midnight so the date-only
+    // comparison in detectAnnualResetState is timezone-safe (AEST bug fix).
+    return start ? toUtcDateOnly(start) : null;
   }, [yearType, year, quarter]);
 
   // Detect annual-reset state — defaults to 'normal-review' while loading

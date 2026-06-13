@@ -19,6 +19,24 @@ export interface QuarterInfo {
 }
 
 /**
+ * Convert a Date built from LOCAL components (as the QuarterInfo dates are, via
+ * `new Date(year, month, day)`) into a UTC-midnight Date of the SAME calendar day.
+ *
+ * Why this exists (Phase 73 hotfix): `detectAnnualResetState` compares dates
+ * date-only using UTC getters, and the DB `year1_end_date` is parsed as UTC
+ * midnight (`new Date('YYYY-MM-DD')`). A quarter `startDate` of `new Date(2026, 6, 1)`
+ * is LOCAL midnight July 1 — which on a positive-offset machine (e.g. AEST = UTC+10)
+ * is June 30 14:00 UTC, so UTC getters read it back as June 30. That collapsed the
+ * FY-boundary `planningQuarterStart (Jul 1) > year1_end (Jun 30)` check to equality
+ * → `normal-review` → the annual reset never fired for AU FY clients. Normalising the
+ * quarter start to UTC-midnight-of-its-local-calendar-day puts both sides on the same
+ * basis, correct in every timezone.
+ */
+export function toUtcDateOnly(d: Date): Date {
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+}
+
+/**
  * Calculate quarter boundaries based on year type
  * FY = Fiscal Year ending June 30
  * CY = Calendar Year ending December 31

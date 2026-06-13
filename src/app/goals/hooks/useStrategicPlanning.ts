@@ -55,7 +55,7 @@ import { DEFAULT_YEAR_START_MONTH, getCurrentFiscalYear, startMonthFromYearType 
 import { suggestPlanPeriod } from '../utils/suggest-plan-period'
 import { derivePeriodInfo } from '../utils/derive-period-info'
 // Phase 73-04: annual reset wiring
-import { calculateQuarters } from '../utils/quarters'
+import { calculateQuarters, toUtcDateOnly } from '../utils/quarters'
 import { getPlanningQuarter } from '@/app/quarterly-review/types'
 import { detectAnnualResetState } from '@/app/quarterly-review/utils/annual-reset-entry'
 import { annualResetService } from '../services/annual-reset-service'
@@ -778,8 +778,13 @@ export function useStrategicPlanning(
             ? new Date(loadedPlanPeriod.year1EndDate as string)
             : null
           const pq = getPlanningQuarter(loadedYearType)
-          const planningQuarterStart = calculateQuarters(loadedYearType, pq.year)
+          const localQuarterStart = calculateQuarters(loadedYearType, pq.year)
             .find(q => q.id === `q${pq.quarter}`)?.startDate ?? null
+          // Normalise the LOCAL-built quarter start to UTC-midnight so the date-only
+          // comparison in detectAnnualResetState is timezone-safe. Without this, on a
+          // positive-offset machine (AEST) local July 1 reads back as June 30 in UTC
+          // getters → FY-boundary check collapses to normal-review → reset never fires.
+          const planningQuarterStart = localQuarterStart ? toUtcDateOnly(localQuarterStart) : null
           const resetState = planningQuarterStart
             ? detectAnnualResetState({ planningQuarterStart, year1EndDate: year1EndDateForCheck })
             : 'normal-review'
