@@ -222,8 +222,13 @@ export class AnnualResetSnapshotService {
         return { success: false, error: 'Snapshot plan_data.goals is missing — cannot restore' }
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { id, created_at, updated_at, ...goalsPayload } = planData.goals as Record<string, unknown>
+      // Strip PK + immutable audit columns; everything else is restored verbatim.
+      const sourceGoals = planData.goals as Record<string, unknown>
+      const goalsPayload: Record<string, unknown> = {}
+      for (const [key, value] of Object.entries(sourceGoals)) {
+        if (key === 'id' || key === 'created_at' || key === 'updated_at') continue
+        goalsPayload[key] = value
+      }
       const restoredPayload = {
         ...goalsPayload,
         updated_at: new Date().toISOString(),
