@@ -59,15 +59,18 @@ async function getHandler(
       .eq('business_id', businessId)
       .gte('created_at', twelveMonthsAgo.toISOString())
 
-    // Get financial goals over time
+    // Resolve business_profiles.id from businesses.id once for the profile-keyed
+    // reads below (business_financial_goals and financial_forecasts).
+    const ids = await resolveBusinessProfileIds(supabase, businessId)
+
+    // Get financial goals over time (business_financial_goals is profile-keyed)
     const { data: financialGoals } = await supabase
       .from('business_financial_goals')
       .select('*')
-      .eq('business_id', businessId)
+      .in('business_id', ids.all)
       .order('created_at', { ascending: true })
 
     // Get forecast data if available (resolve business_profiles.id from businesses.id)
-    const ids = await resolveBusinessProfileIds(supabase, businessId)
     const { data: forecasts } = await supabase
       .from('financial_forecasts')
       .select('id, created_at, version_name, forecast_data')
