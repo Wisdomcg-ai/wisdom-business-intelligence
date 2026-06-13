@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { quarterlyReviewService } from './services/quarterly-review-service';
-import { getPlanningQuarter, getNextQuarterOf, getPreviousQuarterOf, getQuarterLabel, isLastQuarterOfYear, type YearType, type QuarterNumber } from './types';
+import { getPlanningQuarter, getNextQuarterOf, getPreviousQuarterOf, getQuarterLabel, type YearType, type QuarterNumber } from './types';
 import { calculateQuarters } from '@/app/goals/utils/quarters';
 import { detectAnnualResetState, type AnnualResetState } from './utils/annual-reset-entry';
 import {
@@ -42,7 +42,6 @@ export default function QuarterlyReviewPage() {
   // year1_end_date from business_financial_goals — drives annual-reset detection.
   // Starts as undefined (loading) so no reset prompt flashes before data resolves.
   const [year1EndDate, setYear1EndDate] = useState<Date | null | undefined>(undefined);
-  const isQ4 = isLastQuarterOfYear(quarter);
 
   // Compute planning quarter start date from (yearType, year, quarter).
   // calculateQuarters returns QuarterInfo[] each with a startDate.
@@ -338,30 +337,9 @@ export default function QuarterlyReviewPage() {
                       <Target className="w-5 h-5" />
                       Adjust annual plan
                     </a>
-
-                    {/* Legacy Q4 annual review button — only shown when still in normal-review
-                        and it is Q4, so as not to compete with the needs-reset primary CTA.
-                        Plan 05 removes this once the reset path is end-to-end verified. */}
-                    {isQ4 && (
-                      <button
-                        onClick={() => startNewReview('annual')}
-                        className="inline-flex items-center gap-2 bg-gradient-to-r from-brand-orange to-amber-500 text-white px-6 py-3 rounded-xl font-semibold hover:from-brand-orange-600 hover:to-amber-600 transition-all shadow-sm"
-                      >
-                        <Star className="w-5 h-5" />
-                        Start Annual Review
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    )}
                   </>
                 )}
               </div>
-            )}
-
-            {/* Annual review explanation (only in normal-review Q4 — not when needs-reset) */}
-            {isQ4 && !currentQuarterReview && resetState === 'normal-review' && (
-              <p className="text-xs text-gray-500 mt-3 max-w-md">
-                The Annual Review includes all quarterly steps plus next-year planning: Year in Review, Vision &amp; Strategy Check, Next Year Targets, and Annual Initiative Plan.
-              </p>
             )}
           </div>
 
