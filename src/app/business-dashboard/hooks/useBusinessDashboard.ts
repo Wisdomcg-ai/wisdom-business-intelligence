@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/contexts/BusinessContext'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
+import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileIds'
 import WeeklyMetricsService, { WeeklyMetricsSnapshot } from '../services/weekly-metrics-service'
 import DashboardPreferencesService, { DashboardPreferences } from '../services/dashboard-preferences-service'
 import { FinancialService } from '../../goals/services/financial-service'
@@ -124,7 +125,12 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
       let bizId: string | null = null
 
       if (overrideBusinessId) {
-        bizId = overrideBusinessId
+        // overrideBusinessId is a businesses.id (the coach `/coach/clients/[id]` route param).
+        // Translate it to the canonical business_profiles.id — every downstream query here
+        // (business_kpis, business_financial_goals, weekly_metrics_snapshots) is profile-keyed.
+        // Do NOT fall back to the raw businesses.id: that re-introduces the wrong namespace and
+        // misses every row. null → the empty-state guard below (Phase 74 R-2).
+        bizId = await resolveBusinessProfileId(supabase, overrideBusinessId)
       } else if (cachedProfileId) {
         bizId = cachedProfileId
       } else {

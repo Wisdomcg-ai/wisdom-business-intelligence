@@ -1,23 +1,29 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: — Codebase Hardening
-status: Milestone complete
-last_updated: "2026-05-31T01:56:15.903Z"
-last_activity: 2026-05-31
+milestone: v1.0
+milestone_name: milestone
+status: Ready to execute
+last_updated: "2026-06-12T20:15:02.144Z"
+last_activity: 2026-06-12
 progress:
-  total_phases: 60
-  completed_phases: 28
-  total_plans: 170
-  completed_plans: 158
+  total_phases: 1
+  completed_phases: 0
+  total_plans: 6
+  completed_plans: 3
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 72
-Plan: Not started
+Phase: 73 (annual-plan-reset) — **PAUSED 2026-06-13** pending dual-ID remediation milestone.
+W1-W3 built + committed on branch `plan/phase-73-annual-reset` (73-01 snapshot, 73-03 entry,
+73-02 rollover, 73-04 Task 1 /goals wiring), stopped at the 73-04 human-verify checkpoint. The
+Precision dry-run caught + fixed a dual-ID bug (commit d3c66cdb) and exposed a SYSTEM-WIDE
+dual-ID problem (41 active + 38 latent — see `.planning/codebase/DUAL-ID-AUDIT.md`). Decision:
+pause 73, run the full dual-ID remediation milestone first, then resume 73 (W4 retire annual
+steps + W5 integration tests) on the solid foundation.
+Plan: 4 of 6 (paused at checkpoint)
 
 Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete
@@ -28,7 +34,7 @@ Phase: 49 (Database Integrity Hygiene) — **COMPLETE** (7/7 plans shipped 2026-
 Phase: 53 (Xero Connection Durability) — **COMPLETE** (5/5 plans shipped 2026-05-06). 53-01 server-side disconnect with dual-ID purge (PR #107). 53-03 token-rotation race holes closed + tightened deactivation policy (commit b5a233d, merged). 53-02 centralized Xero refresh through token-manager + deleted dead refresh-tokens route (PR #109). 53-04 proactive refresh cron at `0 */6 * * *` UTC (PR #110). **53-05 Sentry capture + coach dashboard health pill (PR opened 2026-05-06).** Durability story is whole — JDS root cause permanently closed.
 Phase: 54 (Xero Employee Import Completion) — **PARTIAL** (1/2 plans shipped 2026-05-06). **54-01 PayRun-derived hours + salary fallback (PR opening 2026-05-06).** ENTEREARNINGSRATE employees (timesheet-driven payroll, JDS default) now return populated hours_per_week + annual_salary derived from last 4 POSTED PayRuns; PayTemplate values WIN via ??= precedence; new optional `derived_from` provenance field on response. 54-02 (soft auto-fill on empty Step 4 + new-employees banner) is next.
 Phase: 61 (Selective List Sharing) — **COMPLETE IN PRODUCTION** (6/6 plans shipped 2026-05-14, merged via PRs #193 + #194, plus #195/196 polish). 61-VERIFICATION.md verdict PASS; 147/147 vitest pass. Migrations applied to production: `shared_with_all` + `shared_with uuid[]` on `daily_tasks` and `ideas`, asymmetric RLS, `mark_task_complete` + `mark_idea_status` RPCs, ShareDialog UI, recipient flows, coach dashboard owned-vs-shared breakdown. **Only outstanding item:** the 9-cell SQL RLS test matrix in 61-02 was deferred for a Docker-running local Supabase stack. Since Phase 61 has been live in production for 12 days with zero sharing-related Sentry events, the matrix is de-facto validated. Re-running it remains a "belt and suspenders" exercise; not blocking.
-Last activity: 2026-05-31
+Last activity: 2026-06-12
 
 ## Active operational notes
 
@@ -93,6 +99,8 @@ Goal: take the codebase from 55/100 to ~75/100 (Series-A defensible) over 6 phas
 - Phase 70 added (2026-05-30): Production data backfill + migration debt cleanup for month-end reporting clients — Workstream A (cross-client D1+D2+D3: dedupe duplicate active forecasts from Phase 67 enforcement gap, backfill empty forecast_payroll_summary across all clients, backfill NULL subscription_budgets.renewal_month from Xero billing cadence). Workstream B (per-client cleanup: Envisage Paypal dedupe + account_codes; JDS profile_completed + FY26 forecast resolution; IICT full profile fill-out + consolidated mode + initial subs budgets + baseline snapshots). Workstream C (re-run phase-70-data-audit.mjs to verify readiness flips). Source: Phase 70 month-end audit. Zero schema changes, additive backfills only. Gates code-fixes phase + Calxa migration. **SHIPPED 2026-05-31** (9/9 plans resolved: 7 shipped + 2 deferred-by-design to coach sessions, PR #232).
 - Phase 71 added (2026-05-31): Month-end reporting code fixes — B1 wages employee name matching (fuzzy match) + B2 vendor-key normalization consolidation (one shared util) + B3 Proceed-as-Draft persistence (save snapshot immediately) + S1 commentary scope expansion (revenue shortfalls + BS movements + large favourable) + S2 subscription budget-only vendors visible with $0 actuals + S3 wages per-payrun expand UI + S4 PDF variance polarity refactor (raw data, not string parsing) + S5 BS equation check + S6 multi-tenant non-AUD redirect toast + D4 snapshot serializer (numeric→named section keys) + data remap. Source: Phase 70 month-end audit (`docs/phase-70-month-end-audit.md`) P1 production bugs + P2 Calxa-parity gaps + D4 deferred from Phase 70 by design. Gates Calxa migration.
 - Phase 72 added (2026-05-31): Forecast wizard Step 3 extended-period bug — Y1 month range honors plan_start_date through full Y1 duration. Original symptom: Armstrong Step 3 only allows revenue/COGS forecast for 3 months (FY26 remainder) instead of full extended Y1 duration when is_extended_period=true. Related to Phase 14 extended-period plans + Phase 68 deriveCurrentRemainderColumn work (Phase 68 B15). Source: Matt callout 2026-05-30 mid-Phase-68 execution; draft analysis at `docs/forecast-wizard-extended-period-bug.md` (renamed from `phase-69-...` due to numbering collision).
+- Phase 73 added (2026-06-12): Annual plan reset (full-year reset) — when a client's plan year has ended, snapshot the ending year's full plan then route them into the EXISTING Goals & Targets wizard (/goals) with the 3-year ladder rolled forward (new Year 1 = new FY, prepopulated from prior Year 2) and plan dates rolled. Entry is DATA-DRIVEN off `business_financial_goals.year1_end_date` vs the quarter being planned, so clients already on the new FY (Armstrong, Fit2Shine = FY27) are never prompted/affected. Quarterly targets reuse the wizard's existing pattern; incomplete initiatives carry forward as candidates. Retires the quarterly-review module's bolted-on annual steps (NextYearTargets/AnnualInitiativePlan/YearInReview/VisionStrategy) + Q4-gated button. **CRITICAL CONSTRAINT: zero impact to current clients' data or usage — snapshot before any overwrite, fully reversible, no behavior change for clients with a current valid plan.** Locked design + decisions (D1 goals-wizard-only, D2 route, D3 prepopulate-from-Y2) in `.planning/codebase/ANNUAL-RESET-DESIGN.md`. Source: 2026-06-12 quarterly-review flow review (Envisage annual-plan prior-period symptom + full-year-reset requirement).
+- Phase 74 added (2026-06-13): Dual-ID remediation foundation + verified fixes. Audit found 41 'active' dual-ID bugs; independent verification vs prod data corrected to **23 confirmed / ~8 root causes** (12 nuanced, 10 latent, 13 false-positive; the 'data loss since 2026-04-22' date was fabricated — data intact; FKs fail-closed so NO corruption). Scope: R-1 shared resolveBusinessProfileId resolver + branded id types + stop-swallowing-FK-errors discipline; R-2 the 23 verified fixes by root cause (coach KPI dashboard one-fix-cures-5, QR-completion kpi_actuals/quarterly_snapshots writes, coach weekly-review reads, analytics chart, ForecastSelector, demo seeder); R-3 the annual-plan/strategic-initiatives COLUMN-NAME bugs (not dual-ID). Canonical key = business_profiles.id (1:1 with businesses). Durable tail (R-6 cleanse -> R-5 finish FKs + single-branch RLS -> R-4 remove fallbacks) = follow-up Phase 75. Docs: .planning/codebase/{DUAL-ID-AUDIT,DUAL-ID-VERIFIED,DUAL-ID-REMEDIATION-ROADMAP}.md. Source: Phase 73 Precision dry-run.
 
 ### Active production tenants
 

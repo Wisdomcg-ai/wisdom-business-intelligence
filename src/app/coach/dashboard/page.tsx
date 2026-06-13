@@ -126,6 +126,15 @@ export default function CoachDashboardPage() {
       const businessIds = businessesWithProfiles.map(b => b.id)
       const ownerIds = businessesWithProfiles.map(b => b.owner_id).filter(Boolean)
 
+      // weekly_reviews is keyed by business_profiles.id (not businesses.id).
+      // Query by the profile ids we already fetched, then re-key results back
+      // to businesses.id so downstream consumers (which use businesses.id) work
+      // unchanged. session_actions, in contrast, IS keyed by businesses.id.
+      const profileIdToBusinessId = new Map<string, string>(
+        businessProfiles.map(p => [p.id, p.business_id])
+      )
+      const weeklyReviewProfileIds = businessProfiles.map(p => p.id)
+
       // Fetch all metrics data in parallel - guard all queries with empty array checks
       const [
         weeklyReviewsResult,
@@ -144,12 +153,13 @@ export default function CoachDashboardPage() {
         // renders with status='none' for affected rows.
         xeroHealthMap
       ] = await Promise.all([
-        // Latest completed weekly review per business (actual client completion)
-        businessIds.length > 0
+        // Latest completed weekly review per business (actual client completion).
+        // Keyed by business_profiles.id — query by profile ids, re-key below.
+        weeklyReviewProfileIds.length > 0
           ? supabase
               .from('weekly_reviews')
               .select('business_id, completed_at')
-              .in('business_id', businessIds)
+              .in('business_id', weeklyReviewProfileIds)
               .eq('is_completed', true)
               .order('completed_at', { ascending: false })
           : Promise.resolve({ data: [], error: null }),
@@ -356,9 +366,17 @@ export default function CoachDashboardPage() {
         })()
       ])
 
+      // Re-key weekly_reviews rows from business_profiles.id back to businesses.id
+      // so the rest of this function (which keys everything by businesses.id) is
+      // unchanged. Rows whose profile id isn't in our map are dropped.
+      const weeklyReviewsRekeyed = (weeklyReviewsResult.data || []).flatMap(wr => {
+        const businessId = profileIdToBusinessId.get(wr.business_id)
+        return businessId ? [{ ...wr, business_id: businessId }] : []
+      })
+
       // Build lookup maps for efficient access
       const weeklyReviewsByBusiness = new Map<string, string>()
-      weeklyReviewsResult.data?.forEach(wr => {
+      weeklyReviewsRekeyed.forEach(wr => {
         if (!weeklyReviewsByBusiness.has(wr.business_id)) {
           weeklyReviewsByBusiness.set(wr.business_id, wr.completed_at)
         }
@@ -495,8 +513,8 @@ export default function CoachDashboardPage() {
         }
       })
 
-      // Build activity feed from recent weekly reviews
-      const recentReviews = weeklyReviewsResult.data?.slice(0, 10) || []
+      // Build activity feed from recent weekly reviews (re-keyed to businesses.id)
+      const recentReviews = weeklyReviewsRekeyed.slice(0, 10)
       const processedActivities: ActivityItem[] = recentReviews.map((r, idx) => {
         const business = businessesWithProfiles.find(b => b.id === r.business_id)
         return {

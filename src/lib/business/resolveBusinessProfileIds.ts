@@ -32,8 +32,21 @@
  *
  * The branded `{ businessId, profileId }` shape gives callers TypeScript
  * protection against the `businesses.id` ⇄ `business_profiles.id` ⇄ `user.id`
- * confusion (the #1 incident class). This is the only resolver — all code
- * imports THIS function.
+ * confusion (the #1 incident class).
+ *
+ * This module exports the project's TWO sanctioned profile-id surfaces — keep
+ * them HERE together; do NOT split them back into separate files (a duplicate
+ * `resolveBusinessProfileId.ts` was created in Phase 74 and folded back in here,
+ * because two resolver files are exactly the fragmentation that lets the two
+ * id-spaces drift):
+ *   - `resolveBusinessProfileIds` (plural) — READ surface. Returns BOTH ids plus
+ *     the load-bearing `all` array, WITH the input-echo fallback so money reads
+ *     degrade to "no rows" instead of throwing. Used by the ~40 Xero / forecast /
+ *     monthly-report read sites. Do not stricten it.
+ *   - `resolveBusinessProfileId` (singular) — WRITE / strict surface. Returns just
+ *     the canonical `business_profiles.id` or `null` (NO echo), and additionally
+ *     probes `user_id`. Use it where a null result must ABORT the operation rather
+ *     than persist a wrong-id-class value (the Phase 74 dual-ID write fixes).
  */
 import {
   type BusinessId,
@@ -41,6 +54,7 @@ import {
   toBusinessId,
   toBusinessProfileId,
 } from '@/lib/types/ids'
+import { surfaceSupabaseError } from '@/lib/supabase/surfaceError'
 
 export interface ResolvedBusinessProfileIds {
   /** The `businesses.id` (used by business_users, business_kpis, etc.). */
@@ -103,4 +117,54 @@ export async function resolveBusinessProfileIds(
     profileId: toBusinessProfileId(businessId),
     all: [businessId],
   }
+}
+
+/**
+ * Strict single-id resolver — the WRITE surface (see module header).
+ *
+ * Resolves any of the three id-spaces (`business_profiles.id` / `businesses.id` /
+ * auth `user_id`) to the canonical `business_profiles.id`, or `null` when none
+ * matches. Unlike the plural reader it NEVER echoes the input back: an
+ * unresolvable id yields `null` so callers null-guard and ABORT instead of
+ * persisting a wrong-id-class value (the dual-ID write-bug class). It also probes
+ * `user_id`, which the read path does not need.
+ *
+ * Probe order: `id` → `business_id` → `user_id`. PostgREST errors are surfaced
+ * (Sentry + console) rather than swallowed — every confirmed Phase 74 write bug
+ * was hidden by a discarded error.
+ */
+export async function resolveBusinessProfileId(
+  supabase: { from: (table: string) => any },
+  input: string | null | undefined,
+): Promise<BusinessProfileId | null> {
+  if (!input) return null
+
+  // 1. Already a business_profiles.id?
+  const byId = await supabase
+    .from('business_profiles')
+    .select('id')
+    .eq('id', input)
+    .maybeSingle()
+  if (byId.error) surfaceSupabaseError('resolveBusinessProfileId.byId', byId.error)
+  if (byId.data?.id) return toBusinessProfileId(byId.data.id)
+
+  // 2. A businesses.id? (business_profiles.business_id is the FK to businesses.id)
+  const byBusiness = await supabase
+    .from('business_profiles')
+    .select('id')
+    .eq('business_id', input)
+    .maybeSingle()
+  if (byBusiness.error) surfaceSupabaseError('resolveBusinessProfileId.byBusiness', byBusiness.error)
+  if (byBusiness.data?.id) return toBusinessProfileId(byBusiness.data.id)
+
+  // 3. An auth user_id (the business owner)?
+  const byUser = await supabase
+    .from('business_profiles')
+    .select('id')
+    .eq('user_id', input)
+    .maybeSingle()
+  if (byUser.error) surfaceSupabaseError('resolveBusinessProfileId.byUser', byUser.error)
+  if (byUser.data?.id) return toBusinessProfileId(byUser.data.id)
+
+  return null
 }

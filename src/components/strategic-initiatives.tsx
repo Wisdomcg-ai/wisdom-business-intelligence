@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileIds';
+import { surfaceSupabaseError } from '@/lib/supabase/surfaceError';
 import { Target, Plus, User, AlertCircle, Lightbulb, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { TrendingUp, Package, Heart, Settings, Users, DollarSign, Brain } from 'lucide-react';
 import { Building, CheckSquare, Square, Check, Zap, TrendingDown } from 'lucide-react';
@@ -549,14 +551,23 @@ export default function StrategicInitiatives() {
       // Use activeBusiness ownerId if viewing as coach, otherwise current user
       const targetUserId = activeBusiness?.ownerId || user.id;
 
+      // strategic_initiatives.business_id is NOT NULL and FK→business_profiles(id).
+      // Resolve the canonical profile id from the active businesses.id.
+      const businessProfileId = await resolveBusinessProfileId(supabase, activeBusiness?.id ?? targetUserId);
+      if (!businessProfileId) {
+        setError('Could not resolve your business profile. Please refresh and try again.');
+        return;
+      }
+
       const initiative = {
+        business_id: businessProfileId,
         user_id: targetUserId,
         title: newInitiative.trim(),
         category: selectedCategory,
         priority: 'medium',
-        source_type: 'user',
-        selected_for_action: false,
-        selected_for_annual_plan: false
+        step_type: 'strategic_ideas',
+        source: 'manual',
+        selected: false,
       };
 
       const { data, error: insertError } = await supabase
@@ -566,7 +577,7 @@ export default function StrategicInitiatives() {
         .single();
 
       if (insertError) {
-        console.error('Insert error:', insertError);
+        surfaceSupabaseError('strategic-initiatives.addInitiative', insertError);
         setError('Failed to add initiative. Please try again.');
       } else if (data) {
         setInitiatives([data, ...initiatives]);
@@ -586,15 +597,22 @@ export default function StrategicInitiatives() {
       // Use activeBusiness ownerId if viewing as coach, otherwise current user
       const targetUserId = activeBusiness?.ownerId || user.id;
 
+      // business_id is NOT NULL and FK→business_profiles(id) — resolve it.
+      const businessProfileId = await resolveBusinessProfileId(supabase, activeBusiness?.id ?? targetUserId);
+      if (!businessProfileId) {
+        setError('Could not resolve your business profile. Please refresh and try again.');
+        return;
+      }
+
       const initiative = {
+        business_id: businessProfileId,
         user_id: targetUserId,
         title: suggestion.title,
         category: suggestion.category,
         priority: suggestion.priority,
-        source_type: 'assessment',
-        assessment_suggestion_id: suggestion.id,
-        selected_for_action: false,
-        selected_for_annual_plan: false
+        step_type: 'strategic_ideas',
+        source: 'manual',
+        selected: false,
       };
 
       const { data, error } = await supabase
@@ -603,7 +621,10 @@ export default function StrategicInitiatives() {
         .select()
         .single();
 
-      if (!error && data) {
+      if (error) {
+        surfaceSupabaseError('strategic-initiatives.addFromAssessment', error);
+        setError('Failed to add suggestion. Please try again.');
+      } else if (data) {
         setInitiatives([data, ...initiatives]);
       }
     } catch (error) {
@@ -619,15 +640,25 @@ export default function StrategicInitiatives() {
       // Use activeBusiness ownerId if viewing as coach, otherwise current user
       const targetUserId = activeBusiness?.ownerId || user.id;
 
+      // business_id is NOT NULL and FK→business_profiles(id) — resolve it.
+      const businessProfileId = await resolveBusinessProfileId(supabase, activeBusiness?.id ?? targetUserId);
+      if (!businessProfileId) {
+        setError('Could not resolve your business profile. Please refresh and try again.');
+        return;
+      }
+
       const initiative = {
+        business_id: businessProfileId,
         user_id: targetUserId,
         title: task,
         category: category,
         priority: 'medium',
-        source_type: 'roadmap',
-        roadmap_item_id: `${stage}_${category}_${task.toLowerCase().replace(/\s+/g, '_')}`,
-        selected_for_action: false,
-        selected_for_annual_plan: false
+        step_type: 'strategic_ideas',
+        // Preserve roadmap origin on the real `source` column ('roadmap' is an
+        // existing value in prod) and stash the roadmap identity in notes.
+        source: 'roadmap',
+        notes: `roadmap:${stage}_${category}_${task.toLowerCase().replace(/\s+/g, '_')}`,
+        selected: false,
       };
 
       const { data, error } = await supabase
@@ -636,7 +667,10 @@ export default function StrategicInitiatives() {
         .select()
         .single();
 
-      if (!error && data) {
+      if (error) {
+        surfaceSupabaseError('strategic-initiatives.addFromRoadmap', error);
+        setError('Failed to add roadmap item. Please try again.');
+      } else if (data) {
         setInitiatives([data, ...initiatives]);
       }
     } catch (error) {

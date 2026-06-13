@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { surfaceSupabaseError } from '@/lib/supabase/surfaceError'
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { withQuerySchema } from '@/lib/api/with-schema'
@@ -95,13 +96,20 @@ async function getHandler(request: Request) {
       goalsDate = financialGoals.updated_at
     }
 
-    // 3. Get strategic initiatives selected for annual plan
-    const { data: initiatives } = await supabase
+    // 3. Get strategic initiatives selected for annual plan.
+    // The column is `selected` (boolean) — `selected_for_annual_plan` does not
+    // exist, so the old filter PostgREST-errored and the discarded error made
+    // this return initiatives:[] for everyone. Surface the error now.
+    const { data: initiatives, error: initiativesError } = await supabase
       .from('strategic_initiatives')
       .select('*')
       .eq('user_id', userId)
-      .eq('selected_for_annual_plan', true)
+      .eq('selected', true)
       .order('created_at', { ascending: false })
+
+    if (initiativesError) {
+      surfaceSupabaseError('annual-plan.strategic_initiatives', initiativesError)
+    }
 
     // Prepare response
     const annualPlanData = {
