@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId';
 import { useBusinessContext } from '@/contexts/BusinessContext';
 import { quarterlyReviewService } from '../services/quarterly-review-service';
+import { migrateStep, migrateSteps } from '../utils/step-migration';
 import { strategicSyncService } from '../services/strategic-sync-service';
 import { assemblePlanData } from '@/app/one-page-plan/services/plan-data-assembler';
 import { planSnapshotService } from '@/app/one-page-plan/services/plan-snapshot-service';
@@ -287,24 +288,13 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
       }
 
       if (data) {
-        // Migrate step IDs from old 6-step Part 4 to new 5-step Part 4
-        const stepMigration: Record<string, string> = {
-          '4.2': '4.1',
-          '4.3': '4.2',
-          '4.4': '4.3',
-          '4.5': '4.3',
-          '4.6': '4.3',
-        };
-
-        if (data.current_step && stepMigration[data.current_step]) {
-          data = { ...data, current_step: stepMigration[data.current_step] as WorkshopStep };
+        // Remap old step IDs onto the v2 12-step sequence (see step-migration.ts).
+        // Data lives in named columns, so this only touches current_step / steps_completed.
+        if (data.current_step) {
+          data = { ...data, current_step: migrateStep(data.current_step) };
         }
-
         if (data.steps_completed) {
-          const migratedSteps = data.steps_completed.map((s: string) =>
-            (stepMigration[s] || s) as WorkshopStep
-          );
-          data = { ...data, steps_completed: [...new Set(migratedSteps)] as WorkshopStep[] };
+          data = { ...data, steps_completed: migrateSteps(data.steps_completed) };
         }
 
         // When re-entering a completed review for editing, start at prework (editable).
@@ -353,7 +343,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
 
     const timer = setTimeout(() => {
       saveReview();
-    }, 2000);
+    }, 800);
 
     return () => clearTimeout(timer);
   }, [hasUnsavedChanges, review, saveReview]);

@@ -15,14 +15,21 @@ export type WorkshopStep =
   | '4.1' | '4.2' | '4.3'  // Part 4/5: Plan (quarterly) / Next Quarter (annual)
   | 'complete';
 
-// Standard quarterly review steps
+// Standard quarterly review steps — v2 (12 steps). IDs are kept stable for a
+// clean stepMigration; four old IDs are dropped from the sequence and three are
+// repurposed as MERGED steps (rendered by composite tab components):
+//   prework → Check-in & Reflect   (merges old prework + 1.1 Pre-Work Review)
+//   1.4     → Retro                (merges old 1.4 Action Replay + 2.1 Feedback Loop)
+//   2.2     → Open Items           (merges old 2.2 Open Loops + 2.3 Issues)
+//   3.1     → Strategic Check       (merges old 3.1 Assessment + 3.2 SWOT)
+// Dropped from the sequence (kept in the union + STEP_LABELS for history): 1.1, 2.1, 2.3, 3.2.
 export const WORKSHOP_STEPS: WorkshopStep[] = [
-  'prework',
-  '1.1', '1.2', '1.3', '1.4',
-  '2.1', '2.2', '2.3', '2.4', '2.5',
-  '3.1', '3.2',
-  '4.1', '4.2', '4.3',
-  'complete'
+  'prework',                 // 1. Check-in & Reflect
+  '1.2', '1.3', '1.4',       // 2. Scorecard · 3. Rocks · 4. Retro
+  '2.2', '2.4', '2.5',       // 5. Open Items · 6. Customer Pulse · 7. People
+  '3.1',                     // 8. Strategic Check
+  '4.1', '4.2', '4.3',       // 9. Annual Plan & Confidence · 10. Quarterly Plan · 11. Sprint
+  'complete'                 // 12. Commit & Close
 ];
 
 // Annual review steps. The bolted-on annual planning steps (A4.1–A4.4) were
@@ -32,10 +39,10 @@ export const WORKSHOP_STEPS: WorkshopStep[] = [
 // (harmless) but never sequence, so they can no longer be routed into.
 export const ANNUAL_WORKSHOP_STEPS: WorkshopStep[] = [
   'prework',
-  '1.1', '1.2', '1.3', '1.4',           // Part 1: Reflect
-  '2.1', '2.2', '2.3', '2.4', '2.5',    // Part 2: Analyse
-  '3.1', '3.2',                           // Part 3: Strategic Review
-  '4.1', '4.2', '4.3',                   // Part 4: Next Quarter Sprint
+  '1.2', '1.3', '1.4',
+  '2.2', '2.4', '2.5',
+  '3.1',
+  '4.1', '4.2', '4.3',
   'complete'
 ];
 
@@ -47,18 +54,18 @@ export const getWorkshopSteps = (reviewType: ReviewType = 'quarterly'): Workshop
 };
 
 export const STEP_LABELS: Record<WorkshopStep, string> = {
-  'prework': 'Pre-Work Questionnaire',
-  '1.1': 'Pre-Work Review',
+  'prework': 'Check-in & Reflect',
+  '1.1': 'Pre-Work Review',          // dropped from v2 sequence (history only)
   '1.2': 'Scorecard Review',
   '1.3': 'Rocks Accountability',
-  '1.4': 'Action Replay',
-  '2.1': 'Feedback Loop Framework',
-  '2.2': 'Open Loops Audit',
-  '2.3': 'Issues List (IDS)',
+  '1.4': 'Retro',
+  '2.1': 'Feedback Loop Framework',  // dropped from v2 sequence (history only)
+  '2.2': 'Open Items',
+  '2.3': 'Issues List (IDS)',        // dropped from v2 sequence (history only)
   '2.4': 'Customer Pulse',
   '2.5': 'People Review',
-  '3.1': 'Assessment & Roadmap',
-  '3.2': 'SWOT Update',
+  '3.1': 'Strategic Check',
+  '3.2': 'SWOT Update',              // dropped from v2 sequence (history only)
   // Annual-only steps
   'A4.1': 'Year in Review',
   'A4.2': 'Vision & Strategy Check',
