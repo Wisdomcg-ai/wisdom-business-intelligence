@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { quarterlyReviewService } from './services/quarterly-review-service';
-import { getPlanningQuarter, getNextQuarterOf, getPreviousQuarterOf, getQuarterLabel, type YearType, type QuarterNumber } from './types';
+import { getPlanningQuarter, getNextQuarterOf, getPreviousQuarterOf, getQuarterLabel, getWorkshopSteps, type YearType, type QuarterNumber } from './types';
 import {
   Calendar,
   Clock,
@@ -217,7 +217,7 @@ export default function QuarterlyReviewPage() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Steps</p>
-                  <p className="font-medium text-gray-900">14 Guided Steps</p>
+                  <p className="font-medium text-gray-900">{getWorkshopSteps('quarterly').length} Guided Steps</p>
                 </div>
               </div>
             </div>
@@ -253,28 +253,17 @@ export default function QuarterlyReviewPage() {
                 </button>
               )
             ) : (
-              <div className="flex flex-col sm:flex-row gap-3">
-                {/* Phase 73 v2: no annual-reset detection here. The year-end reset is
-                    triggered automatically INSIDE the quarterly review at the Part 3 → 4
-                    boundary (workshop). The landing just starts a normal review. */}
-                <button
-                  onClick={() => startNewReview('quarterly')}
-                  className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
-                >
-                  <PlayCircle className="w-5 h-5" />
-                  Start {fmtQuarter(quarter, year)} Review
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-
-                {/* Secondary: adjust annual plan link */}
-                <a
-                  href={getPath('/goals')}
-                  className="inline-flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-xl font-semibold hover:bg-gray-50 transition-colors"
-                >
-                  <Target className="w-5 h-5" />
-                  Adjust annual plan
-                </a>
-              </div>
+              // v2: the landing just starts a normal review. The year-end reset
+              // fires automatically inside the workshop (Strategic Check → Continue);
+              // there's no separate "adjust annual plan" affordance here anymore.
+              <button
+                onClick={() => startNewReview('quarterly')}
+                className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-xl font-semibold hover:bg-brand-orange-600 transition-colors"
+              >
+                <PlayCircle className="w-5 h-5" />
+                Start {fmtQuarter(quarter, year)} Review
+                <ChevronRight className="w-4 h-4" />
+              </button>
             )}
           </div>
 
