@@ -388,7 +388,7 @@ function ReviewContent() {
           fixed lg:relative inset-y-0 left-0 z-30 bg-white lg:bg-transparent
           transform transition-all duration-300
           ${showSidebar ? 'translate-x-0' : '-translate-x-full'}
-          ${sidebarCollapsed ? 'lg:hidden' : 'lg:block lg:translate-x-0 lg:w-64 lg:shrink-0'}
+          ${sidebarCollapsed ? 'lg:hidden' : 'lg:block lg:translate-x-0 lg:w-72 lg:shrink-0'}
           w-80 pt-20 lg:pt-0 px-4 lg:px-0 overflow-y-auto
         `}>
           <div className="sticky top-6">
