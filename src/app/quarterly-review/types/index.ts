@@ -58,7 +58,7 @@ export const STEP_LABELS: Record<WorkshopStep, string> = {
   '1.1': 'Pre-Work Review',          // dropped from v2 sequence (history only)
   '1.2': 'Scorecard Review',
   '1.3': 'Rocks Accountability',
-  '1.4': 'Retro',
+  '1.4': 'Course Correct',
   '2.1': 'Feedback Loop Framework',  // dropped from v2 sequence (history only)
   '2.2': 'Open Items',
   '2.3': 'Issues List (IDS)',        // dropped from v2 sequence (history only)
