@@ -18,22 +18,27 @@ interface ReviewProgressProps {
   reviewType?: ReviewType;
 }
 
+// Derive the sidebar parts + their steps straight from the real WORKSHOP_STEPS
+// sequence (grouped by getStepPart), so the sidebar can never drift from the
+// actual flow. 'prework' (Check-in) and 'complete' render separately. (v2)
 function getPartsForReviewType(reviewType: ReviewType): PartDefinition[] {
-  if (reviewType === 'annual') {
-    return [
-      { number: '1', label: ANNUAL_PART_LABELS['1'], steps: ['1.1', '1.2', '1.3', '1.4'] as WorkshopStep[] },
-      { number: '2', label: ANNUAL_PART_LABELS['2'], steps: ['2.1', '2.2', '2.3', '2.4', '2.5'] as WorkshopStep[] },
-      { number: '3', label: ANNUAL_PART_LABELS['3'], steps: ['3.1', '3.2'] as WorkshopStep[] },
-      { number: '4', label: ANNUAL_PART_LABELS['A4'], steps: ['A4.1', 'A4.2', 'A4.3', 'A4.4'] as WorkshopStep[] },
-      { number: '5', label: ANNUAL_PART_LABELS['5'], steps: ['4.1', '4.2', '4.3'] as WorkshopStep[] },
-    ];
+  const partLabels = reviewType === 'annual' ? ANNUAL_PART_LABELS : PART_LABELS;
+  const ordered: string[] = [];
+  const byPart = new Map<string, WorkshopStep[]>();
+  for (const step of getWorkshopSteps(reviewType)) {
+    if (step === 'prework' || step === 'complete') continue;
+    const part = getStepPart(step, reviewType);
+    if (!byPart.has(part)) {
+      byPart.set(part, []);
+      ordered.push(part);
+    }
+    byPart.get(part)!.push(step);
   }
-  return [
-    { number: '1', label: PART_LABELS['1'], steps: ['1.1', '1.2', '1.3', '1.4'] as WorkshopStep[] },
-    { number: '2', label: PART_LABELS['2'], steps: ['2.1', '2.2', '2.3', '2.4', '2.5'] as WorkshopStep[] },
-    { number: '3', label: PART_LABELS['3'], steps: ['3.1', '3.2'] as WorkshopStep[] },
-    { number: '4', label: PART_LABELS['4'], steps: ['4.1', '4.2', '4.3'] as WorkshopStep[] },
-  ];
+  return ordered.map((number) => ({
+    number,
+    label: partLabels[number] ?? PART_LABELS[number] ?? number,
+    steps: byPart.get(number)!,
+  }));
 }
 
 export function WorkshopProgress({
@@ -134,7 +139,7 @@ export function WorkshopProgress({
             <Circle className="w-5 h-5 text-gray-400 flex-shrink-0" />
           )}
           <div>
-            <p className="font-medium text-gray-900">Pre-Work</p>
+            <p className="font-medium text-gray-900">{STEP_LABELS['prework']}</p>
             <p className="text-xs text-gray-500">Complete before your review</p>
           </div>
         </button>
