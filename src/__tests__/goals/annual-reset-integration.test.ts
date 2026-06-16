@@ -13,7 +13,7 @@
  *   3. Clients already on the new FY (Armstrong/Fit2Shine, year1_end 2027-06-29) are never reset.
  *   4. Rollover math holds at the FY AND CY boundaries.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 // ---------------------------------------------------------------------------
 // A single shared in-memory Supabase, hoisted so the vi.mock factory can use it.
@@ -354,5 +354,64 @@ describe('rollover at the CY boundary', () => {
     expect(g.plan_end_date).toBe('2029-12-31')
     expect(g.year_type).toBe('CY')
     expect(g.revenue_year1).toBe(700_000) // prior year2
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 5. Option B — financial actuals seeding (the wired seedFinancialActuals path)
+//
+// Without a fetch stub the relative-URL fetch throws in jsdom and the seed
+// silently no-ops (which is why the D3 assertions above hold). These tests stub
+// global fetch to exercise the usable-actuals branch end-to-end: the override
+// must land in the persisted *_current values, margins must be DERIVED from the
+// seeded dollars, and year1/year2/year3 must stay on the D3 shift.
+// ---------------------------------------------------------------------------
+describe('Option B: financial actuals seeding (wired path)', () => {
+  beforeEach(() => db.store.business_financial_goals.push(FY26_GOALS()))
+  afterEach(() => vi.unstubAllGlobals())
+
+  const stubFetch = (payload: unknown, ok = true) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok, json: async () => payload })),
+    )
+
+  it('usable actuals → seeds financial *_current and DERIVES margins; year1/2/3 keep D3', async () => {
+    stubFetch({
+      usable: true,
+      months_covered: 12,
+      actuals: { revenue: 1_110_000, gross_profit: 444_000, net_profit: 111_000 },
+    })
+
+    const res = await annualResetService.executeAnnualReset({ businessId: BUSINESS_ID, userId: USER_ID, yearStartMonth: 7 })
+    expect(res.success).toBe(true)
+
+    const g = goalsRow()
+    // current = the seeded FY26 ACTUAL, NOT prior year1 (1_000_000)
+    expect(g.revenue_current).toBe(1_110_000)
+    expect(g.gross_profit_current).toBe(444_000)
+    expect(g.net_profit_current).toBe(111_000)
+    // margins derived from the seeded dollars (whole-percent)
+    expect(g.gross_margin_current).toBe(40) // 444000/1110000*100
+    expect(g.net_margin_current).toBe(10)   // 111000/1110000*100
+    // D3 shift preserved on the out-years (untouched by seeding)
+    expect(g.revenue_year1).toBe(1_300_000) // prior year2
+    expect(g.revenue_year2).toBe(1_700_000) // prior year3
+    expect(g.revenue_year3).toBe(1_700_000) // extrapolated
+  })
+
+  it('usable:false → keeps D3 (current = prior year1)', async () => {
+    stubFetch({ usable: false, months_covered: 11, actuals: null })
+
+    await annualResetService.executeAnnualReset({ businessId: BUSINESS_ID, userId: USER_ID, yearStartMonth: 7 })
+    expect(goalsRow().revenue_current).toBe(1_000_000) // prior year1 (D3)
+  })
+
+  it('fetch failure (network/timeout) → never aborts the rollover, keeps D3', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('aborted') }))
+
+    const res = await annualResetService.executeAnnualReset({ businessId: BUSINESS_ID, userId: USER_ID, yearStartMonth: 7 })
+    expect(res.success).toBe(true)
+    expect(goalsRow().revenue_current).toBe(1_000_000) // prior year1 (D3)
   })
 })

@@ -6,7 +6,11 @@
  *   - computeRolledPlanDates: FY boundary (prior 2026-06-30), CY boundary (prior 2026-12-31), +3y planEnd
  */
 import { describe, it, expect } from 'vitest'
-import { computeRolledLadder, computeRolledPlanDates } from '@/app/goals/utils/rollover-math'
+import {
+  computeRolledLadder,
+  computeRolledPlanDates,
+  applyFinancialActuals,
+} from '@/app/goals/utils/rollover-math'
 
 // ─── Ladder Shift ────────────────────────────────────────────────────────────
 
@@ -175,6 +179,106 @@ describe('computeRolledLadder — D3 shift', () => {
     const result = computeRolledLadder(priorRow)
     const keys = Object.keys(result)
     expect(keys.length).toBe(48)
+  })
+})
+
+// ─── Option B Seeding (applyFinancialActuals) ────────────────────────────────
+
+describe('applyFinancialActuals — Option B seeding (fail-closed)', () => {
+  // D3 ladder: new_current = prior_year1. Build from a known prior row so we
+  // can assert which *_current values get overridden vs kept on D3.
+  const prior = {
+    revenue_year1: 200, revenue_year2: 300, revenue_year3: 400,
+    gross_profit_year1: 20, gross_profit_year2: 30, gross_profit_year3: 40,
+    gross_margin_year1: 10, gross_margin_year2: 15, gross_margin_year3: 20,
+    net_profit_year1: 2, net_profit_year2: 3, net_profit_year3: 4,
+    net_margin_year1: 1, net_margin_year2: 1.5, net_margin_year3: 2,
+    customers_year1: 100, customers_year2: 150, customers_year3: 200,
+    employees_year1: 6,
+    leads_per_month_year1: 20,
+    conversion_rate_year1: 0.2,
+    avg_transaction_value_year1: 600,
+    team_headcount_year1: 5,
+    owner_hours_per_week_year1: 35,
+  }
+  const d3 = computeRolledLadder(prior as Record<string, unknown>)
+
+  it('usable=false → ladder returned unchanged (keep D3)', () => {
+    const out = applyFinancialActuals(d3, { usable: false, revenue: 999, gross_profit: 1, net_profit: 1 })
+    expect(out).toEqual(d3)
+  })
+
+  it('seeds financial *_current from actuals and DERIVES margins from the seeded dollars', () => {
+    const out = applyFinancialActuals(d3, {
+      usable: true,
+      revenue: 1_000_000,
+      gross_profit: 540_000,
+      net_profit: 83_000,
+    })
+    expect(out.revenue_current).toBe(1_000_000)
+    expect(out.gross_profit_current).toBe(540_000)
+    expect(out.net_profit_current).toBe(83_000)
+    // margins derived, whole-percent: 540000/1000000*100 = 54; 83000/1000000*100 = 8.3
+    expect(out.gross_margin_current).toBe(54)
+    expect(out.net_margin_current).toBe(8.3)
+  })
+
+  it('rounds dollars to whole numbers and margins to 2dp', () => {
+    const out = applyFinancialActuals(d3, {
+      usable: true,
+      revenue: 1_234_567.89,
+      gross_profit: 416_543.21,
+      net_profit: 98_765.43,
+    })
+    expect(out.revenue_current).toBe(1_234_568)
+    expect(out.gross_profit_current).toBe(416_543)
+    expect(out.net_profit_current).toBe(98_765)
+    expect(out.gross_margin_current).toBe(33.74) // 416543.21/1234567.89*100 → 33.7439 → 33.74
+    expect(out.net_margin_current).toBe(8)        // 98765.43/1234567.89*100 → ~8.00 → 8
+  })
+
+  it('never touches year1/year2/year3 (preserves the D3 shift)', () => {
+    const out = applyFinancialActuals(d3, { usable: true, revenue: 1_000_000, gross_profit: 540_000, net_profit: 83_000 })
+    expect(out.revenue_year1).toBe(d3.revenue_year1)
+    expect(out.revenue_year2).toBe(d3.revenue_year2)
+    expect(out.revenue_year3).toBe(d3.revenue_year3)
+    expect(out.gross_profit_year1).toBe(d3.gross_profit_year1)
+    expect(out.net_margin_year3).toBe(d3.net_margin_year3)
+  })
+
+  it('never touches non-financial metrics (no actual source → keep D3)', () => {
+    const out = applyFinancialActuals(d3, { usable: true, revenue: 1_000_000, gross_profit: 540_000, net_profit: 83_000 })
+    expect(out.customers_current).toBe(d3.customers_current)            // = prior customers_year1 = 100
+    expect(out.employees_current).toBe(d3.employees_current)
+    expect(out.leads_per_month_current).toBe(d3.leads_per_month_current)
+    expect(out.conversion_rate_current).toBe(d3.conversion_rate_current)
+    expect(out.avg_transaction_value_current).toBe(d3.avg_transaction_value_current)
+    expect(out.team_headcount_current).toBe(d3.team_headcount_current)
+    expect(out.owner_hours_per_week_current).toBe(d3.owner_hours_per_week_current)
+  })
+
+  it('fail-closed when revenue <= 0 → unchanged', () => {
+    expect(applyFinancialActuals(d3, { usable: true, revenue: 0, gross_profit: 5, net_profit: 5 })).toEqual(d3)
+    expect(applyFinancialActuals(d3, { usable: true, revenue: -100, gross_profit: 5, net_profit: 5 })).toEqual(d3)
+  })
+
+  it('fail-closed when revenue is not finite → unchanged', () => {
+    expect(applyFinancialActuals(d3, { usable: true, revenue: NaN, gross_profit: 5, net_profit: 5 })).toEqual(d3)
+  })
+
+  it('seeds revenue but keeps D3 GP/NP (and their margins) when GP/NP are not finite', () => {
+    const out = applyFinancialActuals(d3, { usable: true, revenue: 1_000_000, gross_profit: NaN, net_profit: NaN })
+    expect(out.revenue_current).toBe(1_000_000)
+    expect(out.gross_profit_current).toBe(d3.gross_profit_current) // kept D3
+    expect(out.gross_margin_current).toBe(d3.gross_margin_current)
+    expect(out.net_profit_current).toBe(d3.net_profit_current)
+    expect(out.net_margin_current).toBe(d3.net_margin_current)
+  })
+
+  it('is pure — does not mutate the input ladder', () => {
+    const snapshot = { ...d3 }
+    applyFinancialActuals(d3, { usable: true, revenue: 1_000_000, gross_profit: 540_000, net_profit: 83_000 })
+    expect(d3).toEqual(snapshot)
   })
 })
 

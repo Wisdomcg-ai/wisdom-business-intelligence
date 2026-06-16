@@ -24,7 +24,7 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { annualResetSnapshotService } from './annual-reset-snapshot-service'
-import { computeRolledLadder, computeRolledPlanDates } from '../utils/rollover-math'
+import { computeRolledLadder, computeRolledPlanDates, applyFinancialActuals, type RolledLadder } from '../utils/rollover-math'
 import { getFiscalYear } from '@/lib/utils/fiscal-year-utils'
 
 // ---------------------------------------------------------------------------
@@ -112,8 +112,15 @@ export class AnnualResetService {
     if (!year1EndDateStr) {
       return { success: false, error: 'Prior goals row has no year1_end_date — cannot derive ending FY' }
     }
-    const priorYear1EndDate = new Date(year1EndDateStr)
-    if (isNaN(priorYear1EndDate.getTime())) {
+    // Parse the date-only column ('YYYY-MM-DD') from explicit calendar parts in
+    // LOCAL space. `new Date(year1EndDateStr)` would parse as UTC midnight, which
+    // a negative-offset host then reads back as the PREVIOUS day via the local
+    // getters below (dayAfter/getFiscalYear), shifting the derived FY by one and
+    // seeding/snapshotting the wrong year. Local-from-parts matches the
+    // local-space arithmetic in computeRolledPlanDates + toLocalDateString.
+    const [pY, pM, pD] = year1EndDateStr.slice(0, 10).split('-').map(Number)
+    const priorYear1EndDate = new Date(pY, (pM ?? 1) - 1, pD ?? 1)
+    if (!pY || !pM || !pD || isNaN(priorYear1EndDate.getTime())) {
       return { success: false, error: `Invalid year1_end_date: ${year1EndDateStr}` }
     }
     // Derive the new FY from the day after the prior year end
@@ -141,8 +148,16 @@ export class AnnualResetService {
     // ── Step 4: Build the rolled payload ──────────────────────────────────────
     const yearType = (priorRow.year_type as 'FY' | 'CY') ?? 'FY'
 
-    // 4a. Rolled ladder (D3 shift)
-    const rolledLadder = computeRolledLadder(priorRow as Record<string, unknown>)
+    // 4a. Rolled ladder (D3 shift): new_current = prior_year1 (last year's TARGET)
+    let rolledLadder = computeRolledLadder(priorRow as Record<string, unknown>)
+
+    // 4a-bis. Option B ("B-with-fallback"): override the financial *_current
+    // values with the real just-finished-FY actuals when a COMPLETE FY exists
+    // in Xero. Fail-closed — any miss/partial/error leaves the D3 (prior-target)
+    // value untouched, and this never aborts the rollover. Runs AFTER the
+    // snapshot (Step 3) so reversibility is preserved; mutates only the
+    // in-memory payload, never the live row before the snapshot.
+    rolledLadder = await this.seedFinancialActuals(rolledLadder, businessId, endingFY, yearStartMonth)
 
     // 4b. Rolled plan dates
     const { planStartDate, year1EndDate, planEndDate } = computeRolledPlanDates(
@@ -225,6 +240,55 @@ export class AnnualResetService {
       snapshotId,
       newFY,
       carriedForwardCount,
+    }
+  }
+
+  /**
+   * Option B seeding: fetch the just-finished FY's real financial actuals and
+   * override the financial `*_current` ladder values. Fail-closed — any error,
+   * missing/partial data, or non-usable response leaves the D3 ladder untouched
+   * so a Xero hiccup never changes (or aborts) the rollover.
+   *
+   * `businessId` is the business_profiles.id; the reset-actuals route resolves
+   * dual IDs internally. `cache: 'no-store'` because a reset is a one-shot
+   * mutation that must read live Xero data, never a cached response.
+   */
+  private async seedFinancialActuals(
+    ladder: RolledLadder,
+    businessId: string,
+    endingFY: number,
+    yearStartMonth: number,
+  ): Promise<RolledLadder> {
+    // Bound the fetch — it sits on the page-load reset critical path, so a slow
+    // query or stalled connection must not hang the rollover (and the whole
+    // /goals page) indefinitely. On timeout the abort throws → caught → keep D3.
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 8000)
+    try {
+      const res = await fetch(
+        `/api/goals/reset-actuals?business_id=${encodeURIComponent(businessId)}` +
+          `&fiscal_year=${endingFY}&year_start_month=${yearStartMonth}`,
+        { cache: 'no-store', signal: controller.signal },
+      )
+      if (!res.ok) return ladder
+
+      const json = await res.json()
+      if (!json?.usable || !json?.actuals) return ladder
+
+      return applyFinancialActuals(ladder, {
+        usable: true,
+        revenue: Number(json.actuals.revenue),
+        gross_profit: Number(json.actuals.gross_profit),
+        net_profit: Number(json.actuals.net_profit),
+      })
+    } catch (err) {
+      console.error(
+        '[AnnualResetService] financial actuals seed skipped (keeping D3):',
+        (err as Error)?.message,
+      )
+      return ladder
+    } finally {
+      clearTimeout(timeout)
     }
   }
 }

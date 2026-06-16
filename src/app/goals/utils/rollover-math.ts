@@ -83,6 +83,67 @@ export function computeRolledLadder(priorRow: Record<string, unknown>): RolledLa
 }
 
 // ---------------------------------------------------------------------------
+// applyFinancialActuals — Option B ("B-with-fallback") seeding
+// ---------------------------------------------------------------------------
+
+export interface FinancialActuals {
+  /** True ONLY when a complete, trustworthy just-finished-FY actual is available. */
+  usable: boolean
+  /** Full-dollar achieved revenue for the just-finished FY. */
+  revenue: number
+  /** Full-dollar achieved gross profit. */
+  gross_profit: number
+  /** Full-dollar achieved net profit. */
+  net_profit: number
+}
+
+/**
+ * Override the financial `*_current` values on a rolled ladder with the real
+ * just-finished-FY actuals (Option B). This is the per-metric override that
+ * layers on top of the D3 shift produced by computeRolledLadder().
+ *
+ * Fail-closed:
+ *  - If `actuals.usable` is false (no complete FY actual), returns the ladder
+ *    unchanged — every metric keeps its D3 value (new_current = prior_year1).
+ *  - Revenue must be a finite, positive number to seed anything (and to derive
+ *    margins safely); otherwise nothing is overridden.
+ *  - Only the 5 financial metrics are touched. customers/employees and the 5
+ *    core operational metrics have NO actual source and ALWAYS keep their D3
+ *    value. year1/year2/year3 are NEVER touched (preserves the D3 shift).
+ *
+ * Margins are DERIVED from the seeded dollars (gross_profit/revenue*100,
+ * whole-percent to match business_financial_goals storage) — never seeded
+ * independently, so revenue × margin stays internally consistent.
+ *
+ * Pure: returns a new object, mutates nothing.
+ */
+export function applyFinancialActuals(
+  ladder: RolledLadder,
+  actuals: FinancialActuals,
+): RolledLadder {
+  if (!actuals || !actuals.usable) return ladder
+
+  const { revenue, gross_profit, net_profit } = actuals
+  if (!Number.isFinite(revenue) || revenue <= 0) return ladder
+
+  const round2 = (n: number) => Math.round(n * 100) / 100
+  const next: RolledLadder = { ...ladder }
+
+  next.revenue_current = Math.round(revenue)
+
+  if (Number.isFinite(gross_profit)) {
+    next.gross_profit_current = Math.round(gross_profit)
+    next.gross_margin_current = round2((gross_profit / revenue) * 100)
+  }
+  if (Number.isFinite(net_profit)) {
+    next.net_profit_current = Math.round(net_profit)
+    next.net_margin_current = round2((net_profit / revenue) * 100)
+  }
+
+  return next
+}
+
+// ---------------------------------------------------------------------------
 // computeRolledPlanDates
 // ---------------------------------------------------------------------------
 
