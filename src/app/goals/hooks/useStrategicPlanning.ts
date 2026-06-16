@@ -59,6 +59,7 @@ import { calculateQuarters, toUtcDateOnly } from '../utils/quarters'
 import { getPlanningQuarter } from '@/app/quarterly-review/types'
 import { detectAnnualResetState } from '@/app/quarterly-review/utils/annual-reset-entry'
 import { annualResetService } from '../services/annual-reset-service'
+import type { CurrentActualsProvenance } from '../utils/rollover-math'
 
 interface KeyAction {
   id: string
@@ -125,6 +126,10 @@ export function useStrategicPlanning(
   })
 
   const [kpis, setKpis] = useState<KPIData[]>([])
+
+  // Option B badge provenance — which financial *_current values the last reset
+  // seeded from the FY actual ({ fy, values }), or null. Drives the "Actual" pill.
+  const [currentActuals, setCurrentActuals] = useState<CurrentActualsProvenance | null>(null)
 
   const [yearType, setYearType] = useState<YearType>('FY')
 
@@ -764,7 +769,8 @@ export function useStrategicPlanning(
           yearType: loadedYearType,
           quarterlyTargets: loadedQuarterlyTargets,
           extendedPeriod: loadedExtendedPeriod,
-          planPeriod: loadedPlanPeriod
+          planPeriod: loadedPlanPeriod,
+          currentActuals: loadedCurrentActuals
         } = await FinancialService.loadFinancialGoals(bizId)
 
         // ── Phase 73-04: Annual Reset Gate ────────────────────────────────────
@@ -800,7 +806,8 @@ export function useStrategicPlanning(
               // Re-load the now-rolled row so the rest of the effect applies rolled values
               ;({ financialData: loadedFinancialData, coreMetrics: loadedCoreMetrics,
                   yearType: loadedYearType, quarterlyTargets: loadedQuarterlyTargets,
-                  extendedPeriod: loadedExtendedPeriod, planPeriod: loadedPlanPeriod
+                  extendedPeriod: loadedExtendedPeriod, planPeriod: loadedPlanPeriod,
+                  currentActuals: loadedCurrentActuals
                 } = await FinancialService.loadFinancialGoals(bizId))
             } else {
               console.error('[AnnualReset] executeAnnualReset failed:', resetResult.error)
@@ -879,6 +886,9 @@ export function useStrategicPlanning(
           setYearType(loadedYearType)
           console.log('[Strategic Planning] ✅ Loaded financial data from Supabase')
         }
+
+        // Option B badge provenance — null unless the last reset seeded actuals.
+        setCurrentActuals(loadedCurrentActuals ?? null)
 
         if (loadedCoreMetrics) {
           setCoreMetrics(loadedCoreMetrics)
@@ -1172,6 +1182,7 @@ export function useStrategicPlanning(
     // Step 1
     financialData,
     updateFinancialValue,
+    currentActuals,
     coreMetrics,
     updateCoreMetric,
     kpis,

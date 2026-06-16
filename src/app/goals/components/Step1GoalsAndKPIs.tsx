@@ -6,11 +6,13 @@ import { FinancialGoalsSection, CoreMetricsSection, KPISection } from './step1'
 import { PlanPeriodBanner } from './PlanPeriodBanner'
 import { PlanPeriodAdjustModal } from './PlanPeriodAdjustModal'
 import { PlanPeriodForLabel } from './step1/types'
+import type { CurrentActualsProvenance } from '../utils/rollover-math'
 import { HelpCircle } from 'lucide-react'
 
 interface Step1Props {
   financialData: FinancialData
   updateFinancialValue: (metric: keyof FinancialData, period: 'current' | 'year1' | 'year2' | 'year3', value: number, isPercentage?: boolean) => void
+  currentActuals?: CurrentActualsProvenance | null  // Option B "Actual" pill provenance
   coreMetrics: CoreMetricsData
   updateCoreMetric: (metric: keyof CoreMetricsData, period: 'current' | 'year1' | 'year2' | 'year3', value: number) => void
   kpis: KPIData[]
@@ -35,6 +37,7 @@ interface Step1Props {
 export default function Step1GoalsAndKPIs({
   financialData,
   updateFinancialValue,
+  currentActuals,
   coreMetrics,
   updateCoreMetric,
   kpis,
@@ -137,6 +140,7 @@ export default function Step1GoalsAndKPIs({
       <FinancialGoalsSection
         financialData={financialData}
         updateFinancialValue={updateFinancialValue}
+        currentActuals={currentActuals}
         yearType={yearType}
         isCollapsed={collapsedSections.has('financial')}
         onToggle={() => toggleSection('financial')}
