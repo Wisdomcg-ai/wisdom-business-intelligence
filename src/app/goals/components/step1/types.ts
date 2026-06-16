@@ -1,5 +1,5 @@
 import { YearType } from '../../types'
-import { getFiscalYear } from '@/lib/utils/fiscal-year-utils'
+import { getFiscalYear, getFiscalYearEndDate } from '@/lib/utils/fiscal-year-utils'
 
 export interface YearLabel {
   main: string
@@ -74,8 +74,10 @@ export function getYearLabel(
   const year1FY = getFiscalYear(year1EndDate, fiscalYearStart)
   const targetFY = year1FY + (idx - 1)  // idx=2 -> +1, idx=3 -> +2
 
-  // For Year 3 specifically, the actual end date is planEndDate (computed once
-  // at suggest time). For Year 2 we synthesize a label only.
+  // Year 3's end date is the persisted planEndDate (computed once at suggest
+  // time). Year 2 has no persisted end date, so we derive it from its fiscal
+  // year — using the same helper that produced planEndDate — so all three
+  // years render a consistent "Ending <date>" subtitle.
   if (idx === 3) {
     return {
       main: `${prefix}${targetFY.toString().slice(-2)}`,
@@ -84,7 +86,7 @@ export function getYearLabel(
   }
   return {
     main: `${prefix}${targetFY.toString().slice(-2)}`,
-    subtitle: null,
+    subtitle: `Ending ${formatEndDate(getFiscalYearEndDate(targetFY, fiscalYearStart))}`,
   }
 }
 
