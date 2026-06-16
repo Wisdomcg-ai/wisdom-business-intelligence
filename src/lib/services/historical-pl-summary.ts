@@ -317,6 +317,107 @@ export async function getHistoricalSummary(
 }
 
 /**
+ * Deterministic single-FY actuals read for the Annual Reset (Option B seeding).
+ *
+ * UNLIKE getHistoricalSummary(), this does NOT use calculateForecastPeriods'
+ * planning-season heuristics — those place a given FY in prior_fy vs current_ytd
+ * depending on TODAY's date, so a reset firing in late June vs early July would
+ * silently read a different year. This aggregates EXACTLY the requested
+ * fiscalYear's 12-month window via the same canonical aggregatePeriod()
+ * bucketing (so the GP/NP definitions and other-income rerouting match the rest
+ * of the app), making the number stable regardless of when the reset runs.
+ *
+ * Fail-closed by design:
+ *  - Multi-currency consolidated businesses are SKIPPED (has_xero_data:false) —
+ *    FX translation is out of scope for reset seeding; the caller keeps the D3
+ *    (prior-target) value. The skip is fail-closed: ANY error confirming the
+ *    currency, or ANY non-AUD active tenant, skips.
+ *  - months_covered counts FY-window months that have at least one synced P&L
+ *    row (any amount, incl. $0) — NOT aggregatePeriod.months_count, which is
+ *    just the window LENGTH. An operating SMB posts ≥1 line every month, so a
+ *    fully-synced year reliably yields 12 and a partial sync yields <12; the
+ *    caller requires === 12 (fail-closed against an understated partial year).
+ *
+ * Returns dollar totals only (revenue/gross_profit/net_profit). Margins are
+ * derived by the caller from these exact dollars to stay internally consistent.
+ */
+export async function getFiscalYearActuals(
+  supabase: any,
+  businessId: string,
+  fiscalYear: number,
+  yearStartMonth: number = DEFAULT_YEAR_START_MONTH,
+): Promise<{
+  has_xero_data: boolean
+  months_covered: number
+  revenue: number
+  gross_profit: number
+  net_profit: number
+}> {
+  const empty = { has_xero_data: false, months_covered: 0, revenue: 0, gross_profit: 0, net_profit: 0 }
+
+  const ids = await resolveBusinessProfileIds(supabase, businessId)
+
+  // FX guard — must be genuinely FAIL-CLOSED. needsFxConsolidation() swallows
+  // query errors and returns false, which would let a transient xero_connections
+  // probe error on a real multi-currency business fall through to an
+  // un-translated, mixed-currency aggregate (the one path where a non-usable
+  // result could still seed a wrong baseline). So read it here and treat ANY
+  // error — or ANY non-AUD active tenant — as "skip, keep D3". No-connection /
+  // all-AUD (single- or multi-tenant) proceed, matching the wizard fast path.
+  const { data: conns, error: connErr } = await supabase
+    .from('xero_connections')
+    .select('functional_currency')
+    .in('business_id', ids.all)
+    .eq('is_active', true)
+    .eq('include_in_consolidation', true)
+  if (connErr) return empty
+  const hasNonAud = (conns ?? []).some(
+    (c: { functional_currency: string | null }) =>
+      (c.functional_currency || 'AUD').toUpperCase() !== 'AUD',
+  )
+  if (hasNonAud) return empty
+
+  // Canonical Xero actuals — long format via the wide_compat view.
+  const { data: rawLines, error } = await supabase
+    .from('xero_pl_lines_wide_compat')
+    .select('account_name, account_type, monthly_values')
+    .in('business_id', ids.all)
+
+  if (error || !rawLines || rawLines.length === 0) {
+    return empty
+  }
+
+  const xeroLines = rawLines as WideXeroRow[]
+  const fyKeys = generateFiscalMonthKeys(fiscalYear, yearStartMonth)
+  const fyKeySet = new Set(fyKeys)
+
+  // True FY-window coverage: count only FY months that actually carry data.
+  const presentMonths = new Set<string>()
+  for (const row of xeroLines) {
+    for (const mk of Object.keys(row.monthly_values || {})) {
+      if (fyKeySet.has(mk)) presentMonths.add(mk)
+    }
+  }
+
+  const summary = aggregatePeriod(
+    xeroLines,
+    fyKeys[0],
+    fyKeys[fyKeys.length - 1],
+    `FY${fiscalYear}`,
+    yearStartMonth,
+  )
+  if (!summary) return empty
+
+  return {
+    has_xero_data: true,
+    months_covered: presentMonths.size,
+    revenue: summary.total_revenue,
+    gross_profit: summary.gross_profit,
+    net_profit: summary.net_profit,
+  }
+}
+
+/**
  * Compute coverage from wide-shaped rows (fallback path, no forecast).
  * Mirrors ForecastReadService.computeCoverage so behaviour is identical.
  */
@@ -385,10 +486,17 @@ function aggregatePeriod(
   label: string,
   yearStartMonth: number,
 ): PeriodSummary | null {
-  // Generate month keys for the range.
+  // Generate month keys for the range. Construct dates from explicit YYYY-MM
+  // parts in LOCAL space — `new Date(startMonth + '-01')` parses as UTC midnight
+  // which a negative-offset host then reads back as the PREVIOUS month via the
+  // local getters below, shifting the whole window by one month. Local-from-parts
+  // keeps the enumeration consistent with the getFullYear()/getMonth() reads in
+  // every timezone (inert on Vercel UTC; correct in local-dev / off-UTC too).
   const monthKeys: string[] = []
-  let current = new Date(startMonth + '-01')
-  const end = new Date(endMonth + '-01')
+  const [startY, startM] = startMonth.split('-').map(Number)
+  const [endY, endM] = endMonth.split('-').map(Number)
+  let current = new Date(startY, startM - 1, 1)
+  const end = new Date(endY, endM - 1, 1)
 
   while (current <= end) {
     monthKeys.push(`${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`)
