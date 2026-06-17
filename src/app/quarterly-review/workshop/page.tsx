@@ -139,24 +139,37 @@ function ReviewContent() {
     }
   };
 
+  // Phase 73 v2 — year-end annual-reset gate. A client whose plan year has ended
+  // is diverted to the goals wizard (which auto-rolls the plan) BEFORE entering
+  // Part 4 (planning) — reflection (Parts 1–3) is already done. Data-driven +
+  // TZ-safe (getPlanningQuarter matches the goals hook's own gate). Enforced on
+  // BOTH the Continue button (handleNext) AND direct sidebar navigation
+  // (onStepClick), so the reset can't be skipped by clicking ahead in the
+  // sidebar. Returns true if it handled navigation (caller should stop).
+  // year1EndDate === undefined → still loading, so an in-flight load never trips
+  // an accidental reset.
+  const divertToAnnualResetIfNeeded = async (targetStep: string): Promise<boolean> => {
+    if (
+      targetStep.startsWith('4.') &&
+      shouldRouteToAnnualReset(fyType, year1EndDate, getPlanningQuarter(fyType))
+    ) {
+      await markReviewComplete();
+      router.push(getPath('/goals?reset=annual'));
+      return true;
+    }
+    return false;
+  };
+
   const handleNext = async () => {
     if (currentStep === 'prework') {
       await completePreWork();
       return;
     }
 
-    // Phase 73 v2 — year-end annual-reset gate. On stepping from Part 3 (the merged
-    // Strategic Check, id '3.1') INTO Part 4 (4.1), the SYSTEM checks the client's plan
-    // year (data-driven, TZ-safe). If it has ended, mark this review complete and hand
-    // off to the goals wizard (which auto-rolls the plan) instead of the normal
-    // quarterly planning steps — reflection (Parts 1–3) is already done. No client
-    // decision; fires once, on the deliberate forward step. Uses getPlanningQuarter so
-    // it matches the goals hook's own reset gate. year1EndDate===undefined → still loading.
-    if (currentStep === '3.1' && shouldRouteToAnnualReset(fyType, year1EndDate, getPlanningQuarter(fyType))) {
-      await markReviewComplete();
-      router.push(getPath('/goals?reset=annual'));
-      return;
-    }
+    // Divert year-end clients to the annual reset before the next step lands in
+    // Part 4 (planning). Same guard runs on sidebar clicks (onStepClick below).
+    const nextStep = workshopSteps[workshopSteps.indexOf(currentStep) + 1];
+    if (nextStep && (await divertToAnnualResetIfNeeded(nextStep))) return;
 
     if (currentStep === workshopSteps[workshopSteps.length - 2]) {
       // Last content step — complete the review (sync + snapshots + mark complete)
@@ -395,7 +408,10 @@ function ReviewContent() {
             <WorkshopProgress
               currentStep={currentStep}
               stepsCompleted={stepsCompleted}
-              onStepClick={(step) => {
+              onStepClick={async (step) => {
+                // Year-end clients are diverted to the annual reset even when
+                // they jump straight to a Part-4 step via the sidebar.
+                if (await divertToAnnualResetIfNeeded(step)) return;
                 goToStep(step);
                 setShowSidebar(false);
               }}

@@ -277,9 +277,11 @@ export class AnnualResetService {
   ): Promise<RolledLadder> {
     // Bound the fetch — it sits on the page-load reset critical path, so a slow
     // query or stalled connection must not hang the rollover (and the whole
-    // /goals page) indefinitely. On timeout the abort throws → caught → keep D3.
+    // /goals page) indefinitely. 4s is comfortably above a healthy pl-summary
+    // (<2s) while keeping the worst-case wait short if Xero stalls. On timeout
+    // the abort throws → caught → keep D3 (prior-target) values.
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 8000)
+    const timeout = setTimeout(() => controller.abort(), 4000)
     try {
       const res = await fetch(
         `/api/goals/reset-actuals?business_id=${encodeURIComponent(businessId)}` +
