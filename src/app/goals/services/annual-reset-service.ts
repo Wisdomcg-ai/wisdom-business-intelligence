@@ -24,7 +24,13 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { annualResetSnapshotService } from './annual-reset-snapshot-service'
-import { computeRolledLadder, computeRolledPlanDates, applyFinancialActuals, type RolledLadder } from '../utils/rollover-math'
+import {
+  computeRolledLadder,
+  computeRolledPlanDates,
+  applyFinancialActuals,
+  buildCurrentActualsProvenance,
+  type RolledLadder,
+} from '../utils/rollover-math'
 import { getFiscalYear } from '@/lib/utils/fiscal-year-utils'
 
 // ---------------------------------------------------------------------------
@@ -149,7 +155,7 @@ export class AnnualResetService {
     const yearType = (priorRow.year_type as 'FY' | 'CY') ?? 'FY'
 
     // 4a. Rolled ladder (D3 shift): new_current = prior_year1 (last year's TARGET)
-    let rolledLadder = computeRolledLadder(priorRow as Record<string, unknown>)
+    const d3Ladder = computeRolledLadder(priorRow as Record<string, unknown>)
 
     // 4a-bis. Option B ("B-with-fallback"): override the financial *_current
     // values with the real just-finished-FY actuals when a COMPLETE FY exists
@@ -157,7 +163,12 @@ export class AnnualResetService {
     // value untouched, and this never aborts the rollover. Runs AFTER the
     // snapshot (Step 3) so reversibility is preserved; mutates only the
     // in-memory payload, never the live row before the snapshot.
-    rolledLadder = await this.seedFinancialActuals(rolledLadder, businessId, endingFY, yearStartMonth)
+    const rolledLadder = await this.seedFinancialActuals(d3Ladder, businessId, endingFY, yearStartMonth)
+
+    // 4a-ter. Badge provenance: record which financial *_current values were
+    // seeded from the FY actual (differ from the D3 target). Null when nothing
+    // was seeded — overwrites any stale provenance from a prior reset.
+    const currentActuals = buildCurrentActualsProvenance(d3Ladder, rolledLadder, endingFY)
 
     // 4b. Rolled plan dates
     const { planStartDate, year1EndDate, planEndDate } = computeRolledPlanDates(
@@ -186,6 +197,11 @@ export class AnnualResetService {
 
       // Preserve year_type from prior row
       year_type: yearType,
+
+      // Option B badge provenance ({ fy, values } of seeded financial *_current,
+      // or null). Display-only; the wizard shows an "Actual" pill while the live
+      // value still matches.
+      current_actuals: currentActuals,
 
       updated_at: new Date().toISOString(),
     }

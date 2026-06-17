@@ -5,11 +5,13 @@ import { FinancialData, CoreMetricsData, YearType } from '../../types'
 import { formatDollar, parseDollarInput } from '../../utils/formatting'
 import { getYearLabel, FINANCIAL_METRICS, PlanPeriodForLabel } from './types'
 import { ProfitCalculatorModal } from '../ProfitCalculatorModal'
+import type { CurrentActualsProvenance } from '../../utils/rollover-math'
 import { useState } from 'react'
 
 interface FinancialGoalsSectionProps {
   financialData: FinancialData
   updateFinancialValue: (metric: keyof FinancialData, period: 'current' | 'year1' | 'year2' | 'year3', value: number, isPercentage?: boolean) => void
+  currentActuals?: CurrentActualsProvenance | null  // Option B "Actual" pill provenance
   yearType: YearType
   isCollapsed: boolean
   onToggle: () => void
@@ -23,6 +25,7 @@ interface FinancialGoalsSectionProps {
 export default function FinancialGoalsSection({
   financialData,
   updateFinancialValue,
+  currentActuals,
   yearType,
   isCollapsed,
   onToggle,
@@ -33,6 +36,29 @@ export default function FinancialGoalsSection({
   planPeriod
 }: FinancialGoalsSectionProps) {
   const [showCalculator, setShowCalculator] = useState(false)
+
+  // Option B "Actual" pill — map the UI metric key to its business_financial_goals
+  // prefix, then show the pill on a `current` cell while its live value still
+  // equals the value the last reset seeded from the FY actual. Editing the cell
+  // changes the value → it no longer matches → the pill self-clears (no write).
+  const UI_TO_DB_PREFIX: Record<string, string> = {
+    revenue: 'revenue',
+    grossProfit: 'gross_profit',
+    grossMargin: 'gross_margin',
+    netProfit: 'net_profit',
+    netMargin: 'net_margin',
+  }
+  const isSeededActual = (uiKey: string, period: string): boolean => {
+    if (period !== 'current' || !currentActuals?.values) return false
+    const dbPrefix = UI_TO_DB_PREFIX[uiKey]
+    if (!dbPrefix) return false
+    const seeded = currentActuals.values[dbPrefix]
+    if (seeded == null) return false
+    const live = Number((financialData as any)[uiKey]?.current ?? 0)
+    // Tolerant compare: dollars within $0.50, margins within 0.01pp.
+    return Math.abs(live - Number(seeded)) < 0.5
+  }
+  const actualTitle = currentActuals?.fy ? `FY${String(currentActuals.fy).slice(-2)} actual from Xero` : 'Actual from Xero'
 
   const handleApplyCalculator = (calculatedFinancialData: FinancialData, calculatedCoreMetrics: CoreMetricsData) => {
     Object.entries(calculatedFinancialData).forEach(([metric, values]) => {
@@ -125,6 +151,14 @@ export default function FinancialGoalsSection({
                             className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
                             placeholder={metric.isPercentage ? '0%' : '$0'}
                           />
+                          {isSeededActual(metric.key, period) && (
+                            <span
+                              title={actualTitle}
+                              className="mt-1 inline-flex items-center rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700"
+                            >
+                              Actual
+                            </span>
+                          )}
                         </div>
                       )
                     })}
@@ -186,6 +220,14 @@ export default function FinancialGoalsSection({
                             className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-center font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent hover:border-brand-orange-300 transition-colors"
                             placeholder={metric.isPercentage ? '0%' : '$0'}
                           />
+                          {isSeededActual(metric.key, period) && (
+                            <span
+                              title={actualTitle}
+                              className="mt-1 inline-flex items-center rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700"
+                            >
+                              Actual
+                            </span>
+                          )}
                         </td>
                       ))}
                     </tr>

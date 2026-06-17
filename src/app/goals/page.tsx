@@ -221,6 +221,7 @@ function StrategicPlanningContent() {
     // Step 1
     financialData,
     updateFinancialValue,
+    currentActuals,
     coreMetrics,
     updateCoreMetric,
     kpis,
@@ -984,6 +985,7 @@ function StrategicPlanningContent() {
               <Step1GoalsAndKPIs
                 financialData={financialData}
                 updateFinancialValue={updateFinancialValue}
+                currentActuals={currentActuals}
                 coreMetrics={coreMetrics}
                 updateCoreMetric={updateCoreMetric}
                 kpis={kpis}

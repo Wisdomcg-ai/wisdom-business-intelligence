@@ -10,6 +10,7 @@ import {
   computeRolledLadder,
   computeRolledPlanDates,
   applyFinancialActuals,
+  buildCurrentActualsProvenance,
 } from '@/app/goals/utils/rollover-math'
 
 // ─── Ladder Shift ────────────────────────────────────────────────────────────
@@ -279,6 +280,52 @@ describe('applyFinancialActuals — Option B seeding (fail-closed)', () => {
     const snapshot = { ...d3 }
     applyFinancialActuals(d3, { usable: true, revenue: 1_000_000, gross_profit: 540_000, net_profit: 83_000 })
     expect(d3).toEqual(snapshot)
+  })
+})
+
+// ─── Badge provenance (buildCurrentActualsProvenance) ────────────────────────
+
+describe('buildCurrentActualsProvenance — Option B "Actual" pill provenance', () => {
+  const prior = {
+    revenue_year1: 200, revenue_year2: 300, revenue_year3: 400,
+    gross_profit_year1: 20, gross_profit_year2: 30, gross_profit_year3: 40,
+    gross_margin_year1: 10, gross_margin_year2: 15, gross_margin_year3: 20,
+    net_profit_year1: 2, net_profit_year2: 3, net_profit_year3: 4,
+    net_margin_year1: 1, net_margin_year2: 1.5, net_margin_year3: 2,
+    customers_year1: 100,
+  }
+  const d3 = computeRolledLadder(prior as Record<string, unknown>)
+
+  it('returns the seeded financial *_current values when actuals were applied', () => {
+    const seeded = applyFinancialActuals(d3, { usable: true, revenue: 1_000_000, gross_profit: 540_000, net_profit: 83_000 })
+    const prov = buildCurrentActualsProvenance(d3, seeded, 2026)
+    expect(prov).toEqual({
+      fy: 2026,
+      values: {
+        revenue: 1_000_000,
+        gross_profit: 540_000,
+        net_profit: 83_000,
+        gross_margin: 54,
+        net_margin: 8.3,
+      },
+    })
+  })
+
+  it('returns null when nothing was seeded (ladder unchanged → no pills)', () => {
+    const notSeeded = applyFinancialActuals(d3, { usable: false, revenue: 0, gross_profit: 0, net_profit: 0 })
+    expect(buildCurrentActualsProvenance(d3, notSeeded, 2026)).toBeNull()
+  })
+
+  it('records only the metrics that actually changed (e.g. revenue only when GP/NP missing)', () => {
+    const seeded = applyFinancialActuals(d3, { usable: true, revenue: 1_000_000, gross_profit: NaN, net_profit: NaN })
+    const prov = buildCurrentActualsProvenance(d3, seeded, 2026)
+    expect(prov).toEqual({ fy: 2026, values: { revenue: 1_000_000 } })
+  })
+
+  it('never includes non-financial metrics', () => {
+    const seeded = applyFinancialActuals(d3, { usable: true, revenue: 1_000_000, gross_profit: 540_000, net_profit: 83_000 })
+    const prov = buildCurrentActualsProvenance(d3, seeded, 2026)
+    expect(prov?.values).not.toHaveProperty('customers')
   })
 })
 

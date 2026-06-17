@@ -3,6 +3,7 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { FinancialData, CoreMetricsData } from '../types'
+import type { CurrentActualsProvenance } from '../utils/rollover-math'
 
 /**
  * Financial Goals Service - Supabase Integration
@@ -151,6 +152,7 @@ export class FinancialService {
     quarterlyTargets: Record<string, { q1: string; q2: string; q3: string; q4: string }>
     extendedPeriod: { isExtendedPeriod: boolean; year1Months: number; currentYearRemainingMonths: number }
     planPeriod: { planStartDate: string | null; planEndDate: string | null; year1EndDate: string | null }  // Phase 42
+    currentActuals?: CurrentActualsProvenance | null  // Option B badge provenance
     error?: string
   }> {
     try {
@@ -281,7 +283,8 @@ export class FinancialService {
         yearType: (data.year_type as 'FY' | 'CY') || 'FY',
         quarterlyTargets: (data.quarterly_targets as Record<string, { q1: string; q2: string; q3: string; q4: string }>) || {},
         extendedPeriod,
-        planPeriod
+        planPeriod,
+        currentActuals: (data.current_actuals as CurrentActualsProvenance | null) ?? null
       }
     } catch (err) {
       console.error('[Financial Service] ❌ Error loading financial goals:', err)

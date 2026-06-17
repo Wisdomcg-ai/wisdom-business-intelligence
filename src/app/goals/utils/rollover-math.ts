@@ -144,6 +144,54 @@ export function applyFinancialActuals(
 }
 
 // ---------------------------------------------------------------------------
+// buildCurrentActualsProvenance — badge provenance (Option B)
+// ---------------------------------------------------------------------------
+
+/** Financial metrics that can be seeded from a real FY actual (the only ones
+ *  applyFinancialActuals ever overrides). */
+const FINANCIAL_CURRENT_METRICS = [
+  'revenue',
+  'gross_profit',
+  'net_profit',
+  'gross_margin',
+  'net_margin',
+] as const
+
+export interface CurrentActualsProvenance {
+  /** The just-finished FY whose actuals were seeded (e.g. 2026). */
+  fy: number
+  /** Seeded `*_current` values, keyed by metric prefix (revenue, gross_profit, …). */
+  values: Record<string, number>
+}
+
+/**
+ * Derive which financial `*_current` values a reset actually seeded from the FY
+ * actual, by diffing the post-seed ladder against the pre-seed (D3) ladder. A
+ * metric is "seeded" iff its `*_current` changed — so this stays in lock-step
+ * with applyFinancialActuals' own fail-closed rules with no logic duplication.
+ *
+ * Stored on business_financial_goals.current_actuals so the wizard can show an
+ * "Actual" pill while the live cell still equals the seeded value. Returns null
+ * when nothing was seeded (keep the column null → no pills).
+ *
+ * Pure: reads both ladders, mutates nothing.
+ */
+export function buildCurrentActualsProvenance(
+  d3Ladder: RolledLadder,
+  seededLadder: RolledLadder,
+  fy: number,
+): CurrentActualsProvenance | null {
+  const values: Record<string, number> = {}
+  for (const m of FINANCIAL_CURRENT_METRICS) {
+    const key = `${m}_current` as keyof RolledLadder
+    if (seededLadder[key] !== d3Ladder[key]) {
+      values[m] = seededLadder[key]
+    }
+  }
+  return Object.keys(values).length > 0 ? { fy, values } : null
+}
+
+// ---------------------------------------------------------------------------
 // computeRolledPlanDates
 // ---------------------------------------------------------------------------
 

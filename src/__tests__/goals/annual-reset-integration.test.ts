@@ -398,6 +398,11 @@ describe('Option B: financial actuals seeding (wired path)', () => {
     expect(g.revenue_year1).toBe(1_300_000) // prior year2
     expect(g.revenue_year2).toBe(1_700_000) // prior year3
     expect(g.revenue_year3).toBe(1_700_000) // extrapolated
+    // Badge provenance persisted for the "Actual" pill
+    expect(g.current_actuals).toEqual({
+      fy: 2026,
+      values: { revenue: 1_110_000, gross_profit: 444_000, net_profit: 111_000, gross_margin: 40, net_margin: 10 },
+    })
   })
 
   it('usable:false → keeps D3 (current = prior year1)', async () => {
@@ -405,6 +410,7 @@ describe('Option B: financial actuals seeding (wired path)', () => {
 
     await annualResetService.executeAnnualReset({ businessId: BUSINESS_ID, userId: USER_ID, yearStartMonth: 7 })
     expect(goalsRow().revenue_current).toBe(1_000_000) // prior year1 (D3)
+    expect(goalsRow().current_actuals).toBeNull()       // no pills when nothing seeded
   })
 
   it('fetch failure (network/timeout) → never aborts the rollover, keeps D3', async () => {
