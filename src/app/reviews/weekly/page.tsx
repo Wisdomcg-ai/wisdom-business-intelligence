@@ -45,6 +45,7 @@ import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { StrategicPlanningService } from '@/app/goals/services/strategic-planning-service'
 import { FinancialService } from '@/app/goals/services/financial-service'
+import { getQuarterForMonth, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils'
 import PageHeader from '@/components/ui/PageHeader'
 
 const DEFAULT_DISCIPLINES = [
@@ -404,13 +405,16 @@ export default function WeeklyReviewPage() {
   const loadStrategicData = async (bizId: string) => {
     try {
       // Load financial goals to get quarterly targets
-      const { quarterlyTargets: loadedTargets } = await FinancialService.loadFinancialGoals(bizId)
+      const { quarterlyTargets: loadedTargets, yearType } = await FinancialService.loadFinancialGoals(bizId)
+
+      // Current FISCAL quarter from the business's year type. Previously this
+      // used Math.ceil((month+1)/3) — a calendar quarter — so for an AU July-FY
+      // business in June it read q2's targets+rocks instead of fiscal q4 (wrong
+      // numbers / "no rocks" for most of the year).
+      const yearStartMonth = startMonthFromYearType(yearType)
+      const currentQuarter = `q${getQuarterForMonth(new Date().getMonth() + 1, yearStartMonth)}` as 'q1' | 'q2' | 'q3' | 'q4'
 
       if (loadedTargets) {
-        // Get current quarter
-        const now = new Date()
-        const currentQuarter = `q${Math.ceil((now.getMonth() + 1) / 3)}` as 'q1' | 'q2' | 'q3' | 'q4'
-
         // Parse quarterly targets
         const parseQuarterlyValue = (key: string): number | null => {
           const value = loadedTargets[key]?.[currentQuarter]
@@ -427,7 +431,6 @@ export default function WeeklyReviewPage() {
       }
 
       // Load rocks (initiatives assigned to current quarter)
-      const currentQuarter = `q${Math.ceil((new Date().getMonth() + 1) / 3)}` as 'q1' | 'q2' | 'q3' | 'q4'
       const loadedInitiatives = await StrategicPlanningService.loadInitiatives(bizId, currentQuarter)
 
       if (loadedInitiatives && loadedInitiatives.length > 0) {
