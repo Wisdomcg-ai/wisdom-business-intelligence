@@ -6,7 +6,7 @@ import { useQuarterlyReview } from '../hooks/useQuarterlyReview';
 import { WorkshopProgress } from '../components/WorkshopProgress';
 import { WorkshopNav } from '../components/WorkshopNav';
 import { CoachNotesPanel } from '../components/CoachNotesPanel';
-import { QuarterNumber, ReviewType, YearType, getWorkshopSteps, getPlanningQuarter } from '../types';
+import { QuarterNumber, ReviewType, YearType, getWorkshopSteps, getPlanningQuarter, getPreviousQuarterOf } from '../types';
 // Phase 73 v2 — year-end annual-reset gate (fires at the Part 3 → Part 4 transition).
 import { shouldRouteToAnnualReset } from '../utils/annual-reset-gate';
 import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileIds';
@@ -343,9 +343,22 @@ function ReviewContent() {
     }
   };
 
+  // A quarterly review reflects on the quarter that just ENDED and plans the NEXT
+  // one. The review is keyed by the PLANNING quarter (review.quarter/year), so the
+  // reviewed quarter is key − 1. Surface BOTH so the header doesn't read as if the
+  // planning quarter (e.g. "Q1 FY27") is what's being reviewed — matching what the
+  // Scorecard/Rocks steps already show ("Reviewing Q4 …").
+  const fmtQ = (q: number, y: number) => (fyType === 'FY' ? `Q${q} FY${y}` : `Q${q} ${y}`);
+  const reviewedQ = review ? getPreviousQuarterOf(review.quarter as QuarterNumber, review.year) : null;
+  const planningLabel = review ? fmtQ(review.quarter, review.year) : quarterLabel;
+  const isYearEndReview =
+    effectiveReviewType !== 'annual' &&
+    shouldRouteToAnnualReset(fyType, year1EndDate, getPlanningQuarter(fyType));
   const headerTitle = effectiveReviewType === 'annual'
     ? `${quarterLabel} Annual Review`
-    : `${quarterLabel} Quarterly Review`;
+    : reviewedQ
+      ? `${isYearEndReview ? 'Year-End Review — ' : ''}Reviewing ${fmtQ(reviewedQ.quarter, reviewedQ.year)} → Planning ${planningLabel}`
+      : `${quarterLabel} Quarterly Review`;
 
   return (
     <div className="min-h-screen pb-24">
