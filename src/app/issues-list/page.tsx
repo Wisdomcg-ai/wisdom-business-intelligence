@@ -27,6 +27,7 @@ import {
   createIssue,
   updateIssue,
   solveIssue,
+  reopenIssue,
   deleteIssue,
   getIssuesStats,
   formatDate,
@@ -712,7 +713,15 @@ export default function IssuesListPage() {
   async function handleStatusChange(id: string, newStatus: IssueStatus) {
     try {
       setUpdatingId(id);
-      await updateIssue(id, { status: newStatus });
+      // 'solved' must set archived + solved_date (solveIssue); any other status
+      // must clear them (reopenIssue) so the issue lands in exactly one tab.
+      // A bare updateIssue({status}) left archived=false → issue showed in BOTH
+      // Active and Solved.
+      if (newStatus === 'solved') {
+        await solveIssue(id);
+      } else {
+        await reopenIssue(id, newStatus);
+      }
       await loadData();
     } catch (err) {
       setError('Failed to update status');

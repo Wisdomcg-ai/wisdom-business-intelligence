@@ -71,6 +71,7 @@ export async function getActiveIssues(overrideUserId?: string, businessId?: stri
         .select('*')
         .eq('business_id', businessId)
         .eq('archived', false)
+        .neq('status', 'solved')  // Active = not archived AND not solved (self-heals rows whose status was set 'solved' without archiving)
         .order('priority', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: false });
 
@@ -92,6 +93,7 @@ export async function getActiveIssues(overrideUserId?: string, businessId?: stri
       .select('*')
       .eq('user_id', userId)
       .eq('archived', false)
+      .neq('status', 'solved')  // Active = not archived AND not solved (self-heal)
       .order('priority', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: false });
     console.log('[IssuesService] Query result - data:', data?.length, 'error:', error?.message);
@@ -119,6 +121,7 @@ export async function getTopPriorityIssues(overrideUserId?: string) {
       .select('*')
       .eq('user_id', userId)
       .eq('archived', false)
+      .neq('status', 'solved')  // a solved issue should never surface as a "top priority"
       .in('priority', [1, 2, 3])
       .order('priority', { ascending: true });
 
@@ -251,6 +254,34 @@ export async function solveIssue(id: string) {
     return data as Issue;
   } catch (error) {
     console.error('Error solving issue:', error);
+    throw error;
+  }
+}
+
+// Re-open an issue (or move it to any non-solved status).
+// Mirrors solveIssue in reverse: clears the solved flags so the issue leaves the
+// Solved tab and returns to Active. Without this, a status change off 'solved'
+// via the dropdown would leave archived=true and the issue would vanish from
+// BOTH tabs.
+export async function reopenIssue(id: string, newStatus: Issue['status'] = 'identified') {
+  try {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from('issues_list')
+      .update({
+        status: newStatus,
+        archived: false,
+        solved_date: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data as Issue;
+  } catch (error) {
+    console.error('Error reopening issue:', error);
     throw error;
   }
 }
