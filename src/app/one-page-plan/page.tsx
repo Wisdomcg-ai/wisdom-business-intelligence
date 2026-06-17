@@ -24,6 +24,9 @@ export default function OnePagePlan() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<OnePagePlanData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // A clean "nothing to show" state (no client selected / plan not built yet),
+  // distinct from a caught error — so we don't paint a red "Error loading plan".
+  const [emptyReason, setEmptyReason] = useState<'no-client' | 'no-plan' | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [allQuarters, setAllQuarters] = useState<QuarterInfo[]>([])
   const [selectedQuarterId, setSelectedQuarterId] = useState<string | null>(null)
@@ -141,6 +144,7 @@ export default function OnePagePlan() {
   const loadAllData = async (overrideQuarterId?: string) => {
     try {
       setLoading(true)
+      setEmptyReason(null)
 
       const result = await assemblePlanData({
         supabase,
@@ -156,8 +160,11 @@ export default function OnePagePlan() {
         if (!user) {
           router.push('/auth/login')
         } else {
-          // Authenticated coach/admin with no active client — stop loading so
-          // the page can show its empty state.
+          // Authenticated but nothing to render. Distinguish "no client selected"
+          // (coach/admin with no active business) from "plan not built yet" (a
+          // business is in context but has no assembled plan) so we show friendly
+          // guidance instead of a misleading red "Error loading plan".
+          setEmptyReason(activeBusiness ? 'no-plan' : 'no-client')
           setLoading(false)
         }
         return
@@ -264,12 +271,41 @@ export default function OnePagePlan() {
     )
   }
 
+  // Benign empty states — NOT an error.
+  if (emptyReason) {
+    const isNoClient = emptyReason === 'no-client'
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="text-center max-w-md">
+          <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-900 font-semibold mb-2">
+            {isNoClient ? 'No client selected' : "Your plan isn't built yet"}
+          </p>
+          <p className="text-gray-600 mb-5">
+            {isNoClient
+              ? 'Choose a client to view their One Page Plan.'
+              : 'Set your goals and targets to generate your One Page Plan.'}
+          </p>
+          {!isNoClient && (
+            <button
+              onClick={() => router.push('/goals')}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg font-medium text-sm"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Build my plan
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   if (error || !data) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 font-medium mb-2">Error loading plan</p>
-          <p className="text-gray-600">{error}</p>
+          <p className="text-gray-600">{error || 'Something went wrong loading this plan. Please try again.'}</p>
         </div>
       </div>
     )
