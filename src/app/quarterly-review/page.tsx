@@ -129,6 +129,10 @@ export default function QuarterlyReviewPage() {
 
   const currentQuarterReview = reviews.find(r => r.quarter === quarter && r.year === year);
   const pastReviews = reviews.filter(r => !(r.quarter === quarter && r.year === year));
+  // The review reflects on the quarter that just ended (planning quarter − 1) and
+  // plans the selected one — surface both so "Q1 FY27" doesn't read as the quarter
+  // being reviewed.
+  const reviewedQ = getPreviousQuarterOf(quarter, year);
 
   if (isLoading || contextLoading) {
     return (
@@ -184,13 +188,16 @@ export default function QuarterlyReviewPage() {
                 ))}
               </select>
             </div>
-            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1">
               {currentQuarterReview
                 ? (currentQuarterReview.status === 'completed'
                     ? 'Review Complete'
                     : 'Continue Your Review')
                 : 'Start Your Quarterly Review'}
             </h2>
+            <p className="text-sm font-semibold text-brand-orange-700 mb-2">
+              Reviewing {fmtQuarter(reviewedQ.quarter, reviewedQ.year)} → Planning {fmtQuarter(quarter, year)}
+            </p>
             <p className="text-sm sm:text-base text-gray-600 mb-6 max-w-lg">
               {currentQuarterReview
                 ? (currentQuarterReview.status === 'completed'
