@@ -23,6 +23,7 @@ interface IssuesListStepProps {
 export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [activeIssueId, setActiveIssueId] = useState<string | null>(null);
@@ -47,6 +48,7 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
 
   const fetchIssues = async () => {
     try {
+      setLoadError(false);
       const businessId = activeBusiness?.id;
       const overrideUserId = activeBusiness?.ownerId;
       const data = await getActiveIssues(overrideUserId, businessId);
@@ -54,8 +56,10 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
       const filtered = (data || []).filter(item => item.status !== 'solved');
       setIssues(filtered);
     } catch (error) {
+      // Distinguish "couldn't load" from "no issues" — a silent empty list made
+      // a transient outage look like a clean board.
       console.log('Issues fetch error:', error);
-      setIssues([]);
+      setLoadError(true);
     } finally {
       setIsLoading(false);
     }
@@ -128,6 +132,31 @@ export function IssuesListStep({ review, onUpdate }: IssuesListStepProps) {
         />
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div>
+        <StepHeader
+          step="2.3"
+          subtitle="Use the IDS framework to solve internal business problems and blockers"
+          estimatedTime={25}
+        />
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <ShieldAlert className="w-8 h-8 text-amber-500 mb-3" />
+          <p className="text-gray-900 font-medium mb-1">Couldn&apos;t load issues</p>
+          <p className="text-sm text-gray-600 mb-4 max-w-sm">
+            There was a problem reaching the issues service. Your review work here is safe — try again.
+          </p>
+          <button
+            onClick={() => { setIsLoading(true); fetchIssues(); }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-orange hover:bg-brand-orange-600 text-white rounded-lg font-medium text-sm"
+          >
+            <Loader2 className="w-4 h-4" /> Retry
+          </button>
         </div>
       </div>
     );
