@@ -13,6 +13,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
 import { VENDOR_MAPPINGS, extractVendorName, createVendorKey } from '@/lib/utils/vendor-normalization';
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds';
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -655,7 +656,11 @@ async function postHandler(request: Request) {
       // Use UTC methods since fromDate was created with Date.UTC()
       // URL encode the where clause to handle special characters (&&, ==, etc.)
       const whereClause = `Type=="ACCPAY"&&Date>=DateTime(${fromDate.getUTCFullYear()},${fromDate.getUTCMonth()+1},${fromDate.getUTCDate()})`;
-      const invoicesUrl = `https://api.xero.com/api.xro/2.0/Invoices?where=${encodeURIComponent(whereClause)}&page=${invoicePage}`;
+      // order=Date DESC so the NEWEST (current-FY) bills page first. Without it,
+      // Xero returns oldest-first and a high-bill tenant's current-FY bills (e.g.
+      // an annual Asana bill, or monthly Capsule bills) fall past the page cap and
+      // are silently dropped — the exact "FY YTD $0" symptom (JDS).
+      const invoicesUrl = `https://api.xero.com/api.xro/2.0/Invoices?where=${encodeURIComponent(whereClause)}&order=${encodeURIComponent('Date DESC')}&page=${invoicePage}`;
 
       const invoicesResponse = await fetch(invoicesUrl, {
         headers: {
@@ -690,10 +695,13 @@ async function postHandler(request: Request) {
 
       invoicePage++;
 
-      // Safety limit - max 10 pages (1000 invoices)
-      if (invoicePage > 10) {
+      // Safety limit - max 50 pages (5000 invoices), matching the bank-txn loop.
+      // With order=Date DESC the newest bills are kept first, so even if a very
+      // high-volume tenant exceeds this, only the OLDEST prior-FY bills are
+      // dropped — and the P&L backstop below reconciles any remaining shortfall.
+      if (invoicePage > 50) {
         if (process.env.NODE_ENV !== 'production') {
-          console.log('[Subscription Txns] Reached invoice page limit');
+          console.log('[Subscription Txns] Reached invoice page limit (50 pages / 5000 invoices)');
         }
         break;
       }
@@ -1136,6 +1144,122 @@ async function postHandler(request: Request) {
 
     // Sort vendors by total amount (highest first)
     vendors.sort((a, b) => b.totalAmount - a.totalAmount);
+
+    // =====================================================
+    // 4b. P&L BACKSTOP (Layer 1) — reconcile to the synced xero_pl_lines P&L
+    // =====================================================
+    // The live transaction crawl above only sees ACCPAY bills + SPEND bank txns
+    // on the selected accounts. Spend that settles through Accounts Payable in
+    // other shapes (AP payments, or bills past the page cap) can be missed,
+    // producing a silently-low FY-YTD. To GUARANTEE the FY-YTD total can never
+    // read below the authoritative P&L, compare the captured vendor spend to the
+    // already-synced xero_pl_lines account totals and surface any shortfall as an
+    // explicit "Other / Unallocated Subscriptions" line. Dual-ID resolved:
+    // subscription data is businesses.id-keyed but xero_pl_lines is
+    // business_profiles.id-keyed.
+    try {
+      const monthKey = (y: number, m1: number) => `${y}-${String(m1).padStart(2, '0')}`;
+
+      // Current FY months: July (currentFYStartYear) .. current month (YTD).
+      const currentFYMonths: string[] = [];
+      {
+        let y = currentFYStartYear, m = 7;
+        const endY = today.getUTCFullYear(), endM = today.getUTCMonth() + 1;
+        while ((y < endY || (y === endY && m <= endM)) && currentFYMonths.length < 13) {
+          currentFYMonths.push(monthKey(y, m));
+          m++; if (m > 12) { m = 1; y++; }
+        }
+      }
+      // Prior FY months: July (currentFYStartYear-1) .. June (currentFYStartYear).
+      const priorFYMonths: string[] = [];
+      for (let i = 0; i < 12; i++) {
+        let m = 7 + i, y = currentFYStartYear - 1;
+        if (m > 12) { m -= 12; y++; }
+        priorFYMonths.push(monthKey(y, m));
+      }
+
+      if (validAccountCodes.length > 0) {
+        const ids = await resolveBusinessProfileIds(supabase, business_id);
+        // Scope to the SAME single Xero tenant the live crawl used. Consolidated
+        // businesses carry multiple tenant_ids under one business_profiles.id;
+        // summing them all (while the crawl saw one) would fabricate a huge
+        // phantom gap. Match on stable account_code (not renameable names) and
+        // accrual basis only (avoid summing cash + accrual rows twice).
+        const { data: plRows } = await supabase
+          .from('xero_pl_lines_wide_compat')
+          .select('monthly_values')
+          .in('business_id', ids.all)
+          .eq('tenant_id', connection.tenant_id)
+          .eq('basis', 'accruals')
+          .in('account_code', validAccountCodes);
+
+        // Sum SIGNED monthly values — expenses are positive and credits net
+        // within the period, the SAME basis as the captured vendor amounts
+        // (LineAmount, signed). Summing abs() per month while the captured side
+        // nets credits would invent a phantom gap when a month is net-negative.
+        // Clamp a net-negative period total to 0 (a genuine net-credit account is
+        // not "missed spend").
+        let plCurrent = 0, plPrior = 0;
+        for (const row of (plRows || [])) {
+          const mv = (row.monthly_values || {}) as Record<string, number>;
+          for (const k of currentFYMonths) plCurrent += Number(mv[k]) || 0;
+          for (const k of priorFYMonths) plPrior += Number(mv[k]) || 0;
+        }
+        plCurrent = Math.max(0, plCurrent);
+        plPrior = Math.max(0, plPrior);
+
+        const round2 = (n: number) => Math.round(n * 100) / 100;
+        const capturedCurrent = vendors.reduce((s, v) => s + v.currentFYAmount, 0);
+        const capturedPrior = vendors.reduce((s, v) => s + v.priorFYAmount, 0);
+        const currentGap = round2(plCurrent - capturedCurrent);
+        const priorGap = round2(plPrior - capturedPrior);
+
+        // Observability: an OVER-count (captured materially above P&L) yields no
+        // "Other" line, but flag it — it can signal a future double-count.
+        if (process.env.NODE_ENV !== 'production' && (currentGap < -10 || priorGap < -10)) {
+          console.warn(`[Subscription Txns] P&L backstop: captured EXCEEDS P&L (currentGap=${currentGap}, priorGap=${priorGap}) — possible double-count`);
+        }
+
+        // Only surface a MATERIAL shortfall (ignore rounding / timing noise).
+        if (currentGap > 10 || priorGap > 10) {
+          const otherCurrent = Math.max(0, currentGap);
+          const otherPrior = Math.max(0, priorGap);
+          const otherName = 'Other / Unallocated Subscriptions';
+          vendors.push({
+            vendorName: otherName,
+            vendorKey: createVendorKey(otherName),
+            transactions: [],
+            priorFYAmount: otherPrior,
+            priorFYCount: 0,
+            currentFYAmount: otherCurrent,
+            currentFYCount: 0,
+            totalAmount: round2(otherPrior + otherCurrent),
+            transactionCount: 0,
+            avgAmount: 0,
+            suggestedFrequency: 'monthly',
+            confidence: 'low',
+            firstTransaction: priorFYStartStr,
+            lastTransaction: toDateStr,
+            monthsSpan: 12,
+            // Annualise the prior-FY shortfall (or current-FY if no prior) as a
+            // monthly budget hint so it carries into the forecast.
+            suggestedMonthlyBudget: round2((otherPrior || otherCurrent) / 12),
+            // MUST be empty: a dollar-gap-only line. Claiming the selected
+            // accounts here makes the wizard treat those accounts as fully
+            // covered and silently drop real OpEx lines that share them.
+            accountCodes: [],
+            renewalMonth: null,
+            accountSplits: {},
+          });
+          vendors.sort((a, b) => b.totalAmount - a.totalAmount);
+          if (process.env.NODE_ENV !== 'production') {
+            console.log(`[Subscription Txns] P&L backstop: added "Other" line — currentGap=$${otherCurrent}, priorGap=$${otherPrior} (P&L current=$${round2(plCurrent)} vs captured=$${round2(capturedCurrent)})`);
+          }
+        }
+      }
+    } catch (backstopErr) {
+      Sentry.captureException(backstopErr, { tags: { route: 'Xero/subscription-transactions' }, extra: { context: '[Subscription Txns] P&L backstop failed' } } as any);
+    }
 
     // =====================================================
     // 5. CALCULATE TOTALS FOR RECONCILIATION
