@@ -118,7 +118,10 @@ async function postHandler(request: Request) {
       const Anthropic = require('@anthropic-ai/sdk').default
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
       const result = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
+        // Confirmed-working Sonnet in WisdomBI prod (also used by ai/forecast-assistant).
+        // The port spec specifies 'claude-sonnet-4-6'; switch back once that id is
+        // confirmed enabled on this account's Anthropic key.
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
         temperature: 0.4,
         system: SYSTEM_PROMPT,
