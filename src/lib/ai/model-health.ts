@@ -44,7 +44,6 @@ export async function checkAnthropicModels(client?: AnthropicLike): Promise<Anth
 
   let anthropic = client
   if (!anthropic) {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const Anthropic = require('@anthropic-ai/sdk').default
     anthropic = new Anthropic({ apiKey }) as AnthropicLike
   }
