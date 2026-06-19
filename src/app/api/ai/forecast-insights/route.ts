@@ -104,7 +104,11 @@ async function postHandler(request: Request) {
         const anthropic = new Anthropic({ apiKey: anthropicKey })
 
         const result = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001', // Fast + cheap for structured output
+          // Current Haiku 4.5 id (NOT retired) — fast + cheap for structured output.
+          // If this route still falls back to gpt-4o-mini below, the cause is the
+          // prod ANTHROPIC_API_KEY lacking Haiku access (the same key gap that 404s
+          // the Sonnet 4 models), not a stale model id.
+          model: 'claude-haiku-4-5-20251001',
           max_tokens: 1024,
           system,
           messages: [{ role: 'user', content: userMessage }],

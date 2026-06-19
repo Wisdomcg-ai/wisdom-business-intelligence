@@ -114,17 +114,17 @@ async function postHandler(request: Request) {
 
     let input: { thinking?: unknown; tasks?: unknown } | null = null
     let failReason: string | null = null
+    let servedBy: string | null = null
     try {
       const Anthropic = require('@anthropic-ai/sdk').default
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
       const result = await anthropic.messages.create({
-        // Current Sonnet. The previous dated id 'claude-sonnet-4-20250514' is
-        // RETIRED and 404s on this prod key (not_found_error) — and the other AI
-        // routes only survive that because they silently fall back to OpenAI.
-        // 'claude-sonnet-4-6' is the current model (confirmed in the account's
-        // Console). The OpenAI fallback below means a model/key hiccup can never
-        // hard-fail the button again.
-        model: 'claude-sonnet-4-6',
+        // Opus 4.8 — the most capable current model (owner's choice for the
+        // coaching thinking). NOTE: needs the prod ANTHROPIC_API_KEY to have
+        // Opus access. That key currently 404s on Sonnet 4, so if it also lacks
+        // Opus this call 404s and the OpenAI fallback below serves the request
+        // instead — the `served_by` field in the response shows which ran.
+        model: 'claude-opus-4-8',
         max_tokens: 1000,
         temperature: 0.4,
         system: SYSTEM_PROMPT,
@@ -134,7 +134,8 @@ async function postHandler(request: Request) {
       })
       const toolUse = result.content?.find((b: { type: string }) => b.type === 'tool_use')
       input = (toolUse as { input?: { thinking?: unknown; tasks?: unknown } } | undefined)?.input ?? null
-      if (!input) failReason = 'no_tool_use_block'
+      if (input) servedBy = 'anthropic:claude-opus-4-8'
+      else failReason = 'no_tool_use_block'
     } catch (anthropicError) {
       failReason = anthropicError instanceof Error ? `${anthropicError.name}: ${anthropicError.message}` : String(anthropicError)
       console.error('[rock-breakdown] Anthropic call failed:', failReason)
@@ -160,7 +161,7 @@ async function postHandler(request: Request) {
           tool_choice: { type: 'function', function: { name: PLAN_TOOL.name } },
         })
         const args = completion.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments
-        if (args) input = JSON.parse(args)
+        if (args) { input = JSON.parse(args); servedBy = 'openai:gpt-4o' }
       } catch (openaiError) {
         const oaMsg = openaiError instanceof Error ? `${openaiError.name}: ${openaiError.message}` : String(openaiError)
         failReason = `${failReason ?? 'anthropic_failed'} | openai: ${oaMsg}`
@@ -190,7 +191,7 @@ async function postHandler(request: Request) {
           .filter((t) => t.text.trim())
       : []
 
-    return NextResponse.json({ thinking, tasks })
+    return NextResponse.json({ thinking, tasks, served_by: servedBy })
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'ai/rock-breakdown' } } as never)
     return NextResponse.json({ error: 'Failed to draft a plan. Please try again.' }, { status: 500 })
