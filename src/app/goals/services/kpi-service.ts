@@ -3,6 +3,8 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { KPIData } from '../types'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { dedupeKpiRowsByRecency } from './kpi-dedupe'
 
 const supabase = createClient()
 
@@ -246,28 +248,34 @@ export class KPIService {
         console.log(`  - year3Target: ${kpi.year3Target}`)
       })
 
-      // First, get existing KPI IDs for this business
+      // Dual-ID hardening: resolve to the canonical profile id so every save
+      // lands on ONE id-space, and look at existing rows across BOTH ids.
+      const ids = await resolveBusinessProfileIds(supabase, businessId)
+
       const { data: existingKPIs } = await supabase
         .from('business_kpis')
         .select('kpi_id')
-        .eq('business_id', businessId)
+        .in('business_id', ids.all)
 
       const existingKPIIds = new Set(existingKPIs?.map(k => k.kpi_id) || [])
       const newKPIIds = new Set(kpis.map(k => k.id))
 
-      // Delete KPIs that are no longer selected
-      const kpisToDelete = Array.from(existingKPIIds).filter(id => !newKPIIds.has(id))
-      if (kpisToDelete.length > 0) {
+      // NON-DESTRUCTIVE: KPIs that are no longer selected are DEACTIVATED, never
+      // hard-deleted, so their target history survives an accidental or partial
+      // save. The previous hard delete (scoped to a single id) is exactly what
+      // permanently wiped custom-KPI targets in the dual-ID incident.
+      const kpisToDeactivate = Array.from(existingKPIIds).filter(id => !newKPIIds.has(id))
+      if (kpisToDeactivate.length > 0) {
         await supabase
           .from('business_kpis')
-          .delete()
-          .eq('business_id', businessId)
-          .in('kpi_id', kpisToDelete)
+          .update({ is_active: false, updated_at: new Date().toISOString() })
+          .in('business_id', ids.all)
+          .in('kpi_id', kpisToDeactivate)
       }
 
-      // Upsert (insert or update) all KPIs
+      // Upsert (insert or update) all KPIs under the canonical profile id.
       const kpisToUpsert = kpis.map(kpi => ({
-        business_id: businessId,
+        business_id: ids.profileId,
         user_id: userId,
         kpi_id: kpi.id,
         name: kpi.name,
@@ -296,6 +304,19 @@ export class KPIService {
         return { success: false, error: upsertError.message }
       }
 
+      // Consolidate: now that the canonical profile-id rows hold the current
+      // values, deactivate any sibling-id (e.g. businesses-id) duplicates of the
+      // same kpis so a stale copy can never resurface. Self-heals legacy
+      // dual-id fragmentation on the next save.
+      const siblingIds = ids.all.filter(id => id !== ids.profileId)
+      if (siblingIds.length > 0 && newKPIIds.size > 0) {
+        await supabase
+          .from('business_kpis')
+          .update({ is_active: false, updated_at: new Date().toISOString() })
+          .in('business_id', siblingIds)
+          .in('kpi_id', Array.from(newKPIIds) as string[])
+      }
+
       console.log(`[KPI Service] ✅ Successfully saved ${kpis.length} KPIs`)
 
       // Log activity
@@ -322,10 +343,16 @@ export class KPIService {
         return []
       }
 
+      // Dual-ID hardening: a client's business_kpis can be keyed under EITHER the
+      // canonical business_profiles.id OR the businesses.id, depending on which
+      // surface wrote them. Read across BOTH so a KPI is never invisible because
+      // it was saved under the sibling id (the "my KPIs disappeared" bug class).
+      const ids = await resolveBusinessProfileIds(supabase, businessId)
+
       const { data, error } = await supabase
         .from('business_kpis')
         .select('*')
-        .eq('business_id', businessId)
+        .in('business_id', ids.all)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
 
@@ -334,7 +361,9 @@ export class KPIService {
         return []
       }
 
-      const result = data?.map(row => ({
+      // Dedupe by kpi_id (rows can exist under both id-spaces). See
+      // dedupeKpiRowsByRecency: newest-updated wins, tie-break to profile id.
+      const result = dedupeKpiRowsByRecency(data || [], ids.profileId).map(row => ({
         id: row.kpi_id,
         name: row.name,
         friendlyName: row.friendly_name,
@@ -346,9 +375,9 @@ export class KPIService {
         year1Target: row.year1_target || 0,
         year2Target: row.year2_target || 0,
         year3Target: row.year3_target || 0
-      })) || []
+      }))
 
-      console.log(`[KPI Service] 📥 Loaded ${result.length} user KPIs`)
+      console.log(`[KPI Service] 📥 Loaded ${result.length} user KPIs (dual-id safe)`)
       return result
     } catch (err) {
       console.error('[KPI Service] ❌ Error getting user KPIs:', err)
@@ -378,10 +407,12 @@ export class KPIService {
       if (updates.year2Target !== undefined) updateData.year2_target = updates.year2Target
       if (updates.year3Target !== undefined) updateData.year3_target = updates.year3Target
 
+      // Dual-ID hardening: update the row under whichever id-space holds it.
+      const ids = await resolveBusinessProfileIds(supabase, businessId)
       const { error } = await supabase
         .from('business_kpis')
         .update(updateData)
-        .eq('business_id', businessId)
+        .in('business_id', ids.all)
         .eq('kpi_id', kpiId)
 
       if (error) {
@@ -404,10 +435,12 @@ export class KPIService {
         return { success: false, error: 'Business ID and KPI ID required' }
       }
 
+      // Dual-ID hardening: deactivate the row under whichever id-space holds it.
+      const ids = await resolveBusinessProfileIds(supabase, businessId)
       const { error } = await supabase
         .from('business_kpis')
         .update({ is_active: false, updated_at: new Date().toISOString() })
-        .eq('business_id', businessId)
+        .in('business_id', ids.all)
         .eq('kpi_id', kpiId)
 
       if (error) {
