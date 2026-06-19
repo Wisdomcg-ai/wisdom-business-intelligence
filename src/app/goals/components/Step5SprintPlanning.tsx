@@ -4,9 +4,8 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   Target, Calendar, Briefcase, Users, Plus, Trash2, Edit2, ChevronDown, ChevronUp,
   Clock, CheckCircle2, AlertCircle, Flag, TrendingUp, GripVertical, UserPlus, X, Check,
-  Settings, Sparkles, Loader2
+  Settings
 } from 'lucide-react'
-import { toast } from 'sonner'
 import {
   StrategicInitiative,
   KPIData,
@@ -2139,60 +2138,6 @@ function InitiativeCard({
   const isOperational = initiative.ideaType === 'operational'
   const categoryInfo = getCategoryStyle(initiative.category)
 
-  // "Let the coach draft this" — asks the AI for the thinking (why/outcome) + a
-  // task breakdown for this rock. NON-DESTRUCTIVE: only fills fields the owner
-  // has left blank; never overwrites their words or an existing task list.
-  const [drafting, setDrafting] = useState(false)
-  const draftWithCoach = async () => {
-    if (!initiative.title?.trim() || drafting) return
-    setDrafting(true)
-    try {
-      const res = await fetch('/api/ai/rock-breakdown', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: initiative.title, engineId: initiative.category }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data?.detail ? `${data.error || 'Could not draft a plan'} (${data.detail})` : (data?.error || 'Could not draft a plan — add tasks manually.'))
-        return
-      }
-      const updates: Partial<InitiativeWithTasks> = {}
-      // whyNow + alignment → "Why" (WisdomBI has no separate alignment field).
-      const whyDraft = [data?.thinking?.whyNow, data?.thinking?.alignment]
-        .filter((s: unknown) => typeof s === 'string' && (s as string).trim())
-        .join(' ')
-      if (!initiative.why?.trim() && whyDraft) updates.why = whyDraft
-      if (!initiative.outcome?.trim() && typeof data?.thinking?.outcome === 'string' && data.thinking.outcome.trim()) {
-        updates.outcome = data.thinking.outcome
-      }
-      // Tasks: only when the owner has none — never clobber their list.
-      if ((!initiative.tasks || initiative.tasks.length === 0) && Array.isArray(data?.tasks) && data.tasks.length > 0) {
-        const drafted: InitiativeTask[] = data.tasks.slice(0, 8).map((t: { text?: string; estimateHours?: number }, i: number) => ({
-          id: `task-${Date.now()}-${i}`,
-          task: String(t?.text ?? ''),
-          assignedTo: '',
-          minutesAllocated: Math.round((Number(t?.estimateHours) || 1) * 60), // route returns HOURS; tasks store MINUTES
-          dueDate: '',
-          status: 'not_started' as TaskStatus,
-          order: i + 1,
-        }))
-        updates.tasks = drafted
-        updates.totalHours = Math.round((drafted.reduce((s, t) => s + t.minutesAllocated, 0) / 60) * 10) / 10
-      }
-      if (Object.keys(updates).length > 0) {
-        onUpdate(updates)
-        toast.success('Coach drafted the thinking + tasks — edit anything you like.')
-      } else {
-        toast('You already have notes and tasks here — left them as they are.')
-      }
-    } catch {
-      toast.error('Could not reach the coach. Try again.')
-    } finally {
-      setDrafting(false)
-    }
-  }
-
   // Badge styles matching Step 2: Roadmap=Navy, Strategic=Orange, Operational=Gray
   const getBadgeStyle = () => {
     if (isRoadmap) return { bg: 'bg-brand-navy', text: 'text-white', label: 'ROADMAP' }
@@ -2304,23 +2249,6 @@ function InitiativeCard({
       {/* Card Content */}
       {isExpanded && (
         <div className="border-t border-slate-200 p-6 bg-gray-50 space-y-6">
-          {/* Let the coach draft this */}
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-gray-500">
-              Name the rock, then let the coach draft the thinking + a task breakdown for you to edit.
-            </p>
-            <button
-              type="button"
-              onClick={draftWithCoach}
-              disabled={!initiative.title?.trim() || drafting}
-              title={!initiative.title?.trim() ? 'Name the rock first' : 'Let the coach draft the thinking + tasks'}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-brand-orange-200 text-brand-orange-700 bg-brand-orange-50 hover:bg-brand-orange-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-            >
-              {drafting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-              {drafting ? 'Drafting…' : 'Let the coach draft this'}
-            </button>
-          </div>
-
           {/* Project Plan Header */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
