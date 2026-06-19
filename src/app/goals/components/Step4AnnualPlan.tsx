@@ -53,6 +53,49 @@ interface Step4Props {
 const MAX_PER_QUARTER = 5
 const MAX_PER_PERSON = 3
 
+// B4 (Phase 68) — category + priority badge palettes for initiative cards.
+// MODULE-SCOPED (pure, no props/state) so they initialise at module load and
+// can never sit in a temporal-dead-zone. Previously these were component-local
+// `const`s declared ~130 lines BELOW the `categoryChips` useMemo that calls
+// getCategoryStyle; when the card mounted with initiatives already loaded (the
+// coach business-switch path), the memo factory ran before the const
+// initialised → "Cannot access 'getCategoryStyle' before initialization".
+const CATEGORY_PALETTE: Record<string, { bg: string; text: string; label: string }> = {
+  marketing:             { bg: 'bg-pink-100',    text: 'text-pink-700',    label: 'MKTG' },
+  finance:               { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'FIN'  },
+  people:                { bg: 'bg-violet-100',  text: 'text-violet-700',  label: 'PPL'  },
+  systems:               { bg: 'bg-sky-100',     text: 'text-sky-700',     label: 'SYS'  },
+  'customer experience': { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'CX'   },
+  customer_experience:   { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'CX'   },
+  cx:                    { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'CX'   },
+  leadership:            { bg: 'bg-indigo-100',  text: 'text-indigo-700',  label: 'LEAD' },
+  time:                  { bg: 'bg-orange-100',  text: 'text-orange-700',  label: 'TIME' },
+  diversification:       { bg: 'bg-rose-100',    text: 'text-rose-700',    label: 'DIV'  },
+  growth:                { bg: 'bg-rose-100',    text: 'text-rose-700',    label: 'GROW' },
+  operations:            { bg: 'bg-cyan-100',    text: 'text-cyan-700',    label: 'OPS'  },
+  product:               { bg: 'bg-fuchsia-100', text: 'text-fuchsia-700', label: 'PROD' },
+  sales:                 { bg: 'bg-lime-100',    text: 'text-lime-700',    label: 'SALE' },
+  other:                 { bg: 'bg-gray-200',    text: 'text-gray-700',    label: 'OTHR' },
+}
+
+const PRIORITY_PALETTE: Record<string, { bg: string; text: string; label: string }> = {
+  high:   { bg: 'bg-red-100',   text: 'text-red-700',   label: 'HIGH' },
+  medium: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'MED'  },
+  low:    { bg: 'bg-slate-100', text: 'text-slate-700', label: 'LOW'  },
+}
+
+const getCategoryStyle = (category?: string | null) => {
+  if (!category) return null
+  const key = category.trim().toLowerCase()
+  if (CATEGORY_PALETTE[key]) return CATEGORY_PALETTE[key]
+  return { bg: 'bg-gray-200', text: 'text-gray-700', label: category.toUpperCase().slice(0, 4) }
+}
+
+const getPriorityStyle = (priority?: string | null) => {
+  if (!priority) return null
+  return PRIORITY_PALETTE[priority.toLowerCase()] ?? null
+}
+
 export default function Step4AnnualPlan({
   twelveMonthInitiatives,
   setTwelveMonthInitiatives,
@@ -512,44 +555,9 @@ export default function Step4AnnualPlan({
     setAnnualPlanByQuarter(distribution)
   }
 
-  // B4 (Phase 68) — category + priority badge palettes for initiative cards.
-  // Case-insensitive keyed lookup; unknown categories fall back to a neutral
-  // grey badge with the first 4 chars of the category UPPERCASED as the label.
-  const CATEGORY_PALETTE: Record<string, { bg: string; text: string; label: string }> = {
-    marketing:             { bg: 'bg-pink-100',    text: 'text-pink-700',    label: 'MKTG' },
-    finance:               { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'FIN'  },
-    people:                { bg: 'bg-violet-100',  text: 'text-violet-700',  label: 'PPL'  },
-    systems:               { bg: 'bg-sky-100',     text: 'text-sky-700',     label: 'SYS'  },
-    'customer experience': { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'CX'   },
-    customer_experience:   { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'CX'   },
-    cx:                    { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'CX'   },
-    leadership:            { bg: 'bg-indigo-100',  text: 'text-indigo-700',  label: 'LEAD' },
-    time:                  { bg: 'bg-orange-100',  text: 'text-orange-700',  label: 'TIME' },
-    diversification:       { bg: 'bg-rose-100',    text: 'text-rose-700',    label: 'DIV'  },
-    growth:                { bg: 'bg-rose-100',    text: 'text-rose-700',    label: 'GROW' },
-    operations:            { bg: 'bg-cyan-100',    text: 'text-cyan-700',    label: 'OPS'  },
-    product:               { bg: 'bg-fuchsia-100', text: 'text-fuchsia-700', label: 'PROD' },
-    sales:                 { bg: 'bg-lime-100',    text: 'text-lime-700',    label: 'SALE' },
-    other:                 { bg: 'bg-gray-200',    text: 'text-gray-700',    label: 'OTHR' },
-  }
-
-  const PRIORITY_PALETTE: Record<string, { bg: string; text: string; label: string }> = {
-    high:   { bg: 'bg-red-100',   text: 'text-red-700',   label: 'HIGH' },
-    medium: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'MED'  },
-    low:    { bg: 'bg-slate-100', text: 'text-slate-700', label: 'LOW'  },
-  }
-
-  const getCategoryStyle = (category?: string | null) => {
-    if (!category) return null
-    const key = category.trim().toLowerCase()
-    if (CATEGORY_PALETTE[key]) return CATEGORY_PALETTE[key]
-    return { bg: 'bg-gray-200', text: 'text-gray-700', label: category.toUpperCase().slice(0, 4) }
-  }
-
-  const getPriorityStyle = (priority?: string | null) => {
-    if (!priority) return null
-    return PRIORITY_PALETTE[priority.toLowerCase()] ?? null
-  }
+  // getCategoryStyle / getPriorityStyle + their palettes are now MODULE-SCOPED
+  // (top of file) so they can never sit in a temporal-dead-zone when the
+  // earlier `categoryChips` useMemo factory calls them on a data-loaded mount.
 
   // B5 (Phase 68) — per-quarter engine balance: small stacked bar under each
   // quarter card header showing the mix of initiative categories. Recomputed
