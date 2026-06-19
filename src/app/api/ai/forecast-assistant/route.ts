@@ -11,6 +11,7 @@ import {
 } from '@/lib/utils/ai-sanitizer'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
+import { AI_MODELS } from '@/lib/ai/models'
 
 export const dynamic = 'force-dynamic'
 
@@ -103,7 +104,7 @@ Remember: Help them think through decisions, don't make decisions for them.`
         // claude-sonnet-4-6 is the current Sonnet. If the prod ANTHROPIC_API_KEY
         // still lacks Sonnet-4 access it will keep falling back to GPT-4 until the
         // key is updated.
-        model: 'claude-sonnet-4-6',
+        model: AI_MODELS.anthropic.forecastAssistant,
         max_tokens: 1024,
         system,
         messages,
@@ -121,7 +122,7 @@ Remember: Help them think through decisions, don't make decisions for them.`
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
         const completion = await openai.chat.completions.create({
-          model: 'gpt-4',
+          model: AI_MODELS.openai.forecastAssistant,
           messages: [{ role: 'system', content: system }, ...messages],
           temperature: 0.7,
           max_tokens: 1024,

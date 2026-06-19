@@ -11,6 +11,7 @@ import {
 import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
+import { AI_MODELS } from '@/lib/ai/models'
 
 export const dynamic = 'force-dynamic'
 
@@ -108,7 +109,7 @@ async function postHandler(request: Request) {
           // If this route still falls back to gpt-4o-mini below, the cause is the
           // prod ANTHROPIC_API_KEY lacking Haiku access (the same key gap that 404s
           // the Sonnet 4 models), not a stale model id.
-          model: 'claude-haiku-4-5-20251001',
+          model: AI_MODELS.anthropic.forecastInsights,
           max_tokens: 1024,
           system,
           messages: [{ role: 'user', content: userMessage }],
@@ -127,7 +128,7 @@ async function postHandler(request: Request) {
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
         const result = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
+          model: AI_MODELS.openai.forecastInsights,
           max_tokens: 1024,
           response_format: { type: 'json_object' },
           messages: [
