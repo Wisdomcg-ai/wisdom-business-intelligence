@@ -118,15 +118,13 @@ async function postHandler(request: Request) {
       const Anthropic = require('@anthropic-ai/sdk').default
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
       const result = await anthropic.messages.create({
-        // PROD-PROVEN model. The earlier 'claude-sonnet-4-6' flip 503'd in
-        // production: although Sonnet 4.6 shows in the Anthropic Console, the
-        // installed SDK (@anthropic-ai/sdk 0.39.0) + this prod API key reject
-        // that alias (it is used by no other route). The two AI routes that DO
-        // work in prod — ai/forecast-assistant + ai/forecast-insights — run on
-        // dated model ids. So use the same Sonnet id forecast-assistant uses.
-        // To move to 4.6 later: bump the SDK and verify against the prod key
-        // first (a live curl), not the Console.
-        model: 'claude-sonnet-4-20250514',
+        // Current Sonnet. The previous dated id 'claude-sonnet-4-20250514' is
+        // RETIRED and 404s on this prod key (not_found_error) — and the other AI
+        // routes only survive that because they silently fall back to OpenAI.
+        // 'claude-sonnet-4-6' is the current model (confirmed in the account's
+        // Console). The OpenAI fallback below means a model/key hiccup can never
+        // hard-fail the button again.
+        model: 'claude-sonnet-4-6',
         max_tokens: 1000,
         temperature: 0.4,
         system: SYSTEM_PROMPT,
@@ -141,6 +139,34 @@ async function postHandler(request: Request) {
       failReason = anthropicError instanceof Error ? `${anthropicError.name}: ${anthropicError.message}` : String(anthropicError)
       console.error('[rock-breakdown] Anthropic call failed:', failReason)
       Sentry.captureException(anthropicError, { tags: { route: 'ai/rock-breakdown' }, level: 'warning' } as never)
+    }
+
+    // OpenAI fallback (same pattern as ai/forecast-assistant) so a retired/blocked
+    // Anthropic model can never hard-fail the feature. OpenAI function-calling
+    // reuses the exact provide_plan JSON schema for identical structured output.
+    if (!input) {
+      try {
+        const OpenAI = require('openai').default
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          max_tokens: 1000,
+          temperature: 0.4,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userContent },
+          ],
+          tools: [{ type: 'function', function: { name: PLAN_TOOL.name, description: PLAN_TOOL.description, parameters: PLAN_TOOL.input_schema } }],
+          tool_choice: { type: 'function', function: { name: PLAN_TOOL.name } },
+        })
+        const args = completion.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments
+        if (args) input = JSON.parse(args)
+      } catch (openaiError) {
+        const oaMsg = openaiError instanceof Error ? `${openaiError.name}: ${openaiError.message}` : String(openaiError)
+        failReason = `${failReason ?? 'anthropic_failed'} | openai: ${oaMsg}`
+        console.error('[rock-breakdown] OpenAI fallback failed:', oaMsg)
+        Sentry.captureException(openaiError, { tags: { route: 'ai/rock-breakdown' }, level: 'warning' } as never)
+      }
     }
 
     if (!input) {
