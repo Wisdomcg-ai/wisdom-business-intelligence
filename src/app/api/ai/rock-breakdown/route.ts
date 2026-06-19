@@ -5,6 +5,7 @@ import * as Sentry from '@sentry/nextjs'
 import { sanitizeAIInput, detectPromptInjection, logSuspiciousInput } from '@/lib/utils/ai-sanitizer'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
+import { AI_MODELS } from '@/lib/ai/models'
 
 export const dynamic = 'force-dynamic'
 
@@ -124,7 +125,7 @@ async function postHandler(request: Request) {
         // Opus access. That key currently 404s on Sonnet 4, so if it also lacks
         // Opus this call 404s and the OpenAI fallback below serves the request
         // instead — the `served_by` field in the response shows which ran.
-        model: 'claude-opus-4-8',
+        model: AI_MODELS.anthropic.rockBreakdown,
         max_tokens: 1000,
         temperature: 0.4,
         system: SYSTEM_PROMPT,
@@ -134,7 +135,7 @@ async function postHandler(request: Request) {
       })
       const toolUse = result.content?.find((b: { type: string }) => b.type === 'tool_use')
       input = (toolUse as { input?: { thinking?: unknown; tasks?: unknown } } | undefined)?.input ?? null
-      if (input) servedBy = 'anthropic:claude-opus-4-8'
+      if (input) servedBy = `anthropic:${AI_MODELS.anthropic.rockBreakdown}`
       else failReason = 'no_tool_use_block'
     } catch (anthropicError) {
       failReason = anthropicError instanceof Error ? `${anthropicError.name}: ${anthropicError.message}` : String(anthropicError)
@@ -150,7 +151,7 @@ async function postHandler(request: Request) {
         const OpenAI = require('openai').default
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
         const completion = await openai.chat.completions.create({
-          model: 'gpt-4o',
+          model: AI_MODELS.openai.rockBreakdown,
           max_tokens: 1000,
           temperature: 0.4,
           messages: [
@@ -161,7 +162,7 @@ async function postHandler(request: Request) {
           tool_choice: { type: 'function', function: { name: PLAN_TOOL.name } },
         })
         const args = completion.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments
-        if (args) { input = JSON.parse(args); servedBy = 'openai:gpt-4o' }
+        if (args) { input = JSON.parse(args); servedBy = `openai:${AI_MODELS.openai.rockBreakdown}` }
       } catch (openaiError) {
         const oaMsg = openaiError instanceof Error ? `${openaiError.name}: ${openaiError.message}` : String(openaiError)
         failReason = `${failReason ?? 'anthropic_failed'} | openai: ${oaMsg}`

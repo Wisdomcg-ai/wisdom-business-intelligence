@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runHealthChecks, getLastSyncByTenant } from "@/lib/health-checks";
+import { checkAnthropicModels } from "@/lib/ai/model-health";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/resend";
 import * as Sentry from '@sentry/nextjs'
@@ -29,6 +30,12 @@ async function getHandler(request: NextRequest) {
   try {
     // Run health checks
     const health = await runHealthChecks();
+
+    // AI-model safeguard: ping every Anthropic model the app uses against the
+    // prod key. A retired/inaccessible model fails fast (404 not_found) — this
+    // catches it here, before a coach hits it. (The failure that silently
+    // shipped `claude-sonnet-4-20250514` would have surfaced the next morning.)
+    const aiHealth = await checkAnthropicModels();
 
     // Gather daily stats
     const supabase = createServiceRoleClient();
@@ -121,6 +128,11 @@ async function getHandler(request: NextRequest) {
       attentionItems.push(`${staleBusinessCount} business${staleBusinessCount > 1 ? "es" : ""} inactive >30 days`);
     }
     xeroIssues.forEach((i) => attentionItems.push(i));
+    if (!aiHealth.skipped) {
+      for (const f of aiHealth.failures) {
+        attentionItems.push(`AI model unavailable: ${f.model}${f.error ? ` — ${f.error}` : ''}`);
+      }
+    }
 
     // Status indicator
     const statusColor = health.overall === "healthy" ? "#22c55e" : health.overall === "degraded" ? "#f59e0b" : "#ef4444";
@@ -153,6 +165,17 @@ async function getHandler(request: NextRequest) {
         ? attentionItems.map((item) => `<li style="color:${BRAND_ORANGE};">${item}</li>`).join("")
         : `<li style="color:#22c55e;">Nothing needs attention</li>`;
 
+    const aiModelsSection = aiHealth.skipped
+      ? `<tr><td style="padding:4px 12px;color:#6b7280;">No ANTHROPIC_API_KEY configured — AI models not checked.</td></tr>`
+      : aiHealth.results
+          .map((r) => {
+            const icon = r.ok ? "&#9679;" : "&#10060;";
+            const color = r.ok ? "#22c55e" : "#ef4444";
+            const detail = r.ok ? "reachable" : (r.error ?? "failed");
+            return `<tr><td style="padding:4px 12px;color:${color};">${icon}</td><td style="padding:4px 12px;font-family:monospace;font-size:12px;">${r.model}</td><td style="padding:4px 12px;color:#6b7280;font-size:12px;">${detail}</td></tr>`;
+          })
+          .join("");
+
     const html = `
 <!DOCTYPE html>
 <html>
@@ -171,6 +194,13 @@ async function getHandler(request: NextRequest) {
       ${checkRow("Auth", health.checks.auth)}
       ${checkRow("Error Rate", health.checks.errorRate)}
       ${checkRow("Xero", health.checks.xero)}
+    </table>
+  </div>
+
+  <div style="background:white;border-radius:8px;padding:20px;margin-bottom:16px;border:1px solid #e5e7eb;">
+    <h3 style="margin-top:0;color:${BRAND_NAVY};">AI Models <span style="font-weight:400;font-size:13px;color:#6b7280;">(pinged against the prod key)</span></h3>
+    <table style="width:100%;font-size:14px;">
+      ${aiModelsSection}
     </table>
   </div>
 
@@ -200,9 +230,22 @@ async function getHandler(request: NextRequest) {
 </body>
 </html>`;
 
+    // Escalate AI-model failures to Sentry (alert channel #2 — the audit trail).
+    if (!aiHealth.ok && !aiHealth.skipped) {
+      Sentry.captureMessage(
+        `[ai-health] ${aiHealth.failures.length} Anthropic model(s) unavailable: ${aiHealth.failures.map((f) => f.model).join(", ")}`,
+        {
+          level: "error",
+          tags: { route: "cron/daily-health-report", invariant: "ai_model_unavailable" },
+          extra: { failures: aiHealth.failures },
+        } as any,
+      );
+    }
+
+    const aiAlert = !aiHealth.ok && !aiHealth.skipped ? "⚠️ AI MODELS — " : "";
     const result = await sendEmail({
       to: adminEmail,
-      subject: `${APP_NAME} Health Report — ${statusLabel} — ${dateStr}`,
+      subject: `${aiAlert}${APP_NAME} Health Report — ${statusLabel} — ${dateStr}`,
       html,
     });
 
@@ -223,7 +266,7 @@ async function getHandler(request: NextRequest) {
     await recordHeartbeat({
       cronPath: CRON_PATH,
       status: result.success ? 'success' : 'partial',
-      metadata: { health_overall: health.overall, email_sent: !!result.success },
+      metadata: { health_overall: health.overall, email_sent: !!result.success, ai_models_ok: aiHealth.skipped ? null : aiHealth.ok },
     });
 
     return NextResponse.json({ success: result.success, health: health.overall });
