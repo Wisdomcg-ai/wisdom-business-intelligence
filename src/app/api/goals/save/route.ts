@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 
 export const dynamic = 'force-dynamic'
 
@@ -192,27 +193,33 @@ async function postHandler(request: Request) {
     // ========================
     if (data.kpis && Array.isArray(data.kpis)) {
       try {
-        // KPIs use businesses.id for the business_id column
-        const kpiBusinessId = businessId
+        // Dual-ID hardening: business_kpis is canonically keyed by the
+        // business_profiles.id (what the goals wizard reads). The old code wrote
+        // under the raw businessId (often the businesses.id in coach mode), so
+        // coach-mode KPI saves landed on a sibling id and went invisible in the
+        // wizard. Resolve to the canonical profile id; look across BOTH ids.
+        const kpiIds = await resolveBusinessProfileIds(admin, businessId)
+        const kpiBusinessId = kpiIds.profileId
         const kpis = data.kpis
 
-        // Get existing KPIs
+        // Get existing KPIs across both id-spaces
         const { data: existingKPIs } = await admin
           .from('business_kpis')
           .select('kpi_id')
-          .eq('business_id', kpiBusinessId)
+          .in('business_id', kpiIds.all)
 
         const existingKPIIds = new Set(existingKPIs?.map((k: any) => k.kpi_id) || [])
         const newKPIIds = new Set(kpis.map((k: any) => k.id))
 
-        // Delete removed KPIs
-        const toDelete = Array.from(existingKPIIds).filter(id => !newKPIIds.has(id))
-        if (toDelete.length > 0) {
+        // NON-DESTRUCTIVE: deselected KPIs are deactivated, never hard-deleted,
+        // so target history survives a partial/duplicate-id save.
+        const toDeactivate = Array.from(existingKPIIds).filter(id => !newKPIIds.has(id))
+        if (toDeactivate.length > 0) {
           await admin
             .from('business_kpis')
-            .delete()
-            .eq('business_id', kpiBusinessId)
-            .in('kpi_id', toDelete as string[])
+            .update({ is_active: false, updated_at: new Date().toISOString() })
+            .in('business_id', kpiIds.all)
+            .in('kpi_id', toDeactivate as string[])
         }
 
         // Upsert KPIs
