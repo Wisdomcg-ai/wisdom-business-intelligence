@@ -98,7 +98,12 @@ Remember: Help them think through decisions, don't make decisions for them.`
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
       const result = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        // claude-sonnet-4-20250514 is RETIRED (404s on the prod key) — this route
+        // had been silently serving every request via the OpenAI fallback below.
+        // claude-sonnet-4-6 is the current Sonnet. If the prod ANTHROPIC_API_KEY
+        // still lacks Sonnet-4 access it will keep falling back to GPT-4 until the
+        // key is updated.
+        model: 'claude-sonnet-4-6',
         max_tokens: 1024,
         system,
         messages,
