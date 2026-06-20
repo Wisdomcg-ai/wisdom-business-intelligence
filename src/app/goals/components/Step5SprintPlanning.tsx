@@ -2213,11 +2213,16 @@ function InitiativeCard({
         : served.includes('haiku') ? 'Haiku 4.5'
         : served.startsWith('openai') ? 'GPT-4o (fallback)'
         : ''
+      // On fallback, show WHY Claude was skipped (truncated) so the key/model
+      // situation is diagnosable from the toast alone.
+      const claudeNote = served.startsWith('openai') && typeof data?.anthropic_error === 'string' && data.anthropic_error
+        ? ` Claude unavailable: ${String(data.anthropic_error).slice(0, 60)}.`
+        : ''
       if (Object.keys(updates).length > 0) {
         onUpdate(updates)
-        toast.success(via ? `Coach drafted via ${via} — edit anything you like.` : 'Coach drafted the thinking + tasks — edit anything you like.')
+        toast.success(via ? `Coach drafted via ${via}.${claudeNote}` : 'Coach drafted the thinking + tasks — edit anything you like.')
       } else {
-        toast(via ? `You already have notes and tasks here — left them as they are. (via ${via})` : 'You already have notes and tasks here — left them as they are.')
+        toast(via ? `You already have notes and tasks here — left them as they are. (via ${via})${claudeNote}` : 'You already have notes and tasks here — left them as they are.')
       }
     } catch {
       toast.error('Could not reach the coach. Try again.')
