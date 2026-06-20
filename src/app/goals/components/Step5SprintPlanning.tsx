@@ -2613,41 +2613,23 @@ function InitiativeCard({
                 </button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse bg-white rounded-lg overflow-hidden">
-                  <thead>
-                    <tr className="bg-brand-navy text-white">
-                      <th className="px-4 py-3 text-left text-sm font-semibold">Task</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold w-48">Assigned To</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold w-32">Minutes</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold w-40">Due Date</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold w-36">Status</th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold w-20">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {(initiative.tasks || []).map((task) => (
-                      <TaskRow
-                        key={task.id}
-                        task={task}
-                        teamMembers={teamMembers}
-                        onUpdate={(updates) => onUpdateTask(task.id, updates)}
-                        onDelete={() => onDeleteTask(task.id)}
-                        onAddTeamMember={onAddTeamMember}
-                      />
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-slate-100 border-t-2 border-brand-secondary">
-                      <td colSpan={2} className="px-4 py-3 text-right font-bold text-gray-900">
-                        Total Time:
-                      </td>
-                      <td colSpan={4} className="px-4 py-3 font-bold text-brand-secondary">
-                        {initiative.totalHours?.toFixed(1) || '0.0'} hours
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+              // ClickUp-style row list — the task name is the hero (full width);
+              // owner / time / due / status are compact chips on the right.
+              <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+                {(initiative.tasks || []).map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    teamMembers={teamMembers}
+                    onUpdate={(updates) => onUpdateTask(task.id, updates)}
+                    onDelete={() => onDeleteTask(task.id)}
+                    onAddTeamMember={onAddTeamMember}
+                  />
+                ))}
+                <div className="flex items-center justify-end gap-2 px-3 py-2.5 bg-slate-50">
+                  <span className="text-sm font-semibold text-gray-500">Total time</span>
+                  <span className="text-sm font-bold text-brand-secondary tabular-nums">{initiative.totalHours?.toFixed(1) || '0.0'} hours</span>
+                </div>
               </div>
             )}
           </div>
@@ -2693,75 +2675,97 @@ function TaskRow({ task, teamMembers, onUpdate, onDelete, onAddTeamMember }: Tas
   }
 
   return (
-    <tr className="hover:bg-gray-50">
-      <td className="px-4 py-3">
-        <input
-          type="text"
-          value={task.task}
-          onChange={(e) => onUpdate({ task: e.target.value })}
-          placeholder="Enter task description..."
-          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-brand-secondary text-sm"
-        />
-      </td>
-      <td className="px-4 py-3">
+    <div className="group flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2.5 hover:bg-gray-50 transition-colors">
+      {/* Done toggle */}
+      <button
+        type="button"
+        onClick={() => onUpdate({ status: task.status === 'done' ? 'not_started' : 'done' })}
+        title={task.status === 'done' ? 'Mark not done' : 'Mark done'}
+        className={`flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 border-2 transition-colors ${
+          task.status === 'done'
+            ? 'bg-green-500 border-green-500'
+            : task.status === 'in_progress'
+              ? 'border-amber-400 bg-amber-50'
+              : 'bg-white border-gray-300 hover:border-gray-400'
+        }`}
+      >
+        {task.status === 'done' && <Check className="w-3 h-3 text-white" />}
+      </button>
+
+      {/* Task name — the hero, full width */}
+      <input
+        type="text"
+        value={task.task}
+        onChange={(e) => onUpdate({ task: e.target.value })}
+        placeholder="Task description…"
+        className={`flex-1 min-w-[200px] bg-transparent px-1.5 py-1 text-sm rounded border border-transparent hover:border-gray-200 focus:border-brand-secondary focus:bg-white focus:outline-none ${
+          task.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'
+        }`}
+      />
+
+      {/* Compact meta — wraps under the name on narrow widths */}
+      <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto flex-wrap">
+        {/* Owner */}
         <select
           value={task.assignedTo}
           onChange={(e) => {
-            if (e.target.value === '__add_new__') {
-              onAddTeamMember()
-            } else {
-              onUpdate({ assignedTo: e.target.value })
-            }
+            if (e.target.value === '__add_new__') onAddTeamMember()
+            else onUpdate({ assignedTo: e.target.value })
           }}
-          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-brand-secondary text-sm"
+          title="Owner"
+          className="text-xs rounded-full bg-gray-100 hover:bg-gray-200 px-2.5 py-1 text-gray-700 max-w-[130px] focus:outline-none focus:ring-1 focus:ring-brand-secondary"
         >
-          <option value="">Select person...</option>
-          {teamMembers.map(member => {
-            const typeLabel = member.type === 'contractor' ? ' (Contractor)' : ''
-            return (
-              <option key={member.id} value={member.name}>{member.name}{typeLabel}</option>
-            )
-          })}
-          <option value="__add_new__">+ Add Team Member</option>
+          <option value="">👤 Owner</option>
+          {teamMembers.map(member => (
+            <option key={member.id} value={member.name}>{member.name}{member.type === 'contractor' ? ' (Contractor)' : ''}</option>
+          ))}
+          <option value="__add_new__">+ Add person</option>
         </select>
-      </td>
-      <td className="px-4 py-3">
-        <input
-          type="number"
-          value={task.minutesAllocated || ''}
-          onChange={(e) => onUpdate({ minutesAllocated: parseInt(e.target.value) || 0 })}
-          placeholder="0"
-          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-brand-secondary text-sm"
-        />
-      </td>
-      <td className="px-4 py-3">
+
+        {/* Time estimate (minutes) */}
+        <div className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1" title="Time estimate (minutes)">
+          <Clock className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+          <input
+            type="number"
+            value={task.minutesAllocated || ''}
+            onChange={(e) => onUpdate({ minutesAllocated: parseInt(e.target.value) || 0 })}
+            placeholder="min"
+            className="w-11 bg-transparent text-xs text-gray-700 focus:outline-none"
+          />
+        </div>
+
+        {/* Due date */}
         <input
           type="date"
           value={task.dueDate}
           onChange={(e) => onUpdate({ dueDate: e.target.value })}
-          className="w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-brand-secondary text-sm"
+          title="Due date"
+          className="text-xs rounded-full bg-gray-100 hover:bg-gray-200 px-2.5 py-1 text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-secondary"
         />
-      </td>
-      <td className="px-4 py-3">
+
+        {/* Status pill */}
         <select
           value={task.status}
           onChange={(e) => onUpdate({ status: e.target.value as TaskStatus })}
-          className={`w-full px-2 py-1 border rounded text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-brand-secondary ${getStatusColor(task.status)}`}
+          title={`Status: ${getStatusLabel(task.status)}`}
+          className={`text-xs font-semibold rounded-full px-2.5 py-1 border focus:outline-none ${getStatusColor(task.status)}`}
         >
           <option value="not_started">Not Started</option>
           <option value="in_progress">In Progress</option>
           <option value="done">Done</option>
         </select>
-      </td>
-      <td className="px-4 py-3 text-center">
+
+        {/* Delete — reveal on hover */}
         <button
+          type="button"
           onClick={onDelete}
-          className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+          title="Delete task"
+          className="p-1 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded transition-colors md:opacity-0 md:group-hover:opacity-100"
         >
           <Trash2 className="w-4 h-4" />
         </button>
-      </td>
-    </tr>
+      </div>
+    </div>
   )
 }
 
