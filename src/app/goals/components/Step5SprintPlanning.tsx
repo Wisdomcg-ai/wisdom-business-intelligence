@@ -2205,11 +2205,19 @@ function InitiativeCard({
         updates.tasks = drafted
         updates.totalHours = Math.round((drafted.reduce((s, t) => s + t.minutesAllocated, 0) / 60) * 10) / 10
       }
+      // Surface which model actually served (Anthropic primary vs OpenAI
+      // fallback) so the model/key situation is visible without DevTools.
+      const served = typeof data?.served_by === 'string' ? data.served_by : ''
+      const via = served.includes('opus') ? 'Opus 4.8'
+        : served.includes('sonnet') ? 'Sonnet 4.6'
+        : served.includes('haiku') ? 'Haiku 4.5'
+        : served.startsWith('openai') ? 'GPT-4o (fallback)'
+        : ''
       if (Object.keys(updates).length > 0) {
         onUpdate(updates)
-        toast.success('Coach drafted the thinking + tasks — edit anything you like.')
+        toast.success(via ? `Coach drafted via ${via} — edit anything you like.` : 'Coach drafted the thinking + tasks — edit anything you like.')
       } else {
-        toast('You already have notes and tasks here — left them as they are.')
+        toast(via ? `You already have notes and tasks here — left them as they are. (via ${via})` : 'You already have notes and tasks here — left them as they are.')
       }
     } catch {
       toast.error('Could not reach the coach. Try again.')
