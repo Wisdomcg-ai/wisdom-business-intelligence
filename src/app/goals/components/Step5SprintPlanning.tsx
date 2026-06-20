@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useLayoutEffect } from 'react'
 import {
   Target, Calendar, Briefcase, Users, Plus, Trash2, Edit2, ChevronDown, ChevronUp,
   Clock, CheckCircle2, AlertCircle, Flag, TrendingUp, GripVertical, UserPlus, X, Check,
@@ -637,21 +637,19 @@ export default function Step5SprintPlanning({
         </div>
       </div>
 
-      {/* Main Layout with Sidebar */}
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Sidebar - Quarterly Targets */}
-        <div className="lg:w-72 flex-shrink-0">
-          <QuarterlyTargetsSidebar
-            quarterlyTargets={quarterlyTargets}
-            currentQuarter={currentQuarter}
-            currentQuarterKey={currentQuarterKey}
-            kpis={kpis}
-            coreMetrics={coreMetrics}
-          />
-        </div>
+      {/* Stacked: slim sticky targets bar across the top, full-width work below */}
+      <div className="flex flex-col gap-6">
+        {/* Targets — slim horizontal sticky bar */}
+        <QuarterlyTargetsSidebar
+          quarterlyTargets={quarterlyTargets}
+          currentQuarter={currentQuarter}
+          currentQuarterKey={currentQuarterKey}
+          kpis={kpis}
+          coreMetrics={coreMetrics}
+        />
 
-        {/* Main Content Area */}
-        <div className="flex-1 min-w-0">
+        {/* Main Content Area — full width */}
+        <div className="min-w-0">
           {/* Advanced Mode Toggle */}
           <div className="flex justify-end mb-2">
             <button
@@ -808,6 +806,44 @@ export default function Step5SprintPlanning({
 }
 
 // =============================================================================
+// AUTO-GROW TEXTAREA — height follows content so a coach-drafted Why/Outcome is
+// fully visible with no scroll-inside-a-box (resizes on value change too, not
+// just on typing — so it expands the moment the AI fills it).
+// =============================================================================
+function AutoGrowTextarea({
+  value,
+  onChange,
+  className,
+  placeholder,
+  minRows = 3,
+}: {
+  value: string
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
+  className?: string
+  placeholder?: string
+  minRows?: number
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [value])
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      rows={minRows}
+      className={className}
+      style={{ resize: 'none', overflow: 'hidden' }}
+    />
+  )
+}
+
+// =============================================================================
 // QUARTERLY TARGETS SIDEBAR
 // =============================================================================
 
@@ -827,6 +863,7 @@ function QuarterlyTargetsSidebar({
   coreMetrics
 }: QuarterlyTargetsSidebarProps) {
   const qKey = currentQuarterKey as 'q1' | 'q2' | 'q3' | 'q4'
+  const [expanded, setExpanded] = useState(false)
 
   const getTarget = (metricKey: string): number => {
     const value = quarterlyTargets[metricKey]?.[qKey]
@@ -869,99 +906,67 @@ function QuarterlyTargetsSidebar({
   const hasTeam = teamHeadcount > 0 || (coreMetrics?.teamHeadcount?.year1 ?? 0) > 0
   const hasOwnerHours = ownerHoursPerWeek > 0 || (coreMetrics?.ownerHoursPerWeek?.year1 ?? 0) > 0
 
+  // Condensed "more" items (core metrics + top KPIs) revealed behind the toggle.
+  // Progressive disclosure keeps the bar to one line by default.
+  const moreItems: Array<{ label: string; value: string }> = []
+  if (hasLeads) moreItems.push({ label: 'Leads/mo', value: Math.round(leadsPerMonth).toLocaleString() })
+  if (hasConversion) moreItems.push({ label: 'Conversion', value: `${conversionRate.toFixed(1)}%` })
+  if (hasATV) moreItems.push({ label: 'Avg Txn', value: formatCurrencyCompact(avgTransactionValue) })
+  if (hasTeam) moreItems.push({ label: 'Team', value: String(Math.round(teamHeadcount)) })
+  if (hasOwnerHours) moreItems.push({ label: 'Owner hrs/wk', value: `${Math.round(ownerHoursPerWeek)}h` })
+  for (const kpi of (kpis || []).slice(0, 8)) {
+    moreItems.push({ label: kpi.name, value: String(quarterlyTargets[kpi.id]?.[qKey] || kpi.year1Target || '–') })
+  }
+
   return (
-    <div className="bg-white border-2 border-brand-navy-200 rounded-xl overflow-hidden sticky top-4">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-brand-navy to-brand-navy-700 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Target className="w-4 h-4 text-white" />
-          <h3 className="text-sm font-bold text-white">{currentQuarter.label} Targets</h3>
+    <div className="bg-white border border-gray-200 rounded-xl shadow-sm sticky top-2 z-20">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+        {/* Label */}
+        <div className="flex items-center gap-1.5 text-brand-navy flex-shrink-0">
+          <Target className="w-4 h-4 text-brand-orange" />
+          <span className="text-sm font-bold">{currentQuarter.label} Targets</span>
         </div>
-        <p className="text-xs text-white/70 mt-0.5">From Annual Plan</p>
+
+        {/* Financials — always visible, inline */}
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+            <span className="text-xs text-gray-500">Revenue</span>
+            <span className="text-sm font-bold text-brand-navy tabular-nums">{formatCurrencyCompact(revenue)}</span>
+          </span>
+          <span className="text-gray-300" aria-hidden>·</span>
+          <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+            <span className="text-xs text-gray-500">Gross Profit</span>
+            <span className="text-sm font-bold text-brand-navy tabular-nums">{formatCurrencyCompact(grossProfit)}{grossMargin > 0 ? ` (${grossMargin.toFixed(0)}%)` : ''}</span>
+          </span>
+          <span className="text-gray-300" aria-hidden>·</span>
+          <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+            <span className="text-xs text-gray-500">Net Profit</span>
+            <span className="text-sm font-bold text-brand-navy tabular-nums">{formatCurrencyCompact(netProfit)}{netMargin > 0 ? ` (${netMargin.toFixed(0)}%)` : ''}</span>
+          </span>
+        </div>
+
+        {/* Expand toggle — KPIs + core metrics on demand */}
+        {moreItems.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-brand-orange-700 bg-brand-orange-50 hover:bg-brand-orange-100 rounded-lg transition-colors flex-shrink-0"
+          >
+            {expanded ? 'Hide' : `+${moreItems.length} more`}
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+          </button>
+        )}
       </div>
 
-      {/* Financial Goals */}
-      <div className="p-4 border-b border-gray-200">
-        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Financial</h4>
-        <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-600">Revenue</span>
-            <span className="text-sm font-bold text-gray-900">{formatCurrencyCompact(revenue)}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-600">Gross Profit</span>
-            <div className="text-right">
-              <span className="text-sm font-bold text-gray-900">{formatCurrencyCompact(grossProfit)}</span>
-              {grossMargin > 0 && <span className="text-xs text-gray-500 ml-1">({grossMargin.toFixed(0)}%)</span>}
-            </div>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-600">Net Profit</span>
-            <div className="text-right">
-              <span className="text-sm font-bold text-gray-900">{formatCurrencyCompact(netProfit)}</span>
-              {netMargin > 0 && <span className="text-xs text-gray-500 ml-1">({netMargin.toFixed(0)}%)</span>}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Core Metrics - only show if any are configured */}
-      {(hasLeads || hasConversion || hasATV || hasTeam || hasOwnerHours) && (
-        <div className="p-4 border-b border-gray-200">
-          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Core Metrics</h4>
-          <div className="space-y-3">
-            {hasLeads && (
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Leads/Month</span>
-                <span className="text-sm font-bold text-gray-900">{Math.round(leadsPerMonth).toLocaleString()}</span>
-              </div>
-            )}
-            {hasConversion && (
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Conversion Rate</span>
-                <span className="text-sm font-bold text-gray-900">{conversionRate.toFixed(1)}%</span>
-              </div>
-            )}
-            {hasATV && (
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Avg Transaction</span>
-                <span className="text-sm font-bold text-gray-900">{formatCurrencyCompact(avgTransactionValue)}</span>
-              </div>
-            )}
-            {hasTeam && (
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Team Size</span>
-                <span className="text-sm font-bold text-gray-900">{Math.round(teamHeadcount)}</span>
-              </div>
-            )}
-            {hasOwnerHours && (
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Owner Hours/Wk</span>
-                <span className="text-sm font-bold text-gray-900">{Math.round(ownerHoursPerWeek)}h</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* KPIs */}
-      {kpis && kpis.length > 0 && (
-        <div className="p-4">
-          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">KPIs</h4>
-          <div className="space-y-2">
-            {kpis.slice(0, 5).map((kpi, idx) => {
-              // Step 4 stores KPI quarterly targets using kpi.id directly (not with kpi_ prefix)
-              const kpiTarget = quarterlyTargets[kpi.id]?.[qKey]
-              return (
-                <div key={kpi.id || idx} className="flex justify-between items-center">
-                  <span className="text-xs text-gray-600 truncate flex-1 mr-2">{kpi.name}</span>
-                  <span className="text-xs font-semibold text-gray-900 flex-shrink-0">
-                    {kpiTarget || kpi.year1Target || '-'}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
+      {/* Expanded: core metrics + KPIs, wrapping */}
+      {expanded && moreItems.length > 0 && (
+        <div className="border-t border-gray-100 bg-gray-50 px-4 py-2.5 flex flex-wrap gap-x-4 gap-y-2">
+          {moreItems.map((it, i) => (
+            <span key={i} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+              <span className="text-xs text-gray-500 max-w-[180px] truncate">{it.label}</span>
+              <span className="text-sm font-bold text-brand-navy tabular-nums">{it.value}</span>
+            </span>
+          ))}
         </div>
       )}
     </div>
@@ -2321,17 +2326,17 @@ function InitiativeCard({
             </button>
           </div>
 
-          {/* Project Plan Header */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Project Plan — full width, auto-growing so the coach's draft is fully visible */}
+          <div className="grid grid-cols-1 gap-4">
             <div>
               <label className="block text-sm font-semibold text-gray-900 mb-2">
                 Why are we doing this now?
               </label>
-              <textarea
+              <AutoGrowTextarea
                 value={initiative.why || ''}
                 onChange={(e) => onUpdate({ why: e.target.value })}
                 placeholder="Explain the strategic reason for this initiative..."
-                rows={3}
+                minRows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-secondary"
               />
             </div>
@@ -2339,11 +2344,11 @@ function InitiativeCard({
               <label className="block text-sm font-semibold text-gray-900 mb-2">
                 What outcome are we looking for?
               </label>
-              <textarea
+              <AutoGrowTextarea
                 value={initiative.outcome || ''}
                 onChange={(e) => onUpdate({ outcome: e.target.value })}
                 placeholder="Define the expected result or success criteria..."
-                rows={3}
+                minRows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-secondary"
               />
             </div>
