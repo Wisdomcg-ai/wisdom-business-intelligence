@@ -14,8 +14,13 @@
  */
 export const AI_MODELS = {
   anthropic: {
-    /** rock-breakdown: owner's choice — most capable for the coaching thinking. */
-    rockBreakdown: 'claude-opus-4-8',
+    /**
+     * rock-breakdown: Sonnet 4.6 — right tier for a quick best-effort draft, and
+     * API-reachable on the prod key. (Opus 4.8 showed in the Console workbench but
+     * 404'd on the API key repeatedly — Opus is gated separately from the
+     * workbench, so it fell back to GPT-4o every time.)
+     */
+    rockBreakdown: 'claude-sonnet-4-6',
     /** forecast-assistant: current Sonnet (was retired claude-sonnet-4-20250514). */
     forecastAssistant: 'claude-sonnet-4-6',
     /** forecast-insights: current Haiku 4.5 — fast + cheap for structured output. */
