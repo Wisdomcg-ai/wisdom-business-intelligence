@@ -2213,10 +2213,15 @@ function InitiativeCard({
         : served.includes('haiku') ? 'Haiku 4.5'
         : served.startsWith('openai') ? 'GPT-4o (fallback)'
         : ''
-      // On fallback, show WHY Claude was skipped (truncated) so the key/model
-      // situation is diagnosable from the toast alone.
-      const claudeNote = served.startsWith('openai') && typeof data?.anthropic_error === 'string' && data.anthropic_error
-        ? ` Claude unavailable: ${String(data.anthropic_error).slice(0, 60)}.`
+      // On fallback, translate WHY Claude was skipped into plain English so the
+      // key/model situation is diagnosable from the toast alone.
+      const aerr = typeof data?.anthropic_error === 'string' ? data.anthropic_error : ''
+      const claudeNote = served.startsWith('openai') && aerr
+        ? ` Claude unavailable: ${
+            /not_found|404/i.test(aerr) ? "this model isn't enabled on the API key"
+            : /auth|401|invalid.*key|x-api-key/i.test(aerr) ? 'the API key was rejected'
+            : aerr.slice(0, 60)
+          }.`
         : ''
       if (Object.keys(updates).length > 0) {
         onUpdate(updates)
