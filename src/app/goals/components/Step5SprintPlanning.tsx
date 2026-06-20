@@ -2213,10 +2213,12 @@ function InitiativeCard({
         : served.includes('haiku') ? 'Haiku 4.5'
         : served.startsWith('openai') ? 'GPT-4o (fallback)'
         : ''
-      // On fallback, show WHY Claude was skipped (truncated) so the key/model
-      // situation is diagnosable from the toast alone.
-      const claudeNote = served.startsWith('openai') && typeof data?.anthropic_error === 'string' && data.anthropic_error
-        ? ` Claude unavailable: ${String(data.anthropic_error).slice(0, 60)}.`
+      // On fallback, show WHY Claude was skipped so the key/model situation is
+      // diagnosable from the toast alone. Prefer the API error's "message" field.
+      const aerr = typeof data?.anthropic_error === 'string' ? data.anthropic_error : ''
+      const aerrMsg = aerr.match(/"message"\s*:\s*"([^"]+)"/)?.[1] || aerr
+      const claudeNote = served.startsWith('openai') && aerr
+        ? ` Claude unavailable: ${aerrMsg.slice(0, 200)}`
         : ''
       if (Object.keys(updates).length > 0) {
         onUpdate(updates)
