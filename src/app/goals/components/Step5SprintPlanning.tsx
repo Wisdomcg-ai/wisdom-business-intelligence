@@ -906,67 +906,87 @@ function QuarterlyTargetsSidebar({
   const hasTeam = teamHeadcount > 0 || (coreMetrics?.teamHeadcount?.year1 ?? 0) > 0
   const hasOwnerHours = ownerHoursPerWeek > 0 || (coreMetrics?.ownerHoursPerWeek?.year1 ?? 0) > 0
 
-  // Condensed "more" items (core metrics + top KPIs) revealed behind the toggle.
-  // Progressive disclosure keeps the bar to one line by default.
-  const moreItems: Array<{ label: string; value: string }> = []
-  if (hasLeads) moreItems.push({ label: 'Leads/mo', value: Math.round(leadsPerMonth).toLocaleString() })
-  if (hasConversion) moreItems.push({ label: 'Conversion', value: `${conversionRate.toFixed(1)}%` })
-  if (hasATV) moreItems.push({ label: 'Avg Txn', value: formatCurrencyCompact(avgTransactionValue) })
-  if (hasTeam) moreItems.push({ label: 'Team', value: String(Math.round(teamHeadcount)) })
-  if (hasOwnerHours) moreItems.push({ label: 'Owner hrs/wk', value: `${Math.round(ownerHoursPerWeek)}h` })
-  for (const kpi of (kpis || []).slice(0, 8)) {
-    moreItems.push({ label: kpi.name, value: String(quarterlyTargets[kpi.id]?.[qKey] || kpi.year1Target || '–') })
-  }
+  // Condensed detail, split into its two real groups so the expanded panel has
+  // structure (progressive disclosure: bar stays one line until expanded).
+  const coreItems: Array<{ label: string; value: string }> = []
+  if (hasLeads) coreItems.push({ label: 'Leads/mo', value: Math.round(leadsPerMonth).toLocaleString() })
+  if (hasConversion) coreItems.push({ label: 'Conversion', value: `${conversionRate.toFixed(1)}%` })
+  if (hasATV) coreItems.push({ label: 'Avg Txn', value: formatCurrencyCompact(avgTransactionValue) })
+  if (hasTeam) coreItems.push({ label: 'Team', value: String(Math.round(teamHeadcount)) })
+  if (hasOwnerHours) coreItems.push({ label: 'Owner hrs/wk', value: `${Math.round(ownerHoursPerWeek)}h` })
+  const kpiItems: Array<{ label: string; value: string }> = (kpis || []).slice(0, 12).map((kpi) => ({
+    label: kpi.name,
+    value: String(quarterlyTargets[kpi.id]?.[qKey] || kpi.year1Target || '–'),
+  }))
+  const moreCount = coreItems.length + kpiItems.length
+
+  const tile = (it: { label: string; value: string }, i: number) => (
+    <div key={i} className="border border-gray-200 rounded-lg px-3 py-2 bg-white">
+      <div className="text-[11px] text-gray-500 truncate" title={it.label}>{it.label}</div>
+      <div className="text-sm font-bold text-brand-navy tabular-nums">{it.value}</div>
+    </div>
+  )
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm sticky top-2 z-20">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+    <div className="rounded-xl shadow-sm sticky top-2 z-20 overflow-hidden border border-brand-navy-700">
+      {/* Collapsed bar — navy so the targets read as their own band */}
+      <div className="bg-gradient-to-r from-brand-navy to-brand-navy-700 flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
         {/* Label */}
-        <div className="flex items-center gap-1.5 text-brand-navy flex-shrink-0">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           <Target className="w-4 h-4 text-brand-orange" />
-          <span className="text-sm font-bold">{currentQuarter.label} Targets</span>
+          <span className="text-sm font-bold text-white">{currentQuarter.label} Targets</span>
         </div>
 
         {/* Financials — always visible, inline */}
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
-            <span className="text-xs text-gray-500">Revenue</span>
-            <span className="text-sm font-bold text-brand-navy tabular-nums">{formatCurrencyCompact(revenue)}</span>
+            <span className="text-xs text-white/60">Revenue</span>
+            <span className="text-sm font-bold text-white tabular-nums">{formatCurrencyCompact(revenue)}</span>
           </span>
-          <span className="text-gray-300" aria-hidden>·</span>
+          <span className="text-white/30" aria-hidden>·</span>
           <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
-            <span className="text-xs text-gray-500">Gross Profit</span>
-            <span className="text-sm font-bold text-brand-navy tabular-nums">{formatCurrencyCompact(grossProfit)}{grossMargin > 0 ? ` (${grossMargin.toFixed(0)}%)` : ''}</span>
+            <span className="text-xs text-white/60">Gross Profit</span>
+            <span className="text-sm font-bold text-white tabular-nums">{formatCurrencyCompact(grossProfit)}{grossMargin > 0 ? ` (${grossMargin.toFixed(0)}%)` : ''}</span>
           </span>
-          <span className="text-gray-300" aria-hidden>·</span>
+          <span className="text-white/30" aria-hidden>·</span>
           <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
-            <span className="text-xs text-gray-500">Net Profit</span>
-            <span className="text-sm font-bold text-brand-navy tabular-nums">{formatCurrencyCompact(netProfit)}{netMargin > 0 ? ` (${netMargin.toFixed(0)}%)` : ''}</span>
+            <span className="text-xs text-white/60">Net Profit</span>
+            <span className="text-sm font-bold text-white tabular-nums">{formatCurrencyCompact(netProfit)}{netMargin > 0 ? ` (${netMargin.toFixed(0)}%)` : ''}</span>
           </span>
         </div>
 
         {/* Expand toggle — KPIs + core metrics on demand */}
-        {moreItems.length > 0 && (
+        {moreCount > 0 && (
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}
-            className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-brand-orange-700 bg-brand-orange-50 hover:bg-brand-orange-100 rounded-lg transition-colors flex-shrink-0"
+            className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-white/10 hover:bg-white/20 rounded-lg transition-colors flex-shrink-0"
           >
-            {expanded ? 'Hide' : `+${moreItems.length} more`}
+            {expanded ? 'Hide' : `+${moreCount} more`}
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
           </button>
         )}
       </div>
 
-      {/* Expanded: core metrics + KPIs, wrapping */}
-      {expanded && moreItems.length > 0 && (
-        <div className="border-t border-gray-100 bg-gray-50 px-4 py-2.5 flex flex-wrap gap-x-4 gap-y-2">
-          {moreItems.map((it, i) => (
-            <span key={i} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
-              <span className="text-xs text-gray-500 max-w-[180px] truncate">{it.label}</span>
-              <span className="text-sm font-bold text-brand-navy tabular-nums">{it.value}</span>
-            </span>
-          ))}
+      {/* Expanded — white panel, grouped tiles */}
+      {expanded && moreCount > 0 && (
+        <div className="bg-white px-4 py-3 space-y-3">
+          {coreItems.length > 0 && (
+            <div>
+              <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Core Metrics</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                {coreItems.map(tile)}
+              </div>
+            </div>
+          )}
+          {kpiItems.length > 0 && (
+            <div>
+              <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">KPIs</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                {kpiItems.map(tile)}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
