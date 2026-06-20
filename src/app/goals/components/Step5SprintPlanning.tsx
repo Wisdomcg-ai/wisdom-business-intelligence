@@ -2675,13 +2675,13 @@ function TaskRow({ task, teamMembers, onUpdate, onDelete, onAddTeamMember }: Tas
   }
 
   return (
-    <div className="group flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2.5 hover:bg-gray-50 transition-colors">
+    <div className="group flex flex-wrap items-start gap-x-2 gap-y-1.5 px-3 py-2.5 hover:bg-gray-50 transition-colors">
       {/* Done toggle */}
       <button
         type="button"
         onClick={() => onUpdate({ status: task.status === 'done' ? 'not_started' : 'done' })}
         title={task.status === 'done' ? 'Mark not done' : 'Mark done'}
-        className={`flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 border-2 transition-colors ${
+        className={`flex items-center justify-center w-5 h-5 mt-0.5 rounded-full flex-shrink-0 border-2 transition-colors ${
           task.status === 'done'
             ? 'bg-green-500 border-green-500'
             : task.status === 'in_progress'
@@ -2692,19 +2692,19 @@ function TaskRow({ task, teamMembers, onUpdate, onDelete, onAddTeamMember }: Tas
         {task.status === 'done' && <Check className="w-3 h-3 text-white" />}
       </button>
 
-      {/* Task name — the hero, full width */}
-      <input
-        type="text"
+      {/* Task name — the hero: wraps + auto-grows so a long task is fully visible */}
+      <AutoGrowTextarea
         value={task.task}
         onChange={(e) => onUpdate({ task: e.target.value })}
         placeholder="Task description…"
-        className={`flex-1 min-w-[200px] bg-transparent px-1.5 py-1 text-sm rounded border border-transparent hover:border-gray-200 focus:border-brand-secondary focus:bg-white focus:outline-none ${
+        minRows={1}
+        className={`flex-1 min-w-[200px] bg-transparent px-1.5 py-1 text-sm leading-snug rounded border border-transparent hover:border-gray-200 focus:border-brand-secondary focus:bg-white focus:outline-none ${
           task.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'
         }`}
       />
 
       {/* Compact meta — wraps under the name on narrow widths */}
-      <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto flex-wrap">
+      <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto flex-wrap mt-0.5">
         {/* Owner */}
         <select
           value={task.assignedTo}
