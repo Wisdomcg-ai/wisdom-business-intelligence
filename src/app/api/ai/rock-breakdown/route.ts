@@ -192,7 +192,11 @@ async function postHandler(request: Request) {
           .filter((t) => t.text.trim())
       : []
 
-    return NextResponse.json({ thinking, tasks, served_by: servedBy })
+    // When the OpenAI fallback served, surface WHY Anthropic was skipped (e.g.
+    // 404 not_found = the key lacks that model → switch model; auth error = the
+    // key itself). Null when Anthropic served.
+    const anthropicError = servedBy && servedBy.startsWith('openai') ? failReason : null
+    return NextResponse.json({ thinking, tasks, served_by: servedBy, anthropic_error: anthropicError })
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'ai/rock-breakdown' } } as never)
     return NextResponse.json({ error: 'Failed to draft a plan. Please try again.' }, { status: 500 })
