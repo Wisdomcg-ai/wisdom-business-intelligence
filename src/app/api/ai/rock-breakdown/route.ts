@@ -119,14 +119,16 @@ async function postHandler(request: Request) {
     try {
       const Anthropic = require('@anthropic-ai/sdk').default
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-      // Plain JSON (NO tools API): the forced tool-call format returned 400
-      // invalid_request on claude-sonnet-4-6 via the installed SDK (0.39.0).
-      // Asking for a JSON object + parsing it — the same pattern ai/forecast-
-      // insights uses successfully here — sidesteps that entirely.
+      // Plain JSON (NO tools API) and NO sampling params. TWO things 400 on
+      // Opus 4.8: the forced tool-call format, and a `temperature` value (Opus
+      // 4.7/4.8 removed temperature/top_p/top_k). Both used to silently fall back
+      // to GPT-4o. Asking for a JSON object + parsing it — the pattern ai/forecast-
+      // insights uses successfully here — sidesteps both, and works identically if
+      // the model is flipped back to Sonnet (which tolerates temperature but
+      // doesn't need it).
       const result = await anthropic.messages.create({
         model: AI_MODELS.anthropic.rockBreakdown,
         max_tokens: 1000,
-        temperature: 0.4,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userContent }],
       })

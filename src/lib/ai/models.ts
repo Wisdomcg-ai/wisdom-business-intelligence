@@ -15,12 +15,17 @@
 export const AI_MODELS = {
   anthropic: {
     /**
-     * rock-breakdown: Sonnet 4.6 — right tier for a quick best-effort draft, and
-     * API-reachable on the prod key. (Opus 4.8 showed in the Console workbench but
-     * 404'd on the API key repeatedly — Opus is gated separately from the
-     * workbench, so it fell back to GPT-4o every time.)
+     * rock-breakdown: Opus 4.8 — best quality for the coach-drafted plan, and the
+     * org DOES have Opus access (Console → Limits shows Tier 2 / "Claude Opus
+     * Active"). The earlier "Opus 404s" read was wrong. Opus never returned 404 —
+     * the route was (a) using the forced tool-call API and (b) sending a
+     * `temperature` value, and Opus 4.7/4.8 reject BOTH (tool-call → 400;
+     * temperature/top_p/top_k removed → 400). Each 400 silently fell back to GPT-4o.
+     * The route now uses plain JSON with NO sampling params, so neither trips.
+     * `claude-opus-4-8` is the exact current model id; cost delta vs Sonnet is
+     * pennies/call at 1k max_tokens ($5/$25 vs $3/$15 per 1M).
      */
-    rockBreakdown: 'claude-sonnet-4-6',
+    rockBreakdown: 'claude-opus-4-8',
     /** forecast-assistant: current Sonnet (was retired claude-sonnet-4-20250514). */
     forecastAssistant: 'claude-sonnet-4-6',
     /** forecast-insights: current Haiku 4.5 — fast + cheap for structured output. */
