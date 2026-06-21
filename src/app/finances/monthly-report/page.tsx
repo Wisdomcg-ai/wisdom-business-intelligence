@@ -109,6 +109,18 @@ export default function MonthlyReportPage() {
   const [cashflowForecast, setCashflowForecast] = useState<CashflowForecastData | null>(null)
   const [cashflowLoading, setCashflowLoading] = useState(false)
 
+  // Viewer role. Hoisted ABOVE the tab effects below because they reference it
+  // in their dependency arrays — leaving it at its old position (further down)
+  // would be a use-before-declaration TDZ crash at render. 'client' is the
+  // fallback, so it also covers the brief window before currentUser resolves.
+  // Consolidation is a coach/admin-only view; clients never see it.
+  const userRole: 'coach' | 'super_admin' | 'client' =
+    currentUser?.role === 'coach'
+      ? 'coach'
+      : currentUser?.role === 'admin'
+      ? 'super_admin'
+      : 'client'
+
   const [activeTab, setActiveTab] = useState<ReportTab>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('monthly-report-active-tab')
@@ -165,7 +177,9 @@ export default function MonthlyReportPage() {
   }, [businessId])
 
   useEffect(() => {
-    if (!isMultiCurrency) return
+    // Consolidation is coach/admin-only — never auto-route a client onto a
+    // consolidated tab they're not allowed to see (they keep the standard tabs).
+    if (!isMultiCurrency || userRole === 'client') return
     const consolEquivalent: Partial<Record<ReportTab, ReportTab>> = {
       report: 'consolidated',
       'balance-sheet': 'balance-sheet-consolidated',
@@ -183,7 +197,7 @@ export default function MonthlyReportPage() {
         }
       }
     }
-  }, [isMultiCurrency, activeTab, businessId, activeCurrencies])
+  }, [isMultiCurrency, activeTab, businessId, activeCurrencies, userRole])
 
   // Hooks
   const {
@@ -227,6 +241,28 @@ export default function MonthlyReportPage() {
     error: consolidatedCashflowError,
     generateCashflow: generateConsolidatedCashflow,
   } = useConsolidatedCashflow(businessId)
+
+  // The consolidated (multi-entity rollup) tabs are a coach/admin-only view.
+  // Gate = a real consolidation parent AND a non-client viewer. Used for both
+  // tab visibility and content render below, so a client can't reach it via a
+  // visible tab, a stale saved tab, or the auto-redirect.
+  const canSeeConsolidated = isConsolidationGroup === true && userRole !== 'client'
+
+  // Bounce a client off any consolidated tab they may have persisted (from
+  // before this gate, or a multi-currency redirect). Wait for currentUser to
+  // resolve (contextLoading) so a coach mid-load isn't mistaken for a client
+  // and kicked off their own active tab.
+  useEffect(() => {
+    if (contextLoading) return
+    if (
+      userRole === 'client' &&
+      (activeTab === 'consolidated' ||
+        activeTab === 'balance-sheet-consolidated' ||
+        activeTab === 'cashflow-consolidated')
+    ) {
+      setActiveTab('report')
+    }
+  }, [contextLoading, userRole, activeTab])
 
   const {
     fullYearReport,
@@ -451,14 +487,7 @@ export default function MonthlyReportPage() {
     saveSnapshot,
   })
 
-  // Phase 35 Plan 06: map BusinessContext role → ReportStatusBar role.
-  // context: 'client' | 'coach' | 'admin' (admin is the mapped super_admin)
-  const userRole: 'coach' | 'super_admin' | 'client' =
-    currentUser?.role === 'coach'
-      ? 'coach'
-      : currentUser?.role === 'admin'
-      ? 'super_admin'
-      : 'client'
+  // (userRole is declared once near the top — hoisted above the tab effects.)
 
   // Load templates when businessId is set; auto-apply default on first load
   const hasAppliedDefaultTemplate = useRef(false)
@@ -1225,9 +1254,9 @@ export default function MonthlyReportPage() {
           showCashflow={!!(settings?.sections.cashflow)}
           showCharts={!!(settings?.sections && Object.entries(settings.sections).some(([k, v]) => k.startsWith('chart_') && v))}
           showBalanceSheet={!!(settings?.sections.balance_sheet)}
-          showConsolidated={isConsolidationGroup === true}
-          showConsolidatedBS={isConsolidationGroup === true}
-          showConsolidatedCashflow={isConsolidationGroup === true}
+          showConsolidated={canSeeConsolidated}
+          showConsolidatedBS={canSeeConsolidated}
+          showConsolidatedCashflow={canSeeConsolidated}
         />
 
         {/* Tab Content */}
@@ -1354,8 +1383,8 @@ export default function MonthlyReportPage() {
           />
         )}
 
-        {/* Phase 34 — Consolidated P&L tab (only rendered for consolidation parents) */}
-        {activeTab === 'consolidated' && isConsolidationGroup === true && (
+        {/* Phase 34 — Consolidated P&L tab (consolidation parents, coach/admin only) */}
+        {activeTab === 'consolidated' && canSeeConsolidated && (
           <>
             <FXRateMissingBanner
               missingRates={consolidatedReport?.fx_context?.missing_rates ?? []}
@@ -1370,8 +1399,8 @@ export default function MonthlyReportPage() {
           </>
         )}
 
-        {/* Phase 34 Iteration 34.1 — Consolidated Balance Sheet tab */}
-        {activeTab === 'balance-sheet-consolidated' && isConsolidationGroup === true && (
+        {/* Phase 34 Iteration 34.1 — Consolidated Balance Sheet tab (coach/admin only) */}
+        {activeTab === 'balance-sheet-consolidated' && canSeeConsolidated && (
           <>
             <FXRateMissingBanner
               missingRates={consolidatedBS?.fx_context?.missing_rates ?? []}
@@ -1385,8 +1414,8 @@ export default function MonthlyReportPage() {
           </>
         )}
 
-        {/* Phase 34 Iteration 34.2 — Consolidated Cashflow tab */}
-        {activeTab === 'cashflow-consolidated' && isConsolidationGroup === true && (
+        {/* Phase 34 Iteration 34.2 — Consolidated Cashflow tab (coach/admin only) */}
+        {activeTab === 'cashflow-consolidated' && canSeeConsolidated && (
           <>
             <FXRateMissingBanner
               missingRates={consolidatedCashflow?.fx_context?.missing_rates ?? []}
