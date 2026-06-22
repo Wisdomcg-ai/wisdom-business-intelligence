@@ -31,6 +31,7 @@ import {
 } from '@/lib/utils/rate-limiter'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { getUserSystemRoleServer, isCoachOrAdmin } from '@/lib/auth/server-roles'
 import {
   generateFiscalMonthKeys,
   DEFAULT_YEAR_START_MONTH,
@@ -98,6 +99,19 @@ async function postHandler(request: Request) {
       return NextResponse.json(
         { error: 'Rate limit exceeded. Try again later.' },
         { status: 429 },
+      )
+    }
+
+    // --- ROLE GATE ---
+    // Consolidation is a coach/admin-only view (hidden from clients in the UI).
+    // Gate the endpoint too so a client can't fetch the rollup directly. Fails
+    // closed on a null role; runs before the per-business access check.
+    stage = 'role_gate'
+    const systemRole = await getUserSystemRoleServer(authSupabase, user.id)
+    if (!isCoachOrAdmin(systemRole)) {
+      return NextResponse.json(
+        { error: 'Consolidation is available to coaches and admins only.' },
+        { status: 403 },
       )
     }
 
