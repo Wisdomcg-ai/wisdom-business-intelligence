@@ -132,6 +132,16 @@ function buildAuthClient(userId: string, bizIdForAccessCheck: string) {
             }),
           }
         }
+        if (table === 'system_roles') {
+          // Consolidation's coach/admin role gate reads system_roles before the
+          // section/access checks these tests assert on — resolve the caller as
+          // a coach so the gate passes and the route proceeds.
+          return {
+            eq: () => ({
+              maybeSingle: async () => ({ data: { role: 'coach' }, error: null }),
+            }),
+          }
+        }
         return {
           eq: () => ({
             maybeSingle: async () => ({ data: null, error: null }),
