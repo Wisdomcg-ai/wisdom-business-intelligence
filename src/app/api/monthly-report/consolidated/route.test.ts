@@ -127,9 +127,12 @@ function mockAuthClient(userId: string, businessId: string, isSuperAdmin = false
         return { select: () => chainable({ id: businessId }) }
       }
       if (table === 'system_roles') {
+        // Consolidation is coach/admin-only — the role gate reads system_roles
+        // before the access check, so a valid caller must resolve to coach or
+        // super_admin. Default to coach for the happy-path tests.
         return {
           select: () =>
-            chainable(isSuperAdmin ? { role: 'super_admin' } : null),
+            chainable(isSuperAdmin ? { role: 'super_admin' } : { role: 'coach' }),
         }
       }
       // Includes business_users — helper sees null → not_a_member fallthrough.
@@ -320,5 +323,27 @@ describe('POST /api/monthly-report/consolidated — Phase 34.3 budgets', () => {
 
     // Budget column still present
     expect(report.consolidated.budgetLines.length).toBeGreaterThan(0)
+  })
+})
+
+describe('POST /api/monthly-report/consolidated — coach/admin role gate', () => {
+  it('returns 403 to a client even with full business access', async () => {
+    // Client system role — denied by the role gate before the access check,
+    // even though the businesses mock would grant per-business access.
+    setAuthMock({
+      auth: { getUser: async () => ({ data: { user: { id: 'client-1' } }, error: null }) },
+      from: (table: string) => {
+        if (table === 'system_roles') return { select: () => chainable({ role: 'client' }) }
+        if (table === 'businesses') return { select: () => chainable({ id: BIZ }) }
+        return { select: () => chainable(null) }
+      },
+    })
+    setServiceMock(mockSupabase(buildState({ withBudgetA: true, withBudgetB: true })))
+    const { status } = await invokeRoute({
+      business_id: BIZ,
+      report_month: '2026-03',
+      fiscal_year: 2026,
+    })
+    expect(status).toBe(403)
   })
 })

@@ -110,9 +110,12 @@ function mockAuthClient(userId: string, businessId: string, isSuperAdmin = false
         return { select: () => chainable({ id: businessId }) }
       }
       if (table === 'system_roles') {
+        // Consolidation is coach/admin-only — the role gate reads system_roles
+        // before the access check, so a valid caller must resolve to coach or
+        // super_admin. Default to coach for the happy-path tests.
         return {
           select: () =>
-            chainable(isSuperAdmin ? { role: 'super_admin' } : null),
+            chainable(isSuperAdmin ? { role: 'super_admin' } : { role: 'coach' }),
         }
       }
       // Includes business_users — helper sees null → not_a_member fallthrough.
