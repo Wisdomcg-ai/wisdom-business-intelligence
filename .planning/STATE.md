@@ -41,9 +41,14 @@ R-6 → R-5 → R-4:
     `business_profile_id` is dead (100% NULL) on the dual-column tables → FK target corrected to the live
     `business_id` (cast), drop `business_profile_id`. Cleanse: deleted 13 stale biz-keyed `business_kpis`
     duplicates (exact value-copies of active twins; snapshot in 75-01 snapshots/). 75-02 unblocked.
-  - **75-02 (R-5)** FK-Integrity Phase B (text→uuid casts + FKs on activity_log/plan_snapshots/etc.,
-    dual-column tables, Group B → businesses) + single-branch RLS — HIGH risk (prod migrations,
-    supervised apply, NO blind db push; hard pre-flight gate to reconcile the 505-508 migration-drift).
+  - **75-02 (R-5) — SQL AUTHORED 2026-06-24, awaiting Matt's branch-test + prod apply.** Pre-flight found:
+    Group B FKs already exist (Phase A); real scope = the 6 text columns whose business_id text→uuid cast
+    forces rewriting ~30 RLS policies (Phase A deferred them for exactly this). Migration
+    `20260624000000_fk_integrity_phase_b_text_business_id.sql` (6 casts + 6 FKs + 30 policy rewrites,
+    behaviour-preserving, verified against LIVE pg_policies) + runbook (75-02-MIGRATION-RUNBOOK.md).
+    MUST be branch-tested (role-access checks) before prod — I can't read/apply prod (no DB password;
+    claude.ai Supabase MCP only sees the Inlife project). business_profile_id NOT dropped (code reads it →
+    75-03).
   - **75-03 (R-4)** remove the ~10 latent fallbacks + the resolver input-echo + dead code, drop the 13
     false-positives — MEDIUM risk, code-only.
 Decision (Matt 2026-06-23): plan all three now; migrations applied supervised, never blind.
