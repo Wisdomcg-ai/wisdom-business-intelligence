@@ -102,8 +102,12 @@ async function main() {
       else if (bizIds.has(lb)) legBiz++;
       else legOrphan++;
     }
-    console.log(`  [legacy business_id classification for ${t}] profile=${legProf} biz=${legBiz} orphan=${legOrphan} uncastable=${legUncast} null=${legNull}`);
-    results.push({ t, fk: 'profiles(pid col)', total, wrong, orphan, uncastable: 0, null_pid: nullPid, samples });
+    console.log(`  [${t}] FK target = business_id (cast); business_profile_id is dead (${nullPid}/${total} NULL) → DROP. ` +
+      `business_id: profile=${legProf} biz=${legBiz} orphan=${legOrphan} uncastable=${legUncast} null=${legNull}`);
+    // Corrected design (75-01 finding): the FK goes on the live business_id column (cast text→uuid),
+    // NOT the dead business_profile_id. So the verdict is driven by business_id cleanliness; null_pid is
+    // informational only (that column is being dropped in 75-02).
+    results.push({ t, fk: 'profiles(business_id)', total, wrong: legBiz, orphan: legOrphan, uncastable: legUncast, null_pid: 0, samples: samples.slice(0, 0) });
   }
 
   // Group B → businesses(id), NULLs allowed

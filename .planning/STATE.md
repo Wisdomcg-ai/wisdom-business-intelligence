@@ -37,8 +37,10 @@ on main. Do NOT re-implement.
 **Phase 75 (dual-ID durable tail) — PLANNED 2026-06-23, NOT YET EXECUTED.** 3 waves written under
 `.planning/phases/75-dual-id-durable-tail/` (75-CONTEXT + 75-01/02/03-PLAN). Fixed dependency order
 R-6 → R-5 → R-4:
-  - **75-01 (R-6)** data cleanse + FK-readiness audit — LOW risk, read-mostly (guarded backfills only).
-    Ready to execute now; it's the precondition gate for 75-02.
+  - **75-01 (R-6) — COMPLETE 2026-06-24 (GREEN).** All 10 FK-target tables FK-ready. Audit found
+    `business_profile_id` is dead (100% NULL) on the dual-column tables → FK target corrected to the live
+    `business_id` (cast), drop `business_profile_id`. Cleanse: deleted 13 stale biz-keyed `business_kpis`
+    duplicates (exact value-copies of active twins; snapshot in 75-01 snapshots/). 75-02 unblocked.
   - **75-02 (R-5)** FK-Integrity Phase B (text→uuid casts + FKs on activity_log/plan_snapshots/etc.,
     dual-column tables, Group B → businesses) + single-branch RLS — HIGH risk (prod migrations,
     supervised apply, NO blind db push; hard pre-flight gate to reconcile the 505-508 migration-drift).
@@ -46,7 +48,7 @@ R-6 → R-5 → R-4:
     false-positives — MEDIUM risk, code-only.
 Decision (Matt 2026-06-23): plan all three now; migrations applied supervised, never blind.
 
-Plan: Phase 74 = shipped #289; Phase 75 = planned (0/3 waves executed).
+Plan: Phase 74 = shipped #289; Phase 75 = 1/3 waves done (75-01 GREEN 2026-06-24; 75-02 next).
 
 ### 2026-06-23 reconciliation (corrections to the stale per-phase prose below)
 

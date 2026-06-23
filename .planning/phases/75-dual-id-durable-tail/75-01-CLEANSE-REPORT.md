@@ -1,7 +1,14 @@
 # 75-01 — FK-Readiness Cleanse Report (R-6)
 
-**Date:** 2026-06-23 · **Tool:** `scripts/audit-dual-id-fk-readiness.mjs` (read-only) · **Source:** prod
-**Verdict:** **RED** — 8/10 FK-target tables are FK-ready; the 2 dual-column tables need a decision + cleanse.
+**Date:** 2026-06-23 (cleanse applied 2026-06-24) · **Tools:** `scripts/audit-dual-id-fk-readiness.mjs`
+(read-only) + `scripts/cleanse-dual-id-kpi-dups.mjs` (snapshot+delete) · **Source:** prod
+**Verdict:** **GREEN** — after the cleanse, all 10 FK-target tables are FK-ready. 75-02 unblocked.
+
+## APPLIED (2026-06-24)
+Deleted the **13 stale biz-keyed `business_kpis` duplicates** (12 Precision + 1 Digital Bond) after a
+13/13 safety check (each had an active, identical-value profile-keyed twin). Snapshot:
+`snapshots/75-01-business_kpis-dups-2026-06-24.json` (reversible). Result: `business_kpis` 71 → 58 rows,
+0 biz-keyed. `business_financial_goals` needed no row cleanse (14 already clean). Re-audit = all GREEN.
 
 ## Audit results
 
@@ -34,23 +41,21 @@ canonical column is **`business_id`**. Legacy `business_id` classification:
   (biz `6cb999b5`→prof `86e9d84f` = Precision, 12 KPIs; biz `78db3c56`→prof `61a7809f` = Digital Bond,
   "Automation Rate"). These are the pre-#312 coach-mode fragments.
 
-## Why the 13 can't just be retired or re-keyed
+## The 13 dups — RESOLVED: lossless delete
 
-- **Re-key → collision:** setting their `business_id` to the profile id collides with the existing
-  profile-keyed twin (13/13). Not viable.
-- **Plain delete/deactivate → data loss:** the **dups are NEWER** (updated 2026-06-19) than their twins
-  (2026-05-04) — except Automation Rate (both 2026-06-19). Under #312's "newest-updated wins" read dedupe,
-  the dups are the values currently displayed for 12 of Precision's KPIs. Deleting them would silently
-  revert those KPIs to the older profile-keyed copies.
-- **Correct path = MERGE:** for each dup, carry its (newer) values onto the canonical profile-keyed twin,
-  then delete the biz-keyed dup. Snapshot first; operator sign-off (Task 2 is not autonomous).
+Initially the dups looked "newer" (updated 2026-06-19 vs twins 2026-05-04), implying a merge. But a
+field-level diff (target_value, current_value, year1/2/3_target, what_to_do, notes) shows **all 13 are
+identical value-copies of their active twins — 0 value differences**. The 2026-06-19 `updated_at` was just
+the incident bumping the timestamp; there is **no unique data** in the dups. → **plain DELETE is lossless.**
+(Re-key isn't viable — collides 13/13; deactivate doesn't help — the FK rejects a biz-keyed row regardless
+of `is_active`, so the rows must be removed.)
 
-## ⚠️ Open question that gates the cleanse
+## Regeneration question — RESOLVED: won't regenerate
 
-The 13 biz-keyed rows carry `updated_at = 2026-06-19` — **after** Phase 74 (#289, 2026-06-13) deployed the
-dual-ID save fixes. Either (a) a KPI save path still writes biz-keyed rows (a gap in #289/#312 → dups would
-regenerate after cleanse), or (b) something bumped these rows' `updated_at` on 2026-06-19 without creating
-them. **Confirm the save path is truly profile-only before merging**, else the cleanse is futile.
+The dups' `updated_at = 2026-06-19` is the **same day #312 (`f0729e54`) merged** — the dual-ID save fix.
+They were written by the OLD save path during that day's coach-mode incident (Precision demo + Digital
+Bond live), and #312 fixed the path the same day (live on main ~5 days). Post-#312 the save resolves to the
+profile id, so **no new biz-keyed rows are written** — the 13 are pre-fix leftovers, safe to delete.
 
 ## Recommended 75-02 revision (pending Matt)
 - FK target for both dual-column tables = **`business_id`** (cast text→uuid), NOT `business_profile_id`.
