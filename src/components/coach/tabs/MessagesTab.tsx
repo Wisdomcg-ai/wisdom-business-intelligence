@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { MessageSquare, Send, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
+import { formatDate, formatTime } from '@/lib/timezone'
+
 interface Message {
   id: string
   business_id: string
@@ -141,19 +143,17 @@ export function MessagesTab({ businessId, businessName }: MessagesTabProps) {
     yesterday.setDate(yesterday.getDate() - 1)
     const isYesterday = date.toDateString() === yesterday.toDateString()
 
-    const time = date.toLocaleTimeString('en-AU', {
+    const time = formatTime(date, {
       hour: '2-digit',
       minute: '2-digit',
-      hour12: true,
-    })
+      hour12: true })
 
     if (isToday) return time
     if (isYesterday) return `Yesterday ${time}`
 
-    return `${date.toLocaleDateString('en-AU', {
+    return `${formatDate(date, {
       day: 'numeric',
-      month: 'short',
-    })} ${time}`
+      month: 'short' })} ${time}`
   }
 
   if (loading) {

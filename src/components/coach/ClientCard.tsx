@@ -14,6 +14,8 @@ import {
   FileEdit
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 export interface ClientCardData {
   id: string
   businessName: string
@@ -49,7 +51,7 @@ export function ClientCard({ client, onMessage, onSchedule }: ClientCardProps) {
     }
   }
 
-  const formatDate = (dateString?: string) => {
+  const formatLocalDate = (dateString?: string) => {
     if (!dateString) return null
     const date = new Date(dateString)
     const now = new Date()
@@ -58,7 +60,7 @@ export function ClientCard({ client, onMessage, onSchedule }: ClientCardProps) {
     if (diffDays === 0) return 'Today'
     if (diffDays === 1) return 'Yesterday'
     if (diffDays < 7) return `${diffDays}d ago`
-    return date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
+    return formatDate(date, { month: 'short', day: 'numeric' })
   }
 
   const statusStyles = getStatusStyles(client.status)
@@ -103,25 +105,25 @@ export function ClientCard({ client, onMessage, onSchedule }: ClientCardProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-gray-500">
               <LogIn className="w-4 h-4" />
-              <span>Last login: {formatDate(client.lastLogin) || 'Never'}</span>
+              <span>Last login: {formatLocalDate(client.lastLogin) || 'Never'}</span>
             </div>
             {client.nextSessionDate && (
               <div className="flex items-center gap-1.5 text-brand-orange">
                 <Calendar className="w-4 h-4" />
-                <span>Next: {formatDate(client.nextSessionDate)}</span>
+                <span>Next: {formatLocalDate(client.nextSessionDate)}</span>
               </div>
             )}
           </div>
           {client.lastChange && (
             <div className="flex items-center gap-1.5 text-gray-500">
               <FileEdit className="w-4 h-4" />
-              <span>Last change: {formatDate(client.lastChange)}{client.lastChangePage ? ` (${client.lastChangePage})` : ''}</span>
+              <span>Last change: {formatLocalDate(client.lastChange)}{client.lastChangePage ? ` (${client.lastChangePage})` : ''}</span>
             </div>
           )}
           {client.lastSessionDate && (
             <div className="flex items-center gap-1.5 text-gray-500">
               <Clock className="w-4 h-4" />
-              <span>Last session: {formatDate(client.lastSessionDate)}</span>
+              <span>Last session: {formatLocalDate(client.lastSessionDate)}</span>
             </div>
           )}
         </div>

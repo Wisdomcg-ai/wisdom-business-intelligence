@@ -14,6 +14,8 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 
+import { formatDate } from '@/lib/timezone'
+
 export interface ClientTableData {
   id: string
   businessName: string
@@ -93,7 +95,7 @@ export function ClientTable({ clients, onMessage, onSchedule, onView }: ClientTa
     return 'text-red-600 bg-red-50'
   }
 
-  const formatDate = (dateString?: string) => {
+  const formatLocalDate = (dateString?: string) => {
     if (!dateString) return '--'
     const date = new Date(dateString)
     const now = new Date()
@@ -102,7 +104,7 @@ export function ClientTable({ clients, onMessage, onSchedule, onView }: ClientTa
     if (diffDays === 0) return 'Today'
     if (diffDays === 1) return 'Yesterday'
     if (diffDays < 7) return `${diffDays}d ago`
-    return date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
+    return formatDate(date, { month: 'short', day: 'numeric' })
   }
 
   const SortIcon = ({ field }: { field: SortField }) => {
@@ -208,7 +210,7 @@ export function ClientTable({ clients, onMessage, onSchedule, onView }: ClientTa
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center gap-1.5 text-sm text-gray-600">
                     <Clock className="w-4 h-4 text-gray-400" />
-                    {formatDate(client.lastSessionDate)}
+                    {formatLocalDate(client.lastSessionDate)}
                   </div>
                 </td>
 

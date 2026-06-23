@@ -15,6 +15,8 @@ import {
 
 // --- Types ---
 
+import { formatDate } from '@/lib/timezone'
+
 interface RockUpdate {
   title: string
   status: 'on-track' | 'off-track' | 'at-risk'
@@ -207,7 +209,7 @@ function CoachView({ prep }: { prep: SessionPrepRecord }) {
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-bold text-brand-navy-800">Pre-Session Prep</h3>
         <span className="text-xs text-gray-500">
-          Submitted {new Date(prep.submitted_at!).toLocaleDateString('en-AU', {
+          Submitted {formatDate(new Date(prep.submitted_at!), {
             day: 'numeric',
             month: 'short',
             hour: '2-digit',
@@ -463,7 +465,7 @@ export function SessionPrepForm({ sessionId, businessId, mode, onSubmit }: Sessi
           <div>
             <p className="text-sm font-semibold text-brand-teal-800">Pre-session prep submitted</p>
             <p className="text-xs text-brand-teal-600">
-              Submitted {new Date(prep.submitted_at!).toLocaleDateString('en-AU', {
+              Submitted {formatDate(new Date(prep.submitted_at!), {
                 day: 'numeric',
                 month: 'short',
                 hour: '2-digit',

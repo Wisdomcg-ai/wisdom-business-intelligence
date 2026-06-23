@@ -7,6 +7,8 @@ import ActionCompletionChart from '@/components/analytics/ActionCompletionChart'
 import ClientEngagementChart from '@/components/analytics/ClientEngagementChart'
 import PageHeader from '@/components/ui/PageHeader'
 
+import { formatDate } from '@/lib/timezone'
+
 interface CoachAnalytics {
   overview: {
     totalClients: number
@@ -241,5 +243,5 @@ export default function CoachAnalyticsPage() {
 function formatMonth(monthStr: string) {
   const [year, month] = monthStr.split('-')
   const date = new Date(parseInt(year), parseInt(month) - 1)
-  return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+  return formatDate(date, { month: 'short', year: '2-digit' })
 }

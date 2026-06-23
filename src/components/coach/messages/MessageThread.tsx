@@ -13,6 +13,8 @@ import {
 } from 'lucide-react'
 import { formatFileSize } from '@/lib/services/messageAttachments'
 
+import { formatDate, formatTime } from '@/lib/timezone'
+
 export interface Message {
   id: string
   content: string
@@ -49,9 +51,9 @@ export function MessageThread({
     }
   }, [messages])
 
-  const formatTime = (dateString: string) => {
+  const formatLocalTime = (dateString: string) => {
     const date = new Date(dateString)
-    return date.toLocaleTimeString('en-AU', {
+    return formatTime(date, {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
@@ -69,7 +71,7 @@ export function MessageThread({
     } else if (date.toDateString() === yesterday.toDateString()) {
       return 'Yesterday'
     } else {
-      return date.toLocaleDateString('en-AU', {
+      return formatDate(date, {
         weekday: 'long',
         month: 'long',
         day: 'numeric'
@@ -233,7 +235,7 @@ export function MessageThread({
                         </div>
                         <div className={`flex items-center gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
                           <span className={`text-xs ${isOwn ? 'text-gray-500' : 'text-gray-400'}`}>
-                            {formatTime(message.createdAt)}
+                            {formatLocalTime(message.createdAt)}
                           </span>
                           {isOwn && getStatusIcon(message.status)}
                         </div>

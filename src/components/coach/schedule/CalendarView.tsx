@@ -11,7 +11,8 @@ import {
   MapPin,
   User
 } from 'lucide-react'
-import { TIMEZONE, LOCALE, getSydneyHour, isSameSydneyDay } from '@/lib/timezone'
+
+import { LOCALE, TIMEZONE, formatDate, formatTime, getSydneyHour, isSameSydneyDay } from '@/lib/timezone'
 
 export interface CalendarSession {
   id: string
@@ -137,14 +138,14 @@ export function CalendarView({
 
   const formatHeaderDate = () => {
     if (viewMode === 'month') {
-      return currentDate.toLocaleDateString(LOCALE, { timeZone: TIMEZONE, month: 'long', year: 'numeric' })
+      return formatDate(currentDate, { month: 'long', year: 'numeric' })
     } else if (viewMode === 'week') {
       const weekStart = getWeekStart(currentDate)
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekEnd.getDate() + 6)
-      return `${weekStart.toLocaleDateString(LOCALE, { timeZone: TIMEZONE, month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString(LOCALE, { timeZone: TIMEZONE, month: 'short', day: 'numeric', year: 'numeric' })}`
+      return `${formatDate(weekStart, { month: 'short', day: 'numeric' })} - ${formatDate(weekEnd, { month: 'short', day: 'numeric', year: 'numeric' })}`
     } else {
-      return currentDate.toLocaleDateString(LOCALE, { timeZone: TIMEZONE, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+      return formatDate(currentDate, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
     }
   }
 
@@ -417,7 +418,7 @@ function WeekView({
               className={`p-3 text-center ${isToday(date) ? 'bg-brand-orange-50' : ''}`}
             >
               <div className="text-sm text-gray-500">
-                {date.toLocaleDateString('en-AU', { weekday: 'short' })}
+                {formatDate(date, { weekday: 'short' })}
               </div>
               <div className={`text-lg font-semibold ${isToday(date) ? 'text-brand-orange' : 'text-gray-900'}`}>
                 {date.getDate()}
@@ -457,8 +458,7 @@ function WeekView({
                       >
                         <div className="flex items-center gap-1 font-medium">
                           <Icon className="w-3 h-3" />
-                          {new Date(session.scheduledAt).toLocaleTimeString(LOCALE, {
-                            timeZone: TIMEZONE,
+                          {formatTime(new Date(session.scheduledAt), {
                             hour: '2-digit',
                             minute: '2-digit'
                           })}
@@ -540,8 +540,7 @@ function DayView({
                         <span className="font-medium text-gray-900">{session.businessName}</span>
                       </div>
                       <span className="text-sm text-gray-500">
-                        {new Date(session.scheduledAt).toLocaleTimeString(LOCALE, {
-                          timeZone: TIMEZONE,
+                        {formatTime(new Date(session.scheduledAt), {
                           hour: '2-digit',
                           minute: '2-digit'
                         })} - {session.durationMinutes} min

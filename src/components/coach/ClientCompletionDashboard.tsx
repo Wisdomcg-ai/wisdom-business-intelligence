@@ -24,6 +24,8 @@ import { Skeleton } from '@/components/ui/Skeleton'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+import { formatDate } from '@/lib/timezone'
+
 export interface ClientCompletion {
   businessId: string
   businessName: string
@@ -159,7 +161,7 @@ function getEngagementTextColor(score: number): string {
   return 'text-red-600'
 }
 
-function formatDate(dateStr: string | null): string {
+function formatRelativeDate(dateStr: string | null): string {
   if (!dateStr) return 'Never'
   const date = new Date(dateStr)
   const now = new Date()
@@ -168,7 +170,7 @@ function formatDate(dateStr: string | null): string {
   if (diffDays === 1) return 'Yesterday'
   if (diffDays < 7) return `${diffDays}d ago`
   if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`
-  return date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
+  return formatDate(date, { month: 'short', day: 'numeric' })
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -653,7 +655,7 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
                                 <div>
                                   <div className="text-gray-500 text-xs">Last Login</div>
                                   <div className="font-medium text-gray-900">
-                                    {formatDate(client.engagement.lastLogin)}
+                                    {formatRelativeDate(client.engagement.lastLogin)}
                                   </div>
                                 </div>
                               </div>
