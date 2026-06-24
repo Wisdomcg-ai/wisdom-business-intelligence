@@ -41,19 +41,23 @@ R-6 → R-5 → R-4:
     `business_profile_id` is dead (100% NULL) on the dual-column tables → FK target corrected to the live
     `business_id` (cast), drop `business_profile_id`. Cleanse: deleted 13 stale biz-keyed `business_kpis`
     duplicates (exact value-copies of active twins; snapshot in 75-01 snapshots/). 75-02 unblocked.
-  - **75-02 (R-5) — SQL AUTHORED 2026-06-24, awaiting Matt's branch-test + prod apply.** Pre-flight found:
-    Group B FKs already exist (Phase A); real scope = the 6 text columns whose business_id text→uuid cast
-    forces rewriting ~30 RLS policies (Phase A deferred them for exactly this). Migration
-    `20260624000000_fk_integrity_phase_b_text_business_id.sql` (6 casts + 6 FKs + 30 policy rewrites,
-    behaviour-preserving, verified against LIVE pg_policies) + runbook (75-02-MIGRATION-RUNBOOK.md).
-    MUST be branch-tested (role-access checks) before prod — I can't read/apply prod (no DB password;
-    claude.ai Supabase MCP only sees the Inlife project). business_profile_id NOT dropped (code reads it →
-    75-03).
+  - **75-02 (R-5) — LIVE ON PROD + VERIFIED 2026-06-24** (migration version `20260624073031`, applied via
+    Supabase MCP after WisdomBI org connected). 6 text business_id columns cast to uuid + FK →
+    business_profiles(id) CASCADE (activity_log, plan_snapshots, sprint_key_actions, kpi_history,
+    business_financial_goals, business_kpis); 31 text-based RLS policies rewritten to uuid (Group B FKs
+    already existed from Phase A). Validated by a rolled-back prod dry-run that caught a kpi_history
+    policy-dependency error (fixed), then RLS-impersonation confirmed coach + 2 clients see IDENTICAL row
+    counts before/after; post-apply prod check GREEN (6 FKs, all uuid, policy counts 5/7/9/1/6/12). Any
+    future mis-key is now a loud FK error. business_profile_id NOT dropped (code still reads it → 75-03).
+    **MIGRATION DRIFT found (separate, flag to Matt):** prod is MISSING on-disk migrations
+    `20260617000000_add_business_financial_goals_current_actuals` (annual-reset actuals column — feature
+    would error if it activates) and `20260611000000_swot_repoint` — the broken auto-apply pipeline. Apply
+    explicitly, never `db push`.
   - **75-03 (R-4)** remove the ~10 latent fallbacks + the resolver input-echo + dead code, drop the 13
     false-positives — MEDIUM risk, code-only.
 Decision (Matt 2026-06-23): plan all three now; migrations applied supervised, never blind.
 
-Plan: Phase 74 = shipped #289; Phase 75 = 1/3 waves done (75-01 GREEN 2026-06-24; 75-02 next).
+Plan: Phase 74 = shipped #289; Phase 75 = 2/3 waves done (75-01 + 75-02 LIVE on prod 2026-06-24; 75-03 next, code-only).
 
 ### 2026-06-23 reconciliation (corrections to the stale per-phase prose below)
 
