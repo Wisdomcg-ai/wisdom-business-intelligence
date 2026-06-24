@@ -126,9 +126,12 @@ create policy "coach_update_sprint_key_actions_coach_rls_v3" on public.sprint_ke
   with check ((exists (select 1 from public.businesses b where b.id = sprint_key_actions.business_id and b.assigned_coach_id = auth.uid())) or (exists (select 1 from public.business_profiles bp join public.businesses b on b.id = bp.business_id where bp.id = sprint_key_actions.business_id and b.assigned_coach_id = auth.uid())) or (exists (select 1 from public.system_roles sr where sr.user_id = auth.uid() and sr.role = 'super_admin')));
 
 -- ============================================================================
--- kpi_history  (its single rls_access policy already casts business_id::uuid,
--- so it stays valid across the type change — no drop/recreate needed)
+-- kpi_history  (Postgres blocks ALTER TYPE while a policy references the column —
+-- even though rls_access's (business_id)::uuid expr would stay valid — so its
+-- single policy must be dropped + recreated like the others)
 -- ============================================================================
+drop policy if exists "rls_access" on public.kpi_history;
+
 alter table public.kpi_history alter column business_id type uuid using business_id::uuid;
 
 do $$ begin
@@ -136,6 +139,10 @@ do $$ begin
     alter table public.kpi_history add constraint kpi_history_business_id_fkey foreign key (business_id) references public.business_profiles(id) on delete cascade;
   end if;
 end $$;
+
+create policy "rls_access" on public.kpi_history for all to authenticated
+  using (public.auth_is_super_admin() or (business_id = any(public.auth_get_accessible_business_ids())) or (exists (select 1 from public.business_profiles bp join public.businesses b on b.id = bp.business_id where bp.id = business_id and (b.owner_id = auth.uid() or b.assigned_coach_id = auth.uid() or (exists (select 1 from public.business_users bu where bu.business_id = b.id and bu.user_id = auth.uid() and bu.status = 'active'))))))
+  with check (public.auth_is_super_admin() or public.auth_can_manage_business(business_id) or (exists (select 1 from public.business_profiles bp join public.businesses b on b.id = bp.business_id where bp.id = business_id and (b.owner_id = auth.uid() or b.assigned_coach_id = auth.uid() or (exists (select 1 from public.business_users bu where bu.business_id = b.id and bu.user_id = auth.uid() and bu.status = 'active'))))));
 
 -- ============================================================================
 -- business_financial_goals
