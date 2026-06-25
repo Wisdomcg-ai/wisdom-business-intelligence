@@ -56,12 +56,21 @@ R-6 → R-5 → R-4:
     fresh login, proving the FK was innocent. Re-added the 6 FKs + reload + waited → fresh login + saves all
     work. FKs are LIVE; probe removed. **LESSON: after any direct-SQL DDL via the MCP, `notify pgrst,
     'reload schema'` AND allow propagation before the app uses it** (see memory project_postgrest_schema_reload).
-    **MIGRATION DRIFT found (separate, flag to Matt):** prod is MISSING on-disk migrations
-    `20260617000000_add_business_financial_goals_current_actuals` (annual-reset actuals column — feature
-    would error if it activates) and `20260611000000_swot_repoint` — the broken auto-apply pipeline. Apply
-    explicitly, never `db push`.
-  - **75-03 (R-4)** remove the ~10 latent fallbacks + the resolver input-echo + dead code, drop the 13
-    false-positives — MEDIUM risk, code-only.
+    **Migration-ledger gap (checked 2026-06-26 — NOT a functional gap):** the migration HISTORY table is
+    missing entries for `20260617…current_actuals` and `20260611…swot_repoint`, but BOTH changes are
+    actually applied in prod (the `current_actuals` jsonb column exists; swot_repoint was applied via MCP
+    2026-06-11 per its own comment). They were applied outside the migration runner. Both migrations are
+    idempotent (`ADD COLUMN IF NOT EXISTS` / idempotent backfill), so re-application is harmless. Optional
+    hygiene: backfill the two rows into supabase_migrations.schema_migrations. No urgency, no bug.
+  - **75-03 (R-4) — REFRAMED low-urgency hardening (2026-06-26), not yet started.** DUAL-ID-VERIFIED §3-4
+    says the latent items are mostly HARMLESS (guarded SELECTs that never fire, self-correcting saveSnapshot
+    reads, `user_id` filters that are actually correct) and explicitly recommends "drop them from the active
+    backlog, track separately as hardening." With the 75-02 FK backstop now making any real mis-key a loud
+    error, the urgency is gone. Remaining = cleanup: delete dead code (SnapshotService etc. — confirm truly
+    unused first), drop the dead `business_profile_id` ONLY on business_financial_goals + business_kpis
+    (NOT global — the column is a live key on other tables: helpers.ts, AnnualPlan, plan-data-assembler all
+    read it legitimately; remove only the bfg/business_kpis legacy-fallback reads first, then drop those 2
+    columns + `notify pgrst`), and doc-drop the 13 false-positives. Best as its own focused PR.
 Decision (Matt 2026-06-23): plan all three now; migrations applied supervised, never blind.
 
 Plan: Phase 74 = shipped #289; Phase 75 = 2/3 waves done (75-01 + 75-02 LIVE on prod 2026-06-24; 75-03 next, code-only).
