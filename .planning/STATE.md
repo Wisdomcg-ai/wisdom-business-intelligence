@@ -49,6 +49,13 @@ R-6 → R-5 → R-4:
     policy-dependency error (fixed), then RLS-impersonation confirmed coach + 2 clients see IDENTICAL row
     counts before/after; post-apply prod check GREEN (6 FKs, all uuid, policy counts 5/7/9/1/6/12). Any
     future mis-key is now a loud FK error. business_profile_id NOT dropped (code still reads it → 75-03).
+    **INCIDENT 2026-06-25 (resolved):** post-apply, LOGIN HUNG. Root cause was NOT the FK — it was the
+    **stale PostgREST schema cache** after the text→uuid change (a `notify pgrst, 'reload schema'` hadn't
+    propagated before the app hit it). Misdiagnosed as an FK rejecting a login write; dropped the FKs +
+    reloaded → login worked. A non-blocking probe trigger on all 6 tables caught ZERO mis-keyed writes on a
+    fresh login, proving the FK was innocent. Re-added the 6 FKs + reload + waited → fresh login + saves all
+    work. FKs are LIVE; probe removed. **LESSON: after any direct-SQL DDL via the MCP, `notify pgrst,
+    'reload schema'` AND allow propagation before the app uses it** (see memory project_postgrest_schema_reload).
     **MIGRATION DRIFT found (separate, flag to Matt):** prod is MISSING on-disk migrations
     `20260617000000_add_business_financial_goals_current_actuals` (annual-reset actuals column — feature
     would error if it activates) and `20260611000000_swot_repoint` — the broken auto-apply pipeline. Apply

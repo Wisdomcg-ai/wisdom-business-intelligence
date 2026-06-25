@@ -30,6 +30,15 @@ all checks green.
 - **Migration drift:** prod is missing on-disk `20260617000000_add_business_financial_goals_current_actuals`
   (annual-reset `current_actuals` column) and `20260611000000_swot_repoint`. The broken auto-apply pipeline.
 
+## Post-apply incident (2026-06-25, resolved) — schema cache, NOT the FK
+Login hung after apply. Misdiagnosed as the FK rejecting a login-time write; dropping the FKs + reloading
+the PostgREST schema restored login. A **non-blocking probe trigger** on all 6 tables then caught **ZERO**
+mis-keyed writes on a fresh login — proving the FK was innocent. Real cause: **stale PostgREST schema cache**
+after the text→uuid change (the `notify pgrst, 'reload schema'` hadn't propagated before the app retried).
+Re-added the 6 FKs + reload + waited → fresh login + saves all work. FKs are LIVE; probe removed.
+**Lesson:** after any direct-SQL DDL via the MCP, `notify pgrst` AND allow propagation before the app hits
+it. (memory `project_postgrest_schema_reload`).
+
 ## Hand-off to 75-03
 Now safe to remove the latent fallbacks (FKs are the loud backstop) AND drop the dead `business_profile_id`
 column once `strategic-sync-service.ts` + `useQuarterlyReview.ts` stop reading it.
