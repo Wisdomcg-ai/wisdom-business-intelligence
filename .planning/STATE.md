@@ -2,28 +2,109 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to execute
-last_updated: "2026-06-12T20:15:02.144Z"
-last_activity: 2026-06-12
+status: Phase 73 + 74 complete; dual-ID tail (Phase 75) unplanned
+last_updated: "2026-06-23T00:00:00.000Z"
+last_activity: 2026-06-23
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 6
-  completed_plans: 3
+  completed_plans: 6
 ---
 
 # Project State
 
-## Current Position
+## Current Position — RECONCILED 2026-06-23
 
-Phase: 73 (annual-plan-reset) — **PAUSED 2026-06-13** pending dual-ID remediation milestone.
-W1-W3 built + committed on branch `plan/phase-73-annual-reset` (73-01 snapshot, 73-03 entry,
-73-02 rollover, 73-04 Task 1 /goals wiring), stopped at the 73-04 human-verify checkpoint. The
-Precision dry-run caught + fixed a dual-ID bug (commit d3c66cdb) and exposed a SYSTEM-WIDE
-dual-ID problem (41 active + 38 latent — see `.planning/codebase/DUAL-ID-AUDIT.md`). Decision:
-pause 73, run the full dual-ID remediation milestone first, then resume 73 (W4 retire annual
-steps + W5 integration tests) on the solid foundation.
-Plan: 4 of 6 (paused at checkpoint)
+> The position notes below this block were last accurate 2026-06-12. The 2026-06-23 reconciliation
+> here supersedes them where they conflict (verified against git + the actual codebase, not the
+> stale per-phase prose).
+
+**Phase 73 (annual-plan-reset) — COMPLETE.** All 6 plans executed (73-01…73-06 SUMMARYs present).
+Full-year reset shipped live 2026-06-14 (#290; +#299/#300 = actuals seeding + Actual badge, DORMANT
+until a full FY syncs). The dual-ID problem the Precision dry-run exposed was remediated in Phase 74
+(below), then 73 resumed and finished. NOT paused.
+
+**Phase 74 (dual-ID remediation: foundation + 23 verified fixes) — COMPLETE.** Shipped 2026-06-13 via
+PR #289 (`96b3bdd2`), code-only + prod-verified. R-1 foundation = `resolveBusinessProfileId` (singular,
+strict, NULL-on-miss write-resolver) folded into `resolveBusinessProfileIds.ts` + `surfaceSupabaseError`
++ `assertBusinessProfileId`. R-2 = the 23 fixes wired into weekly-review-service, strategic-initiatives,
+quarterly-review-service + workshop, useBusinessDashboard, ForecastSelector. R-3 = the annual-plan /
+strategic-initiatives COLUMN-NAME bugs. **TRACKING GAP:** `.planning/phases/74` was never given SUMMARY
+files, so the GSD tracker still shows it unstarted — but 74-01-PLAN.md describes files that already exist
+on main. Do NOT re-implement.
+
+**Phase 75 (dual-ID durable tail) — PLANNED 2026-06-23, NOT YET EXECUTED.** 3 waves written under
+`.planning/phases/75-dual-id-durable-tail/` (75-CONTEXT + 75-01/02/03-PLAN). Fixed dependency order
+R-6 → R-5 → R-4:
+  - **75-01 (R-6) — COMPLETE 2026-06-24 (GREEN).** All 10 FK-target tables FK-ready. Audit found
+    `business_profile_id` is dead (100% NULL) on the dual-column tables → FK target corrected to the live
+    `business_id` (cast), drop `business_profile_id`. Cleanse: deleted 13 stale biz-keyed `business_kpis`
+    duplicates (exact value-copies of active twins; snapshot in 75-01 snapshots/). 75-02 unblocked.
+  - **75-02 (R-5) — LIVE ON PROD + VERIFIED 2026-06-24** (migration version `20260624073031`, applied via
+    Supabase MCP after WisdomBI org connected). 6 text business_id columns cast to uuid + FK →
+    business_profiles(id) CASCADE (activity_log, plan_snapshots, sprint_key_actions, kpi_history,
+    business_financial_goals, business_kpis); 31 text-based RLS policies rewritten to uuid (Group B FKs
+    already existed from Phase A). Validated by a rolled-back prod dry-run that caught a kpi_history
+    policy-dependency error (fixed), then RLS-impersonation confirmed coach + 2 clients see IDENTICAL row
+    counts before/after; post-apply prod check GREEN (6 FKs, all uuid, policy counts 5/7/9/1/6/12). Any
+    future mis-key is now a loud FK error. business_profile_id NOT dropped (code still reads it → 75-03).
+    **INCIDENT 2026-06-25 (resolved):** post-apply, LOGIN HUNG. Root cause was NOT the FK — it was the
+    **stale PostgREST schema cache** after the text→uuid change (a `notify pgrst, 'reload schema'` hadn't
+    propagated before the app hit it). Misdiagnosed as an FK rejecting a login write; dropped the FKs +
+    reloaded → login worked. A non-blocking probe trigger on all 6 tables caught ZERO mis-keyed writes on a
+    fresh login, proving the FK was innocent. Re-added the 6 FKs + reload + waited → fresh login + saves all
+    work. FKs are LIVE; probe removed. **LESSON: after any direct-SQL DDL via the MCP, `notify pgrst,
+    'reload schema'` AND allow propagation before the app uses it** (see memory project_postgrest_schema_reload).
+    **Migration-ledger gap (checked 2026-06-26 — NOT a functional gap):** the migration HISTORY table is
+    missing entries for `20260617…current_actuals` and `20260611…swot_repoint`, but BOTH changes are
+    actually applied in prod (the `current_actuals` jsonb column exists; swot_repoint was applied via MCP
+    2026-06-11 per its own comment). They were applied outside the migration runner. Both migrations are
+    idempotent (`ADD COLUMN IF NOT EXISTS` / idempotent backfill), so re-application is harmless. Optional
+    hygiene: backfill the two rows into supabase_migrations.schema_migrations. No urgency, no bug.
+  - **75-03 (R-4) — REFRAMED low-urgency hardening (2026-06-26), not yet started.** DUAL-ID-VERIFIED §3-4
+    says the latent items are mostly HARMLESS (guarded SELECTs that never fire, self-correcting saveSnapshot
+    reads, `user_id` filters that are actually correct) and explicitly recommends "drop them from the active
+    backlog, track separately as hardening." With the 75-02 FK backstop now making any real mis-key a loud
+    error, the urgency is gone. Remaining = cleanup: delete dead code (SnapshotService etc. — confirm truly
+    unused first), drop the dead `business_profile_id` ONLY on business_financial_goals + business_kpis
+    (NOT global — the column is a live key on other tables: helpers.ts, AnnualPlan, plan-data-assembler all
+    read it legitimately; remove only the bfg/business_kpis legacy-fallback reads first, then drop those 2
+    columns + `notify pgrst`), and doc-drop the 13 false-positives. Best as its own focused PR.
+Decision (Matt 2026-06-23): plan all three now; migrations applied supervised, never blind.
+
+Plan: Phase 74 = shipped #289; Phase 75 = 2/3 waves done (75-01 + 75-02 LIVE on prod 2026-06-24; 75-03 next, code-only).
+
+### 2026-06-23 reconciliation (corrections to the stale per-phase prose below)
+
+- **Phase 73 + 74 = COMPLETE** (see Current Position above). The per-phase note for 73 below still says
+  "PAUSED" — ignore it.
+- **Phase 65 (section-permission ENFORCE) — STILL THE ONE HUMAN-GATED ITEM.** No evidence the
+  `SECTION_PERMISSION_ENFORCE` env flip + redeploy was done, so prod is still LOG_ONLY. Wave 65-05
+  close-out follows the flip. (Note: the consolidation role gate shipped this session uses
+  `enforceSectionPermission`, which respects this same flag — the consolidation 403 is hard, but the
+  generic section layer beneath it is still observe-only.)
+- **Phase 47 (input validation) — only 47-06 lacks a SUMMARY;** 47-01…05 shipped. Near-complete.
+- **Phase 54 — effectively COMPLETE** (the 54-02 soft-auto-fill code + `phase-54-step4-autofill` tests
+  exist and pass on main; SUMMARY just wasn't written). The "PARTIAL" note below is stale.
+- **Phase 67 (multi-currency consolidation fix) — 4 plans, 0 SUMMARYs, but superseded** — the
+  multi-currency redirect/toast work landed via Phases 70/71; IICT multi-currency consolidation is live.
+  Treat as folded-in, not open.
+- **Genuinely OPEN engineering:** Phase 75 (dual-ID durable tail, unplanned) · 47-06 · the human-only
+  Phase 65 cutover. **Deferred ops/coach to-dos:** apply the `cron_heartbeats` Supabase migration to prod
+  (70-09) · JDS (70-06) + IICT (70-07) onboarding completion · 4 audit-script fixes (70-08) · Phase 49
+  audit-log runtime assertion · Phase 61 9-cell RLS matrix (non-blocking).
+
+### Recent ad-hoc work (not GSD-tracked phases — direct fixes since 2026-06-12)
+
+- **AI model hardening:** centralized model ids + daily health-check (#315); "coach drafted" toast shows
+  served model (#320/#322); rock-breakdown chased through Sonnet→Opus, fixing a silent GPT-4o fallback
+  caused by the tool-call API + a `temperature` param Opus 4.7/4.8 reject — now LIVE on **Opus 4.8** with
+  plain JSON, no sampling params (#324/#325/#326). See memory `project_ai_routes_opus_temperature`.
+- **Sprint-plan (goals Step 5) UX overhaul:** slim navy targets bar + full-width initiatives, grouped-tile
+  panel, ClickUp-style task rows, auto-grow task names (#316–#319).
+- **Consolidation = coach/admin-only:** consolidated tabs hidden from clients (#327) + server-side 403
+  role gate on the 3 consolidated report endpoints (#328), with new `getUserSystemRoleServer` helper.
 
 Phase: 66 (section-permission-followups) — **COMPLETE** (4/4 plans shipped, verified, deployed 2026-05-17; PR #198 merged `0cd6bcd2`; VERIFICATION.md passed 4/4). Legacy `financials`-key migration applied to production (audit re-run confirms 0 rows missing `finances`, was 23) + table DEFAULTs corrected onto canonical `finances`. Consolidated routes normalized to `resolveBusinessIds`. Service-role + ops/admin audits produced (10 LOW-risk service-role convert candidates deferred to a future phase; all 16 ops/admin routes need no gate).
 Plan: 4 of 4 — phase complete
@@ -100,7 +181,8 @@ Goal: take the codebase from 55/100 to ~75/100 (Series-A defensible) over 6 phas
 - Phase 71 added (2026-05-31): Month-end reporting code fixes — B1 wages employee name matching (fuzzy match) + B2 vendor-key normalization consolidation (one shared util) + B3 Proceed-as-Draft persistence (save snapshot immediately) + S1 commentary scope expansion (revenue shortfalls + BS movements + large favourable) + S2 subscription budget-only vendors visible with $0 actuals + S3 wages per-payrun expand UI + S4 PDF variance polarity refactor (raw data, not string parsing) + S5 BS equation check + S6 multi-tenant non-AUD redirect toast + D4 snapshot serializer (numeric→named section keys) + data remap. Source: Phase 70 month-end audit (`docs/phase-70-month-end-audit.md`) P1 production bugs + P2 Calxa-parity gaps + D4 deferred from Phase 70 by design. Gates Calxa migration.
 - Phase 72 added (2026-05-31): Forecast wizard Step 3 extended-period bug — Y1 month range honors plan_start_date through full Y1 duration. Original symptom: Armstrong Step 3 only allows revenue/COGS forecast for 3 months (FY26 remainder) instead of full extended Y1 duration when is_extended_period=true. Related to Phase 14 extended-period plans + Phase 68 deriveCurrentRemainderColumn work (Phase 68 B15). Source: Matt callout 2026-05-30 mid-Phase-68 execution; draft analysis at `docs/forecast-wizard-extended-period-bug.md` (renamed from `phase-69-...` due to numbering collision).
 - Phase 73 added (2026-06-12): Annual plan reset (full-year reset) — when a client's plan year has ended, snapshot the ending year's full plan then route them into the EXISTING Goals & Targets wizard (/goals) with the 3-year ladder rolled forward (new Year 1 = new FY, prepopulated from prior Year 2) and plan dates rolled. Entry is DATA-DRIVEN off `business_financial_goals.year1_end_date` vs the quarter being planned, so clients already on the new FY (Armstrong, Fit2Shine = FY27) are never prompted/affected. Quarterly targets reuse the wizard's existing pattern; incomplete initiatives carry forward as candidates. Retires the quarterly-review module's bolted-on annual steps (NextYearTargets/AnnualInitiativePlan/YearInReview/VisionStrategy) + Q4-gated button. **CRITICAL CONSTRAINT: zero impact to current clients' data or usage — snapshot before any overwrite, fully reversible, no behavior change for clients with a current valid plan.** Locked design + decisions (D1 goals-wizard-only, D2 route, D3 prepopulate-from-Y2) in `.planning/codebase/ANNUAL-RESET-DESIGN.md`. Source: 2026-06-12 quarterly-review flow review (Envisage annual-plan prior-period symptom + full-year-reset requirement).
-- Phase 74 added (2026-06-13): Dual-ID remediation foundation + verified fixes. Audit found 41 'active' dual-ID bugs; independent verification vs prod data corrected to **23 confirmed / ~8 root causes** (12 nuanced, 10 latent, 13 false-positive; the 'data loss since 2026-04-22' date was fabricated — data intact; FKs fail-closed so NO corruption). Scope: R-1 shared resolveBusinessProfileId resolver + branded id types + stop-swallowing-FK-errors discipline; R-2 the 23 verified fixes by root cause (coach KPI dashboard one-fix-cures-5, QR-completion kpi_actuals/quarterly_snapshots writes, coach weekly-review reads, analytics chart, ForecastSelector, demo seeder); R-3 the annual-plan/strategic-initiatives COLUMN-NAME bugs (not dual-ID). Canonical key = business_profiles.id (1:1 with businesses). Durable tail (R-6 cleanse -> R-5 finish FKs + single-branch RLS -> R-4 remove fallbacks) = follow-up Phase 75. Docs: .planning/codebase/{DUAL-ID-AUDIT,DUAL-ID-VERIFIED,DUAL-ID-REMEDIATION-ROADMAP}.md. Source: Phase 73 Precision dry-run.
+- Phase 74 added (2026-06-13): Dual-ID remediation foundation + verified fixes. Audit found 41 'active' dual-ID bugs; independent verification vs prod data corrected to **23 confirmed / ~8 root causes** (12 nuanced, 10 latent, 13 false-positive; the 'data loss since 2026-04-22' date was fabricated — data intact; FKs fail-closed so NO corruption). Scope: R-1 shared resolveBusinessProfileId resolver + branded id types + stop-swallowing-FK-errors discipline; R-2 the 23 verified fixes by root cause (coach KPI dashboard one-fix-cures-5, QR-completion kpi_actuals/quarterly_snapshots writes, coach weekly-review reads, analytics chart, ForecastSelector, demo seeder); R-3 the annual-plan/strategic-initiatives COLUMN-NAME bugs (not dual-ID). Canonical key = business_profiles.id (1:1 with businesses). Durable tail (R-6 cleanse -> R-5 finish FKs + single-branch RLS -> R-4 remove fallbacks) = follow-up Phase 75. Docs: .planning/codebase/{DUAL-ID-AUDIT,DUAL-ID-VERIFIED,DUAL-ID-REMEDIATION-ROADMAP}.md. Source: Phase 73 Precision dry-run. **Phase 74 SHIPPED 2026-06-13 (#289, code-only + prod-verified).**
+- Phase 75 added (2026-06-23): Dual-ID durable tail — R-6 data cleanse + FK-readiness (75-01) → R-5 FK-Integrity Phase B + single-branch RLS (75-02, prod migrations, supervised) → R-4 remove latent fallbacks + resolver input-echo + dead code, drop 13 false-positives (75-03). The deliberately-deferred remainder of Phase 74. Plans at `.planning/phases/75-dual-id-durable-tail/`. Source: Phase 74 roadmap (R-4/R-5/R-6) + FK-INTEGRITY-PLAN.md Phase B.
 
 ### Active production tenants
 
