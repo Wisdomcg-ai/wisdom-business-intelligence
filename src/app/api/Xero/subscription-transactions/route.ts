@@ -883,7 +883,15 @@ async function postHandler(request: Request) {
       // Use UTC methods since fromDate was created with Date.UTC()
       // URL encode the where clause to handle special characters (&&, ==, etc.)
       const bankWhereClause = `Date>=DateTime(${fromDate.getUTCFullYear()},${fromDate.getUTCMonth()+1},${fromDate.getUTCDate()})&&Type=="SPEND"`;
-      const bankUrl = `https://api.xero.com/api.xro/2.0/BankTransactions?where=${encodeURIComponent(bankWhereClause)}&page=${bankPage}`;
+      // order=Date DESC so the NEWEST (current-FY) card/DD spend pages first.
+      // This `where` can't filter by line-item AccountCode, so the loop pulls
+      // EVERY SPEND txn across ALL accounts — a high-volume tenant (JDS) blows
+      // the 50-page / 5000-txn cap below, and WITHOUT DESC Xero returns
+      // oldest-first, so the cap drops the newest pages and silently zeroes the
+      // current-FY YTD for any card-paid subscription (Asana, Anthropic, Dear
+      // Inventory, Capsule…). The invoice loop above already got this fix; the
+      // bank loop was missed — which is why JDS still saw "FY YTD $0".
+      const bankUrl = `https://api.xero.com/api.xro/2.0/BankTransactions?where=${encodeURIComponent(bankWhereClause)}&order=${encodeURIComponent('Date DESC')}&page=${bankPage}`;
 
       const bankResponse = await fetch(bankUrl, {
         headers: {
