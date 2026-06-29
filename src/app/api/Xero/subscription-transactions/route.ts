@@ -19,6 +19,11 @@ import { requireSectionPermission } from '@/lib/permissions/requireSectionPermis
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 
 export const dynamic = 'force-dynamic';
+// High-volume tenants (e.g. JDS: 3700+ bills + 3300+ bank lines) need a long
+// paced crawl through Xero. At <=60 calls/min the worst case is ~200 calls, so
+// allow up to 5 min. Without this the function timed out mid-crawl and silently
+// returned partial (current-FY-missing) data.
+export const maxDuration = 300;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -510,6 +515,55 @@ async function postHandler(request: Request) {
       console.log('[Subscription Txns] Got valid token from Token Manager');
     }
 
+    // --- Paced, 429-aware Xero GET (reliability fix for high-volume tenants) ---
+    // Xero throttles at ~60 calls/min PER TENANT. The old loops fired a call
+    // every 500ms (=120/min) and then DROPPED data on the inevitable 429: the
+    // invoice-list loop `break`s, and batches were skipped after a single retry.
+    // Because bills are fetched newest-first, the current-FY batches are first
+    // in line when the limit is already exhausted, so THEY get 429'd and dropped
+    // while later prior-FY batches succeed — the exact "FY YTD $0 / prior-FY OK"
+    // symptom (JDS, 3700+ bills). This helper paces to <=60/min and retries 429s
+    // until they clear (respecting Retry-After), so no page/batch is ever lost.
+    const XERO_MIN_INTERVAL_MS = 1100; // stay under 60 calls/min/tenant
+    const XERO_MAX_429_RETRIES = 8;
+    let xeroLastCallAt = 0;
+    const xeroGet = async (url: string): Promise<Response | null> => {
+      for (let attempt = 0; attempt <= XERO_MAX_429_RETRIES; attempt++) {
+        const sinceLast = Date.now() - xeroLastCallAt;
+        if (sinceLast < XERO_MIN_INTERVAL_MS) {
+          await new Promise(r => setTimeout(r, XERO_MIN_INTERVAL_MS - sinceLast));
+        }
+        xeroLastCallAt = Date.now();
+        let res: Response;
+        try {
+          res = await fetch(url, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'xero-tenant-id': connection.tenant_id,
+              'Accept': 'application/json',
+            },
+          });
+        } catch (netErr) {
+          if (attempt === XERO_MAX_429_RETRIES) throw netErr;
+          await new Promise(r => setTimeout(r, 1500)); // transient network blip
+          continue;
+        }
+        if (res.status === 429) {
+          const retryAfter = Math.min(parseInt(res.headers.get('Retry-After') || '5', 10) || 5, 65);
+          if (process.env.NODE_ENV !== 'production') {
+            console.log(`[Subscription Txns] 429 — waiting ${retryAfter}s (attempt ${attempt + 1})`);
+          }
+          await new Promise(r => setTimeout(r, retryAfter * 1000));
+          continue;
+        }
+        return res;
+      }
+      // Exhausted 429 retries — return null so the caller stops cleanly rather
+      // than silently treating a throttled page as "no more data".
+      Sentry.captureMessage('[Subscription Txns] Xero 429 retries exhausted', { level: 'warning' as any, extra: { url } } as any);
+      return null;
+    };
+
     // Calculate FY-aligned date ranges (Australian FY: July-June)
     // Use UTC dates to avoid timezone issues
     const today = new Date();
@@ -662,14 +716,11 @@ async function postHandler(request: Request) {
       // are silently dropped — the exact "FY YTD $0" symptom (JDS).
       const invoicesUrl = `https://api.xero.com/api.xro/2.0/Invoices?where=${encodeURIComponent(whereClause)}&order=${encodeURIComponent('Date DESC')}&page=${invoicePage}`;
 
-      const invoicesResponse = await fetch(invoicesUrl, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'xero-tenant-id': connection.tenant_id,
-          'Accept': 'application/json'
-        }
-      });
-
+      const invoicesResponse = await xeroGet(invoicesUrl);
+      if (!invoicesResponse) {
+        // 429 retries exhausted — stop listing and process what we collected.
+        break;
+      }
       if (!invoicesResponse.ok) {
         const errorText = await invoicesResponse.text();
         Sentry.captureMessage(`[Subscription Txns] Invoice list fetch error status=${invoicesResponse.status}`, { level: 'error' as any, extra: { errorText } } as any);
@@ -721,92 +772,17 @@ async function postHandler(request: Request) {
         console.log(`[Subscription Txns] Fetching batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(allInvoiceIds.length/BATCH_SIZE)} (${batchIds.length} invoices)`);
       }
 
-      // Add delay between batches to avoid rate limiting
-      if (i > 0) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+      // xeroGet paces (<=60/min) and retries 429s until they clear, so we no
+      // longer need a manual delay or a duplicated retry-and-process branch — a
+      // throttled batch is retried in place rather than skipped (which is what
+      // previously dropped current-FY bills for high-volume tenants).
+      const batchResponse = await xeroGet(`https://api.xero.com/api.xro/2.0/Invoices?IDs=${idsParam}`);
 
-      const batchResponse = await fetch(
-        `https://api.xero.com/api.xro/2.0/Invoices?IDs=${idsParam}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'xero-tenant-id': connection.tenant_id,
-            'Accept': 'application/json'
-          }
+      if (!batchResponse || !batchResponse.ok) {
+        if (batchResponse) {
+          const errorText = await batchResponse.text();
+          Sentry.captureMessage(`[Subscription Txns] Batch fetch error status=${batchResponse.status}`, { level: 'error' as any, extra: { errorText } } as any);
         }
-      );
-
-      // Handle rate limiting
-      if (batchResponse.status === 429) {
-        const retryAfter = parseInt(batchResponse.headers.get('Retry-After') || '60');
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`[Subscription Txns] Rate limited on batch, waiting ${retryAfter}s...`);
-        }
-        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-
-        // Retry the batch
-        const retryResponse = await fetch(
-          `https://api.xero.com/api.xro/2.0/Invoices?IDs=${idsParam}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'xero-tenant-id': connection.tenant_id,
-              'Accept': 'application/json'
-            }
-          }
-        );
-
-        if (retryResponse.ok) {
-          const retryData = await retryResponse.json();
-          for (const fullInvoice of retryData.Invoices || []) {
-            if (fullInvoice?.LineItems) {
-              const invoiceDate = parseXeroDate(fullInvoice.Date);
-              const dateStr = invoiceDate ? formatDate(invoiceDate) : '';
-              const period = getPeriod(dateStr);
-
-              // Skip transactions outside our FY range
-              if (!period) continue;
-
-              for (const line of fullInvoice.LineItems) {
-                if (validAccountCodes.includes(line.AccountCode)) {
-                  const contactName = fullInvoice.Contact?.Name || '';
-                  const vendorName = extractVendorName(contactName, line.Description || '');
-                  const rawAmount = line.LineAmount || 0;
-                  const isCredit = rawAmount < 0;
-
-                  allTransactions.push({
-                    id: `inv-${fullInvoice.InvoiceID}-${line.LineItemID || Math.random()}`,
-                    date: dateStr,
-                    vendor: vendorName,
-                    description: line.Description || contactName,
-                    amount: rawAmount,
-                    rawAmount: rawAmount,
-                    accountCode: line.AccountCode,
-                    accountName: accountNameMap.get(line.AccountCode) || line.AccountCode,
-                    source: 'invoice',
-                    reference: fullInvoice.InvoiceNumber || '',
-                    period,
-                    isCredit,
-                  });
-                  totalInvoicesFetched++;
-
-                  if (isCredit) {
-                    if (process.env.NODE_ENV !== 'production') {
-                      console.log(`[Subscription Txns] CREDIT FOUND (invoice retry): ${vendorName} ${dateStr} ${rawAmount}`);
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-        continue;
-      }
-
-      if (!batchResponse.ok) {
-        const errorText = await batchResponse.text();
-        Sentry.captureMessage(`[Subscription Txns] Batch fetch error status=${batchResponse.status}`, { level: 'error' as any, extra: { errorText } } as any);
         continue;
       }
 
@@ -875,45 +851,21 @@ async function postHandler(request: Request) {
     let totalBankFetched = 0;
 
     while (hasMoreBank) {
-      // Add delay between page fetches
-      if (bankPage > 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-
       // Use UTC methods since fromDate was created with Date.UTC()
       // URL encode the where clause to handle special characters (&&, ==, etc.)
       const bankWhereClause = `Date>=DateTime(${fromDate.getUTCFullYear()},${fromDate.getUTCMonth()+1},${fromDate.getUTCDate()})&&Type=="SPEND"`;
-      // order=Date DESC so the NEWEST (current-FY) card/DD spend pages first.
-      // This `where` can't filter by line-item AccountCode, so the loop pulls
-      // EVERY SPEND txn across ALL accounts — a high-volume tenant (JDS) blows
-      // the 50-page / 5000-txn cap below, and WITHOUT DESC Xero returns
-      // oldest-first, so the cap drops the newest pages and silently zeroes the
-      // current-FY YTD for any card-paid subscription (Asana, Anthropic, Dear
-      // Inventory, Capsule…). The invoice loop above already got this fix; the
-      // bank loop was missed — which is why JDS still saw "FY YTD $0".
+      // order=Date DESC so the newest (current-FY) lines page first — parity with
+      // the invoice loop. xeroGet paces (<=60/min) and retries 429s, so no page
+      // is dropped.
       const bankUrl = `https://api.xero.com/api.xro/2.0/BankTransactions?where=${encodeURIComponent(bankWhereClause)}&order=${encodeURIComponent('Date DESC')}&page=${bankPage}`;
 
-      const bankResponse = await fetch(bankUrl, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'xero-tenant-id': connection.tenant_id,
-          'Accept': 'application/json'
-        }
-      });
+      const bankResponse = await xeroGet(bankUrl);
 
-      // Handle rate limiting
-      if (bankResponse.status === 429) {
-        const retryAfter = parseInt(bankResponse.headers.get('Retry-After') || '60');
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`[Subscription Txns] Bank rate limited, waiting ${retryAfter}s...`);
+      if (!bankResponse || !bankResponse.ok) {
+        if (bankResponse) {
+          const errorText = await bankResponse.text();
+          Sentry.captureMessage(`[Subscription Txns] Bank transaction fetch error status=${bankResponse.status}`, { level: 'error' as any, extra: { errorText } } as any);
         }
-        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-        continue; // Retry same page
-      }
-
-      if (!bankResponse.ok) {
-        const errorText = await bankResponse.text();
-        Sentry.captureMessage(`[Subscription Txns] Bank transaction fetch error status=${bankResponse.status}`, { level: 'error' as any, extra: { errorText } } as any);
         break;
       }
 
