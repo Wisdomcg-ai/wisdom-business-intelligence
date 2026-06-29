@@ -71,7 +71,10 @@ export const VENDOR_MAPPINGS: Record<string, string> = {
   'OPENAI': 'OpenAI',
   'CHATGPT': 'ChatGPT',
   'ANTHROPIC': 'Anthropic',
-  'CLAUDE': 'Anthropic Claude',
+  // 'Claude' is the same vendor as Anthropic — keep them on ONE canonical name
+  // so the subscription wizard doesn't split it into two rows (an "Anthropic"
+  // row with the real spend + a confusing tiny "Anthropic Claude" $0 stub).
+  'CLAUDE': 'Anthropic',
   'ZAPIER': 'Zapier',
   'CALXA': 'Calxa',
   'LUCID': 'Lucid Software',
