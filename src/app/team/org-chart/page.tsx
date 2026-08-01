@@ -70,9 +70,15 @@ export default function OrgChartPage() {
       }
 
       const biz = activeBusinessRef.current
-      const targetUserId = biz?.ownerId || user.id
 
-      const res = await fetch(`/api/team/org-chart?user_id=${targetUserId}`)
+      // Authorize by business_id; the server resolves the owner-keyed row and
+      // enforces access. Falls back to the caller's own row when no business
+      // context is available.
+      const res = await fetch(
+        biz?.id
+          ? `/api/team/org-chart?business_id=${biz.id}`
+          : `/api/team/org-chart`
+      )
       const json = await res.json()
 
       if (res.ok && json.org_chart) {

@@ -70,3 +70,45 @@ export async function verifyBusinessAccess(userId: string, businessId: string): 
 
   return role?.role === 'super_admin';
 }
+
+/**
+ * Resolve the owner user_id for a business, given an id in EITHER id-space
+ * (businesses.id or business_profiles.id). Returns null if the business can't
+ * be resolved.
+ *
+ * Used where a record is keyed by the business OWNER's user_id (e.g. team_data
+ * / the org chart) but the request only carries a business id. Deriving the
+ * owner server-side — instead of trusting a client-supplied user_id — is what
+ * keeps that class of endpoint free of cross-tenant IDOR: the caller proves
+ * access to the business via verifyBusinessAccess(), and the storage key is
+ * computed here rather than accepted from the request.
+ */
+export async function getBusinessOwnerId(businessId: string): Promise<string | null> {
+  // Direct: businesses.id
+  const { data: business } = await supabaseAdmin
+    .from('businesses')
+    .select('owner_id')
+    .eq('id', businessId)
+    .maybeSingle();
+
+  if (business?.owner_id) return business.owner_id;
+
+  // Dual-ID: businessId may be a business_profiles.id
+  const { data: profile } = await supabaseAdmin
+    .from('business_profiles')
+    .select('business_id')
+    .eq('id', businessId)
+    .maybeSingle();
+
+  if (profile?.business_id) {
+    const { data: biz } = await supabaseAdmin
+      .from('businesses')
+      .select('owner_id')
+      .eq('id', profile.business_id)
+      .maybeSingle();
+
+    if (biz?.owner_id) return biz.owner_id;
+  }
+
+  return null;
+}
