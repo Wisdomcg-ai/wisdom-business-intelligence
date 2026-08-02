@@ -1,7 +1,6 @@
 'use client';
 
 import { Download } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import {
   ForecastWizardState, formatCurrency, generateMonthKeys,
   getRevenueLineYearTotal, SUPER_RATE, calculateNewSalary,
@@ -17,6 +16,40 @@ interface ExcelExportProps {
 }
 
 type Row = (string | number)[];
+
+interface SheetSpec {
+  name: string;
+  rows: Row[];
+  colWidths: number[];
+}
+
+/**
+ * Build and download an .xlsx workbook from array-of-arrays sheet specs.
+ * Uses exceljs (dynamically imported so it stays out of the initial bundle),
+ * replacing the removed `xlsx` library. Column widths are in character units,
+ * matching the old `!cols` { wch } values one-to-one.
+ */
+async function downloadXlsx(sheets: SheetSpec[], filename: string): Promise<void> {
+  const ExcelJS = (await import('exceljs')).default;
+  const wb = new ExcelJS.Workbook();
+  for (const spec of sheets) {
+    const ws = wb.addWorksheet(spec.name);
+    spec.rows.forEach((r) => ws.addRow(r));
+    spec.colWidths.forEach((w, i) => {
+      ws.getColumn(i + 1).width = w;
+    });
+  }
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
   const { goals, forecastDuration, revenueLines, cogsLines, teamMembers, newHires,
@@ -119,7 +152,7 @@ export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
   };
 
   // Build a full monthly P&L tab for one year
-  const buildPLTab = (yearNum: 1 | 2 | 3): XLSX.WorkSheet => {
+  const buildPLTab = (yearNum: 1 | 2 | 3): { rows: Row[]; colWidths: number[] } => {
     const yearOffset = yearNum - 1;
     const monthKeys = generateMonthKeys((state.fiscalYearStart || fiscalYear - 1) + yearOffset);
     const rows: Row[] = [];
@@ -242,13 +275,11 @@ export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
       rows.push(['  OpEx', ...priorOpexByMonth, priorYear.opex.total]);
     }
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 26 }, ...new Array(12).fill({ wch: 12 }), { wch: 14 }];
-    return ws;
+    return { rows, colWidths: [26, ...new Array(12).fill(12), 14] };
   };
 
-  const handleExport = () => {
-    const wb = XLSX.utils.book_new();
+  const handleExport = async () => {
+    const sheets: SheetSpec[] = [];
 
     // ── Assumptions Tab ──
     const aRows: Row[] = [
@@ -308,14 +339,12 @@ export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
       if (g) aRows.push([fy(i), g.revenue || 0, g.grossProfitPct ? `${g.grossProfitPct}%` : '', g.netProfitPct ? `${g.netProfitPct}%` : '']);
     });
 
-    const wsA = XLSX.utils.aoa_to_sheet(aRows);
-    wsA['!cols'] = [{ wch: 24 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
-    XLSX.utils.book_append_sheet(wb, wsA, 'Assumptions');
+    sheets.push({ name: 'Assumptions', rows: aRows, colWidths: [24, 14, 14, 14, 14, 14] });
 
     // ── P&L Tabs (one per year, monthly) ──
     for (let yr = 1; yr <= forecastDuration; yr++) {
-      const ws = buildPLTab(yr as 1 | 2 | 3);
-      XLSX.utils.book_append_sheet(wb, ws, fy(yr - 1));
+      const { rows: plRows, colWidths } = buildPLTab(yr as 1 | 2 | 3);
+      sheets.push({ name: fy(yr - 1), rows: plRows, colWidths });
     }
 
     // ── Team Tab ──
@@ -348,9 +377,7 @@ export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
     });
     tRows.push(['TOTAL TEAM COST', '', '', '', ...yearSums.map((s, i) => `${fy(i)}: $${s.toLocaleString()}`)]);
 
-    const wsT = XLSX.utils.aoa_to_sheet(tRows);
-    wsT['!cols'] = [{ wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 16 }];
-    XLSX.utils.book_append_sheet(wb, wsT, 'Team');
+    sheets.push({ name: 'Team', rows: tRows, colWidths: [22, 18, 12, 10, 12, 10, 12, 12, 14, 16] });
 
     // ── Subscriptions Tab ──
     // Phase 57 T15: read from state.subscriptions (VendorBudget[]) — the new
@@ -409,16 +436,15 @@ export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
       sRows.push(['Run the Subscription Audit in Step 5 of the forecast wizard to populate this tab.']);
     }
 
-    const wsS = XLSX.utils.aoa_to_sheet(sRows);
-    wsS['!cols'] = [
-      { wch: 28 }, { wch: 18 }, { wch: 12 }, { wch: 18 },
-      { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
-    ];
-    XLSX.utils.book_append_sheet(wb, wsS, 'Subscriptions');
+    sheets.push({
+      name: 'Subscriptions',
+      rows: sRows,
+      colWidths: [28, 18, 12, 18, 14, 14, 14, 14],
+    });
 
     // Download
     const businessName = (state.businessProfile as any)?.businessName || (state.businessProfile as any)?.name || 'Forecast';
-    XLSX.writeFile(wb, `${businessName} - ${fy(0)} Forecast.xlsx`);
+    await downloadXlsx(sheets, `${businessName} - ${fy(0)} Forecast.xlsx`);
   };
 
   return (
