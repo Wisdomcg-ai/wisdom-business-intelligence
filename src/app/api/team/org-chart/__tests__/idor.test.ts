@@ -54,8 +54,8 @@ vi.mock('@supabase/ssr', () => ({
 }))
 
 // ── service-role admin client: capture team_data reads/writes ────────────────
-const eqSpy = vi.fn()
-const upsertSpy = vi.fn(() => ({ error: null }))
+const eqSpy = vi.fn<(col: string, val: string) => void>()
+const upsertSpy = vi.fn((_data: Record<string, unknown>, _opts?: unknown) => ({ error: null }))
 vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     from: () => ({
