@@ -4,9 +4,9 @@
  * Extracts revenue, COGS, and operating expenses by account
  */
 
-import * as XLSX from 'xlsx';
 import { PriorYearData, MonthlyData } from '../types';
 import { getFiscalMonthIndex, getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
+import { readSheetRows, UnsupportedSpreadsheetError } from './spreadsheet-reader';
 
 export interface ParsedPLData {
   revenue: {
@@ -195,21 +195,10 @@ export async function parsePLFile(file: File): Promise<ParseResult> {
   const warnings: string[] = [];
 
   try {
-    const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-
-    // Get the first sheet (or find one named P&L, Profit and Loss, etc.)
-    let sheetName = workbook.SheetNames[0];
-    for (const name of workbook.SheetNames) {
-      const lower = name.toLowerCase();
-      if (lower.includes('p&l') || lower.includes('profit') || lower.includes('income')) {
-        sheetName = name;
-        break;
-      }
-    }
-
-    const sheet = workbook.Sheets[sheetName];
-    const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    // Reads .xlsx (via exceljs) and .csv into a dense 2-D array with empty
+    // cells as '' — the P&L-sheet preference and the old defval:'' shape are
+    // both preserved by readSheetRows. Legacy .xls throws below.
+    const rows: unknown[][] = await readSheetRows(file);
 
     if (rows.length < 2) {
       return { success: false, error: 'File appears to be empty or has no data rows' };
@@ -396,6 +385,10 @@ export async function parsePLFile(file: File): Promise<ParseResult> {
 
   } catch (error) {
     console.error('P&L file parsing error:', error);
+    // Unsupported formats (e.g. legacy .xls) carry a user-actionable message.
+    if (error instanceof UnsupportedSpreadsheetError) {
+      return { success: false, error: error.message };
+    }
     return {
       success: false,
       error: `Failed to parse file: ${error instanceof Error ? error.message : 'Unknown error'}`,

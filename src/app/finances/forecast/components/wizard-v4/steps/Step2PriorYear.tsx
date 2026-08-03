@@ -855,13 +855,13 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
                         <>
                           <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
                           <p className="font-medium text-gray-900 mb-1">Upload your P&L export</p>
-                          <p className="text-sm text-gray-500">Drag & drop or click to browse (CSV, XLS, XLSX)</p>
+                          <p className="text-sm text-gray-500">Drag & drop or click to browse (CSV or XLSX)</p>
                         </>
                       )}
                     </div>
                     <input
                       type="file"
-                      accept=".csv,.xls,.xlsx"
+                      accept=".csv,.xlsx"
                       className="hidden"
                       disabled={isUploading}
                       onChange={(e) => {
