@@ -15,9 +15,12 @@ const BRAND_NAVY = '#172238'
 const LOGO_URL = 'https://wisdombi.ai/images/logo-main.png'
 
 async function getHandler(request: NextRequest) {
-  // Verify cron secret to prevent unauthorized access
+  // Verify cron secret to prevent unauthorized access.
+  // Fail-closed: reject when CRON_SECRET is unset so a missing secret can never
+  // silently reopen this endpoint to unauthenticated callers (`Bearer undefined`).
+  const cronSecret = process.env.CRON_SECRET
   const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

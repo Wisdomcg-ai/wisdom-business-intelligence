@@ -32,8 +32,11 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 minutes; matches sync-all/route.ts
 
 async function getHandler(req: NextRequest) {
+  // Fail-closed: reject when CRON_SECRET is unset so a missing secret can never
+  // silently reopen this endpoint to unauthenticated callers (`Bearer undefined`).
+  const cronSecret = process.env.CRON_SECRET
   const auth = req.headers.get('authorization')
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
