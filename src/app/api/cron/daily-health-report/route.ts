@@ -179,8 +179,41 @@ async function getHandler(request: NextRequest) {
 
     const staleBusinessCount = staleBusinessesResult.data?.length ?? 0;
 
+    // Metric invariants — the daily plausibility checks over the Xero mirror.
+    // These previously would have reported to Sentry ONLY, which in practice
+    // means an alert nobody sees; a check that fires where no one is looking
+    // has the same value as no check at all. Stale/missing results are
+    // themselves a finding — the checker going quiet looks exactly like
+    // everything being fine.
+    const invariantRun = await supabase
+      .from('metric_invariant_runs')
+      .select('check_name, severity, subject, observed, threshold, passed, run_at')
+      .order('run_at', { ascending: false })
+      .limit(200);
+    const latestRunAt = invariantRun.data?.[0]?.run_at ?? null;
+    const invariantRows = (invariantRun.data ?? []).filter((r) => r.run_at === latestRunAt);
+    const invariantFailures = invariantRows.filter((r) => !r.passed);
+    const invariantAgeHours = latestRunAt
+      ? (now.getTime() - Date.parse(latestRunAt)) / 3_600_000
+      : null;
+    const invariantStale = invariantAgeHours == null || invariantAgeHours > 36;
+
     // Build attention items
     const attentionItems: string[] = [];
+    if (invariantStale) {
+      attentionItems.push(
+        latestRunAt
+          ? `Metric invariant checks are STALE — last run ${Math.round(invariantAgeHours!)}h ago`
+          : 'Metric invariant checks have NEVER run — the mirror is unchecked',
+      );
+    } else {
+      // Only warn/critical failures escalate to Attention. 'watch' failures are
+      // shown in their own section but never here — a permanently-orange line
+      // trains the reader to skim past the whole list.
+      for (const f of invariantFailures.filter((r) => r.severity !== 'watch')) {
+        attentionItems.push(`Metric invariant FAILED: ${f.check_name} (${f.subject}) — ${f.observed} vs ${f.threshold}`);
+      }
+    }
     if (staleBusinessCount > 0) {
       attentionItems.push(`${staleBusinessCount} business${staleBusinessCount > 1 ? "es" : ""} inactive >30 days`);
     }
@@ -226,6 +259,14 @@ async function getHandler(request: NextRequest) {
         ? attentionItems.map((item) => `<li style="color:${BRAND_ORANGE};">${item}</li>`).join("")
         : `<li style="color:#22c55e;">Nothing needs attention</li>`;
 
+    const invariantSection = invariantStale
+      ? `<li style="color:${BRAND_ORANGE};">${latestRunAt ? `Checker stale — last run ${Math.round(invariantAgeHours!)}h ago` : 'Checker has never run'}</li>`
+      : invariantFailures.length > 0
+        ? invariantFailures
+            .map((f) => `<li style="color:${f.severity === 'watch' ? '#6b7280' : BRAND_ORANGE};">${f.check_name} — ${f.subject}: observed ${f.observed} vs threshold ${f.threshold}${f.severity === 'watch' ? ' (watch)' : ''}</li>`)
+            .join('')
+        : `<li style="color:#22c55e;">All ${invariantRows.length} checks passed</li>`;
+
     const aiModelsSection = aiHealth.skipped
       ? `<tr><td style="padding:4px 12px;color:#6b7280;">No ANTHROPIC_API_KEY configured — AI models not checked.</td></tr>`
       : aiHealth.results
@@ -263,6 +304,13 @@ async function getHandler(request: NextRequest) {
     <table style="width:100%;font-size:14px;">
       ${aiModelsSection}
     </table>
+  </div>
+
+  <div style="background:white;border-radius:8px;padding:20px;margin-bottom:16px;border:1px solid #e5e7eb;">
+    <h3 style="margin-top:0;color:${BRAND_NAVY};">Metric Invariants <span style="font-weight:400;font-size:13px;color:#6b7280;">(daily plausibility checks over the Xero mirror)</span></h3>
+    <ul style="margin:0;padding-left:20px;font-size:14px;">
+      ${invariantSection}
+    </ul>
   </div>
 
   <div style="background:white;border-radius:8px;padding:20px;margin-bottom:16px;border:1px solid #e5e7eb;">
@@ -349,5 +397,5 @@ async function getHandler(request: NextRequest) {
 export const GET = withQuerySchema(
   'cron/daily-health-report',
   z.object({}),
-  getHandler as unknown as (request: Request) => Promise<Response>
+  getHandler as unknown as (request: Request) => Promise<Response>,
 );
