@@ -42,6 +42,15 @@ export const MONITORED_CRONS: readonly MonitoredCron[] = [
   { path: '/api/cron/reconciliation-watch', label: 'Reconciliation watch', maxStaleHours: 30 }, // daily 18:00
   { path: '/api/cron/daily-health-report', label: 'Daily health report', maxStaleHours: 30 }, // daily 07:00
   { path: '/api/cron/weekly-digest', label: 'Weekly digest', maxStaleHours: 24 * 9 }, // weekly Sun
+  // Daily 05:00 UTC, 2h before the health report that reads its results. This
+  // one guards every other derived number, so its own silence is the worst
+  // kind: no violations reported looks identical to no violations existing.
+  {
+    path: '/api/cron/metric-invariants',
+    label: 'Metric invariants',
+    maxStaleHours: 30,
+    activeFrom: '2026-08-08T08:00:00Z',
+  },
 ]
 
 export interface HeartbeatSnapshot {
