@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { recordHeartbeat } from '@/lib/cron/heartbeat'
 import { withQuerySchema } from '@/lib/api/with-schema'
+import { monitorCron } from '@/lib/cron/monitor'
 
 /**
  * Metric invariants — daily plausibility checks over the Xero MIRROR.
@@ -274,5 +275,8 @@ async function getHandler(req: NextRequest) {
 export const GET = withQuerySchema(
   'cron/metric-invariants',
   z.object({}),
-  getHandler as unknown as (request: Request) => Promise<Response>,
+  monitorCron(
+    CRON_PATH,
+    getHandler as unknown as (request: Request) => Promise<Response>,
+  ),
 )

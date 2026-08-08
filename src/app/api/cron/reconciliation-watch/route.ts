@@ -25,6 +25,7 @@ import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { recordHeartbeat } from '@/lib/cron/heartbeat'
 import { z } from 'zod'
 import { withQuerySchema } from '@/lib/api/with-schema'
+import { monitorCron } from '@/lib/cron/monitor'
 
 const CRON_PATH = '/api/cron/reconciliation-watch'
 
@@ -145,5 +146,8 @@ async function getHandler(req: NextRequest) {
 export const GET = withQuerySchema(
   'cron/reconciliation-watch',
   z.object({}),
-  getHandler as unknown as (request: Request) => Promise<Response>
+  monitorCron(
+    CRON_PATH,
+    getHandler as unknown as (request: Request) => Promise<Response>,
+  ),
 )
