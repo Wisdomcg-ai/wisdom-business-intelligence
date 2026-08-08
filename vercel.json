@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/sync-all-xero",
-      "schedule": "0 16 * * *"
+      "schedule": "0 4,10,16,22 * * *"
     },
     {
       "path": "/api/cron/reconciliation-watch",

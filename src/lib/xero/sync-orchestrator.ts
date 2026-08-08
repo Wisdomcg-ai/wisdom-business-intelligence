@@ -233,6 +233,17 @@ function inFlightRejectionResult(businessId: string): SyncResult {
  * exceeds the tolerance — i.e. accounts the absorber WOULD have generated
  * adjustments for. Path A: this list should be empty.
  */
+/**
+ * Materiality for the P&L monthly-sum vs FY-total checks ONLY. Xero itself
+ * rounds FX-revalued accounts differently between a monthly report and an FY
+ * report, so a persistent $0.01 delta is Xero disagreeing with Xero — not a
+ * data defect (proven on the Pulse fork: Kogarah's FX account sat at exactly
+ * $0.01 for a week and paged Sentry every sync). Books balance to the cent;
+ * reports round — so the balance-sheet equation check deliberately stays at
+ * $0.01 and does NOT use this constant.
+ */
+const PL_RECONCILIATION_MATERIALITY = 0.05
+
 function regressionAdjustments(
   monthlyRows: ParsedPLRow[],
   fyTotals: Record<string, number>,
@@ -798,7 +809,7 @@ export async function syncBusinessXeroPL(
                 amount: r.amount,
               })),
               fyTotals,
-              0.01,
+              PL_RECONCILIATION_MATERIALITY,
             )
             if (recResult.status === 'mismatch') {
               for (const d of recResult.discrepancies) {
@@ -809,7 +820,7 @@ export async function syncBusinessXeroPL(
 
             // Absorber regression check: should produce zero adjustments
             // post-Path A. If it produces any, flag partial + Sentry.
-            const adjustments = regressionAdjustments(monthlyRows, fyTotals, 0.01)
+            const adjustments = regressionAdjustments(monthlyRows, fyTotals, PL_RECONCILIATION_MATERIALITY)
             if (adjustments.length > 0) {
               tenantAbsorberAdjustments += adjustments.length
               try {
@@ -1121,6 +1132,37 @@ export async function syncBusinessXeroPL(
             })
             .eq('id', tenantJobId)
         }
+
+        // Wind the freshness clock — ONLY here, on a tenant that actually
+        // finished 'success' or 'partial'. Nothing in this orchestrator wrote
+        // last_synced_at before now: the only writers were the connect callback
+        // and the manual sync buttons, so the column drifted from reality in
+        // BOTH directions — a nightly-synced connection could read weeks stale
+        // while a genuinely dead one looked identical. A column that says the
+        // same thing whether the pipe is alive or dead carries no information,
+        // and it is also what makes the run-all stalest-first rotation work.
+        //
+        // Keyed on the connection PK, not business_id: xero_connections.
+        // business_id lives in the businesses.id space while sync_jobs.
+        // business_id is business_profiles.id — matching on it here would
+        // silently update zero rows.
+        //
+        // Deliberately NOT in the catch below. Stamping this on failure would
+        // rebuild the exact lie being removed.
+        if (tenantStatus !== 'paused') {
+          const { error: freshnessError } = await supabase
+            .from('xero_connections')
+            .update({ last_synced_at: new Date().toISOString() })
+            .eq('id', conn.id)
+          if (freshnessError) {
+            // Non-fatal: the data landed, only the clock failed to move. Say so
+            // loudly rather than letting a silent miss re-open the blind spot.
+            console.error(
+              '[syncBusinessXeroPL]', conn.tenant_id,
+              'data synced but last_synced_at write failed:', freshnessError.message,
+            )
+          }
+        }
       } catch (err) {
         // (W3) Per-tenant exception. Mark tenant 'paused' for daily-rate
         // limit, otherwise 'error'. Continue to next tenant.
@@ -1229,7 +1271,7 @@ export async function syncBusinessXeroPL(
     throw err
   } finally {
     try {
-      await supabase.rpc('finalize_xero_sync_job', {
+      const { error: finalizeError } = await supabase.rpc('finalize_xero_sync_job', {
         p_job_id: syncJobId,
         p_status: finalStatus,
         p_rows_inserted: rowsInserted,
@@ -1245,6 +1287,14 @@ export async function syncBusinessXeroPL(
               : { status: 'ok' },
         p_error: finalError,
       })
+      // supabase-js resolves Postgres errors instead of throwing, so an
+      // unchecked result here silently leaves the sync_jobs row stuck
+      // 'running' — which is the single-flight guard, so every future sync of
+      // this business would then be rejected as "already in flight". Throw so
+      // the catch below records it.
+      if (finalizeError) {
+        throw new Error(`finalize_xero_sync_job failed: ${finalizeError.message}`)
+      }
     } catch (finalizeErr) {
       Sentry.captureException(finalizeErr, {
         tags: {
@@ -1262,19 +1312,79 @@ export async function syncBusinessXeroPL(
 
 // ─── Run-all (cron entry) ───────────────────────────────────────────────────
 
+/**
+ * Marker on the `error` field of a SyncResult that was never attempted because
+ * the run hit its wall-clock budget. Exported so callers can count skips
+ * without string-sniffing — a skipped business is NOT the same failure as a
+ * business whose sync was tried and broke.
+ */
+export const SYNC_SKIPPED_BUDGET = 'skipped: run wall-clock budget exhausted'
+
+/** Stop the loop safely inside the route's maxDuration (800s on Fluid Compute)
+ *  so the heartbeat, response and chain handoff still get written — a killed
+ *  function records nothing at all, which is the failure mode that hides a
+ *  short run. The leftover 100s is bookkeeping margin. */
+const RUN_ALL_BUDGET_MS = 700_000
+/** Don't start a business we can't plausibly finish. WisdomBI businesses can
+ *  hold multiple Xero orgs (D-09 consolidation era), so the reserve is double
+ *  the Pulse fork's single-org 30s figure rather than a measured worst case —
+ *  recalibrate from sync_jobs durations once a few rotations have run. */
+const PER_BUSINESS_RESERVE_MS = 60_000
+
 export async function runSyncForAllBusinesses(): Promise<SyncResult[]> {
   const supabase = createServiceRoleClient()
-  const { data: connections } = await supabase
+  // `last_synced_at ASC NULLS FIRST` makes the budget cutoff a ROTATION rather
+  // than a guillotine: whoever missed out last run is at the front of the next.
+  // Without the ordering, the same tail of businesses is dropped every run and
+  // never syncs again — silently. Requires the freshness stamp written in
+  // syncBusinessXeroPL to stay meaningful.
+  const { data: connections, error: connectionsError } = await supabase
     .from('xero_connections')
-    .select('business_id')
+    .select('business_id, last_synced_at')
     .eq('is_active', true)
+    .order('last_synced_at', { ascending: true, nullsFirst: true })
+
+  // postgrest-js resolves a network/DNS/permission failure into {data:null,
+  // error} rather than throwing. Swallowing it meant `?? []` produced an empty
+  // list, the loop ran zero times, and the cron recorded status:'success' with
+  // total:0 — a night where every connection was invisible looked exactly like
+  // a healthy night. Throw so the route's catch records a 'failed' heartbeat.
+  if (connectionsError) {
+    throw new Error(`runSyncForAllBusinesses: could not list active connections — ${connectionsError.message}`)
+  }
 
   const uniqueBusinessIds = Array.from(
     new Set((connections ?? []).map((c: any) => c.business_id)),
   ) as string[]
 
+  const startedAt = Date.now()
   const results: SyncResult[] = []
-  for (const businessId of uniqueBusinessIds) {
+
+  for (let i = 0; i < uniqueBusinessIds.length; i++) {
+    const businessId = uniqueBusinessIds[i]
+    const elapsed = Date.now() - startedAt
+
+    if (elapsed + PER_BUSINESS_RESERVE_MS > RUN_ALL_BUDGET_MS) {
+      // Record every unreached business explicitly. Running out of function
+      // time mid-loop used to leave the businesses past the cutoff with no
+      // trace anywhere — no result, no heartbeat, no sync_jobs row. Naming
+      // them is what lets the chain resume and the coverage check alarm.
+      for (const skipped of uniqueBusinessIds.slice(i)) {
+        results.push({
+          business_id: skipped,
+          status: 'error',
+          sync_job_id: 'not-started',
+          rows_inserted: 0,
+          rows_updated: 0,
+          xero_request_count: 0,
+          coverage: { months_covered: 0, first_period: '', last_period: '', expected_months: 24 },
+          reconciliation: { status: 'ok', discrepancy_count: 0 },
+          error: SYNC_SKIPPED_BUDGET,
+        })
+      }
+      break
+    }
+
     try {
       results.push(await syncBusinessXeroPL(businessId))
     } catch (err: any) {
