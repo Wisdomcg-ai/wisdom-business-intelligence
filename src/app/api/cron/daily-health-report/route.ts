@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runHealthChecks, getLastSyncByTenant } from "@/lib/health-checks";
 import { checkAnthropicModels } from "@/lib/ai/model-health";
+import { getXeroSyncCoverage, describeSyncCoverage } from "@/lib/xero/sync-coverage";
+import {
+  ACCESS_TOKEN_TTL_MS,
+  TOKEN_VERIFIED_WINDOW_MS,
+  FIRST_SYNC_GRACE_MS,
+} from "@/lib/xero/connection-status";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/resend";
 import * as Sentry from '@sentry/nextjs'
@@ -86,13 +92,33 @@ async function getHandler(request: NextRequest) {
       // freshness join below.
       supabase
         .from("xero_connections")
-        .select("id, business_id, tenant_id, is_active, expires_at, last_synced_at"),
+        .select("id, business_id, tenant_id, is_active, expires_at, last_synced_at, created_at"),
     ]);
 
     // REL-N2: cron-safe sync freshness keyed on the stable Xero tenant_id.
     // last_synced_at alone false-positives "stale" on cron-only tenants because
-    // the nightly cron never writes it.
-    const lastSyncByTenant = await getLastSyncByTenant(supabase);
+    // the cron only recently started writing it.
+    const { ok: syncLookupOk, byTenant: lastSyncByTenant } = await getLastSyncByTenant(supabase);
+
+    // Did every business that should have synced actually sync? This is the only
+    // check in the system that can notice a connection nobody even ATTEMPTED — a
+    // cron budget cutoff leaves its unreached businesses with no result, no
+    // sync_jobs row and no heartbeat, so every per-connection check passes them
+    // over in silence.
+    const coverage = await getXeroSyncCoverage(supabase);
+    const coverageLine = describeSyncCoverage(coverage);
+    if (coverageLine) {
+      Sentry.captureMessage(coverageLine, {
+        level: coverage.ok ? 'warning' : 'error',
+        tags: { invariant: 'xero_sync_coverage_gap' },
+        extra: {
+          expected: coverage.expected,
+          covered: coverage.covered,
+          uncheckable: coverage.uncheckable,
+          missing: coverage.missing,
+        },
+      } as never);
+    }
 
     // Process error summary
     const errorCounts: Record<string, number> = {};
@@ -107,17 +133,45 @@ async function getHandler(request: NextRequest) {
     const xeroIssues: string[] = [];
     if (xeroConnectionsResult.data) {
       const oneDayMs = 24 * 60 * 60 * 1000;
-      const activeConnections = xeroConnectionsResult.data.filter((c: any) => c.is_active);
+      const all = xeroConnectionsResult.data as any[];
+      const activeConnections = all.filter((c: any) => c.is_active);
+
+      // A disconnected business used to make this email GREENER, because the
+      // filter above ran before any issue was raised and a dead row simply
+      // vanished from the report. Count them.
+      const deadCount = all.length - activeConnections.length;
+      if (deadCount > 0) {
+        xeroIssues.push(`${deadCount} Xero connection${deadCount > 1 ? 's' : ''} disconnected — needs reconnect`);
+      }
+
+      if (!syncLookupOk) {
+        xeroIssues.push('Xero sync-freshness lookup failed — data currency is UNKNOWN for every business');
+      }
+
       for (const conn of activeConnections) {
-        if (conn.expires_at && new Date(conn.expires_at).getTime() < now.getTime() + oneDayMs) {
-          xeroIssues.push(`Xero token expiring soon (business ${conn.business_id})`);
+        // Was `expires_at < now + 24h`, which is true for every active
+        // connection on every run because Xero access tokens live 30 minutes —
+        // a spurious line per client in every email, burying the one line that
+        // means something. The real question is whether the refresh pipe is
+        // still producing tokens.
+        const expiresMs = conn.expires_at ? new Date(conn.expires_at).getTime() : NaN;
+        if (!Number.isFinite(expiresMs)) {
+          xeroIssues.push(`Xero token expiry unreadable (business ${conn.business_id})`);
+        } else if (now.getTime() - (expiresMs - ACCESS_TOKEN_TTL_MS) > TOKEN_VERIFIED_WINDOW_MS) {
+          xeroIssues.push(`Xero token not refreshing (business ${conn.business_id})`);
         }
+
         const lastConnSync = conn.last_synced_at ? new Date(conn.last_synced_at).getTime() : 0;
         const lastJobSync = conn.tenant_id ? lastSyncByTenant.get(conn.tenant_id) ?? 0 : 0;
         const freshest = Math.max(lastConnSync, lastJobSync);
-        // Only flag tenants that have synced before but not within the last day;
-        // a never-synced new connection (freshest === 0) is not "stale".
-        if (freshest > 0 && now.getTime() - freshest > oneDayMs) {
+        if (freshest === 0) {
+          // The old exemption for never-synced connections had no expiry, so a
+          // connection that never worked stayed invisible forever.
+          const connectedMs = conn.created_at ? new Date(conn.created_at).getTime() : 0;
+          if (connectedMs > 0 && now.getTime() - connectedMs > FIRST_SYNC_GRACE_MS) {
+            xeroIssues.push(`Xero never synced since connecting (business ${conn.business_id})`);
+          }
+        } else if (now.getTime() - freshest > oneDayMs) {
           xeroIssues.push(`Xero sync stale (business ${conn.business_id})`);
         }
       }
@@ -131,6 +185,10 @@ async function getHandler(request: NextRequest) {
       attentionItems.push(`${staleBusinessCount} business${staleBusinessCount > 1 ? "es" : ""} inactive >30 days`);
     }
     xeroIssues.forEach((i) => attentionItems.push(i));
+    // The coverage gap goes at the TOP of attention items. It is the only line
+    // that can say "a business produced nothing at all last night", which
+    // outranks any per-connection complaint about a business that did report in.
+    if (coverageLine) attentionItems.unshift(coverageLine);
     if (!aiHealth.skipped) {
       for (const f of aiHealth.failures) {
         attentionItems.push(`AI model unavailable: ${f.model}${f.error ? ` — ${f.error}` : ''}`);

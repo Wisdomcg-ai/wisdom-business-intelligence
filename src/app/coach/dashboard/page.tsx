@@ -474,7 +474,11 @@ export default function CoachDashboardPage() {
           // above. Default to 'none' for any business not in the map (the
           // endpoint silently filtered it OR the fetch failed — either
           // way the safe default is "no connection visible").
-          xeroConnectionHealth: xeroHealthMap.get(b.id) ?? 'none',
+          // 'unknown', not 'none': the endpoint returns a row (including an
+          // explicit 'none') for every id it could evaluate, so a MISSING entry
+          // means the health fetch itself failed — say so instead of rendering
+          // the grey "never connected" pill for a business that may be broken.
+          xeroConnectionHealth: xeroHealthMap.get(b.id) ?? 'unknown',
         }
       })
 

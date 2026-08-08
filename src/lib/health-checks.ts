@@ -1,4 +1,9 @@
 import { createServiceRoleClient } from "@/lib/supabase/admin";
+import {
+  ACCESS_TOKEN_TTL_MS,
+  TOKEN_VERIFIED_WINDOW_MS,
+  FIRST_SYNC_GRACE_MS,
+} from "@/lib/xero/connection-status";
 
 export interface CheckResult {
   status: "ok" | "warning" | "error";
@@ -99,14 +104,18 @@ async function checkErrorRate(supabase: ReturnType<typeof createServiceRoleClien
  * authoritative freshness signal; `last_synced_at` is treated as a secondary
  * hint and the two are combined (most-recent-wins) by callers.
  *
- * Returns `Map<tenant_id, finished_at_ms>`. On query error returns an empty map
- * so callers degrade gracefully to the `last_synced_at`-only signal rather than
- * going dark.
+ * Returns `{ok, byTenant}`. `ok` is false when the query itself failed.
+ *
+ * This used to return a bare empty Map on error, described as degrading
+ * gracefully. It wasn't graceful — an empty map is indistinguishable from "no
+ * tenant has synced", and every caller read that as a reason to say nothing.
+ * "Degrade gracefully" meant "degrade to green". Callers must now branch on `ok`
+ * and report `unknown` rather than inventing freshness they could not measure.
  */
 export async function getLastSyncByTenant(
   supabase: ReturnType<typeof createServiceRoleClient>,
   windowDays = 7,
-): Promise<Map<string, number>> {
+): Promise<{ ok: boolean; byTenant: Map<string, number> }> {
   const out = new Map<string, number>();
   const sinceIso = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
   // `.gte("finished_at", ...)` also excludes NULL finished_at (a still-running
@@ -116,14 +125,14 @@ export async function getLastSyncByTenant(
     .select("tenant_id, finished_at")
     .in("status", ["success", "partial"])
     .gte("finished_at", sinceIso);
-  if (error || !data) return out;
+  if (error || !data) return { ok: false, byTenant: out };
   for (const row of data as Array<{ tenant_id: string | null; finished_at: string | null }>) {
     if (!row.tenant_id || !row.finished_at) continue;
     const ts = new Date(row.finished_at).getTime();
     const prev = out.get(row.tenant_id);
     if (prev == null || ts > prev) out.set(row.tenant_id, ts);
   }
-  return out;
+  return { ok: true, byTenant: out };
 }
 
 async function checkXero(supabase: ReturnType<typeof createServiceRoleClient>): Promise<CheckResult> {
@@ -135,7 +144,7 @@ async function checkXero(supabase: ReturnType<typeof createServiceRoleClient>): 
     // alarm. Selecting tenant_id enables the sync_jobs freshness join (REL-N2).
     const { data: rawData, error } = await supabase
       .from("xero_connections")
-      .select("id, business_id, tenant_id, is_active, expires_at, last_synced_at");
+      .select("id, business_id, tenant_id, is_active, expires_at, last_synced_at, created_at");
 
     if (error) {
       // REL-N1: previously returned status:"ok" here, hiding real failures
@@ -151,22 +160,42 @@ async function checkXero(supabase: ReturnType<typeof createServiceRoleClient>): 
     }
 
     // REL-N2: freshness from sync_jobs.finished_at (cron-safe), joined on tenant_id.
-    const lastSyncByTenant = await getLastSyncByTenant(supabase);
+    const { ok: syncLookupOk, byTenant: lastSyncByTenant } = await getLastSyncByTenant(supabase);
+    if (!syncLookupOk) {
+      return { status: "error", message: "Xero sync-freshness lookup failed — connection health is unknown" };
+    }
 
     const now = Date.now();
     const oneDayMs = 24 * 60 * 60 * 1000;
     const issues: string[] = [];
 
     for (const conn of data) {
-      if (conn.expires_at && new Date(conn.expires_at).getTime() < now + oneDayMs) {
-        issues.push(`Token expiring soon (business ${conn.business_id})`);
+      // Was: `expires_at < now + 24h`. Xero access tokens live THIRTY MINUTES, so
+      // that was true for every active connection on every run — a spurious
+      // "Token expiring soon" line per client in every daily email, drowning the
+      // one line that would matter. The real question is whether the refresh pipe
+      // is still producing tokens, which is the auth axis: expires_at minus the
+      // token TTL is when Xero last granted one.
+      const expiresMs = conn.expires_at ? new Date(conn.expires_at).getTime() : NaN;
+      if (!Number.isFinite(expiresMs)) {
+        issues.push(`Token expiry unreadable (business ${conn.business_id})`);
+      } else if (now - (expiresMs - ACCESS_TOKEN_TTL_MS) > TOKEN_VERIFIED_WINDOW_MS) {
+        issues.push(`Token not refreshing (business ${conn.business_id})`);
       }
+
       const lastConnSync = conn.last_synced_at ? new Date(conn.last_synced_at).getTime() : 0;
       const lastJobSync = conn.tenant_id ? lastSyncByTenant.get(conn.tenant_id) ?? 0 : 0;
       const freshest = Math.max(lastConnSync, lastJobSync);
-      // Only flag tenants that HAVE synced before but not within the last day.
-      // A never-synced brand-new connection (freshest === 0) is not "stale".
-      if (freshest > 0 && now - freshest > oneDayMs) {
+      if (freshest === 0) {
+        // Was exempted outright, on the reasoning that a brand-new connection is
+        // not "stale". True for an hour, false forever after — a connection that
+        // NEVER synced was invisible to this check for the rest of time. The
+        // exemption now expires after the first-sync grace window.
+        const connectedMs = conn.created_at ? new Date(conn.created_at).getTime() : 0;
+        if (connectedMs > 0 && now - connectedMs > FIRST_SYNC_GRACE_MS) {
+          issues.push(`Never synced since connecting (business ${conn.business_id})`);
+        }
+      } else if (now - freshest > oneDayMs) {
         issues.push(`Stale sync (business ${conn.business_id})`);
       }
     }

@@ -13,8 +13,8 @@
  *     6. super_admin sees all requested
  *
  *   Status thresholds (12h verified — see Issue B in 53-05-PLAN-CHECK.md):
- *     7. status=verified when last_synced_at within 12h
- *     8. status=stale when last refresh >12h ago and is_active=true
+ *     7. status=connected when the token is fresh and the data is current
+ *     8. status=auth_stale when no token has been granted in >12h
  *     9. status=dead when is_active=false
  *     10. status=none when no xero_connections row
  *
@@ -117,6 +117,19 @@ function configureAdmin(opts: {
         }),
       };
     }
+    if (table === 'business_users') {
+      // Second-owner RBAC (canManageIntegrations rollout, c383b70): the route now also
+      // grants studios where the caller holds an ACTIVE owner/admin business_users row.
+      // These fixtures model sole-owner studios, so the membership set is empty — the
+      // pre-rollout behaviour. The chain is .select().eq().eq().in().in() → thenable.
+      const chain: any = {
+        select: () => chain,
+        eq: () => chain,
+        in: () => chain,
+        then: (resolve: any) => Promise.resolve({ data: [], error: null }).then(resolve),
+      };
+      return chain;
+    }
     if (table === 'xero_connections') {
       return {
         select: () => ({
@@ -129,9 +142,37 @@ function configureAdmin(opts: {
                     // mimic .order('updated_at', { ascending: false })
                     .sort((a, b) =>
                       (b.updated_at ?? '').localeCompare(a.updated_at ?? ''),
-                    ),
+                    )
+                    // These fixtures are about STATES, not about identifiers.
+                    // Default the two columns the classifier needs for keying so
+                    // each case still asserts the thing it was written to assert
+                    // — a missing tenant_id now legitimately yields 'unknown',
+                    // and without this every case would collapse to that one
+                    // answer regardless of the state it set up.
+                    .map((c: any) => ({
+                      tenant_id: `t-${c.id}`,
+                      created_at: isoFromNow(-30 * 24 * HOUR),
+                      ...c,
+                    })),
                   error: null,
                 }).then(resolve),
+            }),
+          }),
+        }),
+      };
+    }
+    if (table === 'sync_jobs') {
+      // The data clock. These fixtures set freshness through
+      // xero_connections.last_synced_at, so the sync_jobs side contributes
+      // nothing and the fold reduces to the column — but the query must still
+      // succeed, because a FAILED lookup now (correctly) classifies as 'unknown'
+      // rather than quietly reading as "nobody has synced".
+      return {
+        select: () => ({
+          in: () => ({
+            gte: () => ({
+              then: (resolve: any) =>
+                Promise.resolve({ data: [], error: null }).then(resolve),
             }),
           }),
         }),
@@ -260,7 +301,7 @@ describe('GET /api/Xero/connection-health — RBAC (defense in depth)', () => {
 });
 
 describe('GET /api/Xero/connection-health — status thresholds (12h verified, Issue B)', () => {
-  it('Test 7 — status=verified when last_synced_at within 12h', async () => {
+  it('Test 7 — status=connected when token fresh and data current', async () => {
     configureAuth({ id: 'owner-1' });
     configureAdmin({
       businesses: [{ id: 'biz-1', owner_id: 'owner-1', assigned_coach_id: null }],
@@ -280,11 +321,58 @@ describe('GET /api/Xero/connection-health — status thresholds (12h verified, I
     const res = await GET(makeReq(['biz-1']));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.results[0].status).toBe('verified');
+    expect(body.results[0].status).toBe('connected');
     expect(body.results[0].connection_id).toBe('conn-1');
   });
 
-  it('Test 8 — status=stale when last refresh >12h ago and expires_at past 30min grace', async () => {
+  describe('audience — which DATA threshold applies', () => {
+    // Same row, three requests. 60h since the last sync: past the coach's 48h,
+    // inside the owner's 72h.
+    const sixtyHoursStale = {
+      businesses: [{ id: 'biz-1', owner_id: 'owner-1', assigned_coach_id: null }],
+      profiles: [],
+      connections: [
+        {
+          id: 'conn-1',
+          business_id: 'biz-1',
+          is_active: true,
+          last_synced_at: isoFromNow(-60 * HOUR),
+          updated_at: isoFromNow(-1 * HOUR),
+          expires_at: isoFromNow(20 * 60 * 1000),
+        },
+      ],
+    };
+
+    const call = async (qs: string) => {
+      configureAuth({ id: 'owner-1' });
+      configureAdmin(sixtyHoursStale);
+      const { GET } = await import('@/app/api/Xero/connection-health/route');
+      const res = await GET(
+        new NextRequest(`http://localhost/api/Xero/connection-health?business_ids[]=biz-1${qs}`, {
+          method: 'GET',
+        }),
+      );
+      return (await res.json()).results[0].status;
+    };
+
+    it('the coach sees data_stale at 60h (48h threshold)', async () => {
+      expect(await call('&audience=coach')).toBe('data_stale');
+    });
+
+    it('the owner still sees connected at 60h (72h threshold)', async () => {
+      // Deliberate: the coach is told first so they can raise it, rather than
+      // the franchisee opening their own page to a warning nobody has looked at.
+      expect(await call('&audience=owner')).toBe('connected');
+    });
+
+    it('an absent or unrecognised audience falls back to the STRICTER threshold', async () => {
+      // If we cannot tell who is asking, warn earlier rather than later.
+      expect(await call('')).toBe('data_stale');
+      expect(await call('&audience=nonsense')).toBe('data_stale');
+    });
+  });
+
+  it('Test 8 — status=auth_stale when Xero has not granted a token in >12h', async () => {
     configureAuth({ id: 'owner-1' });
     configureAdmin({
       businesses: [{ id: 'biz-1', owner_id: 'owner-1', assigned_coach_id: null }],
@@ -304,7 +392,7 @@ describe('GET /api/Xero/connection-health — status thresholds (12h verified, I
     const res = await GET(makeReq(['biz-1']));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.results[0].status).toBe('stale');
+    expect(body.results[0].status).toBe('auth_stale');
   });
 
   it('Test 9 — status=dead when is_active=false', async () => {
@@ -346,6 +434,7 @@ describe('GET /api/Xero/connection-health — status thresholds (12h verified, I
       business_id: 'biz-1',
       status: 'none',
       last_refresh_at: null,
+      last_sync_at: null,
       expires_at: null,
       connection_id: null,
     });
@@ -376,7 +465,7 @@ describe('GET /api/Xero/connection-health — dual-ID resolution + active-prefer
     const body = await res.json();
     expect(body.results).toHaveLength(1);
     expect(body.results[0].business_id).toBe('biz-canonical');
-    expect(body.results[0].status).toBe('verified');
+    expect(body.results[0].status).toBe('connected');
     expect(body.results[0].connection_id).toBe('conn-legacy');
   });
 
@@ -410,7 +499,7 @@ describe('GET /api/Xero/connection-health — dual-ID resolution + active-prefer
     const res = await GET(makeReq(['biz-1']));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.results[0].status).toBe('verified');
+    expect(body.results[0].status).toBe('connected');
     expect(body.results[0].connection_id).toBe('conn-active');
   });
 });
