@@ -37,20 +37,35 @@ export interface ClientMetrics {
   openIssuesCount: number
   industry?: string
   // Phase 53-05 — server-authoritative xero_connections health derived
-  // from /api/Xero/connection-health. Defaulted to 'none' upstream when
-  // the endpoint fails or the business has no connection row.
-  xeroConnectionHealth: 'verified' | 'stale' | 'dead' | 'none'
+  // from /api/Xero/connection-health. Defaulted to 'unknown' upstream when
+  // the endpoint fails; 'none' when the business has no connection row.
+  xeroConnectionHealth:
+    | 'connected'
+    | 'data_stale'
+    | 'auth_stale'
+    | 'pending_first_sync'
+    | 'unknown'
+    | 'dead'
+    | 'none'
 }
 
-// Phase 53-05 — sort rank for the Xero health column. Lower = surfaces
-// first when the column is sorted ascending (operationally useful — the
-// coach wants dead connections at the top of the list).
+// Sort rank for the Xero health column. Lower = surfaces first when sorted
+// ascending. auth_stale outranks dead: a disconnected business announces itself
+// (reports come up empty) while one whose token stopped renewing looks entirely
+// normal and quietly runs out Xero's 60-day refresh window.
 const XERO_HEALTH_RANK: Record<ClientMetrics['xeroConnectionHealth'], number> = {
-  dead: 0,
-  stale: 1,
-  none: 2,
-  verified: 3,
+  auth_stale: 0,
+  dead: 1,
+  data_stale: 2,
+  unknown: 3,
+  none: 4,
+  pending_first_sync: 5,
+  connected: 6,
 }
+
+/** Unrecognised values sort with `unknown` rather than becoming NaN, which in a
+ *  comparator silently leaves the whole column unsorted. */
+const rankOf = (h: ClientMetrics['xeroConnectionHealth']): number => XERO_HEALTH_RANK[h] ?? 3
 
 /**
  * Phase 53-05 — small status pill rendered in the Xero column. Click on
@@ -84,39 +99,82 @@ function XeroHealthPill({
       </a>
     )
   }
-  if (health === 'verified') {
+  if (health === 'connected') {
     return (
       <span
         className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-green-50 border border-green-200 text-green-700"
-        aria-label="Xero verified within the last 12 hours"
-        title="Xero connection verified within the last 12 hours."
+        aria-label="Xero connected and data current"
+        title="Xero token healthy and the numbers are current."
       >
         <CheckCircle className="w-3 h-3" />
         Xero
       </span>
     )
   }
-  if (health === 'stale') {
+  if (health === 'auth_stale') {
+    // The dangerous one — red, not yellow. The row still looks alive and the
+    // reports still render; the connection is silently running out its 60-day
+    // refresh-token life.
+    const href = `/api/Xero/auth?business_id=${encodeURIComponent(businessId)}&return_to=${encodeURIComponent('/coach/dashboard')}`
+    return (
+      <a
+        href={href}
+        className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition-colors"
+        aria-label="Xero not refreshing — no token granted in over 12 hours"
+        title="Xero has not granted a token in over 12 hours. Click to reconnect."
+      >
+        <AlertTriangle className="w-3 h-3" />
+        Xero
+      </a>
+    )
+  }
+  if (health === 'data_stale') {
     return (
       <span
         className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-yellow-50 border border-yellow-200 text-yellow-700"
-        aria-label="Xero stale — alive but no successful refresh in over 12 hours"
-        title="Xero connection alive but no successful refresh in over 12 hours."
+        aria-label="Xero connected but the numbers have not updated recently"
+        title="Xero connection is fine, but the numbers have not updated recently."
       >
         <Clock className="w-3 h-3" />
         Xero
       </span>
     )
   }
-  // none
+  if (health === 'pending_first_sync') {
+    return (
+      <span
+        className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-blue-50 border border-blue-200 text-blue-700"
+        aria-label="Xero connected, first sync has not run yet"
+        title="Connected. The first sync runs within a few hours."
+      >
+        <Clock className="w-3 h-3" />
+        Xero
+      </span>
+    )
+  }
+  if (health === 'none') {
+    return (
+      <span
+        className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-gray-50 border border-gray-200 text-gray-500"
+        aria-label="No Xero connection set up"
+        title="No Xero connection set up for this business."
+      >
+        <Minus className="w-3 h-3" />
+        No Xero
+      </span>
+    )
+  }
+  // 'unknown', and anything this build does not recognise. Grey and explicit —
+  // an uninterpretable value must never fall through to a green tick or render
+  // as an empty cell.
   return (
     <span
       className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-gray-50 border border-gray-200 text-gray-500"
-      aria-label="No Xero connection set up"
-      title="No Xero connection set up for this business."
+      aria-label="Xero status unknown — we could not check this connection"
+      title="We could not check this connection. This is not a confirmation that it works."
     >
       <Minus className="w-3 h-3" />
-      No Xero
+      Xero ?
     </span>
   )
 }
@@ -214,9 +272,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
           comparison = a.daysSinceActivity - b.daysSinceActivity
           break
         case 'xeroConnectionHealth':
-          comparison =
-            XERO_HEALTH_RANK[a.xeroConnectionHealth] -
-            XERO_HEALTH_RANK[b.xeroConnectionHealth]
+          comparison = rankOf(a.xeroConnectionHealth) - rankOf(b.xeroConnectionHealth)
           break
       }
 

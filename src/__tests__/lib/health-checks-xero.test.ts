@@ -121,15 +121,49 @@ describe('R30 — checkXero column + error surfacing', () => {
     expect(health.checks.xero.message).toMatch(/active connection/)
   })
 
-  it('flags a token expiring within a day', async () => {
+  it('does NOT flag a token merely because it expires within a day', async () => {
+    // Was asserted as a warning. Xero access tokens live THIRTY MINUTES, so
+    // `expires_at < now + 24h` is true for every active connection on every run
+    // — the check fired constantly and meant nothing. At 2 connections it was 2
+    // junk lines in the daily email; at the 35 this fleet is about to have it
+    // would bury every real alert. A token expiring in an hour is a token that
+    // was refreshed normally.
     results.xero_connections = {
-      data: [{ id: 'c1', business_id: 'b1', tenant_id: 't1', is_active: true, expires_at: isoAhead(60 * 60 * 1000), last_synced_at: isoAgo(1000) }],
+      data: [{ id: 'c1', business_id: 'b1', tenant_id: 't1', is_active: true, expires_at: isoAhead(60 * 60 * 1000), last_synced_at: isoAgo(1000), created_at: isoAgo(30 * DAY) }],
+      error: null,
+    }
+    results.sync_jobs = { data: [{ tenant_id: 't1', finished_at: isoAgo(1000) }], error: null }
+    const health = await runHealthChecks()
+    expect(health.checks.xero.status).toBe('ok')
+  })
+
+  it('DOES flag a token the refresh cron has not renewed in over 12h', async () => {
+    // The real question, and the one the old check could not ask: has Xero
+    // actually granted us a token recently? expires_at minus the 30-min TTL is
+    // when it last did. This is the Caringbah shape — the row looks alive, and
+    // nothing has renewed it.
+    results.xero_connections = {
+      data: [{ id: 'c1', business_id: 'b1', tenant_id: 't1', is_active: true, expires_at: isoAgo(20 * 60 * 60 * 1000), last_synced_at: isoAgo(1000), created_at: isoAgo(30 * DAY) }],
       error: null,
     }
     results.sync_jobs = { data: [{ tenant_id: 't1', finished_at: isoAgo(1000) }], error: null }
     const health = await runHealthChecks()
     expect(health.checks.xero.status).toBe('warning')
-    expect(health.checks.xero.message).toMatch(/Token expiring soon/)
+    expect(health.checks.xero.message).toMatch(/Token not refreshing/)
+  })
+
+  it('flags a connection that has NEVER synced once it is past the first-sync grace', async () => {
+    // The old check exempted never-synced connections outright and forever, so a
+    // connection that never worked stayed invisible. Every studio onboarding at
+    // launch begins in exactly this state.
+    results.xero_connections = {
+      data: [{ id: 'c1', business_id: 'b1', tenant_id: 't-none', is_active: true, expires_at: isoAhead(20 * 60 * 1000), last_synced_at: null, created_at: isoAgo(3 * DAY) }],
+      error: null,
+    }
+    results.sync_jobs = { data: [], error: null }
+    const health = await runHealthChecks()
+    expect(health.checks.xero.status).toBe('warning')
+    expect(health.checks.xero.message).toMatch(/Never synced since connecting/)
   })
 })
 
@@ -149,17 +183,24 @@ describe('R30 — getLastSyncByTenant', () => {
       ],
       error: null,
     }
-    const map = await getLastSyncByTenant(fakeClient as any)
-    expect(map.has('t1')).toBe(true)
-    expect(map.has('t2')).toBe(true)
-    expect(map.has('t3')).toBe(false)
+    const { ok, byTenant } = await getLastSyncByTenant(fakeClient as any)
+    expect(ok).toBe(true)
+    expect(byTenant.has('t1')).toBe(true)
+    expect(byTenant.has('t2')).toBe(true)
+    expect(byTenant.has('t3')).toBe(false)
     // t1 newer entry wins (within ~1 day of now, not ~3 days)
-    expect(Date.now() - (map.get('t1') as number)).toBeLessThan(2 * DAY)
+    expect(Date.now() - (byTenant.get('t1') as number)).toBeLessThan(2 * DAY)
   })
 
-  it('returns an empty map on query error (graceful degradation)', async () => {
+  it('reports ok:false on query error — a failed lookup must not read as "nobody synced"', () => {
+    // Was asserted as "returns an empty map (graceful degradation)". It wasn't
+    // graceful: an empty map is indistinguishable from a fleet that has never
+    // synced, and every caller rendered that as nothing-to-report. The failure
+    // now has to be carried out to the caller so it can say `unknown`.
     results.sync_jobs = { data: null, error: { message: 'boom' } }
-    const map = await getLastSyncByTenant(fakeClient as any)
-    expect(map.size).toBe(0)
+    return getLastSyncByTenant(fakeClient as any).then(({ ok, byTenant }) => {
+      expect(ok).toBe(false)
+      expect(byTenant.size).toBe(0)
+    })
   })
 })

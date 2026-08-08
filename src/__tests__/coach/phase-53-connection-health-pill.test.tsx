@@ -73,12 +73,12 @@ describe('Phase 53-05 — XeroHealthPill column in ClientOverviewTable', () => {
       makeClient({
         id: 'biz-verified',
         businessName: 'Verified Co',
-        xeroConnectionHealth: 'verified',
+        xeroConnectionHealth: 'connected',
       }),
     ];
     render(<ClientOverviewTable clients={clients} />);
     const row = getRowForBusiness('Verified Co');
-    // Pill is in the row; aria-label should contain "verified" or "Xero ✓"
+    // Pill is in the row; aria-label should contain "connected" or "Xero ✓"
     const pill = within(row).getByLabelText(/xero/i);
     expect(pill).toBeInTheDocument();
     // Visual: green tint via tailwind class (bg-green-50)
@@ -87,12 +87,14 @@ describe('Phase 53-05 — XeroHealthPill column in ClientOverviewTable', () => {
     expect(pill.tagName.toLowerCase()).toBe('span');
   });
 
-  it('Test 2 — stale status renders yellow pill', () => {
+  it('Test 2 — data_stale renders a yellow, non-clickable pill', () => {
+    // The token is fine, only the numbers are old — nothing to reconnect, so
+    // this stays a <span>.
     const clients: ClientMetrics[] = [
       makeClient({
         id: 'biz-stale',
         businessName: 'Stale Co',
-        xeroConnectionHealth: 'stale',
+        xeroConnectionHealth: 'data_stale',
       }),
     ];
     render(<ClientOverviewTable clients={clients} />);
@@ -101,6 +103,39 @@ describe('Phase 53-05 — XeroHealthPill column in ClientOverviewTable', () => {
     expect(pill).toBeInTheDocument();
     expect(pill.className).toMatch(/bg-yellow-/);
     expect(pill.tagName.toLowerCase()).toBe('span');
+  });
+
+  it('Test 2b — auth_stale renders RED and links to reconnect, not yellow', () => {
+    // The old model painted "not verified recently" yellow and made it passive.
+    // A token that has stopped renewing is the most urgent row on the page: the
+    // studio looks completely normal while running out Xero's 60-day refresh
+    // window. Red, and clickable straight into the OAuth flow.
+    const clients: ClientMetrics[] = [
+      makeClient({
+        id: 'biz-authstale',
+        businessName: 'Not Refreshing Co',
+        xeroConnectionHealth: 'auth_stale',
+      }),
+    ];
+    render(<ClientOverviewTable clients={clients} />);
+    const row = getRowForBusiness('Not Refreshing Co');
+    const pill = within(row).getByLabelText(/xero/i);
+    expect(pill.className).toMatch(/bg-red-/);
+    expect(pill.tagName.toLowerCase()).toBe('a');
+  });
+
+  it('Test 2c — unknown renders grey and never green', () => {
+    const clients: ClientMetrics[] = [
+      makeClient({
+        id: 'biz-unknown',
+        businessName: 'Unknown Co',
+        xeroConnectionHealth: 'unknown',
+      }),
+    ];
+    render(<ClientOverviewTable clients={clients} />);
+    const pill = within(getRowForBusiness('Unknown Co')).getByLabelText(/xero/i);
+    expect(pill.className).toMatch(/bg-gray-/);
+    expect(pill.className).not.toMatch(/bg-green-/);
   });
 
   it('Test 3 — dead status renders red pill IS an <a> linking to /api/Xero/auth', () => {
@@ -146,7 +181,7 @@ describe('Phase 53-05 — XeroHealthPill column in ClientOverviewTable', () => {
       makeClient({
         id: 'biz-1',
         businessName: 'Mobile Test Co',
-        xeroConnectionHealth: 'verified',
+        xeroConnectionHealth: 'connected',
       }),
     ];
     render(<ClientOverviewTable clients={clients} />);
@@ -172,17 +207,17 @@ describe('Phase 53-05 — XeroHealthPill column in ClientOverviewTable', () => {
     expect(row.getAttribute('data-xero-health')).toBe('dead');
   });
 
-  it('Test 7 — sort by xeroConnectionHealth ascending: dead first, verified last (operationally useful default)', () => {
+  it('Test 7 — sort ascending: auth_stale first, connected last (operationally useful default)', () => {
     const clients: ClientMetrics[] = [
       makeClient({
         id: 'biz-verified',
         businessName: 'AAA Verified Co',
-        xeroConnectionHealth: 'verified',
+        xeroConnectionHealth: 'connected',
       }),
       makeClient({
         id: 'biz-stale',
         businessName: 'BBB Stale Co',
-        xeroConnectionHealth: 'stale',
+        xeroConnectionHealth: 'auth_stale',
       }),
       makeClient({
         id: 'biz-dead',
@@ -227,9 +262,12 @@ describe('Phase 53-05 — XeroHealthPill column in ClientOverviewTable', () => {
     expect(iStale).toBeGreaterThanOrEqual(0);
     expect(iNone).toBeGreaterThanOrEqual(0);
     expect(iVerified).toBeGreaterThanOrEqual(0);
-    // Operational order: dead < stale < none < verified
-    expect(iDead).toBeLessThan(iStale);
-    expect(iStale).toBeLessThan(iNone);
+    // Operational order: auth_stale < dead < none < connected.
+    // auth_stale now outranks dead. A disconnected studio announces itself —
+    // its reports come up empty. One whose token stopped renewing looks
+    // entirely healthy, which is precisely why it needs to be at the top.
+    expect(iStale).toBeLessThan(iDead);
+    expect(iDead).toBeLessThan(iNone);
     expect(iNone).toBeLessThan(iVerified);
   });
 });

@@ -299,11 +299,15 @@ async function getHandler() {
           .in('user_id', ownerIds.length > 0 ? ownerIds : ['__none__'])
           .eq('status', 'completed')
       ),
-      // 3. Xero Connected — check both businessIds and profileIds
+      // 3. Xero Connected — check both businessIds and profileIds.
+      // is_active filter: a dead connection (Xero terminally refused the
+      // refresh) previously still counted as "Xero Connected" on the coach
+      // completion dashboard, hiding exactly the clients who need chasing.
       safeQuery<R[]>(() =>
         supabase
           .from('xero_connections')
           .select('id, business_id')
+          .eq('is_active', true)
           .or(xeroFilter)
       ),
       // ── PLAN ──
