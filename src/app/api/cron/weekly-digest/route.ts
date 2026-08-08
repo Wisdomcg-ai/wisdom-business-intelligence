@@ -6,6 +6,7 @@ import { recordHeartbeat } from '@/lib/cron/heartbeat'
 import { APP_NAME } from '@/lib/config/brand'
 import { z } from 'zod'
 import { withQuerySchema } from '@/lib/api/with-schema'
+import { monitorCron } from '@/lib/cron/monitor'
 
 const CRON_PATH = '/api/cron/weekly-digest'
 
@@ -252,7 +253,10 @@ async function getHandler(request: NextRequest) {
 export const GET = withQuerySchema(
   'cron/weekly-digest',
   z.object({}),
-  getHandler as unknown as (request: Request) => Promise<Response>
+  monitorCron(
+    CRON_PATH,
+    getHandler as unknown as (request: Request) => Promise<Response>,
+  ),
 )
 
 function buildDigestEmail(data: {

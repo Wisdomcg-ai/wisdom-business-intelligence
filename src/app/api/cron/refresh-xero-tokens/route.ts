@@ -8,6 +8,7 @@ import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { recordHeartbeat } from '@/lib/cron/heartbeat'
 import { z } from 'zod'
 import { withQuerySchema } from '@/lib/api/with-schema'
+import { monitorCron } from '@/lib/cron/monitor'
 
 /**
  * Phase 69-04 — Pre-expiry early-warning threshold.
@@ -368,5 +369,8 @@ async function getHandler(req: NextRequest) {
 export const GET = withQuerySchema(
   'cron/refresh-xero-tokens',
   z.object({}),
-  getHandler as unknown as (request: Request) => Promise<Response>
+  monitorCron(
+    CRON_PATH,
+    getHandler as unknown as (request: Request) => Promise<Response>,
+  ),
 )

@@ -6,6 +6,7 @@ import { recordHeartbeat } from '@/lib/cron/heartbeat'
 import { getAppBaseUrl } from '@/lib/config/brand'
 import { z } from 'zod'
 import { withQuerySchema } from '@/lib/api/with-schema'
+import { monitorCron } from '@/lib/cron/monitor'
 
 const CRON_PATH = '/api/cron/sync-all-xero'
 
@@ -181,5 +182,11 @@ async function getHandler(req: NextRequest) {
 export const GET = withQuerySchema(
   'cron/sync-all-xero',
   z.object({}),
-  getHandler as unknown as (request: Request) => Promise<Response>
+  // Only check in on the SCHEDULED run (chain depth 0); internal self-chain
+  // links are extra invocations, not missed-run signals.
+  monitorCron(
+    CRON_PATH,
+    getHandler as unknown as (request: Request) => Promise<Response>,
+    (req) => (parseInt(req.headers.get('x-sync-chain-depth') ?? '0', 10) || 0) === 0,
+  ),
 )

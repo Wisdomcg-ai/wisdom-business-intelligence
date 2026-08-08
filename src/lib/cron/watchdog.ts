@@ -17,8 +17,18 @@
 export interface MonitoredCron {
   path: string
   label: string
+  /**
+   * Crontab expression — MUST match this cron's entry in vercel.json. Drives the
+   * Sentry Cron Monitor schedule (the external backstop, ./monitor.ts). The
+   * in-app staleness reader below uses maxStaleHours instead.
+   */
+  schedule: string
   /** Alert once the newest completed heartbeat is older than this (hours). */
   maxStaleHours: number
+  /** Minutes a Sentry check-in may be late before Sentry marks the run missed. */
+  checkinMarginMinutes?: number
+  /** Minutes a run may take before Sentry marks it timed-out. */
+  maxRuntimeMinutes?: number
   /**
    * When this cron was first deployed (ISO). A brand-new cron has NO heartbeat
    * until its first scheduled slot, so without this the watchdog pages
@@ -32,26 +42,55 @@ export interface MonitoredCron {
 }
 
 // Keep in sync with vercel.json → crons. The watchdog is intentionally NOT in
-// this list — a dead cron can't report itself, so self-monitoring is moot;
-// Sentry Cron Monitors (external check-ins) are the backstop for the watchdog.
+// this list — a dead cron can't report itself, so the in-app reader can't watch
+// it; its external Sentry check-in (WATCHDOG_SELF_MONITOR, below) is the
+// backstop. `schedule` MUST match vercel.json.
 export const MONITORED_CRONS: readonly MonitoredCron[] = [
-  { path: '/api/cron/refresh-xero-tokens', label: 'Refresh Xero tokens', maxStaleHours: 15 }, // every 6h
+  { path: '/api/cron/refresh-xero-tokens', label: 'Refresh Xero tokens', schedule: '0 */6 * * *', maxStaleHours: 15, checkinMarginMinutes: 30, maxRuntimeMinutes: 8 }, // every 6h
   // Every 6h since 8 Aug 2026 (was nightly). 13h = 2 windows + drift; a single
   // missed slot is tolerated, two in a row is an alert.
-  { path: '/api/cron/sync-all-xero', label: 'Sync all Xero', maxStaleHours: 13 },
-  { path: '/api/cron/reconciliation-watch', label: 'Reconciliation watch', maxStaleHours: 30 }, // daily 18:00
-  { path: '/api/cron/daily-health-report', label: 'Daily health report', maxStaleHours: 30 }, // daily 07:00
-  { path: '/api/cron/weekly-digest', label: 'Weekly digest', maxStaleHours: 24 * 9 }, // weekly Sun
+  { path: '/api/cron/sync-all-xero', label: 'Sync all Xero', schedule: '0 4,10,16,22 * * *', maxStaleHours: 13, checkinMarginMinutes: 30, maxRuntimeMinutes: 18 },
+  { path: '/api/cron/reconciliation-watch', label: 'Reconciliation watch', schedule: '0 18 * * *', maxStaleHours: 30, checkinMarginMinutes: 60, maxRuntimeMinutes: 4 }, // daily 18:00
+  { path: '/api/cron/daily-health-report', label: 'Daily health report', schedule: '0 7 * * *', maxStaleHours: 30, checkinMarginMinutes: 60, maxRuntimeMinutes: 8 }, // daily 07:00
+  { path: '/api/cron/weekly-digest', label: 'Weekly digest', schedule: '0 20 * * 0', maxStaleHours: 24 * 9, checkinMarginMinutes: 120, maxRuntimeMinutes: 8 }, // weekly Sun
   // Daily 05:00 UTC, 2h before the health report that reads its results. This
   // one guards every other derived number, so its own silence is the worst
   // kind: no violations reported looks identical to no violations existing.
   {
     path: '/api/cron/metric-invariants',
     label: 'Metric invariants',
+    schedule: '0 5 * * *',
     maxStaleHours: 30,
+    checkinMarginMinutes: 60,
+    maxRuntimeMinutes: 8,
     activeFrom: '2026-08-08T08:00:00Z',
   },
 ]
+
+// The heartbeat-watchdog itself. Excluded from MONITORED_CRONS above (the in-app
+// reader can't watch the reader), but Sentry CAN watch it externally — so it
+// carries its own monitor spec, used ONLY for the Sentry Cron Monitor check-in.
+export const WATCHDOG_SELF_MONITOR: MonitoredCron = {
+  path: '/api/cron/heartbeat-watchdog',
+  label: 'Heartbeat watchdog',
+  schedule: '0 */2 * * *',
+  maxStaleHours: 5,
+  checkinMarginMinutes: 30,
+  maxRuntimeMinutes: 2,
+}
+
+// Single source of truth for the Sentry Cron Monitor backstop: every
+// in-app-monitored cron PLUS the watchdog itself. Keep new crons here AND in
+// vercel.json.
+export const SENTRY_MONITORED_CRONS: readonly MonitoredCron[] = [
+  ...MONITORED_CRONS,
+  WATCHDOG_SELF_MONITOR,
+]
+
+/** The Sentry monitor spec for a cron path, or undefined if it isn't monitored. */
+export function getSentryMonitor(path: string): MonitoredCron | undefined {
+  return SENTRY_MONITORED_CRONS.find((c) => c.path === path)
+}
 
 export interface HeartbeatSnapshot {
   /**

@@ -7,6 +7,7 @@ const NOW = Date.parse('2026-08-08T12:00:00Z')
 const cron = (over: Partial<MonitoredCron> = {}): MonitoredCron => ({
   path: '/api/cron/example',
   label: 'Example',
+  schedule: '0 * * * *',
   maxStaleHours: 13,
   ...over,
 })
