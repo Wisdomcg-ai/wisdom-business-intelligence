@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, Suspense, useMemo } from 'react'
+import * as Sentry from '@sentry/nextjs'
 import { useSearchParams } from 'next/navigation'
 import { useStrategicPlanning, SaveStatus } from './hooks/useStrategicPlanning'
 import Step1GoalsAndKPIs from './components/Step1GoalsAndKPIs'
@@ -327,7 +328,15 @@ function StrategicPlanningContent() {
           }
         }
       } catch (snapshotErr) {
-        // ignored
+        // Non-blocking (the wizard data itself is already saved) but never
+        // silent: plan_snapshots is the annual-reset ROLLBACK mechanism, so a
+        // failed snapshot means this completion has no restore point. A bare
+        // console.error in the owner's browser is evidence nobody ever sees.
+        try {
+          Sentry.captureException(snapshotErr, {
+            tags: { invariant: 'goals_wizard_snapshot_failed' },
+          } as any)
+        } catch { /* Sentry must not break completion */ }
       }
 
       // 3. Navigate to dashboard

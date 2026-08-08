@@ -196,7 +196,10 @@ async function postHandler(request: Request) {
         ? `${user.user_metadata.first_name} ${user.user_metadata.last_name || ''}`
         : user.email?.split('@')[0] || 'Someone'
 
-      await sendEmail({
+      // sendEmail never throws — it returns {success, error}. Discarding the
+      // result meant a failed notification still reported success, and the new
+      // member simply never learned they were added.
+      const notifyResult = await sendEmail({
         to: email,
         subject: `You've been added to ${businessName} on ${APP_NAME}`,
         html: `
@@ -206,10 +209,18 @@ async function postHandler(request: Request) {
           <p><a href="${getAppBaseUrl()}/auth/login" style="display: inline-block; background: ${BRAND_COLORS.orange}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
         `
       })
+      if (!notifyResult.success) {
+        Sentry.captureMessage(`team/invite: added-to-team email failed — ${notifyResult.error ?? 'unknown'}`, {
+          level: 'error', tags: { invariant: 'team_invite_email_failed' },
+        } as any)
+      }
 
       return NextResponse.json({
         success: true,
-        message: `${firstName} has been added to your team`,
+        message: notifyResult.success
+          ? `${firstName} has been added to your team`
+          : `${firstName} has been added to your team, but the notification email failed to send — let them know directly`,
+        emailSent: notifyResult.success,
         userExists: true
       })
     }
@@ -343,7 +354,7 @@ async function postHandler(request: Request) {
               ? `${user.user_metadata.first_name} ${user.user_metadata.last_name || ''}`
               : user.email?.split('@')[0] || 'Someone'
 
-            await sendEmail({
+            const notifyResult = await sendEmail({
               to: email,
               subject: `You've been added to ${businessName} on ${APP_NAME}`,
               html: `
@@ -353,10 +364,18 @@ async function postHandler(request: Request) {
                 <p><a href="${getAppBaseUrl()}/auth/login" style="display: inline-block; background: ${BRAND_COLORS.orange}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
               `
             })
+            if (!notifyResult.success) {
+              Sentry.captureMessage(`team/invite: added-to-team email failed — ${notifyResult.error ?? 'unknown'}`, {
+                level: 'error', tags: { invariant: 'team_invite_email_failed' },
+              } as any)
+            }
 
             return NextResponse.json({
               success: true,
-              message: `${firstName} has been added to your team`,
+              message: notifyResult.success
+                ? `${firstName} has been added to your team`
+                : `${firstName} has been added to your team, but the notification email failed to send — let them know directly`,
+              emailSent: notifyResult.success,
               userExists: true
             })
           } else {
@@ -439,7 +458,10 @@ async function postHandler(request: Request) {
 
       const loginUrl = getAppBaseUrl()
 
-      await sendEmail({
+      // This is the CREDENTIALS email — a brand-new account was just created,
+      // and this message is the only way its owner learns how to log in. A
+      // silent failure here strands the account permanently.
+      const credentialsResult = await sendEmail({
         to: email,
         subject: `${inviterName} invited you to ${businessName} on ${APP_NAME}`,
         html: `
@@ -490,8 +512,14 @@ async function postHandler(request: Request) {
         `
       })
 
+      if (!credentialsResult.success) {
+        Sentry.captureMessage(`team/invite: CREDENTIALS email failed — account created but unreachable — ${credentialsResult.error ?? 'unknown'}`, {
+          level: 'error', tags: { invariant: 'team_invite_email_failed' },
+        } as any)
+      }
+
       // Also store in team_invites for tracking (use admin to bypass RLS)
-      await adminSupabase
+      const { error: trackingError } = await adminSupabase
         .from('team_invites')
         .upsert({
           business_id: businessId,
@@ -506,11 +534,19 @@ async function postHandler(request: Request) {
           accepted_at: new Date().toISOString(),
           section_permissions: sectionPermissions || {}
         }, { onConflict: 'business_id,email' })
+      if (trackingError) {
+        // Tracking only — the member exists either way — but say so, don't swallow.
+        Sentry.captureMessage(`team/invite: team_invites tracking upsert failed — ${trackingError.message}`, {
+          level: 'warning', tags: { invariant: 'team_invite_tracking_failed' },
+        } as any)
+      }
 
       return NextResponse.json({
         success: true,
-        message: `Invitation sent to ${firstName} ${lastName || ''}`,
-        emailSent: true,
+        message: credentialsResult.success
+          ? `Invitation sent to ${firstName} ${lastName || ''}`
+          : `${firstName}'s account was created but the invitation email FAILED to send — they cannot log in until you resend it or share credentials another way`,
+        emailSent: credentialsResult.success,
         userCreated: true
       })
     } else {
@@ -547,7 +583,9 @@ async function postHandler(request: Request) {
 
       const inviteUrl = `${getAppBaseUrl()}/accept-invite?token=${inviteToken}`
 
-      await sendEmail({
+      // The token link below is the ONLY path to this pending invite — a
+      // silently-failed send leaves an invite nobody can ever accept.
+      const inviteEmailResult = await sendEmail({
         to: email,
         subject: `${inviterName} invited you to join ${businessName}`,
         html: `
@@ -558,11 +596,18 @@ async function postHandler(request: Request) {
           <p style="font-size: 12px; color: #666;">This invitation will expire in 7 days.</p>
         `
       })
+      if (!inviteEmailResult.success) {
+        Sentry.captureMessage(`team/invite: invite email failed — pending invite unreachable — ${inviteEmailResult.error ?? 'unknown'}`, {
+          level: 'error', tags: { invariant: 'team_invite_email_failed' },
+        } as any)
+      }
 
       return NextResponse.json({
         success: true,
-        message: `Invitation sent to ${firstName}`,
-        emailSent: true,
+        message: inviteEmailResult.success
+          ? `Invitation sent to ${firstName}`
+          : `The invitation was created but the email FAILED to send — ${firstName} has no way to accept it until you resend`,
+        emailSent: inviteEmailResult.success,
         pendingInvite: true
       })
     }
