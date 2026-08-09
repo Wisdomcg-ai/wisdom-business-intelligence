@@ -117,8 +117,13 @@ async function getHandler(req: NextRequest) {
       .select('tenant_id, account_name, account_type, section, monthly_values')
     if (bsError) throw new Error(`balance-sheet query failed: ${bsError.message}`)
 
+    // xero_pl_lines is LONG format (period_month + amount, NO monthly_values
+    // column) — selecting monthly_values from it throws and kills the whole run
+    // (every check aborts before the tenant loop). The wide_compat VIEW pivots
+    // period_month/amount into the monthly_values jsonb the MirrorLine shape
+    // expects; the service-role client bypasses RLS so security_invoker is fine.
     const { data: plData, error: plError } = await supabase
-      .from('xero_pl_lines')
+      .from('xero_pl_lines_wide_compat')
       .select('tenant_id, account_name, account_type, section, monthly_values')
     if (plError) throw new Error(`P&L query failed: ${plError.message}`)
 
