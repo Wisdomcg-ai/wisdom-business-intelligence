@@ -54,6 +54,16 @@ export async function requireSectionPermission(
   businessId: string,
   sectionKey: 'finances' | string,
 ): Promise<SectionPermissionVerdict> {
+  // ── Dual-ID resolution ──────────────────────────────────────────────────────
+  // `businessId` may be a businesses.id OR a business_profiles.id — the
+  // forecast/cashflow routes pass the PROFILE id. Every check below keys off
+  // businesses.id, so if the id isn't a businesses row, resolve it through
+  // business_profiles (mirrors verify-business-access.ts). Without this, an OWNER
+  // or the assigned COACH whose route passed a profile id is misread as
+  // not_a_member — the exact false positive that blocks enforcing this gate.
+  // `resolvedBusinessId` is what the coach + business_users lookups use.
+  let resolvedBusinessId = businessId
+
   // ── 1. Owner check ──────────────────────────────────────────────────────────
   // Mirrors the pattern used in src/app/api/goals/resolve-business/route.ts and
   // src/app/api/goals/save/route.ts: query businesses.owner_id directly.
@@ -65,17 +75,43 @@ export async function requireSectionPermission(
 
   if (ownerErr) throw ownerErr
 
-  if (businessRow?.owner_id === userId) {
+  let ownerId = businessRow?.owner_id ?? null
+
+  if (!businessRow) {
+    // Not a businesses.id — resolve it as a business_profiles.id and re-read the
+    // owner from the real businesses row.
+    const { data: profileRow, error: profileErr } = await supabase
+      .from('business_profiles')
+      .select('business_id')
+      .eq('id', businessId)
+      .maybeSingle()
+
+    if (profileErr) throw profileErr
+
+    if (profileRow?.business_id) {
+      resolvedBusinessId = profileRow.business_id
+      const { data: resolvedOwner, error: resolvedErr } = await supabase
+        .from('businesses')
+        .select('owner_id')
+        .eq('id', resolvedBusinessId)
+        .maybeSingle()
+
+      if (resolvedErr) throw resolvedErr
+      ownerId = resolvedOwner?.owner_id ?? null
+    }
+  }
+
+  if (ownerId === userId) {
     return { allow: true, reason: 'owner' }
   }
 
   // ── 2. Coach check ─────────────────────────────────────────────────────────
   // Mirrors the pattern in src/app/api/goals/save/route.ts:
-  //   businesses.assigned_coach_id === user.id → isCoach
+  //   businesses.assigned_coach_id === user.id → isCoach. Uses the resolved id.
   const { data: coachRow, error: coachErr } = await supabase
     .from('businesses')
     .select('assigned_coach_id')
-    .eq('id', businessId)
+    .eq('id', resolvedBusinessId)
     .maybeSingle()
 
   if (coachErr) throw coachErr
@@ -90,7 +126,7 @@ export async function requireSectionPermission(
   const { data: memberRow, error: memberErr } = await supabase
     .from('business_users')
     .select('role, status, section_permissions')
-    .eq('business_id', businessId)
+    .eq('business_id', resolvedBusinessId)
     .eq('user_id', userId)
     .maybeSingle()
 
