@@ -170,6 +170,56 @@ describe('ReportStatusBar', () => {
     })
   })
 
+  it('Phase C: generic failures surface the thrown reason instead of the one-size-fits-all toast', async () => {
+    const { toast } = await import('sonner')
+    const failingApprove = vi.fn().mockRejectedValue({
+      body: { error: 'No owner_email configured on this business' },
+    })
+    render(
+      <ReportStatusBar
+        status="draft"
+        sentAt={null}
+        role="coach"
+        onMarkReady={noop}
+        onApproveAndSend={failingApprove}
+        onResend={noop}
+        onRevertToDraft={noop}
+      />,
+    )
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Approve & Send/i }))
+    })
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        'Send failed: No owner_email configured on this business',
+      )
+    })
+  })
+
+  it('Phase C: errors with no usable detail keep the generic resend hint', async () => {
+    const { toast } = await import('sonner')
+    const failingApprove = vi.fn().mockRejectedValue({})
+    render(
+      <ReportStatusBar
+        status="draft"
+        sentAt={null}
+        role="coach"
+        onMarkReady={noop}
+        onApproveAndSend={failingApprove}
+        onResend={noop}
+        onRevertToDraft={noop}
+      />,
+    )
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Approve & Send/i }))
+    })
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        'Email send failed — click Resend to retry',
+      )
+    })
+  })
+
   it('Test 7: each action button invokes its corresponding prop callback', async () => {
     const onMarkReady = vi.fn().mockResolvedValue(undefined)
     const onApprove = vi.fn().mockResolvedValue(undefined)

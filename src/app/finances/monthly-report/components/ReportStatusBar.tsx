@@ -82,7 +82,19 @@ export default function ReportStatusBar(props: ReportStatusBarProps) {
       } else if (e.body?.timedOut) {
         toast.error('Email send timed out — click Resend to retry')
       } else {
-        toast.error('Email send failed — click Resend to retry')
+        // Phase C (CFO-only clients): surface the REAL reason. The route and
+        // the page handlers throw specific messages ("No owner_email
+        // configured on this business", "Not your assigned client", …) that
+        // used to be swallowed into one generic toast, leaving the coach
+        // guessing. Fall back to the generic message only when nothing
+        // usable was thrown.
+        const detail =
+          e.body?.error ?? (err instanceof Error && err.message ? err.message : null)
+        toast.error(
+          detail
+            ? `${actionKey === 'mark_ready' || actionKey === 'revert' ? 'Action failed' : 'Send failed'}: ${detail}`
+            : 'Email send failed — click Resend to retry',
+        )
       }
     } finally {
       setBusy(null)
