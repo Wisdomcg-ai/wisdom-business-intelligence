@@ -854,9 +854,57 @@ export default function MonthlyReportPage() {
   const clientGreetingName =
     (ownerInfo.name ? ownerInfo.name.trim().split(/\s+/)[0] : null) || 'there'
 
+  // Phase C (CFO-only clients): single eager loader for every dataset the PDF
+  // can contain. Previously only handleExportPDF eager-loaded these; the
+  // Approve & Send / Resend path read whatever happened to be in React state,
+  // so the EMAILED PDF silently dropped Full-Year/Wages/Subscriptions/Cashflow
+  // sections unless the coach had visited those tabs first. Both flows now
+  // load through here, restoring the D-07 "byte-identical PDF" contract.
+  // Already-loaded state is reused — visiting the tabs first costs nothing.
+  const loadPdfSections = async (): Promise<{
+    fullYearReport?: import('./types').FullYearReport
+    subscriptionDetail?: import('./types').SubscriptionDetailData
+    wagesDetail?: import('./types').WagesDetailData
+    cashflowForecast?: CashflowForecastData
+  }> => {
+    let fyReport = fullYearReport
+    if (!fyReport && businessId) {
+      fyReport = await loadFullYear(fiscalYear)
+    }
+
+    let subDetail = subscriptionDetail
+    if (!subDetail && settings?.sections.subscription_detail && businessId) {
+      const codes = settings.subscription_account_codes || []
+      if (codes.length > 0) {
+        subDetail = await loadSubscriptionDetail(selectedMonth, codes)
+      }
+    }
+
+    let wDetail = wagesDetail
+    if (!wDetail && settings?.sections.payroll_detail && businessId) {
+      const names = settings.wages_account_names || []
+      if (names.length > 0) {
+        wDetail = await loadWagesDetail(selectedMonth, fiscalYear, names, settings.budget_forecast_id)
+      }
+    }
+
+    let cfData: CashflowForecastData | undefined = cashflowForecast || undefined
+    if (!cfData && businessId) {
+      cfData = (await loadCashflowForecast()) || undefined
+    }
+
+    return {
+      fullYearReport: fyReport || undefined,
+      subscriptionDetail: subDetail || undefined,
+      wagesDetail: wDetail || undefined,
+      cashflowForecast: cfData,
+    }
+  }
+
   // Reuse the same PDFOptions shape as handleExportPDF — both flows must produce
-  // a byte-identical PDF (D-07 locks this).
-  const buildPdfInput = (): {
+  // a byte-identical PDF (D-07 locks this). Async since Phase C: it eager-loads
+  // every configured section instead of trusting React state.
+  const buildPdfInput = async (): Promise<{
     report: GeneratedReport
     options: {
       commentary?: VarianceCommentary
@@ -867,16 +915,14 @@ export default function MonthlyReportPage() {
       sections?: import('./types').ReportSections
       pdfLayout?: import('./types/pdf-layout').PDFLayout | null
     }
-  } | null => {
+  } | null> => {
     if (!report) return null
+    const eager = await loadPdfSections()
     return {
       report,
       options: {
         commentary,
-        fullYearReport: fullYearReport || undefined,
-        subscriptionDetail: subscriptionDetail || undefined,
-        wagesDetail: wagesDetail || undefined,
-        cashflowForecast: cashflowForecast || undefined,
+        ...eager,
         sections: settings?.sections,
         pdfLayout: settings?.pdf_layout ?? null,
       },
@@ -915,8 +961,8 @@ export default function MonthlyReportPage() {
     }
   }
 
-  const buildApproveParams = () => {
-    const pdfInput = buildPdfInput()
+  const buildApproveParams = async () => {
+    const pdfInput = await buildPdfInput()
     const snapshot = buildSnapshotData()
     if (!pdfInput || !snapshot || !businessId || !report) return null
     return {
@@ -942,7 +988,7 @@ export default function MonthlyReportPage() {
   }
 
   const handleApproveAndSend = async () => {
-    const params = buildApproveParams()
+    const params = await buildApproveParams()
     if (!params) {
       throw { body: { error: 'Report not ready' } }
     }
@@ -958,7 +1004,7 @@ export default function MonthlyReportPage() {
   }
 
   const handleResend = async () => {
-    const params = buildApproveParams()
+    const params = await buildApproveParams()
     if (!params) {
       throw { body: { error: 'Report not ready' } }
     }
