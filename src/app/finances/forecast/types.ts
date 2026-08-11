@@ -573,6 +573,13 @@ export interface HistoricalPLSummary {
   // genuinely has no Xero connection).
   lookup_error?: string | null
 
+  // Phase A (CFO-only clients) — true when /api/Xero/pl-summary served this
+  // summary from the synced DB mirror because no ACTIVE xero_connections row
+  // exists (expired/disconnected tenant). The data is real but frozen at the
+  // last successful sync; data_quality (usually 'no_sync') carries staleness.
+  // Absent/false when an active connection was found.
+  xero_disconnected?: boolean
+
   // Prior complete FY - the baseline for comparison
   prior_fy?: PeriodSummary
 

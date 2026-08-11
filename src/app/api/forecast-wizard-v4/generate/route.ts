@@ -128,6 +128,49 @@ async function postHandler(request: Request) {
       forecastData.completed_at = new Date().toISOString()
     }
 
+    // ── Phase A (CFO-only clients) — refuse to finalize an EMPTY forecast ──
+    //
+    // Derive the P&L lines BEFORE any row is created or activated. A final
+    // generate whose assumptions carry no revenue/COGS/OpEx lines (the
+    // failed-seed wizard trap: Dragon Roofing 2026-04/2026-08, Efficient
+    // Living 2026-07) used to activate a 0-line forecast that the monthly
+    // report then auto-picked as a silent $0 budget and the cashflow page
+    // choked on. Draft saves stay allowed — a mid-wizard draft is
+    // legitimately incomplete.
+    let generatedLines: ReturnType<typeof convertAssumptionsToPLLines> | null = null
+    if (assumptions) {
+      let existingPLLines: Parameters<typeof convertAssumptionsToPLLines>[0]['existingLines'] = []
+      if (forecastId && !createNew) {
+        const { data } = await supabase
+          .from('forecast_pl_lines')
+          .select('*')
+          .eq('forecast_id', forecastId)
+          .order('sort_order', { ascending: true })
+        existingPLLines = data || []
+      }
+
+      generatedLines = convertAssumptionsToPLLines({
+        assumptions,
+        forecastStartMonth: forecastData.forecast_start_month as string,
+        forecastEndMonth: forecastData.forecast_end_month as string,
+        fiscalYear,
+        forecastDuration: forecastDuration || 1,
+        existingLines: existingPLLines,
+      })
+
+      if (!isDraft && generatedLines.length === 0) {
+        return NextResponse.json(
+          {
+            error:
+              'This forecast has no P&L lines to generate — revenue, COGS and operating expense lines are all empty. ' +
+              'Use "Refresh from Xero" on the Prior Year step (or add lines manually) before generating.',
+            code: 'EMPTY_FORECAST',
+          },
+          { status: 422 },
+        )
+      }
+    }
+
     let resultForecastId: string
 
     if (forecastId && !createNew) {
@@ -187,21 +230,11 @@ async function postHandler(request: Request) {
     // supabase/migrations/20260429000002_save_assumptions_and_materialize_rpc.sql.
     let plLinesGenerated = 0
     let computedAt: string | null = null
-    if (assumptions) {
-      const { data: existingPLLines } = await supabase
-        .from('forecast_pl_lines')
-        .select('*')
-        .eq('forecast_id', resultForecastId)
-        .order('sort_order', { ascending: true })
-
-      const generatedLines = convertAssumptionsToPLLines({
-        assumptions,
-        forecastStartMonth: forecastData.forecast_start_month as string,
-        forecastEndMonth: forecastData.forecast_end_month as string,
-        fiscalYear,
-        forecastDuration: forecastDuration || 1,
-        existingLines: existingPLLines || [],
-      })
+    if (assumptions && generatedLines) {
+      // Lines were derived above (pre-write emptiness gate). For the update
+      // path the existing rows were read via `forecastId` — identical to
+      // `resultForecastId`; for the create path the forecast is brand-new and
+      // has no rows, matching the previous read-after-create behaviour.
 
       // Shape pl_lines for the RPC — the RPC owns the INSERT (and the DELETE
       // of existing is_manual=false rows), so we pass plain objects, not the

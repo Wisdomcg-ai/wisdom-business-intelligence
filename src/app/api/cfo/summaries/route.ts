@@ -260,30 +260,52 @@ async function getHandler(request: Request) {
 
     // Forecast P&L budget for the requested month
     // forecast.business_id may be business_profiles.id; load forecasts for all related ids
+    //
+    // Phase A (CFO-only clients): only ACTIVE forecasts qualify, and a
+    // forecast with zero materialized lines (empty-shell wizard trap) never
+    // qualifies — previously the newest-updated forecast won regardless,
+    // so an empty shell silently zeroed the dashboard's budget columns.
     const { data: forecasts } = await supabase
       .from('financial_forecasts')
       .select('id, business_id')
       .in('business_id', allRelatedIds)
+      .eq('is_active', true)
       .order('updated_at', { ascending: false })
 
-    // Map: businesses.id → first matching forecast.id
-    const forecastIdByBiz = new Map<string, string>()
+    // Candidate forecasts per businesses.id, preserving updated_at desc order
+    const candidatesByBiz = new Map<string, string[]>()
     for (const f of (forecasts ?? [])) {
       // Reverse-map: find which businesses.id this forecast belongs to
       for (const biz of businesses) {
         if (f.business_id === biz.id || f.business_id === profileIdByBiz.get(biz.id)) {
-          if (!forecastIdByBiz.has(biz.id)) forecastIdByBiz.set(biz.id, f.id)
+          const list = candidatesByBiz.get(biz.id) ?? []
+          list.push(f.id)
+          candidatesByBiz.set(biz.id, list)
         }
       }
     }
-    const forecastIds = Array.from(forecastIdByBiz.values())
+    const candidateIds = [...new Set([...candidatesByBiz.values()].flat())]
 
-    const { data: forecastLines } = forecastIds.length > 0
+    const { data: allCandidateLines } = candidateIds.length > 0
       ? await supabase
           .from('forecast_pl_lines')
           .select('forecast_id, category, account_type, forecast_months')
-          .in('forecast_id', forecastIds)
+          .in('forecast_id', candidateIds)
       : { data: [] }
+
+    const lineCountByForecast = new Map<string, number>()
+    for (const l of (allCandidateLines ?? [])) {
+      lineCountByForecast.set(l.forecast_id, (lineCountByForecast.get(l.forecast_id) ?? 0) + 1)
+    }
+
+    // Map: businesses.id → newest active forecast that actually has lines
+    const forecastIdByBiz = new Map<string, string>()
+    for (const [bizId, candidates] of candidatesByBiz) {
+      const withLines = candidates.find((id) => (lineCountByForecast.get(id) ?? 0) > 0)
+      if (withLines) forecastIdByBiz.set(bizId, withLines)
+    }
+    const chosenIds = new Set(forecastIdByBiz.values())
+    const forecastLines = (allCandidateLines ?? []).filter((l) => chosenIds.has(l.forecast_id))
 
     // Financial metrics (latest record per business for this month or most recent prior)
     const monthEnd = `${periodMonth.slice(0, 8)}${new Date(

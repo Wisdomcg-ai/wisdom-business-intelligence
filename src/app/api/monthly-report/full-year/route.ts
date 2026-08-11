@@ -222,6 +222,13 @@ async function postHandler(request: Request) {
         .select('id, account_name, category, forecast_months')
         .eq('forecast_id', budgetForecast.id)
       budgetPLLines = bLines || []
+
+      // Phase A (CFO-only clients): a 0-line forecast (empty-shell wizard
+      // trap) is not a budget — mirror generate/route.ts and drop it rather
+      // than rendering silent $0 budget columns.
+      if (budgetPLLines.length === 0) {
+        budgetForecast = null
+      }
     }
 
     // 4. Load xero_pl_lines (actuals).
