@@ -111,4 +111,46 @@ describe('initializeFromXero — completed months lock for every line', () => {
       expect(deposit.year1Monthly[key]).not.toBeUndefined();
     }
   });
+
+  it('fix/no-goals-seed-duplicates: NO-GOALS init neither duplicates traded lines nor unlocks July', () => {
+    // Fresh CFO clients have no saved business_financial_goals, so
+    // initializeFromXero runs with targetRevenue = 0 at mount (Step 1 is
+    // typed later). The legacy branch used to skip YTD matching → FCST-04
+    // appended every traded YTD line as a duplicate row, and July carried
+    // prior-year July on the original + actual July on the twin.
+    const { result } = renderHook(() =>
+      useForecastWizard(FY_START_YEAR, 'biz-no-goals-test', true),
+    );
+
+    act(() => {
+      result.current.actions.initializeFromXero({
+        priorYear: makePriorYear(),
+        team: [],
+        // No goals — targetRevenue resolves to 0.
+        currentYTD: {
+          revenue_by_month: { [JUL]: 100_000 },
+          total_revenue: 100_000,
+          months_count: 1,
+          revenue_lines: [
+            { account_name: 'Sales - Insurance', category: 'Revenue', total: 100_000, by_month: { [JUL]: 100_000 } },
+          ],
+        },
+      });
+    });
+
+    const lines = result.current.state.revenueLines;
+    const insuranceLines = lines.filter((l) => l.name === 'Sales - Insurance');
+    // Exactly ONE row per account — no appended YTD twin.
+    expect(insuranceLines).toHaveLength(1);
+
+    // July locks to the actual, not the prior-year copy (prior flat = 75k/mo).
+    expect(insuranceLines[0].year1Monthly[JUL]).toBe(100_000);
+    // The no-activity line locks July at $0 in the legacy path too.
+    const deposit = lines.find((l) => l.name === 'Sales - Deposit')!;
+    expect(deposit.year1Monthly[JUL]).toBe(0);
+
+    // Column total equals the Xero actual exactly.
+    const julyTotal = lines.reduce((s, l) => s + (l.year1Monthly[JUL] || 0), 0);
+    expect(julyTotal).toBe(100_000);
+  });
 });

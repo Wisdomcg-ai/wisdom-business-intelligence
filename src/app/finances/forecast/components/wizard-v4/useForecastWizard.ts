@@ -1204,24 +1204,39 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
               prev.fiscalYearStart,
             );
 
-            // Fallback (FCST-05): no target → preserve legacy verbatim copy.
+            // fix/no-goals-seed-duplicates: register the YTD match BEFORE the
+            // no-target early-return. The legacy branch used to skip matching
+            // entirely, so for businesses with NO saved goals (mount runs
+            // before Step 1 is typed — every fresh CFO client), the FCST-04
+            // append below re-added every traded YTD line as a DUPLICATE row,
+            // and July double-counted (prior-July copy + actual-July twin).
+            const ytdLine = ytdByName.get(matchKey(line.name));
+            if (ytdLine) matchedYtdNames.add(matchKey(line.name));
+            const ytdMonths = ytdLine?.by_month ?? {};
+
+            // Fallback (FCST-05): no target → preserve legacy verbatim copy
+            // of prior-year for FUTURE months, but completed months still
+            // lock to actuals ($0 when the line didn't trade).
             if (targetRevenue <= 0) {
+              const year1Monthly: Record<string, number> = {};
+              for (const key of monthKeys) {
+                if (completedMonthKeys.has(key)) {
+                  year1Monthly[key] = Math.round(ytdMonths[key] ?? 0);
+                } else {
+                  year1Monthly[key] = priorMonthlyRemapped[key] || 0;
+                }
+              }
               return {
                 id: line.id,
                 name: line.name,
-                year1Monthly: priorMonthlyRemapped,
+                year1Monthly,
                 year2Monthly: {},
                 year3Monthly: {},
               };
             }
 
-            const ytdLine = ytdByName.get(matchKey(line.name));
-            if (ytdLine) matchedYtdNames.add(matchKey(line.name));
-
             const lineShare = priorYearTotal > 0 ? line.total / priorYearTotal : 0;
             const lineYearTarget = Math.round(targetRevenue * lineShare);
-
-            const ytdMonths = ytdLine?.by_month ?? {};
             const year1Monthly: Record<string, number> = {};
             const futureMonthKeys: string[] = [];
             let lineYtdTotal = 0;
