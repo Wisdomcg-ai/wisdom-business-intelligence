@@ -63,6 +63,17 @@ vi.mock('@/lib/reports/revert-report', () => ({
   revertReportIfApproved: vi.fn(async () => undefined),
 }))
 
+// Phase D (CFO-only clients): the route resolves dual business ids before the
+// connection lookup. Echo the input id in both spaces so the mocked table
+// queries below stay keyed on 'biz-1'.
+vi.mock('@/lib/business/resolveBusinessProfileIds', () => ({
+  resolveBusinessProfileIds: vi.fn(async (_supabase: unknown, id: string) => ({
+    businessId: id,
+    profileId: id,
+    all: [id],
+  })),
+}))
+
 vi.mock('@sentry/nextjs', () => ({
   captureException: vi.fn(),
   captureMessage: vi.fn(),
@@ -340,18 +351,24 @@ describe('POST /api/monthly-report/commentary — expanded payload + trigger_rea
       const builder: any = {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
+        in: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
         not: vi.fn().mockReturnThis(),
+        limit: vi.fn(),
         maybeSingle: vi.fn(),
       }
 
       if (table === 'xero_connections') {
-        builder.maybeSingle.mockResolvedValue({
-          data: { id: 'conn-1', tenant_id: 'tenant-1', is_active: true },
+        // Phase D: route chain is .select().in().eq().order().limit() and
+        // picks the first row (multi-connection-safe; the old maybeSingle
+        // errored for 2+ active connections).
+        builder.limit = vi.fn().mockResolvedValue({
+          data: [{ id: 'conn-1', tenant_id: 'tenant-1', is_active: true }],
           error: null,
         })
       } else if (table === 'xero_pl_lines_wide_compat') {
-        // .select().eq() → array (not maybeSingle)
-        builder.eq = vi.fn().mockResolvedValue({
+        // Phase D: .select().in() → array (dual-ID resolved read)
+        builder.in = vi.fn().mockResolvedValue({
           data: [
             { account_name: 'Marketing', account_code: '6010' },
             { account_name: 'Sales', account_code: '4000' },

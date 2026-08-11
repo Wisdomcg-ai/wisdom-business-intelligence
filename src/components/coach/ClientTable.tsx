@@ -23,6 +23,8 @@ export interface ClientTableData {
   lastSessionDate?: string
   nextSessionDate?: string
   programType?: string
+  /** Phase D (CFO-only clients): businesses.is_cfo_client — drives the CFO pill. */
+  isCfoClient?: boolean
   unreadMessages?: number
   pendingActions?: number
   lastLogin?: string
@@ -217,6 +219,11 @@ export function ClientTable({ clients, onMessage, onSchedule, onView }: ClientTa
                   <span className="text-sm text-gray-600">
                     {client.programType || '--'}
                   </span>
+                  {client.isCfoClient && (
+                    <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                      CFO
+                    </span>
+                  )}
                 </td>
 
                 {/* Alerts */}

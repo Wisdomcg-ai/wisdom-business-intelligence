@@ -164,6 +164,10 @@ async function postHandler(request: Request) {
         assigned_coach_id: user.id,
         status: 'active',
         program_type: programType || null,
+        // Phase D (CFO-only clients): any CFO program type flags the business
+        // for the /cfo dashboard at creation — previously the flag was only
+        // settable via a second manual trip to the client page's ⋯ menu.
+        is_cfo_client: (programType || '').includes('CFO'),
         session_frequency: sessionFrequency || null,
         custom_frequency: customFrequency || null,
         engagement_start_date: engagementStartDate || null,
@@ -531,6 +535,7 @@ async function getHandler() {
         status,
         created_at,
         program_type,
+        is_cfo_client,
         session_frequency,
         engagement_start_date,
         enabled_modules,

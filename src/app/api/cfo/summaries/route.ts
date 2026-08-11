@@ -49,6 +49,8 @@ interface ClientSummary {
   cash_balance: number
   unreconciled_count: number
   report_status: ReportStatus
+  /** Phase D: true when the requested month is closed and the report is still none/draft. */
+  report_overdue: boolean
   badge: StatusBadge
   manual_status_override: string | null
 }
@@ -58,7 +60,10 @@ interface StatsCards {
   watch: number
   alert: number
   pending_approval: number
-  next_due: string | null
+  /** Phase D (CFO-only clients): count of clients whose report for a CLOSED
+   * month is still none/draft. Replaces the never-wired `next_due` (which
+   * was hardcoded null, so the stat card permanently read "All clear"). */
+  overdue: number
 }
 
 /** Compute the status badge from metrics using the 10% / 25% thresholds */
@@ -66,13 +71,13 @@ function computeBadge(
   netProfit: number,
   netProfitBudget: number,
   unreconciledCount: number,
-  reportStatus: ReportStatus
+  reportOverdue: boolean
 ): StatusBadge {
-  // Overdue reports → Alert regardless
-  if (reportStatus === 'none' || reportStatus === 'draft') {
-    // Overdue check: if report for previous month is still draft, alert
-    // (handled in the caller — here we just use the status flag)
-  }
+  // Phase D (CFO-only clients): the Phase 33 spec's "overdue reports → Alert
+  // regardless" rule — previously an empty if-block that no caller
+  // implemented. A report is overdue when the requested month has ended and
+  // its cfo_report_status is still none/draft.
+  if (reportOverdue) return 'alert'
 
   // Reconciliation alerts
   if (unreconciledCount > 10) return 'alert'
@@ -151,6 +156,11 @@ async function getHandler(request: Request) {
 
     const monthKey = monthParam
     const periodMonth = `${monthParam}-01`
+    // Phase D: a month is "closed" once the server's calendar month has moved
+    // past it — reports for closed months are expected to exist. Day-level
+    // timezone skew at the month boundary (Vercel UTC vs AEST) is acceptable
+    // for an overdue flag.
+    const monthClosed = monthKey < new Date().toISOString().slice(0, 7)
 
     // Load CFO-flagged businesses the user has access to
     let bizQuery = supabase
@@ -171,7 +181,7 @@ async function getHandler(request: Request) {
       return NextResponse.json({
         month: monthKey,
         summaries: [],
-        stats: { on_track: 0, watch: 0, alert: 0, pending_approval: 0, next_due: null },
+        stats: { on_track: 0, watch: 0, alert: 0, pending_approval: 0, overdue: 0 },
       })
     }
 
@@ -406,8 +416,10 @@ async function getHandler(request: Request) {
       const statusRow = statusByBiz.get(biz.id)
       const reportStatus: ReportStatus = statusRow?.status ?? 'none'
       const manualOverride: string | null = statusRow?.manual_status_override ?? null
+      const reportOverdue =
+        monthClosed && (reportStatus === 'none' || reportStatus === 'draft')
 
-      const computedBadge = computeBadge(netProfit, netProfitBudget, unreconciledCount, reportStatus)
+      const computedBadge = computeBadge(netProfit, netProfitBudget, unreconciledCount, reportOverdue)
       const badge: StatusBadge =
         manualOverride === 'on_track' || manualOverride === 'watch' || manualOverride === 'alert'
           ? manualOverride
@@ -427,6 +439,7 @@ async function getHandler(request: Request) {
         cash_balance: Math.round(cashBalance),
         unreconciled_count: unreconciledCount,
         report_status: reportStatus,
+        report_overdue: reportOverdue,
         badge,
         manual_status_override: manualOverride,
       })
@@ -446,7 +459,7 @@ async function getHandler(request: Request) {
       watch: summaries.filter(s => s.badge === 'watch').length,
       alert: summaries.filter(s => s.badge === 'alert').length,
       pending_approval: summaries.filter(s => s.report_status === 'ready_for_review').length,
-      next_due: null,  // Phase 35 will wire this up based on scheduled delivery dates
+      overdue: summaries.filter(s => s.report_overdue === true).length,
     }
 
     return NextResponse.json({ month: monthKey, summaries, stats })

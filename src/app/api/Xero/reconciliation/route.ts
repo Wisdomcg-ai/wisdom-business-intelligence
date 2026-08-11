@@ -167,21 +167,39 @@ async function getHandler(request: NextRequest) {
 
     const isClean = unreconciledCount === 0
 
-    // Update financial_metrics with reconciliation data
+    // Update financial_metrics with reconciliation data.
+    //
+    // Phase D (CFO-only clients): this write was broken since inception —
+    // it omitted `metric_date` (NOT NULL, no default) and named a
+    // non-existent conflict target (`business_id`; the unique constraint is
+    // `(business_id, metric_date)`), so every call errored. And because
+    // supabase-js returns errors rather than throwing, the try/catch never
+    // fired: the failure was fully silent and the /cfo dashboard's
+    // unreconciled column + badge rules never saw fresh data. One row per
+    // (business, day); repeat checks the same day update in place.
     try {
-      await supabase
+      const nowIso = new Date().toISOString()
+      const { error: metricsError } = await supabase
         .from('financial_metrics')
         .upsert(
           {
             business_id: businessId,
+            metric_date: nowIso.slice(0, 10),
             unreconciled_count: unreconciledCount,
-            last_bank_rec_date: isClean ? new Date().toISOString() : null,
-            updated_at: new Date().toISOString(),
+            last_bank_rec_date: isClean ? nowIso : null,
+            updated_at: nowIso,
           },
-          { onConflict: 'business_id' }
+          { onConflict: 'business_id,metric_date' }
         )
+      if (metricsError) {
+        // Non-fatal for the response, but never silent (invariant rule).
+        Sentry.captureException(metricsError, {
+          tags: { route: 'Xero/reconciliation', invariant: 'financial_metrics_write_failed' },
+          extra: { context: '[Reconciliation] financial_metrics upsert failed', business_id: businessId },
+        } as any)
+      }
     } catch (err) {
-      Sentry.captureException(err, { tags: { route: 'Xero/reconciliation' }, extra: { context: "[Reconciliation] Error updating financial_metrics" } } as any)
+      Sentry.captureException(err, { tags: { route: 'Xero/reconciliation', invariant: 'financial_metrics_write_failed' }, extra: { context: "[Reconciliation] Error updating financial_metrics" } } as any)
       // Non-fatal
     }
 
