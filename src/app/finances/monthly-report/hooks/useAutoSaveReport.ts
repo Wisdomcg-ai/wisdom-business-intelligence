@@ -6,7 +6,8 @@
 //   - 500ms debounce (D-02) + onBlur immediate flush (D-01)
 //   - Single-flight + queue (D-13) — never two parallel POSTs
 //   - 3-attempt exponential backoff at 1s/2s/4s (D-11)
-//   - Finalise lock + consolidation guard (D-06 + research Pitfall: consolidation)
+//   - Finalise lock (D-06). The 34.0-era consolidation guard was removed in
+//     Phase B (CFO-only clients) — consolidated reports save like any other.
 //   - `onSaveSuccess` callback invoked on every 2xx, including mid-retry (D-15)
 //   - NO toast on success (D-10); single terminal-failure toast (D-12)
 //   - Watches commentary ONLY — never report.report_data (Pitfall 6 / Phase 35 D-17)
@@ -156,8 +157,9 @@ export function useAutoSaveReport(
     if (isLockedRef.current) return
     const reportNow = reportRef.current
     if (!reportNow) return
-    // Consolidation guard — saveSnapshot throws for consolidation reports.
-    if (reportNow.is_consolidation) return
+    // Phase B (CFO-only clients): consolidation reports now save through the
+    // same snapshot path — the old guard existed only because saveSnapshot
+    // used to throw for them.
 
     // Single-flight: queue a follow-up if one is already in flight.
     if (inFlightRef.current) {
@@ -210,14 +212,12 @@ export function useAutoSaveReport(
   const schedule = useCallback(() => {
     if (isLockedRef.current) return
     if (!reportRef.current) return
-    if (reportRef.current.is_consolidation) return
     debouncedFire()
   }, [debouncedFire])
 
   const flushImmediately = useCallback(() => {
     if (isLockedRef.current) return
     if (!reportRef.current) return
-    if (reportRef.current.is_consolidation) return
     // D-01 (blur): cancel pending debounce by replacing it with an
     // immediate fire. The performSave path is single-flight-safe so even
     // if a debounce fire races, only one POST goes out.
@@ -227,7 +227,6 @@ export function useAutoSaveReport(
   const retryNow = useCallback(() => {
     if (isLockedRef.current) return
     if (!reportRef.current) return
-    if (reportRef.current.is_consolidation) return
     if (mountedRef.current) setStatus({ kind: 'saving' })
     void performSave()
   }, [performSave])

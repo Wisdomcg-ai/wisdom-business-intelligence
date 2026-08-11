@@ -327,7 +327,7 @@ describe('useAutoSaveReport (Phase 42)', () => {
     expect(statusRef.current).toEqual({ kind: 'idle' })
   })
 
-  it('Consolidation guard: is_consolidation=true short-circuits save', async () => {
+  it('Phase B: is_consolidation=true SAVES like any other report (34.0 guard removed)', async () => {
     const saveSnapshot = vi.fn().mockResolvedValue({ id: 's1' })
     const { Harness, apiRef } = makeHarness()
     render(
@@ -340,12 +340,9 @@ describe('useAutoSaveReport (Phase 42)', () => {
       />,
     )
     apiRef.current!.flushImmediately()
-    apiRef.current!.schedule()
-    act(() => {
-      vi.advanceTimersByTime(2000)
-    })
     await flushMicrotasks()
-    expect(saveSnapshot).not.toHaveBeenCalled()
+    expect(saveSnapshot).toHaveBeenCalledTimes(1)
+    expect(saveSnapshot.mock.calls[0][0].is_consolidation).toBe(true)
   })
 
   // ---------- D-10: no toast on success ----------
