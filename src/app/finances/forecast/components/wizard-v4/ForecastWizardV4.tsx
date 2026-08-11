@@ -363,6 +363,26 @@ export function ForecastWizardV4({
               //     path further down calls it
               actionsRef.current.setPriorYearDisplay(freshPriorYear);
 
+              // fix/step3-cogs-actuals: also refresh the YTD actuals source.
+              // Restored drafts carry the currentYTD captured at their last
+              // full init — drafts saved before COGS actuals existed in the
+              // payload would otherwise keep locking actual months at $0.
+              const freshYtd = plData.summary?.current_ytd;
+              if (freshYtd) {
+                const roundedRevByMonth: Record<string, number> = {};
+                Object.entries(freshYtd.revenue_by_month || {}).forEach(([k, v]) => {
+                  roundedRevByMonth[k] = Math.round(v as number);
+                });
+                actionsRef.current.setCurrentYTD({
+                  revenue_by_month: roundedRevByMonth,
+                  total_revenue: Math.round(freshYtd.total_revenue || 0),
+                  months_count: freshYtd.months_count || 0,
+                  revenue_lines: freshYtd.revenue_lines,
+                  cogs_by_month: freshYtd.cogs_by_month,
+                  cogs_lines: freshYtd.cogs_lines,
+                });
+              }
+
               // COGS=0 re-sync hack removed — pl-summary now reads directly from
               // xero_pl_lines with correct account_type enum. No stale data possible.
             }
@@ -993,6 +1013,10 @@ export function ForecastWizardV4({
             months_count: currentPlData.summary.current_ytd.months_count || 0,
             // Phase 44.3 (FCST-02/04): per-line YTD breakdown for target-aware init.
             revenue_lines: currentPlData.summary.current_ytd.revenue_lines,
+            // fix/step3-cogs-actuals: COGS actuals so Step 3 locks actual
+            // months at their real values instead of $0.
+            cogs_by_month: currentPlData.summary.current_ytd.cogs_by_month,
+            cogs_lines: currentPlData.summary.current_ytd.cogs_lines,
           } : undefined;
 
           console.log('[ForecastWizardV4] Initializing with:', {
@@ -1596,6 +1620,10 @@ export function ForecastWizardV4({
               months_count: plData.summary.current_ytd.months_count || 0,
               // Phase 44.3 (FCST-02/04): per-line YTD breakdown for target-aware init.
               revenue_lines: plData.summary.current_ytd.revenue_lines,
+              // fix/step3-cogs-actuals: COGS actuals so Step 3 locks actual
+              // months at their real values instead of $0.
+              cogs_by_month: plData.summary.current_ytd.cogs_by_month,
+              cogs_lines: plData.summary.current_ytd.cogs_lines,
             } : undefined;
 
             // Update wizard state with refreshed data
