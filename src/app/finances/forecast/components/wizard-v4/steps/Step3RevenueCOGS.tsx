@@ -1258,14 +1258,18 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     return (totalRevenue * (line.percentOfRevenue || 0)) / 100;
   };
 
-  // Prior year COGS mix
+  // Prior year COGS mix — keyed by id AND normalized name so restored drafts
+  // (whose line ids differ from the freshly-derived priorYear ids) still
+  // resolve their prior share (fix/cogs-prior-mix-name-match).
   const priorYearCogsMix = useMemo(() => {
     const mix: Record<string, number> = {};
     if (!priorYear) return mix;
     const total = priorYear.cogs.total;
     if (total <= 0) return mix;
     priorYear.cogs.byLine.forEach(line => {
-      mix[line.id] = Math.round((line.total / total) * 100);
+      const pct = Math.round((line.total / total) * 100);
+      mix[line.id] = pct;
+      mix[line.name.trim().toLowerCase()] = pct;
     });
     return mix;
   }, [priorYear]);
@@ -1427,17 +1431,26 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     }
 
     if (weightSource === 'even' && priorYear?.cogs?.byLine && priorYear.cogs.byLine.length > 0) {
+      // fix/cogs-prior-mix-name-match: prior-mix lookup keyed by BOTH id and
+      // normalized name. Restored drafts carry line ids from saved
+      // assumptions (accountId / historic `cogs-N` indexing) that don't line
+      // up with the freshly-derived priorYear byLine ids — id-only matching
+      // silently fell through to an even split, wiping the real mix (Dragon:
+      // Tradies Contractors is 61% of prior COGS but got 1/11th).
+      const normName = (n: string) => n.trim().toLowerCase();
       const priorByLine: Record<string, number> = {};
+      const priorByName: Record<string, number> = {};
       let priorTotal = 0;
       for (const pl of priorYear.cogs.byLine) {
         priorByLine[pl.id] = pl.total || 0;
+        priorByName[normName(pl.name)] = pl.total || 0;
         priorTotal += pl.total || 0;
       }
       if (priorTotal > 0) {
         let coveredWeight = 0;
         const noPriorLines: string[] = [];
         for (const l of variableLines) {
-          const share = (priorByLine[l.id] || 0) / priorTotal;
+          const share = ((priorByLine[l.id] ?? priorByName[normName(l.name)]) || 0) / priorTotal;
           if (share > 0) {
             weights[l.id] = share;
             coveredWeight += share;
@@ -2020,7 +2033,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
               {/* COGS lines */}
               {cogsLines.map((line) => {
-                const priorPct = priorYearCogsMix[line.id] || 0;
+                const priorPct = priorYearCogsMix[line.id] ?? priorYearCogsMix[line.name.trim().toLowerCase()] ?? 0;
                 const currentPct = cogsLinePercentages[line.id] || 0;
                 const lineAmount = calculateCOGSAmount(line);
                 const pctOfRev = totalRevenue > 0 ? (lineAmount / totalRevenue * 100) : 0;
