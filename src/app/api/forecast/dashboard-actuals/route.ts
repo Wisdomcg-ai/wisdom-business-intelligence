@@ -47,7 +47,10 @@ const GetQuerySchema = z
   .passthrough()
 
 // Categories that map to Revenue in the P&L (forecast_pl_lines.category strings)
-const REVENUE_CATEGORIES = ['Revenue', 'revenue', 'Trading Revenue', 'Other Revenue']
+// 'Other Income' is emitted by the wizard materializer (assumptions-to-pl-lines
+// convertParityBuckets) — it is revenue-like and must NEVER fall through to the
+// OpEx bucket below, which would flip its sign and make net profit wrong by 2×.
+const REVENUE_CATEGORIES = ['Revenue', 'revenue', 'Trading Revenue', 'Other Revenue', 'Other Income', 'other income']
 // Categories that map to COGS (forecast_pl_lines.category strings)
 const COGS_CATEGORIES = ['Cost of Sales', 'COGS', 'cogs', 'Direct Costs', 'Cost of Goods Sold']
 

@@ -335,10 +335,12 @@ describe('Bug 2 — FCST-BUG-02: Step 5 OpEx total includes team-classified line
     ).toBeGreaterThanOrEqual(100_000);
   });
 
-  it('Test 2.1b (fallback): when Step 4 is empty, BudgetFramework Team Costs falls back to OpEx auto-classified Wages line', () => {
-    // Edge case: business that hasn't filled Step 4 yet (no team members AND
-    // no new hires). The Xero "Wages and Salaries" P&L line should still
-    // surface as Team Costs so the framework reads correctly.
+  it('Test 2.1b (PR-A M2): when Step 4 is empty, wages stay in OpEx and Team Costs reads $0', () => {
+    // PR-A changed the semantics deliberately. With no Step 4 data the Xero
+    // "Wages and Salaries" line is counted in OPEX by the summary, the
+    // assumptions export and the stored forecast. The old fallback ALSO
+    // surfaced it as "Team Costs", double-counting it inside the very
+    // framework that subtracts Team Costs before computing Available OpEx.
     const wagesLine: OpExLine = {
       id: 'opex-wages',
       name: 'Wages and Salaries',
@@ -353,6 +355,7 @@ describe('Bug 2 — FCST-BUG-02: Step 5 OpEx total includes team-classified line
     const state = makeStubState({
       revenueLines: [revLine],
       teamMembers: [], // empty Step 4
+      newHires: [],
       opexLines: [wagesLine],
       goals: {
         year1: { revenue: 1_200_000, grossProfitPct: 100, netProfitPct: 0 },
@@ -363,17 +366,13 @@ describe('Bug 2 — FCST-BUG-02: Step 5 OpEx total includes team-classified line
     const actions = makeStubActions();
     render(<Step5OpEx state={state} actions={actions} fiscalYear={FISCAL_YEAR_END} />);
 
-    // PR #183: pick team cost off the title attribute (raw $ value).
     const teamSpan = screen.getByTestId(/^budget-team-/);
     const title = teamSpan.getAttribute('title') || '';
     const m = title.match(/\$([\d,]+)/);
     expect(m).toBeTruthy();
-    const displayedNum = parseInt(m![1].replace(/,/g, ''), 10);
-    expect(
-      displayedNum,
-      `Empty-Step-4 fallback should show OpEx Wages ($60k), got ${displayedNum}`
-    ).toBeGreaterThanOrEqual(55_000);
-    expect(displayedNum).toBeLessThan(70_000);
+    const displayedTeam = parseInt(m![1].replace(/,/g, ''), 10);
+    // No Step 4 data → Team Costs is zero; the wages line is OpEx.
+    expect(displayedTeam).toBe(0);
   });
 
   it('Test 2.2 (reactivity): changing a per-line OpEx value updates BudgetFramework Available OpEx in same render', () => {

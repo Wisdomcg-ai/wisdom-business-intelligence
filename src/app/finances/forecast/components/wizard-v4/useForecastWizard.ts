@@ -1139,10 +1139,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
   // Step6Subscriptions on every vendor edit so the rollup (T07) sees changes
   // synchronously.
   const setSubscriptions = useCallback((vendors: VendorBudget[]) => {
-    setState((prev) => ({
-      ...prev,
-      subscriptions: vendors,
-    }));
+    setState((prev) => {
+      // Identity bail-out. Step 5's mirror effect depends on `actions`, and
+      // `actions` changes on every state change (saveDraft/generateForecast
+      // close over state), so an unconditional new-object return made
+      // effect → setState → new actions → effect an infinite loop. Bailing
+      // when the array is the same reference breaks it at the source, no
+      // matter what the consumer's dep array does.
+      if (prev.subscriptions === vendors) return prev;
+      return { ...prev, subscriptions: vendors };
+    });
   }, []);
 
   // Initialize from Xero data
@@ -1891,6 +1897,14 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       const priorYearTotal = state.priorYear?.revenue.byLine.find(l => l.id === line.id)?.total || year1Total;
       const growthPct = priorYearTotal > 0 ? ((year1Total - priorYearTotal) / priorYearTotal) * 100 : 0;
 
+      // Omit EMPTY Y2/Y3 maps. monthlyToQuarterly({}) returns
+      // {q1:0,q2:0,q3:0,q4:0} — truthy — and convertRevenue reads only the
+      // quarterly fields for Y2/Y3, so an operator who set Y2/Y3 goals but
+      // never opened those tabs stored $0 revenue for FY28/FY29 against a
+      // full year of team + OpEx: two catastrophically negative years in the
+      // saved forecast while every screen showed the goal figures.
+      const hasY2 = line.year2Monthly && Object.keys(line.year2Monthly).length > 0;
+      const hasY3 = line.year3Monthly && Object.keys(line.year3Monthly).length > 0;
       return {
         accountId: line.id,
         accountName: line.name,
@@ -1899,11 +1913,11 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         growthPct: Math.round(growthPct * 10) / 10,
         // Store actual forecasted values for restoration
         year1Monthly: line.year1Monthly,
-        year2Monthly: line.year2Monthly,
-        year3Monthly: line.year3Monthly,
+        year2Monthly: hasY2 ? line.year2Monthly : undefined,
+        year3Monthly: hasY3 ? line.year3Monthly : undefined,
         // Legacy compat
-        year2Quarterly: monthlyToQuarterly(line.year2Monthly),
-        year3Quarterly: monthlyToQuarterly(line.year3Monthly),
+        year2Quarterly: hasY2 ? monthlyToQuarterly(line.year2Monthly) : undefined,
+        year3Quarterly: hasY3 ? monthlyToQuarterly(line.year3Monthly) : undefined,
       };
     });
 

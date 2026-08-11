@@ -12,6 +12,7 @@ import { Plus, Trash2, HelpCircle, X, Info, AlertTriangle } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, CostBehavior, OpExLine, SUPER_RATE, calculateNewSalary, InputMode } from '../types';
 import { classifyExpense, getSuggestedValue, isTeamCost } from '../utils/opex-classifier';
 import { getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
+import { shouldExcludeFromOpEx } from '../useForecastWizard';
 
 interface Step5OpExProps {
   state: ForecastWizardState;
@@ -716,10 +717,15 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
 
   // Check if a line should be treated as a team cost
   // Priority: user override > auto-detection by name
+  // PR-A (M2) parity: team-classified lines only leave OpEx when Step 4
+  // actually carries team data. Without the hasTeamData arm this screen
+  // excluded ~$567k of contractor/wages lines that the summary, the export
+  // and the stored forecast all INCLUDE — OpEx jumped between Step 6 and
+  // Step 9 with no explanation.
+  const hasTeamData = state.teamMembers.length > 0 || state.newHires.length > 0;
   const isLineTeamCost = useCallback((line: OpExLine): boolean => {
-    if (line.isTeamCostOverride !== undefined) return line.isTeamCostOverride;
-    return isTeamCost(line.name);
-  }, []);
+    return shouldExcludeFromOpEx(line, hasTeamData);
+  }, [hasTeamData]);
 
   // Split lines once: active lines for calculations, all lines for rendering
   const { activeOpexLines, excludedTeamLines } = useMemo(() => {
@@ -1181,13 +1187,13 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
   // top of `year1TeamCosts` double-counts the same wages — JDS confirmed
   // production showed $5,184,624 ≈ 2× the actual $2,562,502.
   //
-  // Fallback: if Step 4 is genuinely empty (no team members AND no new
-  // hires), fall back to the OpEx-classified total so businesses that
-  // haven't filled Step 4 yet still see a non-zero "Team Costs" row.
-  const hasStep4TeamData = teamMembers.length > 0 || newHires.length > 0;
-  const totalTeamCostsForBudget = hasStep4TeamData
-    ? year1TeamCosts
-    : opexClassifiedTeamCosts;
+  // PR-A (M2) coherence: when Step 4 is empty, team-classified OpEx lines
+  // STAY in OpEx (summary, export and the stored forecast all count them
+  // there). The old fallback additionally surfaced them as "Team Costs",
+  // which double-counted them inside this very framework — Available OpEx
+  // was reduced by the wages AND the same wages were shown as allocated.
+  // Team Costs is now simply 0 until Step 4 carries real team data.
+  const totalTeamCostsForBudget = year1TeamCosts;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Phase 57 T11 (B4) — Covered-by-Step-5 badge + legacy refresh banner
