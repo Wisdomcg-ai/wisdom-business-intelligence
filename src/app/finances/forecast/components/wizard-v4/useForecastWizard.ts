@@ -1173,6 +1173,17 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
           }
           const matchedYtdNames = new Set<string>();
 
+          // fix/init-lock-all-actual-months: completed months are locked for
+          // EVERY line — at $0 when the line had no activity. Previously a
+          // prior-year line with no YTD match (Dragon: Sales - Deposit,
+          // Sales - Referral Fee, Other Revenue in Jul 2026) treated the
+          // completed month as a FUTURE month and distributed forecast
+          // dollars into it, inflating the month's displayed total above the
+          // real Xero actual.
+          const completedMonthKeys = new Set(
+            Object.keys(data.currentYTD?.revenue_by_month ?? {}),
+          );
+
           revenueLines = data.priorYear.revenue.byLine.map((line) => {
             const priorMonthlyRemapped = remapMonthKeysToForecastYear(
               line.byMonth,
@@ -1202,8 +1213,10 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
             let lineYtdTotal = 0;
 
             for (const key of monthKeys) {
-              if (ytdMonths[key] !== undefined) {
-                year1Monthly[key] = Math.round(ytdMonths[key]);
+              if (completedMonthKeys.has(key)) {
+                // Lock at the line's actual — $0 when the line had no
+                // activity that month (fix/init-lock-all-actual-months).
+                year1Monthly[key] = Math.round(ytdMonths[key] ?? 0);
                 lineYtdTotal += year1Monthly[key];
               } else {
                 futureMonthKeys.push(key);
