@@ -342,8 +342,11 @@ export async function loadTenantBudgets(
   const ids = await resolveBusinessProfileIds(supabase, businessId)
 
   // 1. For each tenant, try to find a tenant-scoped forecast.
-  // Uses .limit(1) — if multiple exist, pick the most recently updated one.
-  // (The forecast wizard may create multiple versions per tenant.)
+  // Phase B (CFO-only clients): prefer ACTIVE forecasts and skip 0-line
+  // shells — the wizard's failed-seed trap left empty forecasts whose
+  // updated_at outranks the real one, and `.limit(1)` on updated_at alone
+  // silently picked those as the budget. We walk a small candidate list
+  // (active first, newest first) and take the first with materialized lines.
   for (const tenant of tenants) {
     const { data: forecasts, error } = await supabase
       .from('financial_forecasts')
@@ -351,27 +354,30 @@ export async function loadTenantBudgets(
       .in('business_id', ids.all)
       .eq('tenant_id', tenant.tenant_id)
       .eq('fiscal_year', fiscalYear)
+      .is('deleted_at', null)
+      .order('is_active', { ascending: false })
       .order('updated_at', { ascending: false })
-      .limit(1)
+      .limit(3)
     if (error) {
       throw new Error(
         `[Consolidation Engine] Failed to load forecast for tenant ${tenant.tenant_id}: ${error.message}`,
       )
     }
-    const forecastId = forecasts?.[0]?.id
-    if (!forecastId) continue
 
-    const { data: plRows, error: plErr } = await supabase
-      .from('forecast_pl_lines')
-      .select('account_name, account_type, account_class, category, actual_months, forecast_months')
-      .eq('forecast_id', forecastId)
-    if (plErr) {
-      throw new Error(
-        `[Consolidation Engine] Failed to load forecast_pl_lines for forecast ${forecastId}: ${plErr.message}`,
-      )
+    for (const candidate of forecasts ?? []) {
+      const { data: plRows, error: plErr } = await supabase
+        .from('forecast_pl_lines')
+        .select('account_name, account_type, account_class, category, actual_months, forecast_months')
+        .eq('forecast_id', candidate.id)
+      if (plErr) {
+        throw new Error(
+          `[Consolidation Engine] Failed to load forecast_pl_lines for forecast ${candidate.id}: ${plErr.message}`,
+        )
+      }
+      if (!plRows || plRows.length === 0) continue
+      result.set(tenant.tenant_id, plRows.map(normaliseForecastLine))
+      break
     }
-    const lines = (plRows ?? []).map(normaliseForecastLine)
-    result.set(tenant.tenant_id, lines)
   }
 
   return result
@@ -394,32 +400,41 @@ export async function loadSingleBusinessBudget(
 ): Promise<ForecastLineLike[] | null> {
   const ids = await resolveBusinessProfileIds(supabase, businessId)
 
+  // Phase B (CFO-only clients): prefer ACTIVE forecasts and skip 0-line
+  // shells (failed-seed wizard trap) — updated_at alone picked a freshly
+  // touched empty shell over the real budget. First candidate with
+  // materialized lines wins; candidates are active-first, newest-first.
   const { data: forecasts, error } = await supabase
     .from('financial_forecasts')
     .select('id')
     .in('business_id', ids.all)
     .is('tenant_id', null)
     .eq('fiscal_year', fiscalYear)
+    .is('deleted_at', null)
+    .order('is_active', { ascending: false })
     .order('updated_at', { ascending: false })
-    .limit(1)
+    .limit(5)
   if (error) {
     throw new Error(
       `[Consolidation Engine] Failed to load business-level forecast: ${error.message}`,
     )
   }
-  const forecastId = forecasts?.[0]?.id
-  if (!forecastId) return null
 
-  const { data: plRows, error: plErr } = await supabase
-    .from('forecast_pl_lines')
-    .select('account_name, account_type, account_class, category, actual_months, forecast_months')
-    .eq('forecast_id', forecastId)
-  if (plErr) {
-    throw new Error(
-      `[Consolidation Engine] Failed to load forecast_pl_lines for forecast ${forecastId}: ${plErr.message}`,
-    )
+  for (const candidate of forecasts ?? []) {
+    const { data: plRows, error: plErr } = await supabase
+      .from('forecast_pl_lines')
+      .select('account_name, account_type, account_class, category, actual_months, forecast_months')
+      .eq('forecast_id', candidate.id)
+    if (plErr) {
+      throw new Error(
+        `[Consolidation Engine] Failed to load forecast_pl_lines for forecast ${candidate.id}: ${plErr.message}`,
+      )
+    }
+    if (plRows && plRows.length > 0) {
+      return plRows.map(normaliseForecastLine)
+    }
   }
-  return (plRows ?? []).map(normaliseForecastLine)
+  return null
 }
 
 /**

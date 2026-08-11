@@ -32,7 +32,7 @@ import type {
   ReportSummary,
   MonthlyReportSettings,
 } from '../types'
-import { mapTypeToCategory, buildSubtotal } from '@/lib/monthly-report/shared'
+import { mapTypeToCategory, buildSubtotal, calcVariance, getNextMonth } from '@/lib/monthly-report/shared'
 import {
   serializeReportSections,
   deserializeReportSections,
@@ -51,12 +51,21 @@ const CATEGORY_ORDER: ReportCategory[] = [
 /**
  * Adapter: ConsolidatedReport → GeneratedReport.
  *
- * We populate the fields BudgetVsActualTable reads (account_name, actual,
- * ytd_actual, category) and leave budget/variance/prior_year at safe defaults
- * (0 / null). `has_budget: false` triggers BudgetVsActualTable's no-budget
- * code path, which hides variance columns and still renders actuals cleanly.
+ * Phase B (CFO-only clients): the consolidation engine has produced
+ * `consolidated.budgetLines` (whole-business forecast aligned to the same
+ * account universe as the actual lines) since Phase 34.3 — but this adapter
+ * used to discard it and hard-code budget 0 / has_budget:false. It now wires
+ * the budget through with the SAME variance semantics as the single-entity
+ * `/api/monthly-report/generate` route (calcVariance sign conventions,
+ * YTD windows, unspent/next-month/annual extras, budget-only rows,
+ * Other Income folded into revenue totals, Other Expenses into opex totals).
+ *
+ * When the engine found no budget (zero-filled budgetLines universe),
+ * `has_budget: false` preserves the pre-Phase-B rendering exactly.
+ *
+ * Exported for unit tests.
  */
-function adaptConsolidatedToGeneratedReport(
+export function adaptConsolidatedToGeneratedReport(
   consolidated: any, // ConsolidatedReport — loose typing to avoid coupling
   reportMonth: string,
   fiscalYear: number,
@@ -68,35 +77,75 @@ function adaptConsolidatedToGeneratedReport(
     monthly_values: Record<string, number>
   }> = consolidated?.consolidated?.lines ?? []
 
+  const budgetLines: Array<{
+    account_type: string
+    account_name: string
+    monthly_values: Record<string, number>
+  }> = consolidated?.consolidated?.budgetLines ?? []
+
+  // Budget lines are aligned to the same (account_type, account_name)
+  // universe as the actual lines, zero-filled when no forecast exists.
+  const lineKey = (l: { account_type: string; account_name: string }) =>
+    `${l.account_type}::${l.account_name}`
+  const budgetByKey = new Map(budgetLines.map((b) => [lineKey(b), b]))
+  const hasBudget = budgetLines.some((b) =>
+    Object.values(b.monthly_values ?? {}).some((v) => v !== 0),
+  )
+
+  // FY month keys — union across actual + budget lines (both aligned to
+  // fyMonths by the engine; the union guards against partial payloads).
+  const fyMonthSet = new Set<string>()
+  for (const l of [...consolidatedLines, ...budgetLines]) {
+    for (const m of Object.keys(l.monthly_values ?? {})) fyMonthSet.add(m)
+  }
+  const fyMonths = [...fyMonthSet].sort()
+  const ytdMonths = fyMonths.filter((m) => m <= reportMonth)
+  const nextMonth = getNextMonth(reportMonth)
+
   // Group lines by report category (Revenue, Cost of Sales, etc.)
   const byCategory = new Map<ReportCategory, ReportLine[]>()
   for (const cat of CATEGORY_ORDER) byCategory.set(cat, [])
 
   for (const l of consolidatedLines) {
     const category = mapTypeToCategory(l.account_type) as ReportCategory
-    const actual = l.monthly_values?.[reportMonth] ?? 0
+    const isRevenue = category === 'Revenue' || category === 'Other Income'
+    const monthlyValues = l.monthly_values ?? {}
+    const actual = monthlyValues[reportMonth] ?? 0
     // YTD = sum of months in fiscal year up to and including reportMonth.
     // Since `monthly_values` is keyed by 'YYYY-MM', string ordering works for
     // the in-fiscal-year months the engine emits (fyMonths is monotonic).
-    const ytdActual = Object.entries(l.monthly_values ?? {})
-      .filter(([m]) => m <= reportMonth)
-      .reduce((s, [, v]) => s + (v as number), 0)
+    const ytdActual = ytdMonths.reduce((s, m) => s + (monthlyValues[m] ?? 0), 0)
+
+    const budgetMonths = hasBudget
+      ? budgetByKey.get(lineKey(l))?.monthly_values ?? {}
+      : {}
+    const budget = budgetMonths[reportMonth] ?? 0
+    const ytdBudget = ytdMonths.reduce((s, m) => s + (budgetMonths[m] ?? 0), 0)
+    const budgetAnnualTotal = fyMonths.reduce((s, m) => s + (budgetMonths[m] ?? 0), 0)
+    const { amount: varAmt, percent: varPct } = calcVariance(actual, budget, isRevenue)
+    const { amount: ytdVarAmt, percent: ytdVarPct } = calcVariance(ytdActual, ytdBudget, isRevenue)
+
+    // Budget-only rows: the engine's universe includes accounts that exist
+    // only in the forecast; their actual column is zero-filled. Mirror the
+    // single-entity `is_budget_only` flag so the table styles them the same.
+    const actualAnnual = fyMonths.reduce((s, m) => s + (monthlyValues[m] ?? 0), 0)
+    const isBudgetOnly = hasBudget && actualAnnual === 0 && budgetAnnualTotal !== 0
 
     const line: ReportLine = {
       account_name: l.account_name,
-      xero_account_name: l.account_name,
-      is_budget_only: false,
+      xero_account_name: isBudgetOnly ? null : l.account_name,
+      is_budget_only: isBudgetOnly,
       actual,
-      budget: 0,
-      variance_amount: 0,
-      variance_percent: 0,
+      budget,
+      variance_amount: hasBudget ? varAmt : 0,
+      variance_percent: hasBudget ? varPct : 0,
       ytd_actual: ytdActual,
-      ytd_budget: 0,
-      ytd_variance_amount: 0,
-      ytd_variance_percent: 0,
-      unspent_budget: 0,
-      budget_next_month: 0,
-      budget_annual_total: 0,
+      ytd_budget: ytdBudget,
+      ytd_variance_amount: hasBudget ? ytdVarAmt : 0,
+      ytd_variance_percent: hasBudget ? ytdVarPct : 0,
+      unspent_budget: hasBudget ? budgetAnnualTotal - ytdActual : 0,
+      budget_next_month: budgetMonths[nextMonth] ?? 0,
+      budget_annual_total: budgetAnnualTotal,
       prior_year: null,
     }
     byCategory.get(category)!.push(line)
@@ -104,68 +153,121 @@ function adaptConsolidatedToGeneratedReport(
 
   const sections: ReportSection[] = CATEGORY_ORDER.map((category) => {
     const lines = byCategory.get(category)!
-    return {
-      category,
-      lines,
-      subtotal: buildSubtotal(lines, `Total ${category}`),
-    }
+    const subtotal = buildSubtotal(lines, `Total ${category}`)
+    // Subtotal variance percent — recomputed from aggregates, mirroring
+    // /api/monthly-report/generate.
+    subtotal.variance_percent = subtotal.budget !== 0
+      ? (subtotal.variance_amount / Math.abs(subtotal.budget)) * 100 : 0
+    subtotal.ytd_variance_percent = subtotal.ytd_budget !== 0
+      ? (subtotal.ytd_variance_amount / Math.abs(subtotal.ytd_budget)) * 100 : 0
+    return { category, lines, subtotal }
   }).filter((s) => s.lines.length > 0)
 
-  // Summary — totals per subtotal; gross_profit and net_profit derived below.
-  const zeroTotal = { actual: 0, budget: 0, variance: 0, variance_percent: 0 }
+  // Summary + profit rows — same aggregate formulas as the single-entity
+  // route: revenue folds in Other Income, opex folds in Other Expenses.
   const revenueSection = sections.find((s) => s.category === 'Revenue')
   const cogsSection = sections.find((s) => s.category === 'Cost of Sales')
   const opexSection = sections.find((s) => s.category === 'Operating Expenses')
+  const otherIncSection = sections.find((s) => s.category === 'Other Income')
+  const otherExpSection = sections.find((s) => s.category === 'Other Expenses')
 
-  const revenueTotal = revenueSection
-    ? {
-        actual: revenueSection.subtotal.actual,
-        budget: 0,
-        variance: 0,
-        variance_percent: 0,
-      }
-    : zeroTotal
-  const cogsTotal = cogsSection
-    ? {
-        actual: cogsSection.subtotal.actual,
-        budget: 0,
-        variance: 0,
-        variance_percent: 0,
-      }
-    : zeroTotal
-  const opexTotal = opexSection
-    ? {
-        actual: opexSection.subtotal.actual,
-        budget: 0,
-        variance: 0,
-        variance_percent: 0,
-      }
-    : zeroTotal
+  const revActual = (revenueSection?.subtotal.actual || 0) + (otherIncSection?.subtotal.actual || 0)
+  const revBudget = (revenueSection?.subtotal.budget || 0) + (otherIncSection?.subtotal.budget || 0)
+  const cogsActual = cogsSection?.subtotal.actual || 0
+  const cogsBudget = cogsSection?.subtotal.budget || 0
+  const opexActual = (opexSection?.subtotal.actual || 0) + (otherExpSection?.subtotal.actual || 0)
+  const opexBudget = (opexSection?.subtotal.budget || 0) + (otherExpSection?.subtotal.budget || 0)
 
-  const grossProfit = revenueTotal.actual - cogsTotal.actual
-  const netProfit = grossProfit - opexTotal.actual
+  const gpActual = revActual - cogsActual
+  const gpBudget = revBudget - cogsBudget
+  const npActual = gpActual - opexActual
+  const npBudget = gpBudget - opexBudget
+
+  const revYtdActual = (revenueSection?.subtotal.ytd_actual || 0) + (otherIncSection?.subtotal.ytd_actual || 0)
+  const revYtdBudget = (revenueSection?.subtotal.ytd_budget || 0) + (otherIncSection?.subtotal.ytd_budget || 0)
+  const cogsYtdActual = cogsSection?.subtotal.ytd_actual || 0
+  const cogsYtdBudget = cogsSection?.subtotal.ytd_budget || 0
+  const opexYtdActual = (opexSection?.subtotal.ytd_actual || 0) + (otherExpSection?.subtotal.ytd_actual || 0)
+  const opexYtdBudget = (opexSection?.subtotal.ytd_budget || 0) + (otherExpSection?.subtotal.ytd_budget || 0)
+
+  const gpYtdActual = revYtdActual - cogsYtdActual
+  const gpYtdBudget = revYtdBudget - cogsYtdBudget
+  const npYtdActual = gpYtdActual - opexYtdActual
+  const npYtdBudget = gpYtdBudget - opexYtdBudget
+
+  const revAnnual = (revenueSection?.subtotal.budget_annual_total || 0) + (otherIncSection?.subtotal.budget_annual_total || 0)
+  const cogsAnnual = cogsSection?.subtotal.budget_annual_total || 0
+  const opexAnnual = (opexSection?.subtotal.budget_annual_total || 0) + (otherExpSection?.subtotal.budget_annual_total || 0)
+
+  const grossProfitRow: ReportLine = {
+    account_name: 'Gross Profit',
+    xero_account_name: null,
+    is_budget_only: false,
+    actual: gpActual,
+    budget: gpBudget,
+    variance_amount: gpActual - gpBudget,
+    variance_percent: gpBudget !== 0 ? ((gpActual - gpBudget) / Math.abs(gpBudget)) * 100 : 0,
+    ytd_actual: gpYtdActual,
+    ytd_budget: gpYtdBudget,
+    ytd_variance_amount: gpYtdActual - gpYtdBudget,
+    ytd_variance_percent: gpYtdBudget !== 0 ? ((gpYtdActual - gpYtdBudget) / Math.abs(gpYtdBudget)) * 100 : 0,
+    unspent_budget: hasBudget ? (revAnnual - cogsAnnual) - gpYtdActual : 0,
+    budget_next_month: (revenueSection?.subtotal.budget_next_month || 0) - (cogsSection?.subtotal.budget_next_month || 0),
+    budget_annual_total: revAnnual - cogsAnnual,
+    prior_year: null,
+  }
+
+  const netProfitRow: ReportLine = {
+    account_name: 'Net Profit',
+    xero_account_name: null,
+    is_budget_only: false,
+    actual: npActual,
+    budget: npBudget,
+    variance_amount: npActual - npBudget,
+    variance_percent: npBudget !== 0 ? ((npActual - npBudget) / Math.abs(npBudget)) * 100 : 0,
+    ytd_actual: npYtdActual,
+    ytd_budget: npYtdBudget,
+    ytd_variance_amount: npYtdActual - npYtdBudget,
+    ytd_variance_percent: npYtdBudget !== 0 ? ((npYtdActual - npYtdBudget) / Math.abs(npYtdBudget)) * 100 : 0,
+    unspent_budget: hasBudget ? (revAnnual - cogsAnnual - opexAnnual) - npYtdActual : 0,
+    budget_next_month:
+      (revenueSection?.subtotal.budget_next_month || 0) -
+      (cogsSection?.subtotal.budget_next_month || 0) -
+      (opexSection?.subtotal.budget_next_month || 0),
+    budget_annual_total: revAnnual - cogsAnnual - opexAnnual,
+    prior_year: null,
+  }
 
   const summary: ReportSummary = {
-    revenue: revenueTotal,
-    cogs: cogsTotal,
-    gross_profit: {
-      actual: grossProfit,
-      budget: 0,
-      variance: 0,
-      gp_percent:
-        revenueTotal.actual !== 0
-          ? (grossProfit / revenueTotal.actual) * 100
-          : 0,
+    revenue: {
+      actual: revActual,
+      budget: revBudget,
+      variance: revActual - revBudget,
+      variance_percent: revBudget !== 0 ? ((revActual - revBudget) / Math.abs(revBudget)) * 100 : 0,
     },
-    opex: opexTotal,
+    cogs: {
+      actual: cogsActual,
+      budget: cogsBudget,
+      variance: cogsBudget - cogsActual,
+      variance_percent: cogsBudget !== 0 ? ((cogsBudget - cogsActual) / Math.abs(cogsBudget)) * 100 : 0,
+    },
+    gross_profit: {
+      actual: gpActual,
+      budget: gpBudget,
+      variance: gpActual - gpBudget,
+      gp_percent: revActual !== 0 ? (gpActual / revActual) * 100 : 0,
+    },
+    opex: {
+      actual: opexActual,
+      budget: opexBudget,
+      variance: opexBudget - opexActual,
+      variance_percent: opexBudget !== 0 ? ((opexBudget - opexActual) / Math.abs(opexBudget)) * 100 : 0,
+    },
     net_profit: {
-      actual: netProfit,
-      budget: 0,
-      variance: 0,
-      np_percent:
-        revenueTotal.actual !== 0
-          ? (netProfit / revenueTotal.actual) * 100
-          : 0,
+      actual: npActual,
+      budget: npBudget,
+      variance: npActual - npBudget,
+      np_percent: revActual !== 0 ? (npActual / revActual) * 100 : 0,
     },
   }
 
@@ -210,32 +312,11 @@ function adaptConsolidatedToGeneratedReport(
     settings,
     sections,
     summary,
-    gross_profit_row: buildSubtotal(
-      [
-        ...(revenueSection?.lines ?? []),
-        ...(cogsSection?.lines.map((l) => ({
-          ...l,
-          actual: -l.actual,
-          ytd_actual: -l.ytd_actual,
-        })) ?? []),
-      ],
-      'Gross Profit',
-    ),
-    net_profit_row: buildSubtotal(
-      sections.flatMap((s) =>
-        s.category === 'Revenue' || s.category === 'Other Income'
-          ? s.lines
-          : s.lines.map((l) => ({
-              ...l,
-              actual: -l.actual,
-              ytd_actual: -l.ytd_actual,
-            })),
-      ),
-      'Net Profit',
-    ),
+    gross_profit_row: grossProfitRow,
+    net_profit_row: netProfitRow,
     is_draft: false,
     unreconciled_count: 0,
-    has_budget: false,
+    has_budget: hasBudget,
     is_consolidation: true,
   }
 }
@@ -361,14 +442,12 @@ export function useMonthlyReport(businessId: string) {
         commentary?: VarianceCommentary
       },
     ) => {
-      // Consolidated snapshots are the Phase 35 hook (cfo_report_status.snapshot_data
-      // column already exists). In 34.0 we refuse gracefully rather than posting
-      // consolidated data to a single-entity snapshot path.
-      if (reportData.is_consolidation) {
-        throw new Error(
-          'Consolidated snapshot is scheduled for Phase 35 — not yet available in 34.0',
-        )
-      }
+      // Phase B (CFO-only clients): consolidated snapshots now flow through
+      // the same /api/monthly-report/snapshot upsert as single-entity reports.
+      // monthly_report_snapshots keys on (businesses.id, report_month) — the
+      // adapted consolidated GeneratedReport carries exactly that id — so the
+      // 34.0-era refusal ("scheduled for Phase 35") was the only thing keeping
+      // consolidation parents' commentary from persisting.
       try {
         // Phase 71-10 (D4): serialize `sections` from ReportSection[] → named-key map
         // before persisting. The in-memory shape stays an array (so BudgetVsActualTable,
