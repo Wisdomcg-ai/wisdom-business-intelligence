@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { extractVendorInfo, createVendorKey } from '@/lib/utils/vendor-normalization'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
@@ -221,13 +222,24 @@ async function postHandler(request: Request) {
       return NextResponse.json({ success: true, commentary: {} })
     }
 
-    // Check for Xero connection
-    const { data: connection } = await supabase
+    // Check for Xero connection.
+    //
+    // Phase D (CFO-only clients): the old `.maybeSingle()` ERRORED for any
+    // business with 2+ active connections (Dragon Roofing, IICT Group) —
+    // supabase returns `data: null` on multi-row maybeSingle — so every
+    // consolidation parent silently got `commentary: {}`. Pick the newest
+    // active connection instead (vendor drill-down reads ONE tenant's
+    // invoices; for multi-tenant groups that's the primary entity — partial
+    // detail beats none).
+    const ids = await resolveBusinessProfileIds(supabase, business_id)
+    const { data: connections } = await supabase
       .from('xero_connections')
       .select('*')
-      .eq('business_id', business_id)
+      .in('business_id', ids.all)
       .eq('is_active', true)
-      .maybeSingle()
+      .order('created_at', { ascending: false })
+      .limit(5)
+    const connection = connections?.[0] ?? null
 
     if (!connection) {
       return NextResponse.json({ success: true, commentary: {} })
@@ -251,10 +263,14 @@ async function postHandler(request: Request) {
     // This is more reliable than fetching Chart of Accounts again, and the data is already local
     const accountNameToCode = new Map<string, string>()
     try {
+      // Phase D (CFO-only clients): xero_pl_lines_wide_compat is keyed
+      // business_profiles-space; the old bare `.eq('business_id',
+      // business_id)` (businesses-space) matched ZERO rows for every client
+      // whose two ids differ — the vendor code lookup was always empty.
       const { data: plLines } = await supabase
         .from('xero_pl_lines_wide_compat')
         .select('account_name, account_code')
-        .eq('business_id', business_id)
+        .in('business_id', ids.all)
 
       if (plLines) {
         for (const line of plLines) {

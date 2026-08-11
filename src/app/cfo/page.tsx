@@ -33,7 +33,8 @@ interface StatsCards {
   watch: number
   alert: number
   pending_approval: number
-  next_due: string | null
+  /** Phase D: clients whose report for a closed month is still none/draft. */
+  overdue: number
 }
 
 interface SummariesResponse {
@@ -248,9 +249,9 @@ export default function CfoDashboardPage() {
               icon={<AlertTriangle className="w-4 h-4" />}
             />
             <StatCard
-              label="Next Report Due"
-              value={data.stats.next_due ?? 'All clear'}
-              color="navy"
+              label="Reports Overdue"
+              value={data.stats.overdue > 0 ? data.stats.overdue : 'All clear'}
+              color={data.stats.overdue > 0 ? 'red' : 'navy'}
             />
           </div>
         )}

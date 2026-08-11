@@ -22,6 +22,8 @@ export interface ClientCardData {
   lastSessionDate?: string
   nextSessionDate?: string
   programType?: string
+  /** Phase D (CFO-only clients): businesses.is_cfo_client — drives the CFO pill. */
+  isCfoClient?: boolean
   unreadMessages?: number
   pendingActions?: number
   lastLogin?: string
@@ -91,10 +93,15 @@ export function ClientCard({ client, onMessage, onSchedule }: ClientCardProps) {
         </div>
 
         {/* Program Type */}
-        {client.programType && (
+        {(client.programType || client.isCfoClient) && (
           <div className="flex items-center gap-2 mb-3 text-sm text-gray-600">
             <Briefcase className="w-4 h-4" />
-            <span>{client.programType}</span>
+            {client.programType && <span>{client.programType}</span>}
+            {client.isCfoClient && (
+              <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                CFO
+              </span>
+            )}
           </div>
         )}
 
