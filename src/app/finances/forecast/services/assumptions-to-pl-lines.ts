@@ -983,7 +983,14 @@ export function convertAssumptionsToPLLines(ctx: ConvertContext): PLLine[] {
   )
   const isRetired = (line: PLLine): boolean => {
     if (line.is_manual) return false
-    if (RETIRED_LINE_NAMES.has(line.account_name.trim().toLowerCase())) return true
+    // Retired-name matching applies ONLY to rows this converter itself
+    // generated — historically with a NULL account_code, now with a SYS-*
+    // code. Real Xero accounts genuinely named "Payroll Tax" / "WorkCover
+    // Insurance" exist in client charts (Just Digital Signage carries both:
+    // opex-4 $279,850 and opex-9 $91,132) and MUST survive; the
+    // opex-classifier deliberately keeps them in OpEx.
+    const isSynthetic = !line.account_code || line.account_code.startsWith('SYS-')
+    if (isSynthetic && RETIRED_LINE_NAMES.has(line.account_name.trim().toLowerCase())) return true
     if (line.account_code && coveredSubscriptionCodes.has(line.account_code)) return true
     return false
   }
