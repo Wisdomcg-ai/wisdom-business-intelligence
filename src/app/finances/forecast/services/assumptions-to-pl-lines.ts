@@ -7,6 +7,7 @@
 
 import type { PLLine } from '../types'
 import { calendarMonthFromFiscalIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
+import { getPlannedSpendPLBreakdown } from '../components/wizard-v4/types'
 import type {
   ForecastAssumptions,
   RevenueLineAssumption,
@@ -18,6 +19,30 @@ import type {
   PlannedBonus,
   PlannedCommission,
 } from '../components/wizard-v4/types/assumptions'
+
+// ---------------------------------------------------------------------------
+// Stable synthetic account codes (PR-A M4)
+//
+// Generated lines (team wages/super, depreciation, subscriptions, parity
+// buckets) used to carry account_code = undefined → null. The
+// save_assumptions_and_materialize upsert conflicts on
+// (forecast_id, account_code) WHERE is_manual = false, and NULLs never match
+// in a unique index — so EVERY draft autosave inserted duplicate rows (prod:
+// 16× "Wages & Salaries" on one Digital Bond forecast, ~12× overcount in
+// cashflow/quarterly/dashboard consumers). Deterministic codes make the
+// upsert idempotent. Existing lines that already carry a real Xero code keep
+// it (their conflict target already works).
+// ---------------------------------------------------------------------------
+export const SYS_CODES = {
+  wages: 'SYS-TEAM-WAGES',
+  superannuation: 'SYS-TEAM-SUPER',
+  depreciation: 'SYS-DEPRECIATION',
+  subscriptions: 'SYS-SUBSCRIPTIONS',
+  plannedSpendExpense: 'SYS-PLANNED-SPEND',
+  otherIncome: 'SYS-OTHER-INCOME',
+  otherExpense: 'SYS-OTHER-EXPENSE',
+  userOneOffs: 'SYS-ONEOFF-EXPENSES',
+} as const
 
 // ---------------------------------------------------------------------------
 // Types
@@ -209,45 +234,43 @@ function convertCOGS(
     // D-44.1-06 vector 2/3 — start from existing forecast_months so unmentioned keys survive.
     const newForecastMonths: Record<string, number> = { ...(existing?.forecast_months || {}) }
 
-    // If year1Monthly exists, use it directly (same pattern as revenue)
+    // PR-A materializer fidelity (M1): per-month resolution. The operator's
+    // grid (year1Monthly, incl. locked actual months) wins wherever present;
+    // Y2/Y3 quarterly maps win next; only months with NO explicit value fall
+    // back to the cost-behavior formula. The old shape ("year1Monthly present
+    // → skip the formula entirely; absent → formula for ALL months") either
+    // discarded the grid (wizard never sent it) or, once the grid IS sent,
+    // would have left Y2/Y3 months of a 1-tab-visited multi-year forecast
+    // stale. Per-month resolution handles every combination.
+    const explicitMonths: Record<string, number> = {}
     if (cogsLine.year1Monthly) {
       for (const [mk, val] of Object.entries(cogsLine.year1Monthly)) {
-        if (forecastMonthKeys.includes(mk)) {
-          newForecastMonths[mk] = round2(val)
-        }
+        explicitMonths[mk] = round2(val)
       }
+    }
+    if (forecastDuration >= 2 && cogsLine.year2Quarterly) {
+      const expanded = expandQuarterlyToMonthly(
+        cogsLine.year2Quarterly,
+        fyStartYearForYear(fiscalYear, 2),
+      )
+      for (const [mk, val] of Object.entries(expanded)) explicitMonths[mk] = round2(val)
+    }
+    if (forecastDuration >= 3 && cogsLine.year3Quarterly) {
+      const expanded = expandQuarterlyToMonthly(
+        cogsLine.year3Quarterly,
+        fyStartYearForYear(fiscalYear, 3),
+      )
+      for (const [mk, val] of Object.entries(expanded)) explicitMonths[mk] = round2(val)
+    }
 
-      // Year 2
-      if (forecastDuration >= 2 && cogsLine.year2Quarterly) {
-        const y2Start = fyStartYearForYear(fiscalYear, 2)
-        const expanded = expandQuarterlyToMonthly(cogsLine.year2Quarterly, y2Start)
-        for (const [mk, val] of Object.entries(expanded)) {
-          if (forecastMonthKeys.includes(mk)) {
-            newForecastMonths[mk] = round2(val)
-          }
-        }
-      }
-
-      // Year 3
-      if (forecastDuration >= 3 && cogsLine.year3Quarterly) {
-        const y3Start = fyStartYearForYear(fiscalYear, 3)
-        const expanded = expandQuarterlyToMonthly(cogsLine.year3Quarterly, y3Start)
-        for (const [mk, val] of Object.entries(expanded)) {
-          if (forecastMonthKeys.includes(mk)) {
-            newForecastMonths[mk] = round2(val)
-          }
-        }
-      }
-    } else if (cogsLine.costBehavior === 'variable' && cogsLine.percentOfRevenue) {
-      // Variable: % of total revenue for that month
-      const pct = cogsLine.percentOfRevenue / 100
-      for (const mk of forecastMonthKeys) {
+    for (const mk of forecastMonthKeys) {
+      if (explicitMonths[mk] !== undefined) {
+        newForecastMonths[mk] = explicitMonths[mk]
+      } else if (cogsLine.costBehavior === 'variable' && cogsLine.percentOfRevenue) {
         const rev = revenueByMonth[mk] || 0
-        newForecastMonths[mk] = round2(rev * pct)
-      }
-    } else if (cogsLine.costBehavior === 'fixed' && cogsLine.monthlyAmount) {
-      for (const mk of forecastMonthKeys) {
-        newForecastMonths[mk] = round2(cogsLine.monthlyAmount!)
+        newForecastMonths[mk] = round2(rev * (cogsLine.percentOfRevenue / 100))
+      } else if (cogsLine.costBehavior === 'fixed' && cogsLine.monthlyAmount) {
+        newForecastMonths[mk] = round2(cogsLine.monthlyAmount)
       }
     }
 
@@ -338,11 +361,21 @@ function convertOpEx(
             }
           }
         } else {
-          // No history — fall back to even distribution
-          const targetAmount = opexLine.seasonalTargetAmount || opexLine.monthlyAmount || 0
-          const monthly = targetAmount / 12
+          // No history — flat distribution matching the summary's valuation:
+          // Y1 = target (or priorYearTotal), later years compound growth.
+          // PR-A (M9): the old fallback was `seasonalTargetAmount ||
+          // monthlyAmount || 0`, and the wizard never sends monthlyAmount for
+          // seasonal lines — every growth-%-driven seasonal line materialized
+          // as $0 on fresh generates and seed-from-prior.
+          const growthPct = (opexLine.seasonalGrowthPct || 0) / 100
+          const baseAnnual =
+            opexLine.seasonalTargetAmount ||
+            opexLine.priorYearTotal ||
+            (opexLine.monthlyAmount || 0) * 12
           for (const mk of forecastMonthKeys) {
-            newForecastMonths[mk] = round2(monthly)
+            const yearNum = getFYYear(mk, fiscalYear)
+            const yearMultiplier = Math.pow(1 + growthPct, yearNum - 1)
+            newForecastMonths[mk] = round2((baseAnnual * yearMultiplier) / 12)
           }
         }
         break
@@ -394,17 +427,37 @@ function convertTeam(
   const team = assumptions.team
   if (!team) return []
 
-  const wagesPerMonth: Record<string, number> = {}
-  const superPerMonth: Record<string, number> = {}
-  const workCoverPerMonth: Record<string, number> = {}
-  const payrollTaxPerMonth: Record<string, number> = {}
+  // PR-A materializer fidelity (M3): this function now mirrors the wizard
+  // summary's payroll math (useForecastWizard.calculateYearSummary) so the
+  // stored P&L equals what the operator approved on Step 8 Review:
+  //   - salaries compound: year1Salary × (1 + increasePct)^(yearN − 1)
+  //     (year1Salary = summary's newSalary; legacy payloads fall back to
+  //     currentSalary)
+  //   - superannuation applies to EMPLOYEE wages only, never contractors
+  //   - bonuses recur every forecast year at their calendar month, skipped
+  //     after the member's departure (summary parity)
+  //   - commissions = pct × the linked revenue line's value for the month
+  //     (with the summary's Y1-share fallback when a later year has no line
+  //     data), aggregated per timing period
+  //   - the WorkCover / Payroll Tax lines are GONE: the summary never
+  //     included them and no wizard screen showed them — they silently added
+  //     up to ~6.35% of payroll to the stored forecast (M3b). Statutory
+  //     on-cost modelling is a future feature that must land in the summary
+  //     and the converter together.
+  const wagesEmployeePerMonth: Record<string, number> = {}
+  const wagesContractorPerMonth: Record<string, number> = {}
 
-  // Initialise all months to 0
   for (const mk of forecastMonthKeys) {
-    wagesPerMonth[mk] = 0
-    superPerMonth[mk] = 0
-    workCoverPerMonth[mk] = 0
-    payrollTaxPerMonth[mk] = 0
+    wagesEmployeePerMonth[mk] = 0
+    wagesContractorPerMonth[mk] = 0
+  }
+
+  const addWage = (mk: string, amount: number, isContractor: boolean) => {
+    if (isContractor) {
+      wagesContractorPerMonth[mk] = round2(wagesContractorPerMonth[mk] + amount)
+    } else {
+      wagesEmployeePerMonth[mk] = round2(wagesEmployeePerMonth[mk] + amount)
+    }
   }
 
   // Build departure lookup: teamMemberId → endMonth
@@ -417,131 +470,138 @@ function convertTeam(
   for (const member of team.existingTeam) {
     if (!member.includeInForecast) continue
 
-    const monthlySalary = (member.currentSalary || 0) / 12
-    const increaseMonth = member.increaseMonth || ''
+    const baseSalary = member.year1Salary ?? member.currentSalary ?? 0
     const increasePct = (member.salaryIncreasePct || 0) / 100
     const departureMonth = departures.get(member.employeeId)
+    const isContractor = member.employmentType === 'contractor'
 
     for (const mk of forecastMonthKeys) {
-      // Skip if departed before this month
       if (departureMonth && mk > departureMonth) continue
-
-      let salary = monthlySalary
-      // Apply salary increase if past the increase month
-      if (increaseMonth && mk >= increaseMonth) {
-        salary = round2(monthlySalary * (1 + increasePct))
-      }
-
-      wagesPerMonth[mk] = round2(wagesPerMonth[mk] + salary)
+      const yearNum = getFYYear(mk, fiscalYear)
+      const salaryForYear = baseSalary * Math.pow(1 + increasePct, yearNum - 1)
+      addWage(mk, salaryForYear / 12, isContractor)
     }
   }
 
   // --- Planned hires ---
   for (const hire of team.plannedHires) {
-    const startMonth = hire.startMonth
-    let monthlySalary: number
-
-    if (hire.employmentType === 'casual' && hire.hourlyRate) {
+    const isContractor = hire.employmentType === 'contractor'
+    // Summary parity: hire.salary is authoritative; the hourly derivation is
+    // only a fallback for casuals whose salary was never computed.
+    let annualBase = hire.salary || 0
+    if (!annualBase && hire.employmentType === 'casual' && hire.hourlyRate) {
       const hoursPerWeek = hire.hoursPerWeek || 20
       const weeksPerYear = hire.weeksPerYear || 48
-      monthlySalary = round2((hire.hourlyRate * hoursPerWeek * weeksPerYear) / 12)
-    } else {
-      monthlySalary = round2((hire.salary || 0) / 12)
+      annualBase = hire.hourlyRate * hoursPerWeek * weeksPerYear
     }
+    const hireIncreasePct = (hire.increasePct ?? 3) / 100
+    const hireStartYearNum = getFYYear(hire.startMonth, fiscalYear)
 
     for (const mk of forecastMonthKeys) {
-      if (mk >= startMonth) {
-        wagesPerMonth[mk] = round2(wagesPerMonth[mk] + monthlySalary)
-      }
+      if (mk < hire.startMonth) continue
+      const yearNum = getFYYear(mk, fiscalYear)
+      const yearsAfterStart = Math.max(0, yearNum - hireStartYearNum)
+      const salaryForYear = annualBase * Math.pow(1 + hireIncreasePct, yearsAfterStart)
+      addWage(mk, salaryForYear / 12, isContractor)
     }
   }
 
-  // --- Bonuses ---
+  // --- Bonuses (every year, calendar-month keyed, departure-guarded) ---
   for (const bonus of team.bonuses || []) {
-    // bonus.month is 1-12 (month of fiscal year, 1=Jul)
-    // Convert to calendar month: FY month 1 = July = calendar 7
-    const calendarMonth = ((bonus.month - 1 + 6) % 12) + 1
-
+    // bonus.month is CALENDAR 1-12 — the summary maps it into each FY with
+    // the fiscal-year-start convention (months >= start month belong to the
+    // FY's starting calendar year). The old converter treated it as a
+    // fiscal index, shifting June bonuses to December.
+    const departureMonth = departures.get(bonus.teamMemberId)
     for (const mk of forecastMonthKeys) {
       const m = parseInt(mk.split('-')[1], 10)
-      if (m === calendarMonth) {
-        // Only apply in year 1 (bonuses are typically one-time)
-        const yearNum = getFYYear(mk, fiscalYear)
-        if (yearNum === 1) {
-          wagesPerMonth[mk] = round2(wagesPerMonth[mk] + bonus.amount)
-        }
-      }
+      if (m !== bonus.month) continue
+      if (departureMonth && departureMonth < mk) continue
+      addWage(mk, bonus.amount, false)
     }
   }
 
   // --- Commissions ---
+  // Per-line monthly values for the month's year: Y1 uses year1Monthly, Y2/Y3
+  // expand the quarterly maps. When a later year has no line data, fall back
+  // to the summary's rule: total revenue × the line's Y1 share.
+  const lineMonthlyValue = (
+    revLine: RevenueLineAssumption | undefined,
+    mk: string,
+  ): number => {
+    if (!revLine) return revenueByMonth[mk] || 0
+    const yearNum = getFYYear(mk, fiscalYear)
+    if (yearNum === 1 && revLine.year1Monthly && revLine.year1Monthly[mk] !== undefined) {
+      return revLine.year1Monthly[mk]
+    }
+    if (yearNum >= 2) {
+      const quarterly = yearNum === 2 ? revLine.year2Quarterly : revLine.year3Quarterly
+      if (quarterly) {
+        const expanded = expandQuarterlyToMonthly(
+          quarterly,
+          fyStartYearForYear(fiscalYear, yearNum),
+        )
+        if (expanded[mk] !== undefined) return expanded[mk]
+      }
+      // Summary's Y1-share fallback (P0-13)
+      const lineY1 = Object.values(revLine.year1Monthly || {}).reduce((a, b) => a + b, 0)
+      let totalY1 = 0
+      for (const rl of assumptions.revenue.lines) {
+        totalY1 += Object.values(rl.year1Monthly || {}).reduce((a, b) => a + b, 0)
+      }
+      const totalForMonth = revenueByMonth[mk] || 0
+      if (totalY1 > 0) return totalForMonth * (lineY1 / totalY1)
+      return totalForMonth
+    }
+    return revenueByMonth[mk] || 0
+  }
+
   for (const comm of team.commissions || []) {
     const pct = (comm.percentOfRevenue || 0) / 100
     if (pct === 0) continue
 
-    // Find the revenue line this commission is linked to
     const revLine = assumptions.revenue.lines.find(
       rl => rl.accountId === comm.revenueLineId
     )
 
-    for (const mk of forecastMonthKeys) {
-      let revForMonth = 0
-      if (revLine) {
-        // Get this revenue line's value for the month
-        revForMonth = revenueByMonth[mk] || 0
-        // If there are multiple rev lines, use the specific one
-        // We need to recalculate for this specific line
-        if (revLine.year1Monthly && revLine.year1Monthly[mk] !== undefined) {
-          revForMonth = revLine.year1Monthly[mk]
-        }
-      } else {
-        // Fallback to total revenue
-        revForMonth = revenueByMonth[mk] || 0
+    if (comm.timing === 'monthly') {
+      for (const mk of forecastMonthKeys) {
+        addWage(mk, lineMonthlyValue(revLine, mk) * pct, false)
       }
-
-      if (comm.timing === 'monthly') {
-        wagesPerMonth[mk] = round2(wagesPerMonth[mk] + revForMonth * pct)
-      } else if (comm.timing === 'quarterly') {
-        // Only pay in last month of quarter (Sep, Dec, Mar, Jun)
-        const m = parseInt(mk.split('-')[1], 10)
-        if ([3, 6, 9, 12].includes(m)) {
-          wagesPerMonth[mk] = round2(wagesPerMonth[mk] + revForMonth * 3 * pct)
+    } else {
+      // Accumulate the linked line's revenue across the period and pay it in
+      // the period's last month — totals equal the summary's annual figure
+      // regardless of seasonality (the old "×3 of the last month" / "×12 of
+      // June" approximations were wrong for seasonal lines).
+      const isQuarterEnd = (mk: string) => [3, 6, 9, 12].includes(parseInt(mk.split('-')[1], 10))
+      const isYearEnd = (mk: string, idx: number) =>
+        idx === forecastMonthKeys.length - 1 ||
+        getFYYear(forecastMonthKeys[idx + 1], fiscalYear) !== getFYYear(mk, fiscalYear)
+      let accrued = 0
+      forecastMonthKeys.forEach((mk, idx) => {
+        accrued += lineMonthlyValue(revLine, mk) * pct
+        const payNow = comm.timing === 'quarterly' ? isQuarterEnd(mk) : isYearEnd(mk, idx)
+        if (payNow && accrued > 0) {
+          addWage(mk, accrued, false)
+          accrued = 0
         }
-      } else if (comm.timing === 'annual') {
-        // Pay in June (end of FY)
-        const m = parseInt(mk.split('-')[1], 10)
-        if (m === 6) {
-          wagesPerMonth[mk] = round2(wagesPerMonth[mk] + revForMonth * 12 * pct)
-        }
-      }
+      })
     }
   }
 
-  // --- Calculate on-costs ---
+  // --- Super (employees only — summary parity) ---
   const superPct = (team.superannuationPct || 12) / 100
-  const workCoverPct = (team.workCoverPct || 0) / 100
-  const payrollTaxPct = (team.payrollTaxPct || 0) / 100
-  const payrollTaxThreshold = team.payrollTaxThreshold || 1200000
-
+  const wagesPerMonth: Record<string, number> = {}
+  const superPerMonth: Record<string, number> = {}
   for (const mk of forecastMonthKeys) {
-    const wages = wagesPerMonth[mk]
-    superPerMonth[mk] = round2(wages * superPct)
-    workCoverPerMonth[mk] = round2(wages * workCoverPct)
-
-    // Payroll tax: only if annualised wages exceed threshold
-    // Simple approximation: monthly wages × 12 vs threshold
-    const annualised = wages * 12
-    if (annualised > payrollTaxThreshold) {
-      payrollTaxPerMonth[mk] = round2(wages * payrollTaxPct)
-    }
+    wagesPerMonth[mk] = round2(wagesEmployeePerMonth[mk] + wagesContractorPerMonth[mk])
+    superPerMonth[mk] = round2(wagesEmployeePerMonth[mk] * superPct)
   }
 
   // --- Build P&L lines ---
-  const teamLines: { name: string; data: Record<string, number> }[] = [
-    { name: 'Wages & Salaries', data: wagesPerMonth },
-    { name: 'Superannuation', data: superPerMonth },
-    { name: 'WorkCover Insurance', data: workCoverPerMonth },
-    { name: 'Payroll Tax', data: payrollTaxPerMonth },
+  const teamLines: { name: string; code: string; data: Record<string, number> }[] = [
+    { name: 'Wages & Salaries', code: SYS_CODES.wages, data: wagesPerMonth },
+    { name: 'Superannuation', code: SYS_CODES.superannuation, data: superPerMonth },
   ]
 
   const result: PLLine[] = []
@@ -562,7 +622,9 @@ function convertTeam(
     result.push({
       ...(existing ? { id: existing.id } : {}),
       account_name: existing?.account_name || tl.name,
-      account_code: existing?.account_code,
+      // PR-A (M4): stable synthetic code so the RPC upsert is idempotent —
+      // a NULL code inserted a fresh duplicate row on every autosave.
+      account_code: existing?.account_code || tl.code,
       category: 'Operating Expenses',
       subcategory: existing?.subcategory,
       sort_order: existing?.sort_order,
@@ -584,11 +646,69 @@ function convertCapExDepreciation(
   ctx: ConvertContext,
   forecastMonthKeys: string[]
 ): PLLine[] {
-  const { assumptions, existingLines } = ctx
+  const { assumptions, fiscalYear, existingLines } = ctx
+
+  // Helper: build one flat-per-year line from per-year annual totals.
+  const buildYearlyLine = (
+    name: string,
+    code: string,
+    annualByYear: Record<number, number>,
+  ): PLLine | null => {
+    const hasValues = Object.values(annualByYear).some(v => v > 0)
+    if (!hasValues) return null
+    const existing = findMatchingLine(existingLines, name)
+    const newForecastMonths: Record<string, number> = { ...(existing?.forecast_months || {}) }
+    for (const mk of forecastMonthKeys) {
+      const yearNum = getFYYear(mk, fiscalYear)
+      newForecastMonths[mk] = round2((annualByYear[yearNum] || 0) / 12)
+    }
+    return {
+      ...(existing ? { id: existing.id } : {}),
+      account_name: existing?.account_name || name,
+      // PR-A (M4): stable synthetic code — NULL codes duplicated on upsert.
+      account_code: existing?.account_code || code,
+      category: 'Operating Expenses',
+      subcategory: existing?.subcategory,
+      sort_order: existing?.sort_order,
+      actual_months: existing?.actual_months || {},
+      forecast_months: newForecastMonths,
+      is_from_xero: existing?.is_from_xero || false,
+      is_manual: false,
+    }
+  }
+
+  // PR-A materializer fidelity (M8): the live Step 7 UI writes plannedSpends;
+  // capex.items is only populated by legacy restores. The summary values
+  // plannedSpends via getPlannedSpendPLBreakdown — use the SAME helper here
+  // so the stored depreciation + expensed-spend lines equal the Step 8 Review
+  // figures. When plannedSpends exist they take precedence over legacy capex
+  // items (mirroring the summary's finalDepreciation/finalInvestments pick).
+  if (assumptions.plannedSpends && assumptions.plannedSpends.length > 0) {
+    const depByYear: Record<number, number> = {}
+    const expByYear: Record<number, number> = {}
+    for (const item of assumptions.plannedSpends) {
+      for (const yearNum of [1, 2, 3] as const) {
+        if (yearNum > ctx.forecastDuration) break
+        const breakdown = getPlannedSpendPLBreakdown(item, yearNum)
+        depByYear[yearNum] = (depByYear[yearNum] || 0) + breakdown.depreciation
+        expByYear[yearNum] = (expByYear[yearNum] || 0) + breakdown.expenses
+      }
+    }
+    const lines: PLLine[] = []
+    const depLine = buildYearlyLine('Depreciation', SYS_CODES.depreciation, depByYear)
+    if (depLine) lines.push(depLine)
+    const expLine = buildYearlyLine(
+      'Planned Purchases (Expensed)',
+      SYS_CODES.plannedSpendExpense,
+      expByYear,
+    )
+    if (expLine) lines.push(expLine)
+    return lines
+  }
+
+  // Legacy path: capex.items with 5-year straight-line depreciation.
   if (!assumptions.capex?.items?.length) return []
 
-  // Sum monthly depreciation across all items
-  // Default useful life = 5 years if not specified
   let totalMonthlyDepreciation = 0
   for (const item of assumptions.capex.items) {
     const usefulLifeYears = 5
@@ -608,7 +728,7 @@ function convertCapExDepreciation(
   return [{
     ...(existing ? { id: existing.id } : {}),
     account_name: existing?.account_name || 'Depreciation',
-    account_code: existing?.account_code,
+    account_code: existing?.account_code || SYS_CODES.depreciation,
     category: 'Operating Expenses',
     subcategory: existing?.subcategory,
     sort_order: existing?.sort_order,
@@ -617,6 +737,123 @@ function convertCapExDepreciation(
     is_from_xero: existing?.is_from_xero || false,
     is_manual: false,
   }]
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions (PR-A M6 — vendor budgets become a real P&L line)
+// ---------------------------------------------------------------------------
+
+function convertSubscriptions(
+  ctx: ConvertContext,
+  forecastMonthKeys: string[]
+): PLLine[] {
+  const { assumptions, fiscalYear, existingLines } = ctx
+  const vendors = assumptions.subscriptions?.vendors ?? []
+  if (vendors.length === 0) return []
+
+  const monthlyTotal = vendors.reduce((s, v) => s + (v.monthlyBudget || 0), 0)
+  if (monthlyTotal <= 0) return []
+
+  // Summary parity: Σ(active vendor monthly × 12) grown by the OpEx default
+  // increase for Y2/Y3 (SubscriptionAuditSummary.annualGrowthPct snapshots
+  // state.defaultOpExIncreasePct at save time).
+  const growthPct = (assumptions.subscriptions?.annualGrowthPct ?? 3) / 100
+
+  const existing = findMatchingLine(existingLines, 'Subscriptions (budgeted)')
+  const newForecastMonths: Record<string, number> = { ...(existing?.forecast_months || {}) }
+  for (const mk of forecastMonthKeys) {
+    const yearNum = getFYYear(mk, fiscalYear)
+    newForecastMonths[mk] = round2(monthlyTotal * Math.pow(1 + growthPct, yearNum - 1))
+  }
+
+  return [{
+    ...(existing ? { id: existing.id } : {}),
+    account_name: existing?.account_name || 'Subscriptions (budgeted)',
+    account_code: existing?.account_code || SYS_CODES.subscriptions,
+    category: 'Operating Expenses',
+    subcategory: existing?.subcategory,
+    sort_order: existing?.sort_order,
+    actual_months: existing?.actual_months || {},
+    forecast_months: newForecastMonths,
+    is_from_xero: existing?.is_from_xero || false,
+    is_manual: false,
+  }]
+}
+
+// ---------------------------------------------------------------------------
+// Parity buckets (PR-A M7/M13) — Other Income / Other Expenses / user one-offs
+// ---------------------------------------------------------------------------
+
+function convertParityBuckets(
+  ctx: ConvertContext,
+  forecastMonthKeys: string[]
+): PLLine[] {
+  const { assumptions, fiscalYear, existingLines } = ctx
+  const lines: PLLine[] = []
+
+  const buildFlatLine = (
+    name: string,
+    code: string,
+    category: string,
+    annualByYear: Record<number, number>,
+  ): void => {
+    const hasValues = Object.values(annualByYear).some(v => v !== 0)
+    if (!hasValues) return
+    const existing = findMatchingLine(existingLines, name)
+    const newForecastMonths: Record<string, number> = { ...(existing?.forecast_months || {}) }
+    for (const mk of forecastMonthKeys) {
+      const yearNum = getFYYear(mk, fiscalYear)
+      newForecastMonths[mk] = round2((annualByYear[yearNum] || 0) / 12)
+    }
+    lines.push({
+      ...(existing ? { id: existing.id } : {}),
+      account_name: existing?.account_name || name,
+      account_code: existing?.account_code || code,
+      category,
+      subcategory: existing?.subcategory,
+      sort_order: existing?.sort_order,
+      actual_months: existing?.actual_months || {},
+      forecast_months: newForecastMonths,
+      is_from_xero: existing?.is_from_xero || false,
+      is_manual: false,
+    })
+  }
+
+  const years = [1, 2, 3].slice(0, ctx.forecastDuration) as number[]
+  const everyYear = (amount: number) =>
+    Object.fromEntries(years.map(y => [y, amount])) as Record<number, number>
+
+  // Xero prior-FY Other Income / Other Expense — the summary carries the
+  // prior-FY rate flat into every forecast year; without these lines every
+  // line-sum consumer disagreed with the wizard's net profit by exactly
+  // these amounts.
+  if (assumptions.xeroOtherIncome) {
+    buildFlatLine('Other Income', SYS_CODES.otherIncome, 'Other Income', everyYear(assumptions.xeroOtherIncome))
+  }
+  if (assumptions.xeroOtherExpense) {
+    buildFlatLine('Other Expenses', SYS_CODES.otherExpense, 'Other Expenses', everyYear(assumptions.xeroOtherExpense))
+  }
+
+  // Step 7 user one-offs — summary rule: 'once' hits Y1 only; recurring
+  // frequencies annualise into every year.
+  const userExpenses = assumptions.userOtherExpenses ?? []
+  if (userExpenses.length > 0) {
+    const annualByYear: Record<number, number> = {}
+    for (const y of years) {
+      let total = 0
+      for (const exp of userExpenses) {
+        if (exp.frequency === 'once') {
+          if (y === 1) total += exp.amount
+        } else if (exp.frequency === 'monthly') total += exp.amount * 12
+        else if (exp.frequency === 'quarterly') total += exp.amount * 4
+        else total += exp.amount
+      }
+      annualByYear[y] = total
+    }
+    buildFlatLine('Planned One-off Expenses', SYS_CODES.userOneOffs, 'Operating Expenses', annualByYear)
+  }
+
+  return lines
 }
 
 // ---------------------------------------------------------------------------
@@ -679,6 +916,22 @@ export function convertAssumptionsToPLLines(ctx: ConvertContext): PLLine[] {
     console.error('[assumptions-to-pl] CapEx depreciation error:', err)
   }
 
+  // --- Subscriptions (PR-A M6) ---
+  let subscriptionLines: PLLine[] = []
+  try {
+    subscriptionLines = convertSubscriptions(ctx, forecastMonthKeys)
+  } catch (err) {
+    console.error('[assumptions-to-pl] Subscriptions conversion error:', err)
+  }
+
+  // --- Parity buckets: other income/expense + user one-offs (PR-A M7/M13) ---
+  let parityLines: PLLine[] = []
+  try {
+    parityLines = convertParityBuckets(ctx, forecastMonthKeys)
+  } catch (err) {
+    console.error('[assumptions-to-pl] Parity bucket conversion error:', err)
+  }
+
   // --- Merge with existing lines ---
   const generatedLines = [
     ...revenueLines,
@@ -686,6 +939,8 @@ export function convertAssumptionsToPLLines(ctx: ConvertContext): PLLine[] {
     ...opexLines,
     ...teamLines,
     ...depreciationLines,
+    ...subscriptionLines,
+    ...parityLines,
   ]
 
   // Track which existing lines were matched

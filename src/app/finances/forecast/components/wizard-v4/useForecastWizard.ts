@@ -71,8 +71,22 @@ const WIZARD_VERSION = 11;
 // Single source of truth for whether an OpEx line should be excluded from the
 // OpEx rollup (because team wages are generated separately by convertTeam()).
 // Used by both the summary rollup and the assumptions export so they cannot drift.
-function shouldExcludeFromOpEx(line: { name: string; isTeamCostOverride?: boolean }): boolean {
-  return line.isTeamCostOverride !== undefined ? line.isTeamCostOverride : isTeamCost(line.name);
+//
+// PR-A materializer fidelity (M2): exclusion now requires ACTUAL team data.
+// The old unconditional exclusion deleted contractor/wages/super OpEx lines
+// from the stored forecast even when Step 4 was empty — $566,671/yr of real
+// cost vanished from a live Dragon Roofing forecast because it appeared in
+// neither the team lines (no members) nor the OpEx lines (filtered here).
+// An explicit operator override (Step 5 include/exclude toggle) always wins.
+// Exported so BudgetTracker/ExcelExport share the same rule instead of
+// drifting inline copies.
+export function shouldExcludeFromOpEx(
+  line: { name: string; isTeamCostOverride?: boolean },
+  hasTeamData: boolean,
+): boolean {
+  if (line.isTeamCostOverride !== undefined) return line.isTeamCostOverride;
+  if (!hasTeamData) return false;
+  return isTeamCost(line.name);
 }
 
 // Remap month keys from prior year to forecast year by CALENDAR MONTH (not
@@ -1655,12 +1669,13 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         }
       }
 
+      const hasTeamData = state.teamMembers.length > 0 || state.newHires.length > 0;
       const opex = state.opexLines.reduce((sum, line) => {
         // Skip one-time expenses that don't belong to this year
         if (line.isOneTime && line.oneTimeYear && line.oneTimeYear !== yearNum) return sum;
         // Skip expenses that haven't started yet
         if (line.startYear && line.startYear > yearNum) return sum;
-        if (shouldExcludeFromOpEx(line)) return sum;
+        if (shouldExcludeFromOpEx(line, hasTeamData)) return sum;
 
         // Phase 57 T07: skip lines covered by Step 5 Subscriptions to prevent
         // double-counting the same Xero account in both buckets. ONLY
@@ -1878,23 +1893,42 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     });
 
     // Build COGS assumptions
-    const cogsLines: COGSLineAssumption[] = state.cogsLines.map(line => ({
-      accountId: line.accountId || line.id,
-      accountName: line.name,
-      priorYearTotal: line.priorYearTotal || 0,
-      costBehavior: line.costBehavior,
-      percentOfRevenue: line.costBehavior === 'variable' ? line.percentOfRevenue : undefined,
-      monthlyAmount: line.costBehavior === 'fixed' ? line.monthlyAmount : undefined,
-      notes: line.notes,
-    }));
+    // PR-A materializer fidelity (M1): persist the operator's monthly COGS
+    // grid — including locked actual months — exactly like the revenue
+    // mapper above. Without these fields convertCOGS re-derived every month
+    // from percentOfRevenue and the stored GP diverged from the approved
+    // summary by $2M on a live forecast. Empty maps are omitted so the
+    // converter's behavior-based fallback still applies to untouched lines.
+    const cogsLines: COGSLineAssumption[] = state.cogsLines.map(line => {
+      const hasY1 = line.year1Monthly && Object.keys(line.year1Monthly).length > 0;
+      const hasY2 = line.year2Monthly && Object.keys(line.year2Monthly).length > 0;
+      const hasY3 = line.year3Monthly && Object.keys(line.year3Monthly).length > 0;
+      return {
+        accountId: line.accountId || line.id,
+        accountName: line.name,
+        priorYearTotal: line.priorYearTotal || 0,
+        costBehavior: line.costBehavior,
+        percentOfRevenue: line.costBehavior === 'variable' ? line.percentOfRevenue : undefined,
+        monthlyAmount: line.costBehavior === 'fixed' ? line.monthlyAmount : undefined,
+        year1Monthly: hasY1 ? line.year1Monthly : undefined,
+        year2Monthly: hasY2 ? line.year2Monthly : undefined,
+        year3Monthly: hasY3 ? line.year3Monthly : undefined,
+        year2Quarterly: hasY2 ? monthlyToQuarterly(line.year2Monthly) : undefined,
+        year3Quarterly: hasY3 ? monthlyToQuarterly(line.year3Monthly) : undefined,
+        notes: line.notes,
+      };
+    });
 
     // Build team assumptions
+    // PR-A (M3a): year1Salary = the summary's Y1 wage (newSalary, i.e. the
+    // Y1 increase already applied) so the converter can compound identically.
     const existingTeam: ExistingTeamMember[] = state.teamMembers.map(member => ({
       employeeId: member.id,
       name: member.name,
       role: member.role,
       employmentType: member.type,
       currentSalary: member.currentSalary,
+      year1Salary: member.newSalary || calculateNewSalary(member.currentSalary, member.increasePct || 0),
       hoursPerWeek: member.hoursPerWeek,
       salaryIncreasePct: member.increasePct,
       includeInForecast: true,
@@ -1910,12 +1944,28 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       hourlyRate: hire.hourlyRate,
       weeksPerYear: hire.weeksPerYear,
       startMonth: hire.startMonth,
+      // PR-A (M3a): summary honors per-hire increase (default 3) — persist it.
+      increasePct: hire.increasePct,
     }));
 
     // Build OpEx assumptions — filter out team cost lines to prevent double-counting
-    // (team wages are generated separately by convertTeam())
+    // (team wages are generated separately by convertTeam()).
+    // PR-A (M2): exclusion applies only when Step 4 actually carries team data
+    // — otherwise team-classified Xero lines stay in OpEx (the summary applies
+    // the identical rule, so displayed and stored totals agree).
+    // PR-A (M6): lines covered by an active subscription vendor are excluded
+    // here too — the converter emits the vendor-budget subscriptions line
+    // instead, mirroring the summary's coveredAccountCodes skip.
+    const exportHasTeamData = state.teamMembers.length > 0 || state.newHires.length > 0;
+    const exportCoveredCodes = new Set<string>();
+    for (const v of state.subscriptions.filter(s => s.isActive)) {
+      for (const code of v.accountCodes ?? []) {
+        if (typeof code === 'string' && code.trim()) exportCoveredCodes.add(code.trim());
+      }
+    }
     const opexLineAssumptions: OpExLineAssumption[] = state.opexLines
-      .filter(line => !shouldExcludeFromOpEx(line))
+      .filter(line => !shouldExcludeFromOpEx(line, exportHasTeamData))
+      .filter(line => !(line.accountCode && exportCoveredCodes.has(line.accountCode)))
       .map(line => ({
       accountId: line.accountId || line.id,
       accountName: line.name,
@@ -2061,6 +2111,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       plannedSpends: state.plannedSpends,
       // Phase 57 (T09): at-save-time snapshot of active vendor budgets.
       subscriptions: subscriptionsSnapshot,
+      // PR-A materializer fidelity: buckets the summary nets off that must
+      // reach the stored P&L (converter emits matching lines).
+      xeroOtherIncome: state.priorYear?.otherIncome?.total ?? 0,
+      xeroOtherExpense: state.priorYear?.otherExpenses?.total ?? 0,
+      userOtherExpenses: state.otherExpenses.map(exp => ({
+        id: exp.id,
+        description: exp.description,
+        amount: exp.amount,
+        frequency: exp.frequency,
+      })),
       // Hotfix (fix/step2-byMonth-priorYear-restore): at-save-time snapshot
       // of category-level prior-year monthly figures so the saved-assumptions
       // fallback in ForecastWizardV4.tsx can reconstruct

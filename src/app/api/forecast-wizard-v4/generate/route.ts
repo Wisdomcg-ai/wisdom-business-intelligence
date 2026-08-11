@@ -138,7 +138,7 @@ async function postHandler(request: Request) {
     // choked on. Draft saves stay allowed — a mid-wizard draft is
     // legitimately incomplete.
     let generatedLines: ReturnType<typeof convertAssumptionsToPLLines> | null = null
-    if (assumptions) {
+    if (assumptions && !isDraft) {
       let existingPLLines: Parameters<typeof convertAssumptionsToPLLines>[0]['existingLines'] = []
       if (forecastId && !createNew) {
         const { data } = await supabase
@@ -172,6 +172,37 @@ async function postHandler(request: Request) {
     }
 
     let resultForecastId: string
+
+    // ── PR-A (M5) — drafts are saves, not publishes ────────────────────────
+    //
+    // A draft autosave used to route through create_active_forecast_locked,
+    // which DEACTIVATED the business's approved forecast and installed a
+    // 3-second-old, half-configured draft as the live budget the monthly
+    // report varies against. Draft creates now insert an is_active=false row
+    // and never touch the active forecast; only a final Generate activates.
+    if (isDraft && !forecastId) {
+      const { data: draftRow, error: draftError } = await supabase
+        .from('financial_forecasts')
+        .insert({ ...forecastData, forecast_type: 'forecast', is_active: false })
+        .select('id')
+        .single()
+
+      if (draftError || !draftRow) {
+        Sentry.captureException(draftError, { tags: { route: 'forecast-wizard-v4/generate' }, extra: { context: '[wizard-v4/generate] Draft insert error' } } as any)
+        return NextResponse.json(
+          { error: 'Failed to create draft forecast', details: draftError?.message },
+          { status: 500 }
+        )
+      }
+
+      return NextResponse.json({
+        success: true,
+        forecastId: draftRow.id,
+        plLinesGenerated: 0,
+        computed_at: null,
+        is_draft: true,
+      })
+    }
 
     if (forecastId && !createNew) {
       // UPDATE existing forecast
@@ -228,9 +259,14 @@ async function postHandler(request: Request) {
     // forecast_pl_lines in a single transaction — derivation failure rolls
     // back the assumption write. See migration
     // supabase/migrations/20260429000002_save_assumptions_and_materialize_rpc.sql.
+    // PR-A (M5): drafts never materialize. The old unconditional materialize
+    // meant every 3-second autosave overwrote the live forecast's P&L lines
+    // with the half-configured draft state (per-account clobber). Lines are
+    // derived only on a final Generate; the D-18 freshness invariant is
+    // log-only by default, and Generate recomputes computed_at.
     let plLinesGenerated = 0
     let computedAt: string | null = null
-    if (assumptions && generatedLines) {
+    if (assumptions && generatedLines && !isDraft) {
       // Lines were derived above (pre-write emptiness gate). For the update
       // path the existing rows were read via `forecastId` — identical to
       // `resultForecastId`; for the create path the forecast is brand-new and

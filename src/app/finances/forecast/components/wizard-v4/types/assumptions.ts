@@ -89,6 +89,14 @@ export interface ExistingTeamMember {
   role: string;
   employmentType: 'full-time' | 'part-time' | 'casual' | 'contractor';
   currentSalary: number;
+  /**
+   * PR-A materializer fidelity (M3a): the Year-1 effective salary the wizard
+   * summary uses (state newSalary = currentSalary with the Y1 increase
+   * applied). The converter compounds THIS by salaryIncreasePct^(yearN-1) so
+   * stored wages equal the displayed summary. Absent on legacy payloads —
+   * converter falls back to currentSalary.
+   */
+  year1Salary?: number;
   hoursPerWeek?: number;
   salaryIncreasePct: number; // e.g., 3 = 3% increase
   increaseMonth?: string; // e.g., '2026-07' for start of FY
@@ -105,6 +113,8 @@ export interface PlannedHire {
   hourlyRate?: number; // For casuals
   weeksPerYear?: number; // For casuals (default 48)
   startMonth: string; // e.g., '2026-03'
+  /** PR-A (M3a): per-hire annual increase % — summary default is 3. */
+  increasePct?: number;
   notes?: string;
 }
 
@@ -336,6 +346,23 @@ export interface ForecastAssumptions {
    * docstring above for full rationale.
    */
   priorYearByMonth?: PriorYearByMonthSnapshot;
+
+  // ------------------------------------------------------------------
+  // PR-A materializer fidelity — buckets the summary's net profit includes
+  // that previously never reached the stored P&L. All optional (legacy
+  // payloads omit them; the converter treats absent as zero).
+  // ------------------------------------------------------------------
+  /** Prior-FY Xero Other Income total, carried flat into each forecast year (summary parity). */
+  xeroOtherIncome?: number;
+  /** Prior-FY Xero Other Expense total, carried flat into each forecast year (summary parity). */
+  xeroOtherExpense?: number;
+  /** Step 7 user-entered one-off/other expenses (summary's `otherExpenses` bucket). */
+  userOtherExpenses?: Array<{
+    id: string;
+    description?: string;
+    amount: number;
+    frequency: 'once' | 'monthly' | 'quarterly' | 'annual';
+  }>;
 }
 
 // ============================================================

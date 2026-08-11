@@ -462,9 +462,52 @@ describe('Bug 2 — FCST-BUG-02: Step 5 OpEx total includes team-classified line
 
     const summary = result.current.summary;
     expect(summary.year1).toBeDefined();
-    // Year 1 OpEx = Marketing only ($120k). The Wages line is filtered out
-    // by the rollup at line 1154.
+    // PR-A materializer fidelity (M2): with ZERO Step 4 team data, the
+    // team-classified line must STAY in OpEx — "exactly once" now means once
+    // in OpEx, not zero times anywhere. The pre-PR-A behavior this test used
+    // to pin (excluded from OpEx while teamCosts = 0) deleted $566,671/yr of
+    // real contractor/wages cost from a live Dragon Roofing forecast.
+    expect(summary.year1!.opex).toBe(180_000);
+    expect(summary.year1!.teamCosts).toBe(0);
+  });
+
+  it('Test 2.4 (PR-A M2): team-classified OpEx excluded ONLY when Step 4 has team data', () => {
+    const { result } = renderHook(() =>
+      useForecastWizard(FY_START_YEAR, 'test-pra-m2-with-team')
+    );
+
+    act(() => {
+      result.current.actions.addOpExLine({
+        name: 'Wages and Salaries',
+        priorYearAnnual: 60_000,
+        costBehavior: 'fixed',
+        monthlyAmount: 5_000,
+      } as Omit<OpExLine, 'id'>);
+      result.current.actions.addOpExLine({
+        name: 'Marketing',
+        priorYearAnnual: 120_000,
+        costBehavior: 'fixed',
+        monthlyAmount: 10_000,
+      } as Omit<OpExLine, 'id'>);
+      // Step 4 now carries real team data → the Wages OpEx line is excluded
+      // (convertTeam generates the wages lines from the member instead).
+      result.current.actions.addTeamMember({
+        name: 'A Person',
+        role: 'Roofer',
+        type: 'full-time',
+        hoursPerWeek: 38,
+        currentSalary: 80_000,
+        increasePct: 0,
+        isFromXero: false,
+      });
+    });
+
+    const summary = result.current.summary;
+    expect(summary.year1).toBeDefined();
+    // Wages OpEx line excluded (team data exists); Marketing stays.
     expect(summary.year1!.opex).toBe(120_000);
+    // The member's cost appears under teamCosts (80k + 12% super).
+    expect(summary.year1!.teamCosts).toBe(Math.round(80_000 * 1.12));
   });
 });
 

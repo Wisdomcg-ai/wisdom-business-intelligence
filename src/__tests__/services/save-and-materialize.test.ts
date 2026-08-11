@@ -131,6 +131,9 @@ function makeRequest(body: Record<string, unknown>): Request {
   })
 }
 
+// PR-A (M5): drafts no longer materialize — the atomic-RPC contract these
+// tests pin now applies to the FINAL generate path (isDraft: false). The
+// draft path's new no-materialize contract has its own test below.
 const VALID_BODY = {
   businessId: 'biz-1',
   fiscalYear: 2026,
@@ -138,7 +141,7 @@ const VALID_BODY = {
   forecastId: 'forecast-1',
   forecastName: 'Test FY26',
   createNew: false,
-  isDraft: true,
+  isDraft: false,
   assumptions: { revenue: { mode: 'simple', value: 100 } },
   summary: { year1: { revenue: 1200, grossProfit: 600, netProfit: 200 } },
 }
@@ -195,6 +198,52 @@ describe('Save and Materialize (atomic RPC)', () => {
     )
     expect(forecastAssumptionWrites).toHaveLength(0)
     expect(plLineWrites).toHaveLength(0)
+  })
+
+  it('PR-A (M5): draft saves NEVER materialize and NEVER touch the active forecast', async () => {
+    supabaseMock = buildSupabaseMock(async () => ({ data: null, error: null }))
+
+    const { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    const res = await POST(makeRequest({ ...VALID_BODY, isDraft: true }))
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(json.success).toBe(true)
+    expect(json.plLinesGenerated).toBe(0)
+    expect(json.computed_at).toBeNull()
+
+    // Neither the materialize RPC nor the activate-and-deactivate RPC ran.
+    const rpcNames = supabaseMock.rpc.mock.calls.map(([fn]: any[]) => fn)
+    expect(rpcNames).not.toContain('save_assumptions_and_materialize')
+    expect(rpcNames).not.toContain('create_active_forecast_locked')
+
+    // The draft's assumptions still persist via the plain UPDATE path.
+    const forecastUpdates = supabaseMock.__mutationCalls.filter(
+      (c) => c.table === 'financial_forecasts' && c.op === 'update',
+    )
+    expect(forecastUpdates).toHaveLength(1)
+  })
+
+  it('PR-A (M5): a draft CREATE inserts an inactive row instead of dethroning the active forecast', async () => {
+    supabaseMock = buildSupabaseMock(async () => ({ data: null, error: null }))
+
+    const { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    const res = await POST(
+      makeRequest({ ...VALID_BODY, forecastId: undefined, isDraft: true }),
+    )
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(json.is_draft).toBe(true)
+
+    const rpcNames = supabaseMock.rpc.mock.calls.map(([fn]: any[]) => fn)
+    expect(rpcNames).not.toContain('create_active_forecast_locked')
+    expect(rpcNames).not.toContain('save_assumptions_and_materialize')
+
+    const forecastInserts = supabaseMock.__mutationCalls.filter(
+      (c) => c.table === 'financial_forecasts' && c.op === 'insert',
+    )
+    expect(forecastInserts).toHaveLength(1)
   })
 
   it('rollback — RPC returning error causes 5xx and assumption write is NEVER bypassed', async () => {
