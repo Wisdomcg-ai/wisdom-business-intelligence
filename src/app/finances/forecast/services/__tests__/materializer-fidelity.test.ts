@@ -246,7 +246,10 @@ describe('M8 — planned spends materialize', () => {
       } as any],
     })
     const out = convertAssumptionsToPLLines(ctx(a, 1))
-    const dep = lineByName(out, 'Depreciation')!
+    // Renamed so a Xero "Depreciation" OpEx account can't swallow it via the
+    // name-keyed dedupe (the summary likewise adds planned-spend
+    // depreciation on top of any prior-year depreciation line).
+    const dep = lineByName(out, 'Depreciation (planned purchases)')!
     expect(dep.account_code).toBe(SYS_CODES.depreciation)
     // 120k over 60 months = 2k/mo × 12 months in Y1 = 24k, flat 2k per month
     expect(dep.forecast_months['2026-07']).toBeCloseTo(2_000, 0)
@@ -298,5 +301,68 @@ describe('M9 — seasonal OpEx no-history fallback', () => {
     const adv = lineByName(out, 'Advertising')!
     expect(adv.forecast_months['2026-07']).toBe(5_000) // Y1 = prior/12
     expect(adv.forecast_months['2027-07']).toBe(5_500) // Y2 = ×1.10
+  })
+})
+
+describe('composition-audit follow-ups', () => {
+  it('Other Income is emitted in its own category (revenue-like consumers must not bucket it as OpEx)', () => {
+    const a = baseAssumptions({ xeroOtherIncome: 12_000 })
+    const out = convertAssumptionsToPLLines(ctx(a, 1))
+    const oi = lineByName(out, 'Other Income')!
+    expect(oi.category).toBe('Other Income')
+    // Positive magnitude — consumers apply the sign by category, so a
+    // negative here would double the error.
+    expect(oi.forecast_months['2026-07']).toBeGreaterThan(0)
+  })
+
+  it('retired statutory on-cost rows are NOT resurrected from existing lines', () => {
+    const existing = [
+      { id: 'e1', account_name: 'WorkCover Insurance', account_code: undefined, category: 'Operating Expenses', actual_months: {}, forecast_months: { '2026-07': 999 }, is_manual: false },
+      { id: 'e2', account_name: 'Payroll Tax', account_code: undefined, category: 'Operating Expenses', actual_months: {}, forecast_months: { '2026-07': 888 }, is_manual: false },
+      { id: 'e3', account_name: 'Rent', account_code: '420', category: 'Operating Expenses', actual_months: {}, forecast_months: { '2026-07': 5_000 }, is_manual: false },
+    ] as any
+    const out = convertAssumptionsToPLLines({ ...ctx(baseAssumptions(), 1), existingLines: existing })
+    expect(lineByName(out, 'WorkCover Insurance')).toBeUndefined()
+    expect(lineByName(out, 'Payroll Tax')).toBeUndefined()
+    // Unrelated existing rows still pass through (D-44.1-06 loss vector).
+    expect(lineByName(out, 'Rent')).toBeDefined()
+  })
+
+  it('a coach manual override of a retired line IS preserved', () => {
+    const existing = [
+      { id: 'e1', account_name: 'WorkCover Insurance', account_code: undefined, category: 'Operating Expenses', actual_months: {}, forecast_months: { '2026-07': 999 }, is_manual: true },
+    ] as any
+    const out = convertAssumptionsToPLLines({ ...ctx(baseAssumptions(), 1), existingLines: existing })
+    expect(lineByName(out, 'WorkCover Insurance')).toBeDefined()
+  })
+
+  it('subscription-covered OpEx twins are not re-emitted alongside the budgeted line', () => {
+    const a = baseAssumptions({
+      subscriptions: {
+        auditedAt: '2026-08-12', accountsIncluded: [], vendorCount: 1,
+        totalAnnual: 12_000, essentialAnnual: 0, reviewAnnual: 0,
+        reduceAnnual: 0, cancelAnnual: 0, potentialSavings: 0,
+        annualGrowthPct: 0,
+        vendors: [{ vendorKey: 'xero', vendorName: 'Xero', monthlyBudget: 1_000, frequency: 'monthly', accountCodes: ['485'] }],
+      },
+    })
+    const existing = [
+      { id: 'e1', account_name: 'Software Subscriptions', account_code: '485', category: 'Operating Expenses', actual_months: {}, forecast_months: { '2026-07': 900 }, is_manual: false },
+    ] as any
+    const out = convertAssumptionsToPLLines({ ...ctx(a, 1), existingLines: existing })
+    expect(lineByName(out, 'Software Subscriptions')).toBeUndefined()
+    expect(lineByName(out, 'Subscriptions (budgeted)')!.forecast_months['2026-07']).toBe(1_000)
+  })
+
+  it('duplicate account_codes are de-conflicted before the upsert (RPC 21000 guard)', () => {
+    const a = baseAssumptions({ xeroOtherIncome: 6_000 })
+    // An existing Revenue row already occupies the code the parity bucket
+    // would reuse via findMatchingLine's name match.
+    const existing = [
+      { id: 'e1', account_name: 'Other Income', account_code: 'SHARED', category: 'Revenue', actual_months: {}, forecast_months: {}, is_manual: false },
+    ] as any
+    const out = convertAssumptionsToPLLines({ ...ctx(a, 1), existingLines: existing })
+    const codes = out.map(l => l.account_code).filter(Boolean)
+    expect(new Set(codes).size).toBe(codes.length)
   })
 })

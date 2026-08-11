@@ -185,7 +185,11 @@ interface RawForecastRow {
   computed_at: string | null
 }
 
-const REVENUE_LIKE_CATEGORIES = new Set(['revenue', 'other_income'])
+// Both spellings: xero_pl_lines.account_type uses the snake_case enum
+// ('other_income'), while forecast_pl_lines.category carries the display
+// string the materializer writes ('Other Income' → 'other income'). Matching
+// only the enum silently sign-flipped materialized other-income rows.
+const REVENUE_LIKE_CATEGORIES = new Set(['revenue', 'other_income', 'other income'])
 
 export class ForecastReadService {
   constructor(private supabase: SupabaseClient) {}

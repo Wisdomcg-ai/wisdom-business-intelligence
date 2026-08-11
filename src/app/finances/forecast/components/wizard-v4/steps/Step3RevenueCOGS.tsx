@@ -1606,15 +1606,23 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     const currentGP = ((revenueY - cogsY) / revenueY) * 100;
     if (Math.abs(currentGP - gpPct) < 0.5) return;
     redistributeCOGSToHitGPTarget('auto');
-    // redistributeCOGSToHitGPTarget closes over the rendering scope; we
-    // depend only on the GP-target values + activeYear so this fires exactly
-    // when the operator's target moves or they switch tab.
+    // redistributeCOGSToHitGPTarget closes over the rendering scope, so it
+    // must re-run whenever REVENUE changes too — not just when the GP target
+    // moves. On a fresh forecast the revenue goal-sync effect above rescales
+    // revenue to the Y1 target in the SAME passive-effect flush, so this
+    // effect's closure still held the pre-rescale (prior-year) revenue and
+    // sized COGS against it: Step 3 showed a green "on track" GP% that was
+    // ~13pp off the operator's target, and the stored forecast overstated
+    // net profit by the gap. With revenueLines in the deps the cascade
+    // re-runs on the next render with the rescaled figures. No loop risk:
+    // it writes cogsLines only, and the <0.5pp drift guard short-circuits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     goals.year1?.grossProfitPct,
     goals.year2?.grossProfitPct,
     goals.year3?.grossProfitPct,
     activeYear,
+    revenueLines,
   ]);
 
   // Handle COGS mix % change — redistribute COGS total by mix using seasonality

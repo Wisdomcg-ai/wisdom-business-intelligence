@@ -387,8 +387,12 @@ async function getHandler(request: Request) {
         ? (forecastLines ?? []).filter(l => l.forecast_id === forecastId)
         : []
 
+      // 'Other Income' is emitted by the wizard materializer and is
+      // revenue-like — without it here it falls into the opex catch-all
+      // below (which also Math.abs's it), making net profit wrong by 2×.
       const isRevCat = (c: string | null) =>
-        c === 'Revenue' || c === 'revenue' || c === 'Trading Revenue' || c === 'Other Revenue'
+        c === 'Revenue' || c === 'revenue' || c === 'Trading Revenue' ||
+        c === 'Other Revenue' || c === 'Other Income'
       const isCogsCat = (c: string | null) =>
         c === 'Cost of Sales' || c === 'COGS' || c === 'cogs' || c === 'Direct Costs'
 

@@ -180,7 +180,12 @@ async function postHandler(request: Request) {
     // 3-second-old, half-configured draft as the live budget the monthly
     // report varies against. Draft creates now insert an is_active=false row
     // and never touch the active forecast; only a final Generate activates.
-    if (isDraft && !forecastId) {
+    // `|| createNew` closes the (forecastId present + createNew + isDraft)
+    // hole: that combination previously fell through to
+    // create_active_forecast_locked, which publishes an ACTIVE row while
+    // isDraft suppresses line derivation — an active, zero-line forecast
+    // that bypasses the EMPTY_FORECAST gate. Drafts never activate.
+    if (isDraft && (!forecastId || createNew)) {
       const { data: draftRow, error: draftError } = await supabase
         .from('financial_forecasts')
         .insert({ ...forecastData, forecast_type: 'forecast', is_active: false })
@@ -286,6 +291,13 @@ async function postHandler(request: Request) {
         is_from_xero: line.is_from_xero || false,
       }))
 
+      // NOTE: deliberately NOT passing p_force_full_replace. That flag
+      // DELETEs every derived row absent from the payload, which would
+      // re-open the D-44.1-06 loss vector (a converter sub-function that
+      // throws is caught and logged, so its whole category would silently
+      // vanish from the forecast). Obsolete lines are instead dropped
+      // precisely, at the converter's pass-through of unmatched existing
+      // rows — see RETIRED_LINE_NAMES in assumptions-to-pl-lines.ts.
       const { data: rpcResult, error: rpcError } = await supabase.rpc(
         'save_assumptions_and_materialize',
         {
@@ -312,6 +324,29 @@ async function postHandler(request: Request) {
       if (result) {
         plLinesGenerated = result.lines_count ?? generatedLines.length
         computedAt = result.computed_at ?? null
+      }
+    }
+
+    // PR-A follow-up: PUBLISH the forecast — LAST, after materialization
+    // succeeded. Drafts are created is_active=false (PR-A #350), so a fresh
+    // wizard session (draft insert → … → Generate on the UPDATE path) would
+    // otherwise finish with an INACTIVE forecast and the monthly report /
+    // cashflow / /cfo dashboard would find no budget. Activating only after
+    // the lines land means a materialize failure can never leave an active,
+    // zero-line forecast standing in place of the previous good one.
+    if (!isDraft) {
+      const { error: activateError } = await supabase.rpc('activate_forecast_locked', {
+        p_forecast_id: resultForecastId,
+      })
+      if (activateError) {
+        Sentry.captureException(activateError, {
+          tags: { route: 'forecast-wizard-v4/generate', invariant: 'forecast_activation_failed' },
+          extra: { context: '[wizard-v4/generate] Activation failed', forecastId: resultForecastId },
+        } as any)
+        return NextResponse.json(
+          { error: 'Failed to activate forecast', details: activateError.message },
+          { status: 500 }
+        )
       }
     }
 

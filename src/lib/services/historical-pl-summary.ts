@@ -47,6 +47,9 @@ interface WideXeroRow {
   account_name: string
   account_type: XeroAccountType
   monthly_values: Record<string, number>
+  /** Xero account code — carried so OpEx categories can expose it (the
+   *  wizard's subscription double-count guard keys on accountCode). */
+  account_code?: string | null
 }
 
 /**
@@ -219,6 +222,7 @@ export async function getHistoricalSummary(
       account_name: r.account_name,
       account_type: r.account_type as XeroAccountType,
       monthly_values: r.monthly_values,
+      account_code: r.account_code,
     }))
     coverage = {
       months_covered: composite.coverage.months_covered,
@@ -232,7 +236,7 @@ export async function getHistoricalSummary(
     // to be stale against.
     const { data: rawLines, error } = await supabase
       .from('xero_pl_lines_wide_compat')
-      .select('account_name, account_type, monthly_values')
+      .select('account_name, account_type, monthly_values, account_code')
       .in('business_id', ids.all)
 
     if (error || !rawLines || rawLines.length === 0) {
@@ -516,7 +520,15 @@ function aggregatePeriod(
   const opexByMonth: Record<string, number> = {}
   const otherIncomeByMonth: Record<string, number> = {}
   const otherExpensesByMonth: Record<string, number> = {}
-  const opexAccounts: Record<string, { total: number; account_name: string }> = {}
+  type MergedAccount = {
+    account_name: string
+    total: number
+    by_month: Record<string, number>
+    account_code?: string | null
+  }
+  const opexAccounts: Record<string, MergedAccount> = {}
+  const revenueAccounts: Record<string, MergedAccount> = {}
+  const cogsAccounts: Record<string, MergedAccount> = {}
   const revenueLines: PLLineItem[] = []
   const cogsLines: PLLineItem[] = []
 
@@ -570,30 +582,63 @@ function aggregatePeriod(
     }
 
     // Build line items for revenue and COGS.
-    if (effectiveType === 'revenue' && lineTotal !== 0) {
-      revenueLines.push({
-        account_name: line.account_name,
-        category: 'Revenue',
-        total: lineTotal,
-        by_month: Object.fromEntries(monthKeys.map(mk => [mk, values[mk] || 0])),
-        percent_of_revenue: 100,
-      })
-    } else if (effectiveType === 'cogs' && lineTotal !== 0) {
-      // percent_of_revenue intentionally NOT set here — totalRevenue is
-      // mid-aggregation in this loop and not final yet. Filled after the
-      // loop via the second pass below.
-      cogsLines.push({
-        account_name: line.account_name,
-        category: 'Cost of Sales',
-        total: lineTotal,
-        by_month: Object.fromEntries(monthKeys.map(mk => [mk, values[mk] || 0])),
-      })
-    } else if (effectiveType === 'opex' && lineTotal !== 0) {
-      opexAccounts[line.account_name] = {
-        total: lineTotal,
-        account_name: line.account_name,
+    //
+    // MULTI-TENANT MERGE: a business with 2+ Xero orgs (Dragon Roofing) has
+    // one row per (tenant, account), so the same account NAME arrives twice.
+    // Revenue/COGS used to `.push()` both — and the materializer's
+    // `category|account_name` dedupe then silently DROPPED one tenant's
+    // revenue from the stored forecast. OpEx was worse: a plain assignment,
+    // so the second tenant's row OVERWROTE the first and the Step 6 line
+    // grid under-stated Step 2's OpEx total. Merge by name here (summing
+    // totals and per-month values) so every consumer sees one consolidated
+    // line per account, matching the scalar totals computed above.
+    const mergeByName = (
+      bucket: Record<string, { account_name: string; total: number; by_month: Record<string, number>; account_code?: string | null }>,
+    ) => {
+      const existing = bucket[line.account_name]
+      const byMonth = Object.fromEntries(monthKeys.map(mk => [mk, values[mk] || 0]))
+      if (existing) {
+        existing.total += lineTotal
+        for (const mk of monthKeys) existing.by_month[mk] = (existing.by_month[mk] || 0) + (values[mk] || 0)
+        existing.account_code = existing.account_code ?? line.account_code ?? null
+      } else {
+        bucket[line.account_name] = {
+          account_name: line.account_name,
+          total: lineTotal,
+          by_month: byMonth,
+          account_code: line.account_code ?? null,
+        }
       }
     }
+
+    if (effectiveType === 'revenue' && lineTotal !== 0) {
+      mergeByName(revenueAccounts)
+    } else if (effectiveType === 'cogs' && lineTotal !== 0) {
+      mergeByName(cogsAccounts)
+    } else if (effectiveType === 'opex' && lineTotal !== 0) {
+      mergeByName(opexAccounts)
+    }
+  }
+
+  // Materialise the merged revenue/COGS buckets into the line arrays.
+  // percent_of_revenue for COGS is filled after the loop (totalRevenue is
+  // only final once every row has been visited).
+  for (const acc of Object.values(revenueAccounts)) {
+    revenueLines.push({
+      account_name: acc.account_name,
+      category: 'Revenue',
+      total: acc.total,
+      by_month: acc.by_month,
+      percent_of_revenue: 100,
+    })
+  }
+  for (const acc of Object.values(cogsAccounts)) {
+    cogsLines.push({
+      account_name: acc.account_name,
+      category: 'Cost of Sales',
+      total: acc.total,
+      by_month: acc.by_month,
+    })
   }
 
   // Build OpEx by category — return ALL accounts.
@@ -604,6 +649,11 @@ function aggregatePeriod(
       account_name: acc.account_name,
       total: acc.total,
       monthly_average: monthKeys.length > 0 ? acc.total / monthKeys.length : 0,
+      // Carried so the wizard can seed OpExLine.accountCode — the
+      // subscription double-count guard (and the Step 6 covered-line skip)
+      // key on it, and every seed path previously left it undefined,
+      // silently disabling all three guards.
+      account_code: acc.account_code ?? undefined,
     }))
 
   // Calculate seasonality pattern (12 FY month percentages).

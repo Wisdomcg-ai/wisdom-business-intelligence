@@ -200,6 +200,32 @@ describe('Save and Materialize (atomic RPC)', () => {
     expect(plLineWrites).toHaveLength(0)
   })
 
+  it('PR-A follow-up: a FINAL generate on the update path ACTIVATES the forecast', async () => {
+    supabaseMock = buildSupabaseMock(async (fn: string, args: any) => {
+      if (fn === 'save_assumptions_and_materialize') {
+        return {
+          data: { forecast_id: args.p_forecast_id, computed_at: '2026-08-12T00:00:00.000Z', lines_count: 1 },
+          error: null,
+        }
+      }
+      if (fn === 'activate_forecast_locked') {
+        return { data: { id: args.p_forecast_id, activated: true }, error: null }
+      }
+      return { data: null, error: null }
+    })
+
+    const { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    const res = await POST(makeRequest(VALID_BODY))
+    expect(res.status).toBe(200)
+
+    // Drafts are created inactive (PR-A) — Generate must publish.
+    const activateCalls = supabaseMock.rpc.mock.calls.filter(
+      ([fn]: any[]) => fn === 'activate_forecast_locked',
+    )
+    expect(activateCalls).toHaveLength(1)
+    expect(activateCalls[0][1]).toEqual({ p_forecast_id: 'forecast-1' })
+  })
+
   it('PR-A (M5): draft saves NEVER materialize and NEVER touch the active forecast', async () => {
     supabaseMock = buildSupabaseMock(async () => ({ data: null, error: null }))
 
@@ -216,6 +242,7 @@ describe('Save and Materialize (atomic RPC)', () => {
     const rpcNames = supabaseMock.rpc.mock.calls.map(([fn]: any[]) => fn)
     expect(rpcNames).not.toContain('save_assumptions_and_materialize')
     expect(rpcNames).not.toContain('create_active_forecast_locked')
+    expect(rpcNames).not.toContain('activate_forecast_locked')
 
     // The draft's assumptions still persist via the plain UPDATE path.
     const forecastUpdates = supabaseMock.__mutationCalls.filter(

@@ -33,6 +33,13 @@ import type {
 // upsert idempotent. Existing lines that already carry a real Xero code keep
 // it (their conflict target already works).
 // ---------------------------------------------------------------------------
+// Lines the converter no longer emits. Never re-emitted from existing rows —
+// see the pass-through filter in convertAssumptionsToPLLines.
+export const RETIRED_LINE_NAMES = new Set([
+  'workcover insurance',
+  'payroll tax',
+])
+
 export const SYS_CODES = {
   wages: 'SYS-TEAM-WAGES',
   superannuation: 'SYS-TEAM-SUPER',
@@ -695,7 +702,13 @@ function convertCapExDepreciation(
       }
     }
     const lines: PLLine[] = []
-    const depLine = buildYearlyLine('Depreciation', SYS_CODES.depreciation, depByYear)
+    // Distinct name: a Xero chart with its own "Depreciation" OpEx account
+    // would otherwise collide on the name-keyed dedupe below and silently
+    // DROP the planned-spend depreciation (the Xero line sorts first and
+    // both carry ids, so the swap never fires). Distinct names also match
+    // the summary, which adds plannedSpend depreciation ON TOP of any
+    // prior-year depreciation line.
+    const depLine = buildYearlyLine('Depreciation (planned purchases)', SYS_CODES.depreciation, depByYear)
     if (depLine) lines.push(depLine)
     const expLine = buildYearlyLine(
       'Planned Purchases (Expensed)',
@@ -952,8 +965,31 @@ export function convertAssumptionsToPLLines(ctx: ConvertContext): PLLine[] {
   // Start with generated lines, then add unmatched existing lines (preserve manual edits)
   const merged: PLLine[] = [...generatedLines]
 
+  // Lines the wizard NO LONGER generates must not be resurrected by the
+  // pass-through below — the RPC upsert only touches accounts present in the
+  // payload, so a re-emitted stale row would persist forever at its old
+  // value. Two cases:
+  //   1. RETIRED_LINE_NAMES — the phantom statutory on-costs PR-A removed
+  //      (they were never in the wizard summary; ~6.35% of payroll).
+  //   2. Subscription-covered OpEx twins — their spend is now carried by the
+  //      'Subscriptions (budgeted)' line, so keeping the original Xero row
+  //      would double-count it.
+  // is_manual rows are ALWAYS preserved: a coach override is intentional.
+  const coveredSubscriptionCodes = new Set(
+    (assumptions.subscriptions?.vendors ?? [])
+      .flatMap(v => v.accountCodes ?? [])
+      .map(c => String(c).trim())
+      .filter(Boolean),
+  )
+  const isRetired = (line: PLLine): boolean => {
+    if (line.is_manual) return false
+    if (RETIRED_LINE_NAMES.has(line.account_name.trim().toLowerCase())) return true
+    if (line.account_code && coveredSubscriptionCodes.has(line.account_code)) return true
+    return false
+  }
+
   for (const el of existingLines) {
-    if (el.id && !matchedExistingIds.has(el.id)) {
+    if (el.id && !matchedExistingIds.has(el.id) && !isRetired(el)) {
       merged.push(el)
     }
   }
@@ -974,6 +1010,25 @@ export function convertAssumptionsToPLLines(ctx: ConvertContext): PLLine[] {
     } else {
       seen.set(key, result.length)
       result.push(line)
+    }
+  }
+
+  // --- Guard: unique account_code across the payload ---
+  // save_assumptions_and_materialize bulk-upserts with
+  // ON CONFLICT (forecast_id, account_code); two rows sharing a code make
+  // Postgres raise 21000 ("cannot affect row a second time") and the whole
+  // Generate 500s. This can happen when a synthetic SYS-* line reuses an
+  // existing row's code, or when a Xero chart has two accounts with the same
+  // code in different categories. Keep the first occurrence's code and null
+  // the later ones (null codes still insert; they just don't upsert-match).
+  const seenCodes = new Set<string>()
+  for (const line of result) {
+    const code = line.account_code
+    if (!code) continue
+    if (seenCodes.has(code)) {
+      line.account_code = undefined
+    } else {
+      seenCodes.add(code)
     }
   }
 

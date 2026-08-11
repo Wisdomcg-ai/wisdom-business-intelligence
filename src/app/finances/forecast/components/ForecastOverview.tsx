@@ -101,7 +101,11 @@ export interface ForecastOverviewProps {
 // Category classification (mirrors /api/forecast/dashboard-actuals)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const REVENUE_CATEGORIES = ['revenue', 'trading revenue', 'other revenue']
+// 'other income' included: the wizard materializer emits an 'Other Income'
+// category line (convertParityBuckets). Wizard-materialized rows have a NULL
+// account_type, so the account_type escape hatch below cannot catch them —
+// without the category entry the line leaks into OpEx and reduces Net Profit.
+const REVENUE_CATEGORIES = ['revenue', 'trading revenue', 'other revenue', 'other income']
 const COGS_CATEGORIES = ['cost of sales', 'cogs', 'direct costs', 'cost of goods sold']
 // Team / wages haystack — drives both the Monthly P&L "Team" row and the
 // Wages % scorecard card. Includes the full team-cost taxonomy: wages/salary,

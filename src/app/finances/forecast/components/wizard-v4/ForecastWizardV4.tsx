@@ -281,6 +281,8 @@ export function ForecastWizardV4({
               const opexByLine = (freshPriorFY.operating_expenses_by_category || []).map((cat: any, idx: number) => ({
                 id: `opex-${idx}`, name: cat.account_name || cat.category,
                 total: cat.total, monthlyAvg: cat.monthly_average || cat.total / 12, isOneOff: false,
+                // Carry the Xero code so the subscription double-count guard works.
+                account_code: cat.account_code,
               }));
 
               const freshPriorYear: PriorYearData = {
@@ -840,12 +842,14 @@ export function ForecastWizardV4({
             firstFewCategories: priorFY?.operating_expenses_by_category?.slice(0, 3),
           });
           if (priorFY?.operating_expenses_by_category?.length > 0) {
-            opexByLine = priorFY.operating_expenses_by_category.map((cat: { category: string; account_name: string; total: number; monthly_average: number }, idx: number) => ({
+            opexByLine = priorFY.operating_expenses_by_category.map((cat: { category: string; account_name: string; total: number; monthly_average: number; account_code?: string }, idx: number) => ({
               id: `opex-${idx}`,
               name: cat.account_name || cat.category,
               total: cat.total,
               monthlyAvg: cat.monthly_average || (cat.total / 12),
               isOneOff: false,
+              // Carry the Xero code so the subscription double-count guard works.
+              account_code: cat.account_code,
             }));
           } else if (savedAssumptions?.opex?.lines?.length > 0) {
             opexByLine = savedAssumptions.opex.lines.map((line: {
@@ -1092,6 +1096,9 @@ export function ForecastWizardV4({
                   costBehavior?: 'variable' | 'fixed';
                   percentOfRevenue?: number;
                   monthlyAmount?: number;
+                  year1Monthly?: Record<string, number>;
+                  year2Monthly?: Record<string, number>;
+                  year3Monthly?: Record<string, number>;
                 }) => ({
                   id: line.accountId,
                   name: line.accountName,
@@ -1100,6 +1107,14 @@ export function ForecastWizardV4({
                   costBehavior: line.costBehavior || 'variable',
                   percentOfRevenue: line.percentOfRevenue,
                   monthlyAmount: line.monthlyAmount,
+                  // PR-A (M1) round-trip: the saved monthly grid — including
+                  // locked actual months — must come BACK. Dropping it here
+                  // meant the next autosave omitted year1Monthly and the
+                  // converter silently reverted to %-of-revenue, undoing the
+                  // fidelity fix on the first reopen-and-save cycle.
+                  year1Monthly: line.year1Monthly || {},
+                  year2Monthly: line.year2Monthly || {},
+                  year3Monthly: line.year3Monthly || {},
                 }));
 
                 if (restoredCOGSLines.length > 0) {
@@ -1174,6 +1189,7 @@ export function ForecastWizardV4({
                 hourlyRate?: number;
                 weeksPerYear?: number;
                 startMonth: string | number;
+                increasePct?: number;
               }) => {
                 // Convert startMonth to string format if it's a number
                 let startMonthStr = typeof hire.startMonth === 'string'
@@ -1188,6 +1204,9 @@ export function ForecastWizardV4({
                   hourlyRate: hire.hourlyRate,
                   weeksPerYear: hire.weeksPerYear,
                   startMonth: startMonthStr,
+                  // Round-trip the per-hire increase — without it a reopened
+                  // forecast silently reverted every hire to the 3% default.
+                  increasePct: hire.increasePct,
                 });
               });
             }
@@ -1558,6 +1577,8 @@ export function ForecastWizardV4({
                   total: Math.round(cat.total),
                   monthlyAvg: Math.round(cat.monthly_average || (cat.total / 12)),
                   isOneOff: false,
+                  // Carry the Xero code so the subscription guard works.
+                  account_code: cat.account_code,
                 })),
               },
               // Phase 57 hotfix (handleRefreshFromXero — wizard top Refresh button):

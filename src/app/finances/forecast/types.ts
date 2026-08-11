@@ -505,6 +505,9 @@ export interface OpExCategory {
   account_name: string
   total: number
   monthly_average: number
+  /** Xero account code. Drives the wizard's subscription double-count guard
+   *  (OpExLine.accountCode) — absent it, the guard silently no-ops. */
+  account_code?: string
 }
 
 // Revenue/COGS line item from Xero
