@@ -1483,6 +1483,23 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
       ? new Set(Object.keys(currentYTD?.revenue_by_month ?? {}))
       : new Set<string>();
 
+    // fix/step3-cogs-actuals: per-line COGS actuals from Xero YTD, matched by
+    // account name (same convention as revenue's FCST-02 lock). Before this,
+    // actual months sourced ONLY from the line's previous monthly map — fresh
+    // wizard sessions had none, so July locked at $0 (fake 100% GP) and the
+    // ENTIRE annual COGS target was squeezed into the remaining months; the
+    // residue-absorbing last month went deeply negative (Dragon Roofing June
+    // at −54.1% GP, 2026-08-11).
+    const matchCogsKey = (name: string) => name.trim().toLowerCase();
+    const ytdCogsByName = new Map<string, Record<string, number>>();
+    if (isY1) {
+      for (const yl of currentYTD?.cogs_lines ?? []) {
+        if (yl.account_name && yl.by_month) {
+          ytdCogsByName.set(matchCogsKey(yl.account_name), yl.by_month);
+        }
+      }
+    }
+
     const updatedCOGSLines = cogsLines.map((line) => {
       if (line.costBehavior !== 'variable') return line;
       const annualTarget = lineYearTargets[line.id] ?? 0;
@@ -1490,11 +1507,15 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
       if (isY1) {
         const oldMonthly = (line[yearMonthlyKey] as Record<string, number> | undefined) || {};
+        const ytdCogs = ytdCogsByName.get(matchCogsKey(line.name)) ?? {};
         const monthly: Record<string, number> = {};
         let actualSum = 0;
         for (const k of monthKeys) {
           if (ytdMonthlyKeys.has(k)) {
-            monthly[k] = oldMonthly[k] || 0;
+            // Real Xero actual wins; fall back to whatever the line already
+            // held (pre-fix drafts / manually-entered actuals).
+            monthly[k] =
+              ytdCogs[k] !== undefined ? Math.round(ytdCogs[k]) : oldMonthly[k] || 0;
             actualSum += monthly[k];
           }
         }

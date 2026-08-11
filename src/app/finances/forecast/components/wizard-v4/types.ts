@@ -784,6 +784,13 @@ export interface ForecastWizardState {
     // per-month actuals the API already returns so initializeFromXero can
     // lock completed-month values to the cent.
     revenue_lines?: PLLineItem[];
+    // COGS actuals (fix/step3-cogs-actuals): without these, Step 3's COGS
+    // redistribution locked actual months at $0 (July showed 100% GP) and
+    // pushed the full-year COGS target into the remaining months — the last
+    // month absorbed the residue and went deeply negative (Dragon Roofing,
+    // 2026-08-11: June at −54.1% GP).
+    cogs_by_month?: Record<string, number>;
+    cogs_lines?: PLLineItem[];
   } | null;
 
   // Step 3: Revenue & COGS
@@ -890,6 +897,9 @@ export interface WizardActions {
   // every wizard mount / hard-refresh. Use this on the always-on Xero refresh
   // path so operator customizations on Steps 3/5/6 survive.
   setPriorYearDisplay: (data: PriorYearData) => void;
+  // fix/step3-cogs-actuals — refresh YTD actuals (incl. COGS) without
+  // rebuilding line arrays.
+  setCurrentYTD: (ytd: ForecastWizardState['currentYTD']) => void;
 
   // Step 3: Revenue & COGS
   setRevenuePattern: (pattern: RevenuePattern) => void;
@@ -967,6 +977,8 @@ export interface WizardActions {
       total_revenue: number;
       months_count: number;
       revenue_lines?: PLLineItem[]; // Phase 44.3 — per-line YTD breakdown for target-aware init
+      cogs_by_month?: Record<string, number>; // fix/step3-cogs-actuals — COGS actuals for month locking
+      cogs_lines?: PLLineItem[];
     };
   }) => void;
 

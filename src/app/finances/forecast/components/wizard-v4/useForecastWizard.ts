@@ -736,6 +736,13 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     setState((prev) => ({ ...prev, priorYear: data }));
   }, []);
 
+  // fix/step3-cogs-actuals: refresh the YTD actuals source without touching
+  // line arrays. Used by the restored-draft display refresh so drafts saved
+  // before COGS actuals existed in currentYTD still pick them up.
+  const setCurrentYTD = useCallback((ytd: ForecastWizardState['currentYTD']) => {
+    setState((prev) => ({ ...prev, currentYTD: ytd }));
+  }, []);
+
   // Step 3: Revenue & COGS
   const setRevenuePattern = useCallback((pattern: RevenuePattern) => {
     setState((prev) => ({ ...prev, revenuePattern: pattern }));
@@ -1135,6 +1142,10 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         total_revenue: number;
         months_count: number;
         revenue_lines?: PLLineItem[];
+        // fix/step3-cogs-actuals — COGS actuals flow into state.currentYTD so
+        // Step 3's redistribution can lock actual months at real values.
+        cogs_by_month?: Record<string, number>;
+        cogs_lines?: PLLineItem[];
       };
     }) => {
       setState((prev) => {
@@ -2162,6 +2173,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     updateGoals,
     setPriorYear,
     setPriorYearDisplay,
+    setCurrentYTD,
     setRevenuePattern,
     setRevenueLines,
     setCOGSLines,
