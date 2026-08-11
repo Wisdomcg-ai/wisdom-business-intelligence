@@ -186,7 +186,6 @@ async function postHandler(request: Request) {
       }
     }
 
-    const hasBudget = !!budgetForecast
     if (budgetForecast) {
       budgetForecastName = budgetForecast.name
       const { data: bLines } = await supabase
@@ -194,7 +193,19 @@ async function postHandler(request: Request) {
         .select('id, account_name, category, forecast_months')
         .eq('forecast_id', budgetForecast.id)
       budgetPLLines = bLines || []
+
+      // Phase A (CFO-only clients): a forecast with ZERO materialized lines is
+      // not a budget. The wizard used to activate empty-shell forecasts
+      // (failed-seed trap), and this route would silently render $0 budgets
+      // against them on every row. Treat 0 lines as "no budget" so the
+      // existing no-budget banner explains the state honestly.
+      if (budgetPLLines.length === 0) {
+        budgetForecast = null
+        budgetForecastName = undefined
+      }
     }
+
+    const hasBudget = !!budgetForecast
 
     // 4. Load xero_pl_lines (actuals).
     //    Phase 44 D-13 — route through ForecastReadService when an active forecast

@@ -91,9 +91,8 @@ async function getHandler(request: NextRequest) {
       // resolveXeroBusinessId tries up to 3 lookup paths (direct,
       // businesses.id → business_profiles.id, business_profiles.id →
       // businesses.id). It returns `connection: null` in two cases:
-      //   1) The business genuinely has no Xero connection (legitimate
-      //      "not connected" state — the wizard should show the connect
-      //      prompt as it does today).
+      //   1) The business has no ACTIVE Xero connection (never connected, OR
+      //      the token expired/was disconnected).
       //   2) The lookups found a profile/business mapping (so
       //      connectionBusinessId !== queried businessId) but the
       //      corresponding xero_connections row is missing, suggesting a
@@ -101,15 +100,28 @@ async function getHandler(request: NextRequest) {
       //
       // We surface case (2) via a `lookup_error` field so the wizard can
       // show "Couldn't load Xero data — please refresh or reconnect" instead
-      // of pretending the tenant has no Xero at all. This is purely a
-      // visibility fix — the underlying dual-id resolution is Phase 53
-      // territory and is NOT touched here.
+      // of pretending the tenant has no Xero at all.
+      //
+      // Phase A (CFO-only clients): in BOTH cases we still read the synced
+      // DB mirror. A disconnected tenant (Efficient Living: token expired
+      // 2026-05, 23 months of xero_pl_lines on disk) previously got a hard
+      // `has_xero_data: false` here, so the forecast wizard seeded EMPTY and
+      // generated 0-line forecasts. getHistoricalSummary only reads local
+      // tables — no live-Xero dependency — and its data_quality field
+      // (typically 'no_sync') already tells the wizard the data is stale.
+      // A tenant with no mirror rows still comes back has_xero_data: false,
+      // preserving the "connect Xero" prompt for genuinely-new businesses.
       const lookup_error =
         connectionBusinessId !== businessId
           ? 'xero_connection_lookup_failed: resolver found a business/profile mapping for the queried id but no xero_connections row. Likely dual-id desync (businesses.id vs business_profiles.id).'
           : null
+      const mirrorSummary = await getHistoricalSummary(supabase, businessId, fiscalYear)
       return NextResponse.json({
-        summary: { has_xero_data: false, lookup_error } as HistoricalPLSummary,
+        summary: {
+          ...mirrorSummary,
+          xero_disconnected: true,
+          lookup_error,
+        } as HistoricalPLSummary,
       })
     }
 

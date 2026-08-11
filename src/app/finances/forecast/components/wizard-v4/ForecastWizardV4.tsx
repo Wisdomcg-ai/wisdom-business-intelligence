@@ -6,6 +6,7 @@ import { X, Loader2, ChevronLeft, ChevronRight, Check, RefreshCw, Cloud, CloudOf
 import { toast } from 'sonner';
 import { useDebouncedCallback } from '@/lib/hooks/use-debounced-callback';
 import { useForecastWizard } from './useForecastWizard';
+import { hasUsablePLLineData } from './wizard-init-guard';
 import { StepBar } from './components/StepBar';
 import { YearTabs } from './components/YearTabs';
 import { AICFOPanel } from './components/AICFOPanel';
@@ -103,12 +104,14 @@ export function ForecastWizardV4({
     const loadData = async () => {
       // Check if state was restored from localStorage with meaningful data
       // If so, skip API fetching and initialization (but not if starting fresh)
-      const hasRestoredData = !startFresh && (
-        state.opexLines?.length > 0 ||
-        state.revenueLines?.length > 0 ||
-        state.teamMembers?.length > 0 ||
-        state.priorYear !== null
-      );
+      //
+      // Phase A (CFO-only clients): the guard MUST require actual P&L line
+      // data. The previous `|| state.teamMembers?.length > 0 || state.priorYear
+      // !== null` arms let a draft from a failed-seed session (priorYear set,
+      // all line arrays empty) skip the full init forever — the display-only
+      // refresh below never rebuilds lines, so the operator generated 0-line
+      // forecasts on every retry (Dragon Roofing, Efficient Living).
+      const hasRestoredData = !startFresh && hasUsablePLLineData(state);
 
       if (hasRestoredData) {
         console.log('[ForecastWizardV4] State restored from localStorage, skipping full API initialization');
@@ -1665,6 +1668,23 @@ export function ForecastWizardV4({
       toast.error('This forecast is locked and cannot be edited');
       return;
     }
+    // Phase A (CFO-only clients): never send an empty forecast to generate.
+    // Mirrors the server-side EMPTY_FORECAST 422 — the server gate is the
+    // authority; this check just gives instant, actionable feedback.
+    if (!hasUsablePLLineData(state)) {
+      toast.error(
+        <div>
+          <p className="font-medium">Nothing to generate yet</p>
+          <p className="text-sm mt-1">
+            Revenue, COGS and operating expense lines are all empty. Use
+            “Refresh from Xero” on the Prior Year step, or add lines manually,
+            then generate.
+          </p>
+        </div>,
+        { duration: 10000 },
+      );
+      return;
+    }
     setIsSaving(true);
     try {
       // Pass the current forecastId and name to update the specific forecast
@@ -1672,7 +1692,8 @@ export function ForecastWizardV4({
       onComplete(savedForecastId);
     } catch (err) {
       console.error('Failed to generate forecast:', err);
-      setError('Failed to generate forecast. Please try again.');
+      const message = err instanceof Error && err.message ? err.message : 'Failed to generate forecast. Please try again.';
+      setError(message);
     } finally {
       setIsSaving(false);
     }
