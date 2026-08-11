@@ -328,6 +328,19 @@ describe('composition-audit follow-ups', () => {
     expect(lineByName(out, 'Rent')).toBeDefined()
   })
 
+  it('a REAL Xero account named "Payroll Tax" survives (only synthetic rows are retired)', () => {
+    // Just Digital Signage carries genuine Xero accounts named "Payroll Tax"
+    // (opex-4) and "WorkCover" (opex-9). A name-only retire filter would
+    // delete real cost lines on the next regenerate.
+    const existing = [
+      { id: 'e1', account_name: 'Payroll Tax', account_code: 'opex-4', category: 'Operating Expenses', actual_months: {}, forecast_months: { '2026-07': 23_320 }, is_manual: false },
+      { id: 'e2', account_name: 'WorkCover Insurance', account_code: 'opex-9', category: 'Operating Expenses', actual_months: {}, forecast_months: { '2026-07': 7_594 }, is_manual: false },
+    ] as any
+    const out = convertAssumptionsToPLLines({ ...ctx(baseAssumptions(), 1), existingLines: existing })
+    expect(lineByName(out, 'Payroll Tax')).toBeDefined()
+    expect(lineByName(out, 'WorkCover Insurance')).toBeDefined()
+  })
+
   it('a coach manual override of a retired line IS preserved', () => {
     const existing = [
       { id: 'e1', account_name: 'WorkCover Insurance', account_code: undefined, category: 'Operating Expenses', actual_months: {}, forecast_months: { '2026-07': 999 }, is_manual: true },
