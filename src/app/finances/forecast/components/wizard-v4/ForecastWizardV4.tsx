@@ -1717,6 +1717,10 @@ export function ForecastWizardV4({
     try {
       // Pass the current forecastId and name to update the specific forecast
       const savedForecastId = await actions.generateForecast(forecastId, forecastName);
+      // PR-A (H5): the localStorage draft is now stale relative to the
+      // generated forecast — clear it so the next open re-initializes from
+      // the server instead of restoring a pre-generate snapshot forever.
+      clearLocalStorage();
       onComplete(savedForecastId);
     } catch (err) {
       console.error('Failed to generate forecast:', err);
@@ -2006,10 +2010,16 @@ export function ForecastWizardV4({
                 await subscriptionsStepRef.current.flushPendingSaves();
               }
               // Persist wizard state — saveDraft writes to localStorage +
-              // (when forecastId present) to the server. We intentionally
-              // do not await the server round-trip when offline; saveDraft's
-              // own error path surfaces toasts.
-              await actions.saveDraft(existingForecastId);
+              // the server. PR-A (H1): use the LIVE forecastId state and the
+              // current name, exactly like performAutoSave — the old
+              // `saveDraft(existingForecastId)` used the stale mount-time
+              // PROP, so a Create-New session minted a brand-new forecast
+              // row on EVERY step click (and renamed named forecasts back to
+              // the generic default because forecastName was omitted).
+              const stepSavedId = await actions.saveDraft(forecastId, forecastName);
+              if (stepSavedId && stepSavedId !== forecastId) {
+                setForecastId(stepSavedId);
+              }
               actions.goToStep(target);
             } catch (err) {
               console.error('[StepBar T13] Flush before goToStep failed:', err);

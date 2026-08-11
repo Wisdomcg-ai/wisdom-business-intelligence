@@ -5,7 +5,7 @@ import {
   ForecastWizardState, formatCurrency, generateMonthKeys,
   getRevenueLineYearTotal, SUPER_RATE, calculateNewSalary,
 } from '../types';
-import { isTeamCost } from '../utils/opex-classifier';
+import { shouldExcludeFromOpEx } from '../useForecastWizard';
 import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 import type { ForecastSummary } from '../types';
 
@@ -126,7 +126,9 @@ export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
 
   // Get monthly OpEx for a line
   const getMonthlyOpEx = (line: typeof opexLines[0], yearNum: number, monthlyRevenue: number[]): number[] => {
-    if (line.isTeamCostOverride !== undefined ? line.isTeamCostOverride : isTeamCost(line.name)) {
+    // PR-A (M2): shared rule — team-classified lines only leave OpEx when
+    // Step 4 actually carries team data (matches summary + export).
+    if (shouldExcludeFromOpEx(line, teamMembers.length > 0 || newHires.length > 0)) {
       return new Array(12).fill(0);
     }
     const defaultIncrease = state.defaultOpExIncreasePct || 3;

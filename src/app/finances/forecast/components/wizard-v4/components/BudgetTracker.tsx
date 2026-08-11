@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { AlertTriangle, CheckCircle2, TrendingDown, TrendingUp, Wallet, Target, DollarSign, PieChart, ArrowRight, Sparkles } from 'lucide-react';
 import { ForecastWizardState, formatCurrency, SUPER_RATE } from '../types';
-import { isTeamCost } from '../utils/opex-classifier';
+import { shouldExcludeFromOpEx } from '../useForecastWizard';
 import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 
 interface BudgetTrackerProps {
@@ -124,7 +124,9 @@ export function BudgetTracker({ state, currentStep, subscriptionSavings = 0 }: B
       const opexAllocated = opexLines.reduce((sum, line) => {
         if (line.startYear && line.startYear > yearNum) return sum;
         if (line.isOneTime && line.oneTimeYear && line.oneTimeYear !== yearNum) return sum;
-        if (line.isTeamCostOverride !== undefined ? line.isTeamCostOverride : isTeamCost(line.name)) return sum;
+        // PR-A (M2): shared rule — team-classified lines only leave OpEx when
+        // Step 4 actually carries team data (matches summary + export).
+        if (shouldExcludeFromOpEx(line, teamMembers.length > 0 || newHires.length > 0)) return sum;
 
         let lineAmount = 0;
         switch (line.costBehavior) {
