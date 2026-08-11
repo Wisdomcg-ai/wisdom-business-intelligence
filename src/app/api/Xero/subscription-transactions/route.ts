@@ -17,6 +17,7 @@ import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfile
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
+import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
 
 export const dynamic = 'force-dynamic';
 // High-volume tenants (e.g. JDS: 3700+ bills + 3300+ bank lines) need a long
@@ -446,40 +447,16 @@ async function postHandler(request: Request) {
       console.log('[Subscription Txns] Account codes:', validAccountCodes);
     }
 
-    // Get the Xero connection — try all ID formats
-    let connection: any = null;
-
-    // Try direct match
-    const { data: conn1 } = await supabase
-      .from('xero_connections').select('*')
-      .eq('business_id', business_id).eq('is_active', true).maybeSingle();
-    if (conn1) connection = conn1;
-
-    // Try businesses.id → business_profiles.id
-    if (!connection) {
-      const { data: profile } = await supabase
-        .from('business_profiles').select('id')
-        .eq('business_id', business_id).maybeSingle();
-      if (profile?.id) {
-        const { data: conn2 } = await supabase
-          .from('xero_connections').select('*')
-          .eq('business_id', profile.id).eq('is_active', true).maybeSingle();
-        if (conn2) connection = conn2;
-      }
-    }
-
-    // Try business_profiles.id → businesses.id
-    if (!connection) {
-      const { data: bp } = await supabase
-        .from('business_profiles').select('business_id')
-        .eq('id', business_id).maybeSingle();
-      if (bp?.business_id) {
-        const { data: conn3 } = await supabase
-          .from('xero_connections').select('*')
-          .eq('business_id', bp.business_id).eq('is_active', true).maybeSingle();
-        if (conn3) connection = conn3;
-      }
-    }
+    // Get the Xero connection.
+    // PR-B (D1): the old hand-rolled 3-step lookup used `.maybeSingle()`,
+    // which ERRORS (data: null) for any business with 2+ active connections
+    // — multi-org businesses (Dragon Roofing) read as "not connected" and the
+    // vendor-analysis crawl 404'd silently. resolveXeroBusinessId is the
+    // sanctioned multi-connection-safe resolver (newest active connection
+    // wins). NOTE: the crawl remains single-tenant — for multi-org
+    // businesses it analyses the primary (newest) connection only; the
+    // second org's vendors are a known deferred gap.
+    const { connection } = await resolveXeroBusinessId(supabase, business_id);
 
     if (!connection) {
       Sentry.captureException(business_id, { tags: { route: 'Xero/subscription-transactions' }, extra: { context: "[Subscription Txns] No active Xero connection for" } } as any);

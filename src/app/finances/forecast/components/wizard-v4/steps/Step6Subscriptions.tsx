@@ -320,6 +320,10 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isManualMode, setIsManualMode] = useState(false);
+  // PR-B (D2): why we fell into manual mode. The old fallback was SILENT —
+  // a broken Xero call was indistinguishable from "never connected", with
+  // no message and no way back short of a full reload.
+  const [xeroUnavailableReason, setXeroUnavailableReason] = useState<string | null>(null);
   const [showAddVendor, setShowAddVendor] = useState(false);
 
   // Hotfix: per-vendor lazy-load state for restored vendors that have
@@ -414,6 +418,9 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         if (response.status === 404) {
           // No Xero connection — switch to manual entry mode
           setIsManualMode(true);
+          setXeroUnavailableReason(
+            'Xero reported no active connection for this business. If Xero IS connected, this may be a temporary error — retry below.',
+          );
           setPhase('review');
           // Try loading any existing manual budgets from DB
           await loadExistingBudgets();
@@ -460,7 +467,7 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
 
       // Check for previously saved subscription budgets — if they exist, restore them
       try {
-        const budgetRes = await fetch(`/api/subscription-budgets?business_id=${businessId}`);
+        const budgetRes = await fetch(`/api/subscription-budgets?business_id=${businessId}&active_only=false`);
         if (budgetRes.ok) {
           const budgetData = await budgetRes.json();
           if (budgetData.budgets && budgetData.budgets.length > 0) {
@@ -514,6 +521,9 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
       console.error('Error loading accounts:', err);
       // Network error — also fall back to manual mode
       setIsManualMode(true);
+      setXeroUnavailableReason(
+        'Could not reach Xero (network error). You can keep working manually — or retry below.',
+      );
       setPhase('review');
       await loadExistingBudgets();
     } finally {
@@ -521,9 +531,19 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
     }
   };
 
+  // PR-B (D2): escape hatch from the silent manual-mode fallback — reset and
+  // re-run the Xero account load.
+  const retryXeroConnection = () => {
+    setIsManualMode(false);
+    setXeroUnavailableReason(null);
+    setPhase('select-accounts');
+    setError(null);
+    loadAccounts();
+  };
+
   const loadExistingBudgets = async () => {
     try {
-      const response = await fetch(`/api/subscription-budgets?business_id=${businessId}`);
+      const response = await fetch(`/api/subscription-budgets?business_id=${businessId}&active_only=false`);
       if (response.ok) {
         const data = await response.json();
         if (data.budgets && data.budgets.length > 0) {
@@ -638,7 +658,11 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
       // Phase 51 (UX-S6-02): merge with existing vendor list so operator's
       // isActive toggles + monthlyBudget edits are preserved across
       // re-analyze. New vendors take their incoming defaults.
-      setVendors(prev => mergeByVendorKey(prev, vendorBudgets));
+      // PR-B (D7): compute the merged list FIRST and save THAT — the old
+      // code saved the raw pre-merge analyze output, so the DB briefly held
+      // analyzer values while the UI showed the operator's edits.
+      const mergedVendors = mergeByVendorKey(vendors, vendorBudgets);
+      setVendors(mergedVendors);
       setSummary(data.summary);
       setPhase('review');
       // Phase 60: a fresh analyze run produces vendors with correct accountCodes
@@ -649,9 +673,9 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
       setHasBrokenAccountCodes(false);
       setSubscriptionsConfirmed(false);
 
-      // Auto-save budgets immediately after analysis
-      if (vendorBudgets.length > 0) {
-        saveSubscriptionBudgets(vendorBudgets);
+      // Auto-save budgets immediately after analysis (merged list — D7)
+      if (mergedVendors.length > 0) {
+        saveSubscriptionBudgets(mergedVendors);
       }
 
       if (vendorBudgets.length === 0) {
@@ -900,8 +924,11 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
 
   const saveSubscriptionBudgets = useCallback(async (vendorsToSave?: VendorBudget[]) => {
     const vendorList = vendorsToSave || vendors;
-    const activeVendors = vendorList.filter(v => v.isActive);
-    if (activeVendors.length === 0) return;
+    // PR-B (D4): persist EVERY vendor with its real isActive flag. The old
+    // code filtered to active vendors and hard-coded isActive: true, so
+    // excluding a vendor never persisted — it came back active on reload —
+    // and "exclude everything" was silently impossible.
+    if (vendorList.length === 0) return;
 
     setIsSaving(true);
     setSaveSuccess(false);
@@ -912,7 +939,7 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           business_id: businessId,
-          budgets: activeVendors.map(v => ({
+          budgets: vendorList.map(v => ({
             vendorName: v.vendorName,
             vendorKey: v.vendorKey,
             frequency: v.frequency,
@@ -936,7 +963,7 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             renewalMonth: v.renewalMonth ?? null,
             // Phase 64: persist per-account spend split.
             accountSplits: v.accountSplits ?? {},
-            isActive: true,
+            isActive: v.isActive,
           })),
         }),
       });
@@ -1013,10 +1040,9 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         clearTimeout(debounceTimer.current);
         debounceTimer.current = null;
       }
-      // No vendors to save (initial render, or all excluded) → no-op.
+      // Nothing at all to save (initial render) → no-op. All-excluded lists
+      // DO save now (PR-B D4) — that's how "clear my subscriptions" persists.
       if (vendors.length === 0) return;
-      const activeCount = vendors.filter(v => v.isActive).length;
-      if (activeCount === 0) return;
       // Re-throw on failure so the caller can block navigation.
       await saveSubscriptionBudgets();
     },
@@ -1101,6 +1127,23 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* PR-B (D2): visible reason + retry when Xero mode degraded */}
+      {isManualMode && xeroUnavailableReason && (
+        <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <span>{xeroUnavailableReason}</span>
+          </div>
+          <button
+            type="button"
+            onClick={retryXeroConnection}
+            className="flex-shrink-0 px-3 py-1 text-sm font-medium rounded-md border border-amber-300 hover:bg-amber-100"
+          >
+            Retry Xero
+          </button>
         </div>
       )}
 
