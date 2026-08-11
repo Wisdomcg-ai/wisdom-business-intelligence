@@ -2235,7 +2235,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     }
   }, [state, buildAssumptions, summary]);
 
-  const actions: WizardActions = {
+  // PR-B (D3): the actions object must be referentially STABLE. It was a
+  // plain literal rebuilt on every render, and Step6Subscriptions has an
+  // effect with `actions` in its dependency array that calls
+  // actions.setSubscriptions — effect → setState → re-render → new actions
+  // → effect… an infinite passive-effect loop that pegged the CPU and
+  // starved the localStorage draft saver on the subscriptions review phase.
+  // Every member is already a stable useCallback, so useMemo over their
+  // identities yields a constant object.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const actions: WizardActions = useMemo(() => ({
     goToStep,
     nextStep,
     prevStep,
@@ -2294,7 +2303,22 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     initializeFromXero,
     saveDraft,
     generateForecast,
-  };
+  }), [
+    goToStep, nextStep, prevStep, setActiveYear, setBusinessProfile,
+    setPlanPeriod, setForecastDuration, updateGoals, setPriorYear,
+    setPriorYearDisplay, setCurrentYTD, setRevenuePattern, setRevenueLines,
+    setCOGSLines, updateRevenueLine, addRevenueLine, removeRevenueLine,
+    updateCOGSLine, addCOGSLine, removeCOGSLine, updateTeamMember,
+    addTeamMember, removeTeamMember, addNewHire, updateNewHire, removeNewHire,
+    addDeparture, removeDeparture, addBonus, updateBonus, removeBonus,
+    addCommission, updateCommission, removeCommission, setDefaultPayFrequency,
+    setDefaultOpExIncreasePct, setOpExLines, updateOpExLine, addOpExLine,
+    removeOpExLine, setNeedsAccountCodeRefresh, addCapExItem, updateCapExItem,
+    removeCapExItem, addInvestment, updateInvestment, removeInvestment,
+    addPlannedSpend, updatePlannedSpend, removePlannedSpend, setPlannedSpends,
+    addOtherExpense, updateOtherExpense, removeOtherExpense, setSubscriptions,
+    initializeFromXero, saveDraft, generateForecast,
+  ]);
 
   return {
     state,

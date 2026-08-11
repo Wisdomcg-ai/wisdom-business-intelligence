@@ -2096,7 +2096,20 @@ export function ForecastWizardV4({
       <footer className="flex-shrink-0 bg-white border-t border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <button
-            onClick={actions.prevStep}
+            onClick={async () => {
+              // PR-B (D5): leaving the Subscriptions step via Back used to
+              // drop any edit made within the 1.5s debounce window (the
+              // unmount cleanup cancels the timer without flushing).
+              if (state.currentStep === 5 && subscriptionsStepRef.current) {
+                try {
+                  await subscriptionsStepRef.current.flushPendingSaves();
+                } catch {
+                  toast.error('Could not save subscription changes. Staying on this step.');
+                  return;
+                }
+              }
+              actions.prevStep();
+            }}
             disabled={isFirstStep}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -2117,7 +2130,7 @@ export function ForecastWizardV4({
               </button>
             ) : (
               <button
-                onClick={() => {
+                onClick={async () => {
                   // Audit fix #8 — hard-gate Step 1 forward navigation
                   // until a Y1 revenue goal is set. Without this, the
                   // operator could skim past Goals and arrive at Review
@@ -2126,6 +2139,18 @@ export function ForecastWizardV4({
                   if (state.currentStep === 1 && (!state.goals?.year1?.revenue || state.goals.year1.revenue <= 0)) {
                     toast.error('Set a Y1 revenue goal before continuing');
                     return;
+                  }
+                  // PR-B (D5): flush pending subscription saves before
+                  // leaving Step 5 — Continue previously skipped the flush
+                  // the StepBar already performed, silently dropping edits
+                  // made within the 1.5s debounce window.
+                  if (state.currentStep === 5 && subscriptionsStepRef.current) {
+                    try {
+                      await subscriptionsStepRef.current.flushPendingSaves();
+                    } catch {
+                      toast.error('Could not save subscription changes. Staying on this step.');
+                      return;
+                    }
                   }
                   actions.nextStep();
                 }}

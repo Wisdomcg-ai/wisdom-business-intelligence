@@ -12,6 +12,7 @@ import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
 import { withQuerySchema } from '@/lib/api/with-schema';
 import { z } from 'zod';
 import * as Sentry from '@sentry/nextjs'
+import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
 
 export const dynamic = 'force-dynamic';
 
@@ -109,18 +110,14 @@ async function getHandler(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    // Get Xero connection — try all ID formats
-    let connection: any = null;
-    const { data: c1 } = await supabase.from('xero_connections').select('*').eq('business_id', businessId).eq('is_active', true).maybeSingle();
-    if (c1) connection = c1;
-    if (!connection) {
-      const { data: p } = await supabase.from('business_profiles').select('id').eq('business_id', businessId).maybeSingle();
-      if (p?.id) { const { data: c2 } = await supabase.from('xero_connections').select('*').eq('business_id', p.id).eq('is_active', true).maybeSingle(); if (c2) connection = c2; }
-    }
-    if (!connection) {
-      const { data: bp } = await supabase.from('business_profiles').select('business_id').eq('id', businessId).maybeSingle();
-      if (bp?.business_id) { const { data: c3 } = await supabase.from('xero_connections').select('*').eq('business_id', bp.business_id).eq('is_active', true).maybeSingle(); if (c3) connection = c3; }
-    }
+    // Get Xero connection.
+    // PR-B (D1): the old hand-rolled 3-step lookup used `.maybeSingle()`,
+    // which ERRORS (data: null) for any business with 2+ active connections
+    // — Dragon Roofing's two orgs read as "not connected" and the wizard's
+    // Subscriptions step silently fell into blank manual mode.
+    // resolveXeroBusinessId is the sanctioned multi-connection-safe resolver
+    // (newest active connection wins; both id-spaces probed).
+    const { connection } = await resolveXeroBusinessId(supabase, businessId);
 
     if (!connection) {
       return NextResponse.json({ error: 'No active Xero connection' }, { status: 404 });
