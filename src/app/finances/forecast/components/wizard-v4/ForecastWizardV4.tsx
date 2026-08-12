@@ -128,6 +128,14 @@ export function ForecastWizardV4({
           teamMembers: state.teamMembers?.length,
         });
 
+        // PERF: pl-summary is the slowest call on this path (~400ms server-side
+        // before network) and depends on nothing in the batch below. Start it
+        // here so it overlaps, and await it in its own block further down —
+        // saving a full sequential round-trip on every restored-draft open.
+        const plSummaryPromise = fetch(
+          `/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`,
+        ).catch(() => null);
+
         // Always refresh goals, business profile, and team (if missing) so they stay in sync
         try {
           const fetchPromises: Promise<Response>[] = [
@@ -261,8 +269,8 @@ export function ForecastWizardV4({
 
         // Always refresh Xero P&L data — cached priorYear may be stale or computed from buggy logic
         try {
-          const plRes = await fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`);
-          if (plRes.ok) {
+          const plRes = await plSummaryPromise;
+          if (plRes?.ok) {
             const plData = await plRes.json();
             const freshPriorFY = plData.summary?.prior_fy;
             if (freshPriorFY && freshPriorFY.total_revenue != null) {

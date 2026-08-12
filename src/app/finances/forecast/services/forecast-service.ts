@@ -140,17 +140,28 @@ export class ForecastService {
   static async getOrCreateForecast(
     businessId: string,
     userId: string,
-    fiscalYear: number
+    fiscalYear: number,
+    /**
+     * Perf: callers that have ALREADY resolved the profile id can pass it and
+     * skip the lookup below. The forecast page queried business_profiles three
+     * separate times per load (fiscal_year_start, prior-FY id, and this one),
+     * each a full browser→DB round-trip on a strictly sequential path.
+     */
+    knownProfileId?: string | null,
   ): Promise<{ forecast: FinancialForecast | null; error?: string }> {
     try {
       // financial_forecasts.business_id FK references business_profiles(id),
       // but callers pass businesses.id — collect both IDs to search
       const idsToTry: string[] = [businessId]
-      const { data: profile } = await this.supabase
-        .from('business_profiles')
-        .select('id')
-        .eq('business_id', businessId)
-        .maybeSingle()
+      let profile: { id: string } | null = knownProfileId ? { id: knownProfileId } : null
+      if (!profile) {
+        const { data } = await this.supabase
+          .from('business_profiles')
+          .select('id')
+          .eq('business_id', businessId)
+          .maybeSingle()
+        profile = data
+      }
       if (profile?.id && profile.id !== businessId) {
         idsToTry.push(profile.id)
       }
