@@ -96,6 +96,14 @@ export interface QuarterlyData {
 export interface RevenueLine {
   id: string;
   name: string;
+  /**
+   * Pinned line: top-down distribution must not move it. When the operator
+   * types a monthly TOTAL (or drives the year against the Step 1 goal), a
+   * locked line keeps its current values and the remainder is spread across
+   * the unlocked lines only — e.g. "Management Services is $18k/month, work
+   * everything else around it". Undefined = unlocked (existing behaviour).
+   */
+  isLocked?: boolean;
   year1Monthly: MonthlyData;
   year2Monthly?: MonthlyData;     // Monthly data for Y2 (new — replaces quarterly)
   year3Monthly?: MonthlyData;     // Monthly data for Y3 (new — replaces quarterly)
