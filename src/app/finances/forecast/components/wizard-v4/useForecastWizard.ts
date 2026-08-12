@@ -37,6 +37,7 @@ import {
   monthlyToQuarterly,
   getRevenueLineYearTotal,
 } from './types';
+import { toast } from 'sonner';
 import { isTeamCost } from './utils/opex-classifier';
 import { getEffectiveSeasonality } from './utils/line-distribution';
 import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
@@ -379,6 +380,9 @@ export const loadStateFromStorage = (businessId: string, fiscalYear: number): Fo
   return null;
 };
 
+// H13: one-shot guard so a full-quota browser doesn't spam a toast per keystroke.
+let quotaWarningShown = false;
+
 // Save state to localStorage
 const saveStateToStorage = (state: ForecastWizardState) => {
   if (typeof window === 'undefined') return;
@@ -386,7 +390,20 @@ const saveStateToStorage = (state: ForecastWizardState) => {
     const key = getStorageKey(state.businessId, state.fiscalYearStart);
     localStorage.setItem(key, JSON.stringify({ ...state, wizardVersion: WIZARD_VERSION }));
   } catch (err) {
+    // H13: a quota error here silently stopped ALL local draft persistence —
+    // every later mount restored an increasingly stale draft with nothing on
+    // screen to say so. Surface it once per session; the server draft
+    // (performAutoSave) is unaffected and remains the durable copy.
     console.error('[ForecastWizard] Error saving to localStorage:', err);
+    if (typeof window !== 'undefined' && !quotaWarningShown) {
+      quotaWarningShown = true;
+      try {
+        toast.error(
+          'Browser storage is full — local draft backup is off. Your work still saves to the server; avoid closing the tab mid-step.',
+          { duration: 12000 },
+        );
+      } catch { /* toast unavailable in tests */ }
+    }
   }
 };
 
@@ -614,17 +631,39 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
   // Step 2: Prior Year - also creates revenue/COGS/OpEx lines from the data
   const setPriorYear = useCallback((data: PriorYearData) => {
     setState((prev) => {
+      // Completed (actual) months stay locked to Xero even on a destructive
+      // re-seed. This function predates the #347/#349 fixes, so Step 2's
+      // "Refresh from Xero" button used to hand back a verbatim prior-year
+      // copy — silently undoing July's real figures. The empty-forecast toast
+      // actively points operators at that button, so the regression was very
+      // reachable.
+      const completedKeys = new Set(Object.keys(prev.currentYTD?.revenue_by_month ?? {}));
+      const matchName = (n: string) => n.trim().toLowerCase();
+      const ytdRevByName = new Map(
+        (prev.currentYTD?.revenue_lines ?? []).map(l => [matchName(l.account_name), l.by_month ?? {}]),
+      );
+      const ytdCogsByName = new Map(
+        (prev.currentYTD?.cogs_lines ?? []).map(l => [matchName(l.account_name), l.by_month ?? {}]),
+      );
+
       // Create revenue lines from prior year data
       // If no individual lines but we have a total, create a default line
       let revenueLines: RevenueLine[] = [];
       if (data.revenue.byLine.length > 0) {
-        revenueLines = data.revenue.byLine.map((line) => ({
-          id: line.id,
-          name: line.name,
-          year1Monthly: remapMonthKeysToForecastYear(line.byMonth, prev.fiscalYearStart),
-          year2Monthly: {},
-          year3Monthly: {},
-        }));
+        revenueLines = data.revenue.byLine.map((line) => {
+          const remapped = remapMonthKeysToForecastYear(line.byMonth, prev.fiscalYearStart);
+          const ytd = ytdRevByName.get(matchName(line.name)) ?? {};
+          for (const key of completedKeys) {
+            remapped[key] = Math.round(ytd[key] ?? 0);
+          }
+          return {
+            id: line.id,
+            name: line.name,
+            year1Monthly: remapped,
+            year2Monthly: {},
+            year3Monthly: {},
+          };
+        });
       } else if (data.revenue.total > 0) {
         // Create a default Sales Revenue line with monthly distribution
         const monthlyAmount = Math.round(data.revenue.total / 12);
@@ -655,14 +694,25 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       // If no individual lines but we have a total, create a default line
       let cogsLines: COGSLine[] = [];
       if (data.cogs.byLine.length > 0) {
-        cogsLines = data.cogs.byLine.map((line) => ({
-          id: line.id,
-          name: line.name,
-          accountId: line.id,
-          priorYearTotal: line.total,
-          costBehavior: 'variable' as const,
-          percentOfRevenue: line.percentOfRevenue,
-        }));
+        cogsLines = data.cogs.byLine.map((line) => {
+          // Seed ONLY the completed months from Xero actuals. The converter
+          // resolves per month (PR-A M1): grid where present, cost-behavior
+          // formula elsewhere — so actuals lock without freezing the rest.
+          const year1Monthly: Record<string, number> = {};
+          const ytd = ytdCogsByName.get(matchName(line.name)) ?? {};
+          for (const key of completedKeys) {
+            year1Monthly[key] = Math.round(ytd[key] ?? 0);
+          }
+          return {
+            id: line.id,
+            name: line.name,
+            accountId: line.id,
+            priorYearTotal: line.total,
+            costBehavior: 'variable' as const,
+            percentOfRevenue: line.percentOfRevenue,
+            year1Monthly,
+          };
+        });
       } else if (data.cogs.total > 0) {
         // Create a default Cost of Sales line
         cogsLines = [{
