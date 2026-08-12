@@ -533,37 +533,56 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     const currentMonthTotal = currentForMonth.reduce((a, b) => a + b, 0);
     if (Math.abs(currentMonthTotal - newTotal) < 0.005) return;
 
-    // Weights: this month's mix → the year's mix → even split.
+    // Locked lines are pinned: they keep their current value for this month
+    // and only the REMAINDER is spread across the unlocked lines. Lock every
+    // line and there is nothing to distribute — leave the grid untouched
+    // rather than silently ignoring the lock.
+    const lockedIdx = revenueLines.map(l => l.isLocked === true);
+    const lockedTotal = revenueLines.reduce(
+      (sum, l, i) => (lockedIdx[i] ? sum + (readMonthly(l)[monthKey] || 0) : sum),
+      0,
+    );
+    const unlocked = revenueLines.map((_, i) => i).filter(i => !lockedIdx[i]);
+    if (unlocked.length === 0) return;
+    const remainder = Math.max(0, newTotal - lockedTotal);
+
+    // Weights across the UNLOCKED lines: this month's mix → the year's mix →
+    // even split.
+    const unlockedMonthTotal = unlocked.reduce((s, i) => s + currentForMonth[i], 0);
     let weights: number[];
-    if (currentMonthTotal > 0) {
-      weights = currentForMonth.map(v => v / currentMonthTotal);
+    if (unlockedMonthTotal > 0) {
+      weights = unlocked.map(i => currentForMonth[i] / unlockedMonthTotal);
     } else {
-      const yearTotals = revenueLines.map(l =>
-        Object.values(readMonthly(l)).reduce((a, b) => a + b, 0),
+      const yearTotals = unlocked.map(i =>
+        Object.values(readMonthly(revenueLines[i])).reduce((a, b) => a + b, 0),
       );
       const yearSum = yearTotals.reduce((a, b) => a + b, 0);
       weights = yearSum > 0
         ? yearTotals.map(v => v / yearSum)
-        : revenueLines.map(() => 1 / revenueLines.length);
+        : unlocked.map(() => 1 / unlocked.length);
     }
 
     // Largest weight absorbs the rounding residue so the column is exact.
-    let residueIdx = 0;
-    weights.forEach((w, i) => { if (w > weights[residueIdx]) residueIdx = i; });
+    let residuePos = 0;
+    weights.forEach((w, i) => { if (w > weights[residuePos]) residuePos = i; });
 
     let running = 0;
-    const allocated = weights.map((w, i) => {
-      if (i === residueIdx) return null as number | null;
-      const v = Math.round(newTotal * w);
+    const share = weights.map((w, i) => {
+      if (i === residuePos) return null as number | null;
+      const v = Math.round(remainder * w);
       running += v;
       return v;
     });
-    allocated[residueIdx] = Math.max(0, Math.round(newTotal - running));
+    share[residuePos] = Math.max(0, Math.round(remainder - running));
 
-    const updated = revenueLines.map((line, i) => ({
-      ...line,
-      [yearKey]: { ...readMonthly(line), [monthKey]: allocated[i] as number },
-    }));
+    const allocated = new Map<number, number>();
+    unlocked.forEach((lineIdx, pos) => allocated.set(lineIdx, share[pos] as number));
+
+    const updated = revenueLines.map((line, i) =>
+      allocated.has(i)
+        ? { ...line, [yearKey]: { ...readMonthly(line), [monthKey]: allocated.get(i) as number } }
+        : line,
+    );
 
     actions.setRevenueLines(updated as typeof revenueLines);
     if (revenuePattern !== 'manual') actions.setRevenuePattern('manual');
@@ -962,6 +981,22 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     if (revenueLines.length === 0 || target <= 0) return;
     if (revenuePattern === 'manual') return;
 
+    // Pinned lines hold here too — the goal is met by moving the UNLOCKED
+    // lines only. Without this a lock would survive top-down entry but be
+    // quietly overwritten the next time the Step 1 goal changed.
+    const movableLines = revenueLines.filter(l => l.isLocked !== true);
+    if (movableLines.length === 0) return;
+    const lockYearKey =
+      activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';
+    const lockedTotal = revenueLines
+      .filter(l => l.isLocked === true)
+      .reduce((sum, l) => {
+        const m = (l[lockYearKey as keyof typeof l] as Record<string, number> | undefined) || {};
+        return sum + Object.values(m).reduce((a, b) => a + b, 0);
+      }, 0);
+    // Movable lines share whatever the pinned lines leave.
+    target = Math.max(0, target - lockedTotal);
+
     const priorByLine: Record<string, number> = {};
     let priorRevTotal = 0;
     if (priorYear?.revenue?.byLine) {
@@ -972,7 +1007,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     }
     let priorWeightCovered = 0;
     const linesWithoutPrior: string[] = [];
-    for (const line of revenueLines) {
+    for (const line of movableLines) {
       const share = priorRevTotal > 0 ? (priorByLine[line.id] || 0) / priorRevTotal : 0;
       if (share > 0) priorWeightCovered += share;
       else linesWithoutPrior.push(line.id);
@@ -982,21 +1017,21 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
       ? remainingForNoPrior / linesWithoutPrior.length
       : 0;
     const lineWeights: Record<string, number> = {};
-    for (const line of revenueLines) {
+    for (const line of movableLines) {
       const priorShare = priorRevTotal > 0 ? (priorByLine[line.id] || 0) / priorRevTotal : 0;
       lineWeights[line.id] = priorShare > 0 ? priorShare : equalShareForNoPrior;
     }
-    const totalWeight = revenueLines.reduce((s, l) => s + (lineWeights[l.id] || 0), 0);
+    const totalWeight = movableLines.reduce((s, l) => s + (lineWeights[l.id] || 0), 0);
     if (totalWeight > 0) {
-      for (const line of revenueLines) lineWeights[line.id] = lineWeights[line.id] / totalWeight;
+      for (const line of movableLines) lineWeights[line.id] = lineWeights[line.id] / totalWeight;
     } else {
       for (const line of revenueLines) lineWeights[line.id] = 1 / revenueLines.length;
     }
 
     const lineYearTargets: Record<string, number> = {};
     let runningSum = 0;
-    revenueLines.forEach((line, idx) => {
-      const isLast = idx === revenueLines.length - 1;
+    movableLines.forEach((line, idx) => {
+      const isLast = idx === movableLines.length - 1;
       const t = isLast ? target - runningSum : Math.round(target * (lineWeights[line.id] ?? 0));
       lineYearTargets[line.id] = t;
       runningSum += t;
@@ -1011,6 +1046,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     const ytdMonthlyKeys = isYearOne ? new Set(Object.keys(currentYTD?.revenue_by_month ?? {})) : new Set<string>();
 
     const updated = revenueLines.map((line) => {
+      if (line.isLocked === true) return line; // pinned — never redistributed
       const seasonality = getEffectiveSeasonality(line, priorYear?.seasonalityPattern);
       const lineTotalTarget = lineYearTargets[line.id];
 
@@ -2309,6 +2345,22 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                     <tr key={line.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="px-4 py-2 text-sm font-medium text-gray-900 sticky left-0 bg-white min-w-[180px]">
                         <div className="flex items-center gap-2">
+                          {/* Pin a line so top-down entry and goal changes work
+                              AROUND it — e.g. "Management Services is $18k/mo". */}
+                          <button
+                            type="button"
+                            onClick={() => actions.updateRevenueLine(line.id, { isLocked: !line.isLocked })}
+                            title={line.isLocked
+                              ? 'Pinned — other lines absorb changes. Click to unpin.'
+                              : 'Pin this line so monthly totals and goal changes work around it'}
+                            aria-label={line.isLocked ? `Unpin ${line.name}` : `Pin ${line.name}`}
+                            aria-pressed={line.isLocked === true}
+                            className={`flex-shrink-0 p-0.5 rounded transition-colors ${
+                              line.isLocked ? 'text-brand-navy' : 'text-gray-300 hover:text-gray-500'
+                            }`}
+                          >
+                            <Lock className="w-3.5 h-3.5" />
+                          </button>
                           <span className="truncate">{line.name}</span>
                           {/* Phase 51-03 (UX-S3-03): per-line seasonality override editor trigger. */}
                           <button
@@ -2433,7 +2485,24 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                       </td>
                     );
                   })}
-                  <td className="px-4 py-3 text-sm text-gray-900 text-right">{formatCurrency(totalRevenue)}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900 text-right">
+                    {formatCurrency(totalRevenue)}
+                    {/* Goal variance: typed monthly totals can drift from the
+                        Step 1 annual goal. Show the gap rather than silently
+                        rescaling the operator's months (which would undo the
+                        very numbers they just typed). */}
+                    {yearTargetRevenue > 0 && Math.abs(totalRevenue - yearTargetRevenue) >= 1 && (
+                      <span
+                        className={`block text-[11px] font-medium mt-0.5 ${
+                          totalRevenue > yearTargetRevenue ? 'text-green-600' : 'text-amber-600'
+                        }`}
+                        title={`Annual goal ${formatCurrency(yearTargetRevenue)}`}
+                      >
+                        {totalRevenue > yearTargetRevenue ? '+' : ''}
+                        {formatCurrency(totalRevenue - yearTargetRevenue)} vs goal
+                      </span>
+                    )}
+                  </td>
                   <td></td>
                 </tr>
 
