@@ -389,17 +389,35 @@ function convertOpEx(
       }
 
       case 'adhoc': {
+        // Summary parity: an ad-hoc line is charged at expectedAnnualAmount in
+        // EVERY forecast year (useForecastWizard.calculateYearSummary). Two
+        // gaps used to break that:
+        //   1. expectedMonths EMPTY → nothing was written at all, so the line
+        //      materialized as $0 while the summary counted it in full. Dragon
+        //      Roofing FY2027 had ELEVEN such lines (Accounting $7,617, MV fuel
+        //      $5,348, …) totalling $26,356 of net-profit divergence.
+        //   2. expectedMonths only ever holds Y1 keys, so Y2/Y3 were $0.
+        // Resolution: per forecast year, use that year's selected months when
+        // present, otherwise spread the annual amount evenly across the year.
         const annual = opexLine.expectedAnnualAmount || 0
-        const months = opexLine.expectedMonths || []
-        if (months.length > 0) {
-          const perMonth = round2(annual / months.length)
-          for (const mk of months) {
-            if (forecastMonthKeys.includes(mk)) {
-              newForecastMonths[mk] = perMonth
+        if (annual !== 0) {
+          const selected = new Set(opexLine.expectedMonths || [])
+          const monthsByYear = new Map<number, string[]>()
+          for (const mk of forecastMonthKeys) {
+            const y = getFYYear(mk, fiscalYear)
+            const arr = monthsByYear.get(y) ?? []
+            arr.push(mk)
+            monthsByYear.set(y, arr)
+          }
+          for (const [, yearMonths] of monthsByYear) {
+            const chosen = yearMonths.filter(mk => selected.has(mk))
+            const target = chosen.length > 0 ? chosen : yearMonths
+            const perMonth = round2(annual / target.length)
+            for (const mk of yearMonths) {
+              newForecastMonths[mk] = target.includes(mk) ? perMonth : 0
             }
           }
         }
-        // Months not in expectedMonths get 0 (not set)
         break
       }
     }
