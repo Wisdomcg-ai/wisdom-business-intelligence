@@ -284,6 +284,50 @@ describe('M7/M13 — parity buckets', () => {
   })
 })
 
+describe('ad-hoc OpEx parity (Dragon FY2027: 11 lines, $26,356 divergence)', () => {
+  it('with NO months selected, spreads the annual amount across every year', () => {
+    const a = baseAssumptions({
+      opex: {
+        lines: [{
+          accountId: 'opex-0',
+          accountName: 'Accounting',
+          priorYearTotal: 7_617,
+          costBehavior: 'adhoc',
+          expectedAnnualAmount: 12_000,
+          expectedMonths: [],
+        }],
+      },
+    })
+    const out = convertAssumptionsToPLLines(ctx(a, 2))
+    const acct = lineByName(out, 'Accounting')!
+    const y1 = ['2026-07','2026-08','2026-09','2026-10','2026-11','2026-12','2027-01','2027-02','2027-03','2027-04','2027-05','2027-06']
+      .reduce((s2, mk) => s2 + (acct.forecast_months[mk] ?? 0), 0)
+    expect(Math.round(y1)).toBe(12_000)
+    // Y2 charged too — the summary counts ad-hoc lines every year.
+    expect(Math.round(acct.forecast_months['2027-07'] * 12)).toBe(12_000)
+  })
+
+  it('with months selected, only those months carry the charge', () => {
+    const a = baseAssumptions({
+      opex: {
+        lines: [{
+          accountId: 'opex-0',
+          accountName: 'Insurance',
+          priorYearTotal: 6_000,
+          costBehavior: 'adhoc',
+          expectedAnnualAmount: 6_000,
+          expectedMonths: ['2026-09', '2027-03'],
+        }],
+      },
+    })
+    const out = convertAssumptionsToPLLines(ctx(a, 1))
+    const ins = lineByName(out, 'Insurance')!
+    expect(ins.forecast_months['2026-09']).toBe(3_000)
+    expect(ins.forecast_months['2027-03']).toBe(3_000)
+    expect(ins.forecast_months['2026-07']).toBe(0)
+  })
+})
+
 describe('M9 — seasonal OpEx no-history fallback', () => {
   it('values growth-%-driven seasonal lines from priorYearTotal instead of $0', () => {
     const a = baseAssumptions({
