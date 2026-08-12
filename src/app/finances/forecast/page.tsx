@@ -238,17 +238,29 @@ export default function FinancialForecastPage() {
       }
       setBusinessId(bizId)
 
-      // Fetch business fiscal year start for planning season detection
+      // PERF: the Xero connection status doesn't depend on anything below —
+      // start it NOW and await it at the end, so it overlaps the forecast
+      // load instead of adding a round-trip after it.
+      const xeroStatusPromise = fetch(`/api/Xero/status?business_id=${bizId}`)
+        .then(r => r.json())
+        .catch(() => null)
+
+      // PERF: ONE business_profiles read for both fields. This table was
+      // queried three separate times per page load — fiscal_year_start here,
+      // `id` for the prior-FY check below, and `id` again inside
+      // getOrCreateForecast — each a full sequential round-trip.
       let yearStart = 7 // default AU FY
+      let profileId: string | null = null
       try {
         const { data: bizProfile } = await supabase
           .from('business_profiles')
-          .select('fiscal_year_start')
+          .select('id, fiscal_year_start')
           .eq('business_id', bizId)
           .maybeSingle()
         if (bizProfile?.fiscal_year_start) {
           yearStart = bizProfile.fiscal_year_start
         }
+        profileId = bizProfile?.id ?? null
       } catch (e) {
         // ignored
       }
@@ -279,30 +291,24 @@ export default function FinancialForecastPage() {
       // business_profiles(id), but bizId from resolveBusinessId is businesses.id.
       // Collect both IDs so this query matches the same rows that
       // ForecastService.getOrCreateForecast (which does the same dance) sees.
-      try {
-        const priorFY = fiscalYear - 1
-        const idsToTry: string[] = [bizId]
-        const { data: profile } = await supabase
-          .from('business_profiles')
-          .select('id')
-          .eq('business_id', bizId)
-          .maybeSingle()
-        if (profile?.id && profile.id !== bizId) {
-          idsToTry.push(profile.id)
-        }
-        const { data: priorRows } = await supabase
+      // PERF: the prior-FY probe and the forecast load are independent —
+      // run them concurrently instead of one after the other. Both reuse the
+      // profile id resolved above rather than re-querying for it.
+      const priorFY = fiscalYear - 1
+      const idsToTry: string[] = profileId && profileId !== bizId ? [bizId, profileId] : [bizId]
+      const [priorProbe, forecastResult] = await Promise.all([
+        supabase
           .from('financial_forecasts')
           .select('id')
           .in('business_id', idsToTry)
           .eq('fiscal_year', priorFY)
           .limit(1)
-        setPriorFiscalYearWithForecast(priorRows && priorRows.length > 0 ? priorFY : null)
-      } catch {
-        setPriorFiscalYearWithForecast(null)
-      }
+          .then(r => r.data, () => null),
+        ForecastService.getOrCreateForecast(bizId, uid, fiscalYear, profileId),
+      ])
+      setPriorFiscalYearWithForecast(priorProbe && priorProbe.length > 0 ? priorFY : null)
 
-      const { forecast: loadedForecast, error: forecastError } =
-        await ForecastService.getOrCreateForecast(bizId, uid, fiscalYear)
+      const { forecast: loadedForecast, error: forecastError } = forecastResult
 
       if (forecastError || !loadedForecast) {
         console.error('[Forecast] Error loading forecast:', forecastError)
@@ -349,18 +355,21 @@ export default function FinancialForecastPage() {
         return false
       })
 
-      // Load Xero connection via API (bypasses RLS timing issues)
+      // Xero connection — the request was started before the forecast load,
+      // so by now it has usually resolved and this await is free.
       try {
-        const statusRes = await fetch(`/api/Xero/status?business_id=${bizId}`)
-        const statusData = await statusRes.json()
-        if (statusData.connected && statusData.connection) {
+        const statusData = await xeroStatusPromise
+        if (statusData?.connected && statusData.connection) {
           setXeroConnection(statusData.connection)
-        } else {
+        } else if (statusData) {
           setXeroConnection(null)
+        } else {
+          // Fall back to a direct query only if the API call actually failed.
+          const xeroConn = await ForecastService.getXeroConnection(bizId)
+          setXeroConnection(xeroConn)
         }
       } catch (err) {
         console.error('[Forecast] Error loading Xero connection:', err)
-        // Fall back to direct query if API fails
         const xeroConn = await ForecastService.getXeroConnection(bizId)
         setXeroConnection(xeroConn)
       }
