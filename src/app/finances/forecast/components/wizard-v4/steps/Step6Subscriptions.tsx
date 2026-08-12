@@ -66,6 +66,9 @@ interface RecentTransaction {
 }
 
 interface VendorBudget {
+  /** Set when the operator commits a budget by hand — frequency changes then
+   *  stop re-deriving the amount from analyzer figures. UI-only. */
+  budgetTouched?: boolean;
   vendorName: string;
   vendorKey: string;
   suggestedFrequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc';
@@ -209,11 +212,28 @@ function createManualVendor(input: ManualVendorInput): VendorBudget {
  */
 export function mergeByVendorKey(prev: VendorBudget[], incoming: VendorBudget[]): VendorBudget[] {
   const prevByKey = new Map(prev.map(v => [v.vendorKey, v]));
-  return incoming.map(newV => {
+  const incomingKeys = new Set(incoming.map(v => v.vendorKey));
+  const merged = incoming.map(newV => {
     const existing = prevByKey.get(newV.vendorKey);
     if (!existing) return newV;
-    return { ...newV, isActive: existing.isActive, monthlyBudget: existing.monthlyBudget };
+    return {
+      ...newV,
+      isActive: existing.isActive,
+      monthlyBudget: existing.monthlyBudget,
+      budgetTouched: existing.budgetTouched,
+      // A frequency the operator chose (and its renewal month) is a decision,
+      // not an observation — a re-analyze must not replace it with a guess.
+      frequency: existing.frequency,
+      renewalMonth: existing.renewalMonth ?? newV.renewalMonth,
+    };
   });
+  // Vendors the operator added by hand have no analyzer counterpart. Dropping
+  // them deleted real work — and because the save path is upsert-only, the DB
+  // row survived and the vendor reappeared on the next load as a ghost.
+  const manualSurvivors = prev.filter(
+    v => !incomingKeys.has(v.vendorKey) && v.transactionCount === 0,
+  );
+  return [...merged, ...manualSurvivors];
 }
 
 /**
@@ -839,39 +859,37 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
     setVendors(prev => prev.filter(v => v.vendorKey !== vendorKey));
   };
 
-  const handleFrequencyChange = (vendorKey: string, newFrequency: VendorBudget['frequency']) => {
+  const handleFrequencyChange = (vendorKey: string, frequency: VendorBudget['frequency']) => {
+    // Only re-derive the budget from analyzer figures when the operator has
+    // NOT set one themselves. The old version recomputed unconditionally, so
+    // changing a dropdown silently replaced a hand-typed number (and could
+    // zero a restored vendor whose avgAmount came back 0).
     setVendors(prev => prev.map(v => {
       if (v.vendorKey !== vendorKey) return v;
-
-      // Recalculate monthly budget based on new frequency
-      let newMonthlyBudget = v.monthlyBudget;
-      if (newFrequency === 'annual') {
-        newMonthlyBudget = v.totalAmount / 12;
-      } else if (newFrequency === 'monthly') {
-        newMonthlyBudget = v.avgAmount;
-      } else if (newFrequency === 'quarterly') {
-        newMonthlyBudget = v.avgAmount / 3;
-      }
-
-      return { ...v, frequency: newFrequency, monthlyBudget: Math.round(newMonthlyBudget * 100) / 100 };
+      if (v.budgetTouched) return { ...v, frequency };
+      let monthlyBudget = v.monthlyBudget;
+      if (frequency === 'annual') monthlyBudget = (v.totalAmount || 0) / 12;
+      else if (frequency === 'monthly') monthlyBudget = v.avgAmount || v.monthlyBudget;
+      else if (frequency === 'quarterly') monthlyBudget = (v.avgAmount || 0) / 3;
+      return { ...v, frequency, monthlyBudget: monthlyBudget || v.monthlyBudget };
     }));
   };
 
   const handleMonthlyBudgetChange = (vendorKey: string, value: string) => {
     const numValue = parseFloat(value) || 0;
-    updateVendor(vendorKey, { monthlyBudget: numValue });
+    updateVendor(vendorKey, { monthlyBudget: numValue, budgetTouched: true });
   };
 
-  // Phase 63: when a vendor is annual, the per-row input shows the annual
-  // amount. Internally we still persist `monthlyBudget` (smoothed annual / 12)
-  // so downstream math (rollups, sidebar attribution) stays the same — but
-  // the operator sees and edits the number in its native rhythm.
   const handleAnnualBudgetChange = (vendorKey: string, value: string) => {
     const numValue = parseFloat(value) || 0;
-    updateVendor(vendorKey, { monthlyBudget: numValue / 12 });
+    updateVendor(vendorKey, { monthlyBudget: numValue / 12, budgetTouched: true });
   };
 
   const handleRenewalMonthChange = (vendorKey: string, monthString: string) => {
+    if (monthString === '') {
+      updateVendor(vendorKey, { renewalMonth: null });
+      return;
+    }
     const month = parseInt(monthString, 10);
     if (Number.isInteger(month) && month >= 1 && month <= 12) {
       updateVendor(vendorKey, { renewalMonth: month });
@@ -989,10 +1007,30 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
   // instead of the one-time mount-fetch snapshot from useForecastWizard.
   // Without this, edits/analysis here never reach the OpEx ceiling math,
   // which silently overstates "Available OpEx" by the unsaved delta.
+  // Mirror local vendors → wizard state, but STRIP the per-vendor transaction
+  // arrays first. The analyze route returns every transaction for every vendor
+  // (thousands of rows on a large tenant); mirroring them pushed the lot into
+  // wizard state, which the 500ms localStorage autosave then JSON.stringify'd
+  // on every keystroke — multi-megabyte writes that can hit the storage quota
+  // and silently stop the whole wizard draft from saving. The rollup only ever
+  // reads monthlyBudget / isActive / accountCodes.
+  //
+  // `actions` deliberately omitted from the deps: it is rebuilt whenever wizard
+  // state changes (saveDraft/generateForecast close over state), so including
+  // it re-fires this effect on every render. actionsRef keeps the latest.
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
+  const mirrorSignature = useMemo(
+    () => vendors.map(v => `${v.vendorKey}:${v.monthlyBudget}:${v.isActive ? 1 : 0}:${v.frequency}`).join('|'),
+    [vendors],
+  );
   useEffect(() => {
     if (phase !== 'review') return;
-    actions.setSubscriptions(vendors);
-  }, [vendors, phase, actions]);
+    actionsRef.current.setSubscriptions(
+      vendors.map(v => ({ ...v, transactions: [] })),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mirrorSignature, phase]);
 
   // Auto-save: debounce vendor changes while in review phase
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1731,8 +1769,18 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                                 <input
                                   type="number"
-                                  value={(vendor.monthlyBudget * 12).toFixed(2)}
-                                  onChange={(e) => handleAnnualBudgetChange(vendor.vendorKey, e.target.value)}
+                                  // UNCONTROLLED + commit on blur/Enter. The old
+                                  // controlled input recomputed (monthlyBudget * 12)
+                                  // .toFixed(2) on EVERY keystroke, so a typed digit
+                                  // round-tripped through /12 and back and was
+                                  // silently destroyed (type "2" after "1.00" → the
+                                  // field snapped back to "1.00" and the caret
+                                  // jumped to the end). key ensures the defaultValue
+                                  // refreshes when the underlying number really changes.
+                                  key={`ann-${vendor.vendorKey}-${vendor.monthlyBudget}`}
+                                  defaultValue={(vendor.monthlyBudget * 12).toFixed(2)}
+                                  onBlur={(e) => handleAnnualBudgetChange(vendor.vendorKey, e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                                   disabled={!vendor.isActive}
                                   className="w-full pl-7 pr-9 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100 tabular-nums"
                                   step="0.01"
@@ -1748,7 +1796,7 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                                 className="text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100"
                                 title="Renewal month"
                               >
-                                {!vendor.renewalMonth && <option value="">—</option>}
+                                <option value="">—</option>
                                 {MONTH_ABBREVS_LOCAL.map((m, i) => (
                                   <option key={m} value={i + 1}>{m}</option>
                                 ))}
@@ -1759,8 +1807,14 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                               <input
                                 type="number"
-                                value={vendor.monthlyBudget}
-                                onChange={(e) => handleMonthlyBudgetChange(vendor.vendorKey, e.target.value)}
+                                // UNCONTROLLED + commit on blur/Enter — the controlled
+                                // version ran parseFloat on every keystroke, so a
+                                // decimal point could never survive ("12." → 12) and
+                                // clearing the field produced a hard 0.
+                                key={`mo-${vendor.vendorKey}-${vendor.monthlyBudget}`}
+                                defaultValue={vendor.monthlyBudget}
+                                onBlur={(e) => handleMonthlyBudgetChange(vendor.vendorKey, e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                                 disabled={!vendor.isActive}
                                 className="w-full pl-7 pr-9 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100 tabular-nums"
                                 step="0.01"

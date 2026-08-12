@@ -390,6 +390,11 @@ export interface OtherExpense {
 export interface VendorBudget {
   vendorKey: string;
   vendorName: string;
+  /** Set once the operator commits a budget by hand. Frequency changes stop
+   *  re-deriving the amount from analyzer figures after this — changing a
+   *  dropdown used to silently overwrite a typed number. UI-only (not
+   *  persisted); resets on reload, which is the safe direction. */
+  budgetTouched?: boolean;
   // Frequency the vendor charges at — used for display + reconciliation.
   // Note: Step6Subscriptions allows 'ad-hoc' as a UI label; both shapes are
   // accepted here for back-compat with existing component state.
