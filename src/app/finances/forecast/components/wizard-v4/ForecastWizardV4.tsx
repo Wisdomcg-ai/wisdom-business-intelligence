@@ -1443,6 +1443,12 @@ export function ForecastWizardV4({
     state.opexLines,
     state.capexItems,
     state.investments,
+    // H11: Step 7 writes state.plannedSpends (capexItems is the legacy shape
+    // only the saved-assumptions restore populates), and Step 5 writes
+    // subscriptions — neither triggered a server draft save, so closing the
+    // wizard after a Step 5/7 edit lost it server-side.
+    state.plannedSpends,
+    state.subscriptions,
     state.otherExpenses,
     state.forecastDuration,
     state.revenuePattern,
@@ -1452,6 +1458,21 @@ export function ForecastWizardV4({
 
   // Refresh data from Xero (without page reload)
   const handleRefreshFromXero = async () => {
+    // H9: this path calls initializeFromXero, which REBUILDS revenueLines,
+    // cogsLines, opexLines and teamMembers from scratch — every cost-behavior
+    // choice, monthly override and per-line seasonality on Steps 3/5/6 is
+    // destroyed. Step 2's own refresh button warns; this one was labelled
+    // just "Refresh". Confirm before discarding operator work.
+    const hasOperatorWork =
+      state.revenueLines.length > 0 || state.cogsLines.length > 0 || state.opexLines.length > 0;
+    if (hasOperatorWork && typeof window !== 'undefined') {
+      const proceed = window.confirm(
+        'Refresh from Xero rebuilds your revenue, COGS, OpEx and team lines from scratch.\n\n' +
+        'Any cost-behaviour choices, monthly overrides and per-line seasonality you have set will be lost. ' +
+        'Locked actual months are always kept.\n\nContinue?',
+      );
+      if (!proceed) return;
+    }
     setIsSyncing(true);
     try {
       // Use existing forecastId if available, otherwise create via saveDraft
@@ -1616,7 +1637,17 @@ export function ForecastWizardV4({
 
               return {
                 ...enriched,
-                id: emp.employee_id || `emp-${Date.now()}-${Math.random()}`,
+                // H9: a random fallback id changed on EVERY refresh, orphaning
+                // the departures / bonuses / commissions that reference it.
+                // Reuse the existing member's id when the name matches, then
+                // fall back to a deterministic name-derived id.
+                id:
+                  emp.employee_id ||
+                  state.teamMembers.find(
+                    m => m.name.trim().toLowerCase() ===
+                      (emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim()).trim().toLowerCase(),
+                  )?.id ||
+                  `emp-${(emp.full_name || `${emp.first_name || ''}-${emp.last_name || ''}`).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
                 name: emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown',
                 role: emp.job_title || 'Team Member',
                 type: (emp.employment_type as 'full-time' | 'part-time' | 'casual' | 'contractor') || 'full-time',

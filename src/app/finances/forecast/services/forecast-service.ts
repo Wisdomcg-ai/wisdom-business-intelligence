@@ -165,8 +165,17 @@ export class ForecastService {
         .limit(10)
 
       if (existing && existing.length > 0) {
-        // Prefer a forecast that has assumptions (wizard-generated) over empty ones
-        const forecast = existing.find(f => f.assumptions != null) || existing[0]
+        // H7 — selection order matters. Since drafts are created is_active=false
+        // (PR-A), an abandoned wizard session leaves the NEWEST row: it has
+        // assumptions (autosave wrote them) but zero forecast_pl_lines, so the
+        // page fell back to "estimated" YTD actuals and the real active
+        // forecast became invisible. The old `assumptions != null` guard was
+        // also dead code — the column defaults to '{}', which is never null.
+        // Prefer: active → has assumptions → newest.
+        const forecast =
+          existing.find(f => f.is_active) ||
+          existing.find(f => f.assumptions && Object.keys(f.assumptions).length > 0) ||
+          existing[0]
         // Map wizard_v4 assumptions from category_assumptions if dedicated column doesn't exist
         if (!forecast.assumptions && forecast.category_assumptions?.wizard_v4?.assumptions) {
           forecast.assumptions = forecast.category_assumptions.wizard_v4.assumptions
@@ -258,6 +267,12 @@ export class ForecastService {
         forecast_start_month: periods.forecast_start_month,
         forecast_end_month: periods.forecast_end_month,
         is_completed: false,
+        // H4: auto-created shells must NOT be active. Merely opening the
+        // cashflow or forecast page used to mint an is_active=true, zero-line
+        // row that the monthly report then picked up as the budget (silently
+        // $0) and the wizard auto-discovered as its write target. Only a
+        // completed Generate publishes (activate_forecast_locked).
+        is_active: false,
         last_reviewed_at: new Date().toISOString(),
       }
 
