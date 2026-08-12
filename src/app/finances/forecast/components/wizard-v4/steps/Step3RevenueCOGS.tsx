@@ -502,6 +502,73 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         ? goals.year2?.revenue || 0
         : goals.year3?.revenue || 0;
 
+  // ───────────────────────────────────────────────────────────────────────
+  // Top-down monthly entry: type a month's TOTAL, the lines split it
+  // ───────────────────────────────────────────────────────────────────────
+  //
+  // Forecasting is normally done top-down ("we need $1M in August"), but the
+  // grid only accepted bottom-up per-line entry, leaving the operator to do
+  // the arithmetic backwards across every revenue account. Committing a
+  // monthly total distributes it across the lines by their CURRENT share of
+  // that month; if the month is empty, it falls back to each line's share of
+  // the year, then to an even split. Rounding residue lands on the largest
+  // line so the column sums to the typed figure exactly.
+  //
+  // Actual (locked) months are never touched — they are Xero facts.
+  //
+  // Committing also switches the pattern to 'manual': the operator has taken
+  // charge of the monthly shape, and the goal-sync effect must stop
+  // re-deriving it from the annual target (that effect bails on 'manual').
+  const handleMonthTotalCommit = (monthKey: string, rawValue: string) => {
+    if (activeYear === 1 && isActualMonth(monthKey)) return;
+    const parsed = parseFloat(rawValue);
+    const newTotal = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+    if (revenueLines.length === 0) return;
+
+    const yearKey = activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';
+    const readMonthly = (line: typeof revenueLines[0]) =>
+      (line[yearKey as keyof typeof line] as Record<string, number> | undefined) || {};
+
+    const currentForMonth = revenueLines.map(l => readMonthly(l)[monthKey] || 0);
+    const currentMonthTotal = currentForMonth.reduce((a, b) => a + b, 0);
+    if (Math.abs(currentMonthTotal - newTotal) < 0.005) return;
+
+    // Weights: this month's mix → the year's mix → even split.
+    let weights: number[];
+    if (currentMonthTotal > 0) {
+      weights = currentForMonth.map(v => v / currentMonthTotal);
+    } else {
+      const yearTotals = revenueLines.map(l =>
+        Object.values(readMonthly(l)).reduce((a, b) => a + b, 0),
+      );
+      const yearSum = yearTotals.reduce((a, b) => a + b, 0);
+      weights = yearSum > 0
+        ? yearTotals.map(v => v / yearSum)
+        : revenueLines.map(() => 1 / revenueLines.length);
+    }
+
+    // Largest weight absorbs the rounding residue so the column is exact.
+    let residueIdx = 0;
+    weights.forEach((w, i) => { if (w > weights[residueIdx]) residueIdx = i; });
+
+    let running = 0;
+    const allocated = weights.map((w, i) => {
+      if (i === residueIdx) return null as number | null;
+      const v = Math.round(newTotal * w);
+      running += v;
+      return v;
+    });
+    allocated[residueIdx] = Math.max(0, Math.round(newTotal - running));
+
+    const updated = revenueLines.map((line, i) => ({
+      ...line,
+      [yearKey]: { ...readMonthly(line), [monthKey]: allocated[i] as number },
+    }));
+
+    actions.setRevenueLines(updated as typeof revenueLines);
+    if (revenuePattern !== 'manual') actions.setRevenuePattern('manual');
+  };
+
   // Handle line percentage change
   const handleLinePctChange = (lineId: string, value: string) => {
     const newPct = Math.max(0, Math.min(100, parseInt(value) || 0));
@@ -2339,8 +2406,30 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                     }, 0);
                     const isActual = activeYear === 1 && isActualMonth(key);
                     return (
-                      <td key={key} className={`px-2 py-3 text-sm text-right ${isActual ? 'bg-blue-100 text-blue-900' : 'text-gray-900'}`}>
-                        {monthTotal > 0 ? formatCurrency(monthTotal) : '-'}
+                      <td key={key} className={`px-1 py-2 text-sm text-right ${isActual ? 'bg-blue-100 text-blue-900' : 'text-gray-900'}`}>
+                        {isActual ? (
+                          <span className="px-2">{monthTotal > 0 ? formatCurrency(monthTotal) : '-'}</span>
+                        ) : (
+                          /* Top-down entry: type the month's total and the lines
+                             below split it by their current mix. Uncontrolled +
+                             commit on blur/Enter so typing is never reformatted
+                             mid-keystroke. */
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            key={`tot-${key}-${Math.round(monthTotal)}`}
+                            defaultValue={monthTotal ? Math.round(monthTotal) : ''}
+                            onBlur={(e) => handleMonthTotalCommit(key, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                              if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault();
+                            }}
+                            placeholder="0"
+                            data-testid={`month-total-${key}`}
+                            title="Type a target for this month — the revenue lines below split it by their current mix"
+                            className="w-full px-2 py-1 text-sm text-right font-semibold bg-white border border-gray-300 rounded focus:ring-2 focus:ring-brand-navy focus:border-brand-navy tabular-nums"
+                          />
+                        )}
                       </td>
                     );
                   })}
