@@ -592,6 +592,14 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   const handleLinePctChange = (lineId: string, value: string) => {
     const newPct = Math.max(0, Math.min(100, parseInt(value) || 0));
 
+    // Same rule as handleMixChange: once the operator owns the monthly shape,
+    // a % edit re-splits within each month instead of re-deriving the line
+    // from the annual goal (which rewrote their typed monthly totals).
+    if (revenuePattern === 'manual') {
+      redistributeMixWithinMonths(lineId, newPct);
+      return;
+    }
+
     if (activeYear === 1) {
       // For Year 1, redistribute projected months only (keep actuals locked)
       const yearTarget = goals.year1?.revenue || 0;
@@ -1269,7 +1277,79 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   };
 
   // Handle mix % change — recalculate forecast from target × mix × seasonality
+  /**
+   * Re-split a line's share WITHIN each month, holding every month's total
+   * constant. Used once the operator owns the monthly shape (pattern
+   * 'manual' — set by typing a monthly TOTAL). The goal-driven path below
+   * re-derives the line from the ANNUAL goal and re-spreads it by
+   * seasonality, which silently rewrote the monthly totals the operator had
+   * just typed — reported by Matt 13 Aug: "when I put the total revenue
+   * goals in and then adjust the percentages it overrides the total income".
+   *
+   * Rules preserved: actual months stay locked, pinned lines hold, each
+   * month still sums to exactly its existing total (residue on the largest
+   * movable line).
+   */
+  const redistributeMixWithinMonths = (lineId: string, newMixPct: number) => {
+    const yearKey = activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';
+    const read = (line: typeof revenueLines[0]) =>
+      (line[yearKey as keyof typeof line] as Record<string, number> | undefined) || {};
+    const monthsForYear = generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
+    const edited = revenueLines.find(l => l.id === lineId);
+    if (!edited) return;
+
+    const nextMonthly: Record<string, Record<string, number>> = {};
+    for (const line of revenueLines) nextMonthly[line.id] = { ...read(line) };
+
+    for (const mk of monthsForYear) {
+      if (activeYear === 1 && isActualMonth(mk)) continue; // Xero fact
+
+      const monthTotal = revenueLines.reduce((s, l) => s + (read(l)[mk] || 0), 0);
+      if (monthTotal <= 0) continue;
+
+      // Others that can absorb the change: unlocked, not the edited line.
+      const others = revenueLines.filter(l => l.id !== lineId && l.isLocked !== true);
+      const lockedOthersTotal = revenueLines
+        .filter(l => l.id !== lineId && l.isLocked === true)
+        .reduce((s, l) => s + (read(l)[mk] || 0), 0);
+      if (others.length === 0) continue; // nothing to absorb — leave month as-is
+
+      const desired = Math.round(monthTotal * (newMixPct / 100));
+      const editedValue = Math.max(0, Math.min(desired, monthTotal - lockedOthersTotal));
+      const remainder = Math.max(0, monthTotal - lockedOthersTotal - editedValue);
+
+      const othersCurrentTotal = others.reduce((s, l) => s + (read(l)[mk] || 0), 0);
+      const weights = othersCurrentTotal > 0
+        ? others.map(l => (read(l)[mk] || 0) / othersCurrentTotal)
+        : others.map(() => 1 / others.length);
+
+      let residuePos = 0;
+      weights.forEach((w, i) => { if (w > weights[residuePos]) residuePos = i; });
+
+      let running = 0;
+      others.forEach((l, i) => {
+        if (i === residuePos) return;
+        const v = Math.round(remainder * weights[i]);
+        nextMonthly[l.id][mk] = v;
+        running += v;
+      });
+      nextMonthly[others[residuePos].id][mk] = Math.max(0, remainder - running);
+      nextMonthly[lineId][mk] = editedValue;
+    }
+
+    actions.setRevenueLines(
+      revenueLines.map(l => ({ ...l, [yearKey]: nextMonthly[l.id] })) as typeof revenueLines,
+    );
+  };
+
   const handleMixChange = (lineId: string, newMixPct: number) => {
+    // Operator owns the monthly shape → re-split within months so their typed
+    // monthly totals survive a % edit.
+    if (revenuePattern === 'manual') {
+      redistributeMixWithinMonths(lineId, newMixPct);
+      return;
+    }
+
     const yearTarget = activeYear === 1 ? (goals.year1?.revenue || 0)
       : activeYear === 2 ? (goals.year2?.revenue || 0)
       : (goals.year3?.revenue || 0);
