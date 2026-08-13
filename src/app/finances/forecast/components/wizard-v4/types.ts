@@ -50,7 +50,6 @@ export interface XeroFieldFingerprint {
 }
 
 export type RevenuePattern = 'seasonal' | 'straight-line' | 'manual';
-export type ExpenseFrequency = 'once' | 'monthly' | 'quarterly' | 'annual';
 export type CostBehavior = 'fixed' | 'variable' | 'adhoc' | 'seasonal';
 
 // Business profile data from business_profiles table
@@ -364,16 +363,6 @@ export interface Investment {
   description: string;
   totalBudget: number;
   monthlyDistribution: number[]; // 12 values
-}
-
-export interface OtherExpense {
-  id: string;
-  description: string;
-  amount: number;
-  frequency: ExpenseFrequency;
-  startMonth: number; // 1-12
-  endMonth?: number;
-  notes?: string;
 }
 
 /**
@@ -854,8 +843,6 @@ export interface ForecastWizardState {
   // Step 6: Planned Spending (new — replaces CapEx + Investments)
   plannedSpends: PlannedSpend[];
 
-  // Step 7: Other Expenses
-  otherExpenses: OtherExpense[];
 
   // Step 6 Subscriptions (Phase 57 T02) — vendor budgets loaded on wizard
   // mount from /api/subscription-budgets and kept in sync as the operator
@@ -989,10 +976,6 @@ export interface WizardActions {
   // Bulk replace — used by save/load restore path
   setPlannedSpends: (items: PlannedSpend[]) => void;
 
-  // Step 7: Other Expenses
-  addOtherExpense: (expense: Omit<OtherExpense, 'id'>) => void;
-  updateOtherExpense: (expenseId: string, updates: Partial<OtherExpense>) => void;
-  removeOtherExpense: (expenseId: string) => void;
 
   // Step 6 Subscriptions (Phase 57 T02) — bulk replace. T12 (B4) will wire
   // Step6Subscriptions to call this on every vendor edit. For T02 the action
@@ -1042,8 +1025,6 @@ export interface YearlySummary {
   opex: number;
   depreciation: number;
   investments?: number;
-  /** User-entered one-off / recurring expenses from Step 7 (NOT Xero's other_expense bucket). */
-  otherExpenses: number;
   /** Xero `other_income` account_type bucket — carried over from prior FY actuals. */
   otherIncome: number;
   /** Xero `other_expense` account_type bucket — carried over from prior FY actuals. */

@@ -356,13 +356,6 @@ export interface ForecastAssumptions {
   xeroOtherIncome?: number;
   /** Prior-FY Xero Other Expense total, carried flat into each forecast year (summary parity). */
   xeroOtherExpense?: number;
-  /** Step 7 user-entered one-off/other expenses (summary's `otherExpenses` bucket). */
-  userOtherExpenses?: Array<{
-    id: string;
-    description?: string;
-    amount: number;
-    frequency: 'once' | 'monthly' | 'quarterly' | 'annual';
-  }>;
 }
 
 // ============================================================

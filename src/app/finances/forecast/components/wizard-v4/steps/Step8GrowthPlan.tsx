@@ -59,7 +59,7 @@ const emptySummary: YearlySummary = {
   revenue: 0, cogs: 0, grossProfit: 0, grossProfitPct: 0,
   // Phase 57 T07 (B2): subscriptions added to YearlySummary; defaults to 0
   // for empty/fallback summaries. Step8GrowthPlan consumer reads land in T08 (B4).
-  teamCosts: 0, subscriptions: 0, opex: 0, depreciation: 0, otherExpenses: 0,
+  teamCosts: 0, subscriptions: 0, opex: 0, depreciation: 0,
   otherIncome: 0, xeroOtherExpense: 0,
   netProfit: 0, netProfitPct: 0,
 };
@@ -935,36 +935,6 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
               )}
 
 
-              {/* ── Other Expenses Row (if any) ────────────────────────── */}
-              {(y1.otherExpenses > 0 || y2.otherExpenses > 0 || y3.otherExpenses > 0) && (
-                <tr className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-4" />
-                      Other Expenses
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right text-gray-700">
-                    ({formatCurrency(y1.otherExpenses)})
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right text-gray-700">
-                    ({formatCurrency(y2.otherExpenses)})
-                  </td>
-                  <td className="px-4 py-3 text-sm text-center">
-                    <GrowthBadge value={growthPct(y2.otherExpenses, y1.otherExpenses)} />
-                  </td>
-                  {showY3 && (
-                    <>
-                      <td className="px-4 py-3 text-sm text-right text-gray-700">
-                        ({formatCurrency(y3.otherExpenses)})
-                      </td>
-                      <td className="px-4 py-3 text-sm text-center">
-                        <GrowthBadge value={growthPct(y3.otherExpenses, y2.otherExpenses)} />
-                      </td>
-                    </>
-                  )}
-                </tr>
-              )}
 
               {/* ── Net Profit Row ─────────────────────────────────────── */}
               <tr className="bg-brand-navy text-white">

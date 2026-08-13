@@ -74,7 +74,6 @@ function makeStubState(): ForecastWizardState {
     capexItems: [],
     investments: [],
     plannedSpends: [],
-    otherExpenses: [],
     subscriptions: [],
     maxVisitedStep: 6,
   };

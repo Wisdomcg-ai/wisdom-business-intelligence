@@ -36,7 +36,6 @@ function isCapexStepComplete(state: {
     state.maxVisitedStep >= 7
     || state.plannedSpends.length > 0
     || state.capexItems.length > 0
-    || state.otherExpenses.length > 0
   );
 }
 
@@ -88,13 +87,6 @@ describe('Step 9 checklist — CapEx step completion', () => {
     ).toBe(true);
   });
 
-  it('completes when otherExpenses exist (Step 7 is "CapEx & Other")', () => {
-    expect(
-      isCapexStepComplete(
-        makeState({ otherExpenses: [{ id: 'oe1' }] }),
-      ),
-    ).toBe(true);
-  });
 
   it('does NOT complete for a brand-new forecast that has not reached Step 7', () => {
     // Operator on Step 1, nothing entered yet → Step 7 should still be grey.

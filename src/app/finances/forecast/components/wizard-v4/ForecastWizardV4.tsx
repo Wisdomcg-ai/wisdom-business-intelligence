@@ -1461,7 +1461,6 @@ export function ForecastWizardV4({
     // wizard after a Step 5/7 edit lost it server-side.
     state.plannedSpends,
     state.subscriptions,
-    state.otherExpenses,
     state.forecastDuration,
     state.revenuePattern,
     state.defaultOpExIncreasePct,
