@@ -12,7 +12,7 @@ import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
 import { withQuerySchema } from '@/lib/api/with-schema';
 import { z } from 'zod';
 import * as Sentry from '@sentry/nextjs'
-import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
+import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId';
 
 export const dynamic = 'force-dynamic';
 
@@ -110,67 +110,84 @@ async function getHandler(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    // Get Xero connection.
-    // PR-B (D1): the old hand-rolled 3-step lookup used `.maybeSingle()`,
-    // which ERRORS (data: null) for any business with 2+ active connections
-    // — Dragon Roofing's two orgs read as "not connected" and the wizard's
-    // Subscriptions step silently fell into blank manual mode.
-    // resolveXeroBusinessId is the sanctioned multi-connection-safe resolver
-    // (newest active connection wins; both id-spaces probed).
-    const { connection } = await resolveXeroBusinessId(supabase, businessId);
+    // Get EVERY active Xero connection.
+    // A multi-org business (Dragon Roofing = Dragon Roofing Pty Ltd + Easy Hail
+    // Claim; IICT Group = three entities) has one chart of accounts PER org. The
+    // old code resolved a single connection, so the operator was only ever offered
+    // one org's accounts — an account that exists only in the second org could not
+    // be selected at all, and the subscription crawl downstream never saw it.
+    const { connections } = await resolveXeroConnections(supabase, businessId);
 
-    if (!connection) {
+    if (connections.length === 0) {
       return NextResponse.json({ error: 'No active Xero connection' }, { status: 404 });
     }
 
-    // Get valid access token
-    let tokenResult = await getValidAccessToken(connection, supabase);
+    /**
+     * Fetch one org's accounts, refreshing the token once on a 401. Never throws:
+     * a single dead org must not blank the picker for the healthy ones — it is
+     * reported in `warnings` instead so the operator knows the list is partial.
+     */
+    const fetchForConnection = async (connection: any) => {
+      try {
+        let tokenResult = await getValidAccessToken(connection, supabase);
+        if (!tokenResult.success) {
+          return { connection, accounts: null, error: 'expired' as const };
+        }
 
-    if (!tokenResult.success) {
-      return NextResponse.json({ error: 'Xero connection expired. Please reconnect Xero.' }, { status: 401 });
-    }
+        let response = await fetchXeroAccounts(tokenResult.accessToken!, connection.tenant_id, filterType);
 
-    // Fetch from Xero
-    let response = await fetchXeroAccounts(tokenResult.accessToken!, connection.tenant_id, filterType);
+        // If Xero returns 401, force a token refresh and retry once
+        if (response.status === 401) {
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('[Chart of Accounts] Xero returned 401, forcing token refresh...');
+          }
 
-    // If Xero returns 401, force a token refresh and retry once
-    if (response.status === 401) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('[Chart of Accounts] Xero returned 401, forcing token refresh...');
+          // Expire the token in the DB to force the token manager to refresh
+          await supabase
+            .from('xero_connections')
+            .update({ expires_at: new Date(0).toISOString() })
+            .eq('id', connection.id);
+
+          tokenResult = await getValidAccessToken(connection, supabase);
+          if (!tokenResult.success) {
+            return { connection, accounts: null, error: 'expired' as const };
+          }
+
+          response = await fetchXeroAccounts(tokenResult.accessToken!, connection.tenant_id, filterType);
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          Sentry.captureMessage(
+            `[Chart of Accounts] Xero API error status=${response.status}`,
+            { level: 'error' as any, extra: { errorText, tenantId: connection.tenant_id } } as any
+          );
+          return { connection, accounts: null, error: `http_${response.status}` as const };
+        }
+
+        const data = await response.json();
+        return { connection, accounts: (data.Accounts || []) as any[], error: null };
+      } catch (err) {
+        Sentry.captureException(err, {
+          tags: { route: 'Xero/chart-of-accounts' },
+          extra: { context: 'per-connection accounts fetch', tenantId: connection?.tenant_id },
+        } as any);
+        return { connection, accounts: null, error: 'threw' as const };
       }
+    };
 
-      // Expire the token in the DB to force the token manager to refresh
-      await supabase
-        .from('xero_connections')
-        .update({ expires_at: new Date(0).toISOString() })
-        .eq('id', connection.id);
+    // Different tenants have independent rate limits, so fetch them concurrently.
+    const results = await Promise.all(connections.map(fetchForConnection));
 
-      tokenResult = await getValidAccessToken(connection, supabase);
-
-      if (!tokenResult.success) {
-        return NextResponse.json(
-          { error: tokenResult.message || 'Xero connection expired. Please reconnect Xero.' },
-          { status: 401 }
-        );
-      }
-
-      response = await fetchXeroAccounts(tokenResult.accessToken!, connection.tenant_id, filterType);
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      Sentry.captureMessage(`[Chart of Accounts] Xero API error status=${response.status}`, { level: 'error' as any, extra: { errorText } } as any);
-
-      const status = response.status === 401 || response.status === 403 ? 401
-        : response.status === 429 ? 429
-        : 502;
+    const failed = results.filter(r => r.accounts === null);
+    // Only a total wipeout is an error — a partial result is still usable.
+    if (failed.length === results.length) {
+      const anyExpired = failed.some(r => r.error === 'expired');
       return NextResponse.json(
-        { error: 'Failed to fetch accounts from Xero', xeroStatus: response.status },
-        { status }
+        { error: anyExpired ? 'Xero connection expired. Please reconnect Xero.' : 'Failed to fetch accounts from Xero' },
+        { status: anyExpired ? 401 : 502 }
       );
     }
-
-    const data = await response.json();
 
     // Helper function to check if account is a subscription-type account
     const isSubscriptionAccount = (accountName: string): boolean => {
@@ -181,16 +198,49 @@ async function getHandler(request: NextRequest) {
       return SUBSCRIPTION_ACCOUNT_KEYWORDS.some(keyword => nameLower.includes(keyword));
     };
 
-    // Process and filter accounts
-    let accounts = (data.Accounts || [])
-      .filter((acc: any) => acc.Status === 'ACTIVE')
-      .map((acc: any) => ({
-        accountId: acc.AccountID,
-        accountCode: acc.Code,
-        accountName: acc.Name,
-        accountType: acc.Type,
-        isSuggested: isSubscriptionAccount(acc.Name),
-      }));
+    // Union the orgs' charts by ACCOUNT CODE — the wizard selects accounts by code
+    // and passes those codes to the crawl, which applies them to every org. Xero's
+    // AccountID is a per-tenant GUID and so is useless as a cross-org identity.
+    // `orgs` records which orgs actually carry each code so the operator can tell a
+    // shared code (Dragon + Easy Hail both use 485 "Subscriptions") from a
+    // single-org one.
+    const byCode = new Map<string, any>();
+    for (const { connection, accounts } of results) {
+      const orgName = connection.tenant_name || 'Xero org';
+      for (const acc of accounts || []) {
+        if (acc.Status !== 'ACTIVE') continue;
+        const code = acc.Code;
+        // A code-less account cannot be selected or matched downstream.
+        if (!code) continue;
+
+        const existing = byCode.get(code);
+        if (existing) {
+          if (!existing.orgs.includes(orgName)) existing.orgs.push(orgName);
+          // Two orgs can name the same code differently. Keep the first (newest
+          // connection) as the label but surface the divergence rather than hiding it.
+          if (acc.Name && acc.Name !== existing.accountName && !existing.alsoNamed.includes(acc.Name)) {
+            existing.alsoNamed.push(acc.Name);
+          }
+          // Suggested in ANY org is enough to offer it — a code named
+          // "Subscriptions" in one org and "General" in another is still the
+          // subscriptions account for the org that spends through it.
+          existing.isSuggested = existing.isSuggested || isSubscriptionAccount(acc.Name || '');
+          continue;
+        }
+
+        byCode.set(code, {
+          accountId: acc.AccountID,
+          accountCode: code,
+          accountName: acc.Name,
+          accountType: acc.Type,
+          isSuggested: isSubscriptionAccount(acc.Name || ''),
+          orgs: [orgName],
+          alsoNamed: [] as string[],
+        });
+      }
+    }
+
+    let accounts = Array.from(byCode.values());
 
     if (filterType === 'subscription') {
       accounts = accounts.filter((acc: any) => acc.isSuggested);
@@ -202,6 +252,13 @@ async function getHandler(request: NextRequest) {
       success: true,
       accounts,
       totalAccounts: accounts.length,
+      // Which orgs are represented, and which could not be read. The wizard shows
+      // this so a partial list is never mistaken for a complete one.
+      orgsAnalyzed: results.filter(r => r.accounts !== null).map(r => r.connection.tenant_name || 'Xero org'),
+      warnings: failed.map(r => ({
+        org: r.connection.tenant_name || 'Xero org',
+        reason: r.error,
+      })),
     });
   } catch (err) {
     Sentry.captureException(err, { tags: { route: 'Xero/chart-of-accounts' }, extra: { context: "[Chart of Accounts] Error" } } as any);

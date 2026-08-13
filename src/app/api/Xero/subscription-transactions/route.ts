@@ -17,7 +17,9 @@ import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfile
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
-import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
+import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId';
+import { deriveVendorFromTransactions } from '@/lib/xero/subscription-vendor-derivation';
+import { isSameAccount } from '@/lib/xero/account-name-match';
 
 export const dynamic = 'force-dynamic';
 // High-volume tenants (e.g. JDS: 3700+ bills + 3300+ bank lines) need a long
@@ -44,6 +46,11 @@ interface XeroTransaction {
   reference?: string;
   period: 'prior_fy' | 'current_fy';
   isCredit: boolean;  // True if this is a refund/credit (negative amount)
+  // Which Xero org this row came from. A multi-org business bills the SAME vendor
+  // from more than one org, and each org has its own billing rhythm — frequency
+  // and budget must be derived per org and then summed, never from the pooled
+  // stream. See the per-org derivation in section 4.
+  tenantId: string;
 }
 
 interface VendorSummary {
@@ -102,94 +109,6 @@ function formatDate(date: Date): string {
   return date.toISOString().split('T')[0];
 }
 
-function detectFrequency(transactions: XeroTransaction[]): {
-  frequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc';
-  confidence: 'high' | 'medium' | 'low';
-} {
-  if (transactions.length === 1) {
-    return { frequency: 'ad-hoc', confidence: 'low' };
-  }
-
-  // Sort by date
-  const sorted = [...transactions].sort((a, b) =>
-    new Date(a.date).getTime() - new Date(b.date).getTime()
-  );
-
-  // Calculate intervals between transactions
-  const intervals: number[] = [];
-  for (let i = 1; i < sorted.length; i++) {
-    const days = Math.round(
-      (new Date(sorted[i].date).getTime() - new Date(sorted[i-1].date).getTime())
-      / (1000 * 60 * 60 * 24)
-    );
-    if (days > 0) intervals.push(days);
-  }
-
-  if (intervals.length === 0) {
-    return { frequency: 'ad-hoc', confidence: 'low' };
-  }
-
-  const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-  const variance = intervals.reduce((sum, i) => sum + Math.pow(i - avgInterval, 2), 0) / intervals.length;
-  const stdDev = Math.sqrt(variance);
-  const consistency = stdDev / avgInterval; // Lower is more consistent
-
-  // Determine frequency based on average interval
-  if (avgInterval >= 25 && avgInterval <= 35) {
-    return {
-      frequency: 'monthly',
-      confidence: consistency < 0.2 ? 'high' : consistency < 0.4 ? 'medium' : 'low'
-    };
-  } else if (avgInterval >= 80 && avgInterval <= 100) {
-    return {
-      frequency: 'quarterly',
-      confidence: consistency < 0.3 ? 'high' : consistency < 0.5 ? 'medium' : 'low'
-    };
-  } else if (avgInterval >= 350 && avgInterval <= 380) {
-    return {
-      frequency: 'annual',
-      confidence: consistency < 0.1 ? 'high' : 'medium'
-    };
-  }
-
-  // Check if it might be annual with only 1-2 transactions
-  if (transactions.length <= 2) {
-    const firstDate = new Date(sorted[0].date);
-    const lastDate = new Date(sorted[sorted.length - 1].date);
-    const span = (lastDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24);
-
-    if (span >= 300 && span <= 400) {
-      return { frequency: 'annual', confidence: 'medium' };
-    }
-  }
-
-  return { frequency: 'ad-hoc', confidence: 'low' };
-}
-
-function calculateSuggestedMonthlyBudget(
-  priorFYAmount: number,
-  avgAmount: number,
-  frequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc',
-  monthsSpan: number
-): number {
-  switch (frequency) {
-    case 'monthly':
-      // Use average transaction amount for monthly subscriptions
-      return avgAmount;
-    case 'quarterly':
-      // Use average transaction amount divided by 3 for quarterly
-      return avgAmount / 3;
-    case 'annual':
-      // Use prior FY amount (full year) divided by 12 for annual subscriptions
-      // Fall back to avgAmount if no prior FY data
-      return priorFYAmount > 0 ? priorFYAmount / 12 : avgAmount / 12;
-    case 'ad-hoc':
-      // Spread over the period we have data for, or 12 months
-      return (priorFYAmount > 0 ? priorFYAmount : avgAmount) / Math.max(monthsSpan, 12);
-    default:
-      return priorFYAmount > 0 ? priorFYAmount / 12 : avgAmount / 12;
-  }
-}
 
 /**
  * Extract account balance from Xero P&L Report by account NAME
@@ -447,50 +366,87 @@ async function postHandler(request: Request) {
       console.log('[Subscription Txns] Account codes:', validAccountCodes);
     }
 
-    // Get the Xero connection.
-    // PR-B (D1): the old hand-rolled 3-step lookup used `.maybeSingle()`,
-    // which ERRORS (data: null) for any business with 2+ active connections
-    // — multi-org businesses (Dragon Roofing) read as "not connected" and the
-    // vendor-analysis crawl 404'd silently. resolveXeroBusinessId is the
-    // sanctioned multi-connection-safe resolver (newest active connection
-    // wins). NOTE: the crawl remains single-tenant — for multi-org
-    // businesses it analyses the primary (newest) connection only; the
-    // second org's vendors are a known deferred gap.
-    const { connection } = await resolveXeroBusinessId(supabase, business_id);
+    // Get EVERY active Xero connection for this business.
+    //
+    // A multi-org business has one set of books PER Xero org: Dragon Roofing is
+    // "Dragon Roofing Pty Ltd" + "EASY HAIL CLAIM PTY LTD"; IICT Group is three
+    // entities. This crawl used to resolve a SINGLE connection, so it analysed one
+    // org and silently reported it as the whole business — Dragon's forecast saw
+    // only Easy Hail's 11 vendors and missed Dragon Roofing's own subscriptions
+    // (~$77k/yr). Worse, connections created by one "connect all orgs" flow share
+    // an identical created_at, so WHICH org won was effectively arbitrary and could
+    // change between runs.
+    //
+    // We now crawl every org and merge. Merging is safe by construction: vendor
+    // grouping (section 3 below) is a pure function of `allTransactions`, keyed by
+    // normalised vendorKey, and every derived field (frequency, monthsSpan,
+    // avgAmount, suggestedMonthlyBudget) is recomputed in section 4 from the merged
+    // transaction set. A vendor billed by both orgs (Zendesk, Hubstaff and Google
+    // Workspace all are, for Dragon) therefore lands as ONE vendor with summed
+    // spend — never duplicated, never dropped.
+    const { connections } = await resolveXeroConnections(supabase, business_id);
 
-    if (!connection) {
+    if (connections.length === 0) {
       Sentry.captureException(business_id, { tags: { route: 'Xero/subscription-transactions' }, extra: { context: "[Subscription Txns] No active Xero connection for" } } as any);
       return NextResponse.json({ error: 'No active Xero connection found' }, { status: 404 });
     }
 
-    // Use Token Manager to get a valid access token
-    // Token Manager handles locking, refresh, and coordination with other API calls
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[Subscription Txns] Getting valid token via Token Manager...');
-    }
+    /** Orgs that were crawled successfully, and those that were not (reported to the operator). */
+    const crawledTenantIds: string[] = [];
+    const orgsAnalyzed: string[] = [];
+    const orgFailures: { org: string; reason: string }[] = [];
+    /** Live access token per crawled tenant, reused by the P&L reconciliation below. */
+    const tokenByTenantId = new Map<string, string>();
+    /** Selected codes whose account NAME differs between orgs — reported, not guessed at. */
+    const accountNameConflicts: { code: string; org: string; name: string; expected: string }[] = [];
 
-    const tokenResult = await getValidAccessToken({ id: connection.id }, supabase);
-
-    if (!tokenResult.success || !tokenResult.accessToken) {
-      Sentry.captureException(tokenResult.error ?? new Error(tokenResult.message ?? 'Token Manager failed'), { tags: { route: 'Xero/subscription-transactions' }, extra: { context: 'Token Manager failed', message: tokenResult.message } } as any);
-
-      // Check if this is a permanent failure requiring reconnection
-      if (tokenResult.shouldDeactivate) {
-        return NextResponse.json({
-          error: 'Xero connection expired. Please reconnect Xero.',
-          requiresReconnect: true
-        }, { status: 401 });
+    // Which orgs may legitimately be summed together.
+    //
+    // Two filters, both about not inventing a number:
+    //  1. `include_in_consolidation = false` means the operator has said this org
+    //     is not part of the group's reported figures — honour that here too.
+    //  2. This crawl reads LIVE Xero bills, which carry each org's own functional
+    //     currency and no FX rates. AUD is the platform's presentation currency
+    //     (see needs-fx-consolidation.ts); FX translation belongs to the
+    //     consolidation engine, which this path does not go through. IICT Group
+    //     has an HKD org alongside two AUD ones — adding HKD dollars to AUD
+    //     dollars would produce a confidently wrong subscription budget, which is
+    //     worse than an incomplete one. So a non-AUD org is EXCLUDED and reported,
+    //     never silently summed.
+    const PRESENTATION_CURRENCY = 'AUD';
+    const eligibleConnections: any[] = [];
+    for (const c of connections) {
+      const orgName = c.tenant_name || 'Xero org';
+      if (c.include_in_consolidation === false) {
+        orgFailures.push({ org: orgName, reason: 'excluded_from_consolidation' });
+        continue;
       }
-
-      return NextResponse.json({
-        error: tokenResult.message || 'Failed to get valid Xero token'
-      }, { status: 401 });
+      const ccy = (c.functional_currency || PRESENTATION_CURRENCY).toUpperCase();
+      if (ccy !== PRESENTATION_CURRENCY) {
+        orgFailures.push({ org: orgName, reason: `currency_${ccy}_not_translated` });
+        continue;
+      }
+      eligibleConnections.push(c);
     }
 
-    const accessToken = tokenResult.accessToken;
+    if (eligibleConnections.length === 0) {
+      return NextResponse.json(
+        {
+          error: 'No Xero org could be analysed in the presentation currency (AUD).',
+          orgFailures,
+        },
+        { status: 422 }
+      );
+    }
+
     if (process.env.NODE_ENV !== 'production') {
-      console.log('[Subscription Txns] Got valid token from Token Manager');
+      console.log('[Subscription Txns] Orgs to crawl:', eligibleConnections.map((c: any) => c.tenant_name).join(', '));
     }
+
+    // The org currently being crawled. The paced xeroGet closure below reads these
+    // rather than capturing a single tenant's token, so one helper serves every org.
+    let activeToken = '';
+    let activeTenantId = '';
 
     // --- Paced, 429-aware Xero GET (reliability fix for high-volume tenants) ---
     // Xero throttles at ~60 calls/min PER TENANT. The old loops fired a call
@@ -503,6 +459,9 @@ async function postHandler(request: Request) {
     // until they clear (respecting Retry-After), so no page/batch is ever lost.
     const XERO_MIN_INTERVAL_MS = 1100; // stay under 60 calls/min/tenant
     const XERO_MAX_429_RETRIES = 8;
+    // Xero's limits are PER TENANT, so the pacing clock is reset when we move to
+    // the next org (see the crawl loop below) — one org's calls must not delay
+    // another's against a budget they don't share.
     let xeroLastCallAt = 0;
     const xeroGet = async (url: string): Promise<Response | null> => {
       for (let attempt = 0; attempt <= XERO_MAX_429_RETRIES; attempt++) {
@@ -515,8 +474,8 @@ async function postHandler(request: Request) {
         try {
           res = await fetch(url, {
             headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'xero-tenant-id': connection.tenant_id,
+              'Authorization': `Bearer ${activeToken}`,
+              'xero-tenant-id': activeTenantId,
               'Accept': 'application/json',
             },
           });
@@ -636,38 +595,121 @@ async function postHandler(request: Request) {
       return getPeriod(dateStr) !== null;
     };
 
-    // Get account name mapping
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[Subscription Txns] Fetching accounts with token:', accessToken?.substring(0, 20) + '...');
-    }
-    const accountsResponse = await fetch(
-      'https://api.xero.com/api.xro/2.0/Accounts',
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'xero-tenant-id': connection.tenant_id,
-          'Accept': 'application/json'
+    // Shared across every org — the crawl loop below appends to these, and the
+    // vendor grouping in section 3 merges by vendorKey regardless of which org a
+    // transaction came from.
+    const accountNameMap = new Map<string, string>();
+    const allTransactions: XeroTransaction[] = [];
+
+
+    // Time budget. `export const maxDuration = 300` is the hard ceiling; crawling
+    // orgs one after another multiplies the wall clock, so we stop before the
+    // platform kills the request mid-flight and report the orgs we skipped. A
+    // short, honest result beats a 504 that loses every org's work.
+    const crawlStartedAt = Date.now();
+    const CRAWL_BUDGET_MS = 225_000; // ~75s headroom for aggregation + backstop + response
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CRAWL EACH XERO ORG
+    // Sequential rather than concurrent: it keeps each org's paced request
+    // sequence intact and well inside Xero's per-tenant limits, and keeps this
+    // long procedure readable. The pacing clock resets per org because the 60/min
+    // limit is per tenant, so org 2 never waits on org 1's budget.
+    // ─────────────────────────────────────────────────────────────────────────
+    for (const connection of eligibleConnections) {
+      const orgName = connection.tenant_name || 'Xero org';
+
+      if (crawledTenantIds.length > 0 && Date.now() - crawlStartedAt > CRAWL_BUDGET_MS) {
+        orgFailures.push({ org: orgName, reason: 'skipped_time_budget' });
+        Sentry.captureMessage('[Subscription Txns] Crawl time budget exhausted — org skipped', {
+          level: 'warning' as any,
+          extra: { org: orgName, business_id, elapsedMs: Date.now() - crawlStartedAt },
+        } as any);
+        continue;
+      }
+
+      // Use Token Manager to get a valid access token for THIS org.
+      // Token Manager handles locking, refresh, and coordination with other API calls.
+      // A dead org must not abort the whole crawl — the healthy orgs' vendors are
+      // still worth returning, and the failure is surfaced in the response.
+      const tokenResult = await getValidAccessToken({ id: connection.id }, supabase);
+
+      if (!tokenResult.success || !tokenResult.accessToken) {
+        Sentry.captureException(
+          tokenResult.error ?? new Error(tokenResult.message ?? 'Token Manager failed'),
+          { tags: { route: 'Xero/subscription-transactions' }, extra: { context: 'Token Manager failed', message: tokenResult.message, org: orgName } } as any
+        );
+        orgFailures.push({ org: orgName, reason: tokenResult.shouldDeactivate ? 'requires_reconnect' : 'token_failed' });
+        continue;
+      }
+
+      activeToken = tokenResult.accessToken;
+      activeTenantId = connection.tenant_id;
+      xeroLastCallAt = 0; // fresh per-tenant pacing budget
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Subscription Txns] ─── Crawling org "${orgName}" (${connection.tenant_id})`);
+      }
+
+      // Get account name mapping
+      const accountsResponse = await fetch(
+        'https://api.xero.com/api.xro/2.0/Accounts',
+        {
+          headers: {
+            'Authorization': `Bearer ${activeToken}`,
+            'xero-tenant-id': activeTenantId,
+            'Accept': 'application/json'
+          }
+        }
+      );
+
+      if (!accountsResponse.ok) {
+        const errorText = await accountsResponse.text();
+        Sentry.captureMessage(`[Subscription Txns] Accounts fetch error status=${accountsResponse.status}`, { level: 'error' as any, extra: { errorText, org: orgName } } as any);
+        orgFailures.push({ org: orgName, reason: `accounts_http_${accountsResponse.status}` });
+        continue;
+      }
+
+      const accountsData = await accountsResponse.json();
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Subscription Txns] Got', accountsData.Accounts?.length || 0, 'accounts');
+      }
+
+      // A shared account CODE does not mean a shared account.
+      //
+      // Xero account codes are per-org, and sibling orgs drift: of the 74 codes
+      // Dragon Roofing's two orgs share, 26 carry different names. Some are
+      // cosmetic ("Entertainment (420)" vs "Entertainment") but others are simply
+      // different accounts wearing the same number — 401 is "Accounting" in Dragon
+      // Roofing and "Advertising" in Easy Hail; 402 is "Bad Debts expense" vs
+      // "Marketing". Applying the operator's selected codes blindly to every org
+      // would silently pull an unrelated account's spend into the forecast.
+      //
+      // So a code is crawled in an org only when that org's name for it matches the
+      // canonical name (first org to define it). Divergences are reported rather
+      // than quietly resolved either way — including the wrong account overstates,
+      // excluding a real one understates, and the operator is the one who can tell
+      // which it is. Excluded spend still reaches the forecast through the P&L
+      // backstop's "Other / Unallocated Subscriptions" line, so no money is lost.
+      const allowedCodes = new Set<string>();
+      for (const acc of accountsData.Accounts || []) {
+        if (!acc.Code) continue;
+        const canonical = accountNameMap.get(acc.Code);
+        if (canonical === undefined) {
+          accountNameMap.set(acc.Code, acc.Name);
+          allowedCodes.add(acc.Code);
+          continue;
+        }
+        if (isSameAccount(canonical, acc.Name)) {
+          allowedCodes.add(acc.Code);
+        } else if (validAccountCodes.includes(acc.Code)) {
+          accountNameConflicts.push({ code: acc.Code, org: orgName, name: acc.Name, expected: canonical });
         }
       }
-    );
 
-    if (!accountsResponse.ok) {
-      const errorText = await accountsResponse.text();
-      Sentry.captureMessage(`[Subscription Txns] Accounts fetch error status=${accountsResponse.status}`, { level: 'error' as any, extra: { errorText } } as any);
-      return NextResponse.json({ error: 'Failed to fetch accounts from Xero' }, { status: 500 });
-    }
-
-    const accountsData = await accountsResponse.json();
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[Subscription Txns] Got', accountsData.Accounts?.length || 0, 'accounts');
-    }
-
-    const accountNameMap = new Map<string, string>();
-    for (const acc of accountsData.Accounts || []) {
-      accountNameMap.set(acc.Code, acc.Name);
-    }
-
-    const allTransactions: XeroTransaction[] = [];
+      crawledTenantIds.push(connection.tenant_id);
+      orgsAnalyzed.push(orgName);
+      tokenByTenantId.set(connection.tenant_id, activeToken);
 
     // =====================================================
     // 1. FETCH ALL INVOICES (ACCPAY - supplier bills)
@@ -776,7 +818,7 @@ async function postHandler(request: Request) {
           if (!period) continue;
 
           for (const line of fullInvoice.LineItems) {
-            if (validAccountCodes.includes(line.AccountCode)) {
+            if (validAccountCodes.includes(line.AccountCode) && allowedCodes.has(line.AccountCode)) {
               const contactName = fullInvoice.Contact?.Name || '';
               const vendorName = extractVendorName(contactName, line.Description || '');
 
@@ -786,6 +828,7 @@ async function postHandler(request: Request) {
               // For expense accounts, positive = expense, negative = credit/refund
               // We keep the sign to properly calculate net expense
               allTransactions.push({
+                tenantId: activeTenantId,
                 id: `inv-${fullInvoice.InvoiceID}-${line.LineItemID || Math.random()}`,
                 date: dateStr,
                 vendor: vendorName,
@@ -869,7 +912,7 @@ async function postHandler(request: Request) {
 
         // Check line items for matching account codes
         for (const line of txn.LineItems || []) {
-          if (validAccountCodes.includes(line.AccountCode)) {
+          if (validAccountCodes.includes(line.AccountCode) && allowedCodes.has(line.AccountCode)) {
             const contactName = txn.Contact?.Name || '';
             const vendorName = extractVendorName(contactName, line.Description || txn.Reference || '');
 
@@ -879,6 +922,7 @@ async function postHandler(request: Request) {
             // For expense accounts, positive = expense, negative = credit/refund
             // We keep the sign to properly calculate net expense
             allTransactions.push({
+              tenantId: activeTenantId,
               id: `bank-${txn.BankTransactionID}-${line.LineItemID || Math.random()}`,
               date: dateStr,
               vendor: vendorName,
@@ -919,6 +963,24 @@ async function postHandler(request: Request) {
     }
     if (process.env.NODE_ENV !== 'production') {
       console.log('[Subscription Txns] TOTAL transactions found:', allTransactions.length);
+    }
+
+    } // ─── end per-org crawl loop ───
+
+    // Every org failed — there is nothing to analyse, so say so rather than
+    // returning an empty vendor list that reads as "this business has no subscriptions".
+    if (crawledTenantIds.length === 0) {
+      const requiresReconnect = orgFailures.some(f => f.reason === 'requires_reconnect');
+      return NextResponse.json(
+        {
+          error: requiresReconnect
+            ? 'Xero connection expired. Please reconnect Xero.'
+            : 'Failed to fetch subscription data from Xero',
+          requiresReconnect,
+          orgFailures,
+        },
+        { status: requiresReconnect ? 401 : 502 }
+      );
     }
 
     // Calculate credit/debit breakdown for debugging
@@ -1048,28 +1110,14 @@ async function postHandler(request: Request) {
         (last.getTime() - first.getTime()) / (1000 * 60 * 60 * 24 * 30)
       ));
 
-      // Detect frequency
-      const { frequency, confidence } = detectFrequency(vendor.transactions);
-      vendor.suggestedFrequency = frequency;
-      vendor.confidence = confidence;
-
-      // Phase 63: for annual subs, capture the renewal month from the most
-      // recent transaction. Operator can override in the manual-add form. We
-      // intentionally use lastTransaction (not firstTransaction) — if a sub
-      // moves its renewal date, the most recent payment reflects the new
-      // schedule.
-      if (frequency === 'annual') {
-        const lastDate = parseXeroDate(vendor.lastTransaction);
-        vendor.renewalMonth = lastDate ? lastDate.getMonth() + 1 : null;
-      }
-
-      // Calculate suggested monthly budget using prior FY for annual subscriptions
-      vendor.suggestedMonthlyBudget = calculateSuggestedMonthlyBudget(
-        vendor.priorFYAmount,
-        vendor.avgAmount,
-        vendor.suggestedFrequency,
-        vendor.monthsSpan
-      );
+      // Detect frequency and size the budget PER XERO ORG, then sum — see
+      // `deriveVendorFromTransactions` for why pooling multi-org streams
+      // under-states both. Phase 63 renewal month comes from the dominant org.
+      const derived = deriveVendorFromTransactions(vendor.transactions);
+      vendor.suggestedFrequency = derived.suggestedFrequency;
+      vendor.confidence = derived.confidence;
+      vendor.renewalMonth = derived.renewalMonth;
+      vendor.suggestedMonthlyBudget = derived.suggestedMonthlyBudget;
 
       // Sort transactions by date (newest first)
       vendor.transactions.sort((a, b) =>
@@ -1117,16 +1165,21 @@ async function postHandler(request: Request) {
 
       if (validAccountCodes.length > 0) {
         const ids = await resolveBusinessProfileIds(supabase, business_id);
-        // Scope to the SAME single Xero tenant the live crawl used. Consolidated
-        // businesses carry multiple tenant_ids under one business_profiles.id;
-        // summing them all (while the crawl saw one) would fabricate a huge
-        // phantom gap. Match on stable account_code (not renameable names) and
-        // accrual basis only (avoid summing cash + accrual rows twice).
+        // Scope to EXACTLY the orgs the crawl actually read — no more, no less.
+        // Both directions matter: including an org we did not crawl fabricates a
+        // phantom gap, and excluding one we did crawl hides a real one. This was
+        // previously pinned to a single tenant, which is why the backstop stayed
+        // silent while an entire org's subscription spend was missing (it compared
+        // Easy Hail's captured vendors against Easy Hail's P&L and found no gap).
+        // An org skipped for time or a dead token is correctly left out here — its
+        // absence is reported via orgFailures instead.
+        // Match on stable account_code (not renameable names) and accrual basis
+        // only (avoid summing cash + accrual rows twice).
         const { data: plRows } = await supabase
           .from('xero_pl_lines_wide_compat')
-          .select('monthly_values')
+          .select('monthly_values, tenant_id')
           .in('business_id', ids.all)
-          .eq('tenant_id', connection.tenant_id)
+          .in('tenant_id', crawledTenantIds)
           .eq('basis', 'accruals')
           .in('account_code', validAccountCodes);
 
@@ -1136,29 +1189,66 @@ async function postHandler(request: Request) {
         // nets credits would invent a phantom gap when a month is net-negative.
         // Clamp a net-negative period total to 0 (a genuine net-credit account is
         // not "missed spend").
-        let plCurrent = 0, plPrior = 0;
+        //
+        // Gaps are computed PER ORG and only positive ones are summed. Comparing
+        // one global P&L total against one global captured total lets orgs cancel
+        // each other out: if org B's mirror rows are missing or stale its P&L reads
+        // 0 while its captured spend is real, and that surplus silently absorbs a
+        // genuine shortfall in org A — the backstop would go quiet on exactly the
+        // under-reporting it exists to catch.
+        const plByTenant = new Map<string, { current: number; prior: number }>();
         for (const row of (plRows || [])) {
           const mv = (row.monthly_values || {}) as Record<string, number>;
-          for (const k of currentFYMonths) plCurrent += Number(mv[k]) || 0;
-          for (const k of priorFYMonths) plPrior += Number(mv[k]) || 0;
+          const t = (row as any).tenant_id as string;
+          const acc = plByTenant.get(t) || { current: 0, prior: 0 };
+          for (const k of currentFYMonths) acc.current += Number(mv[k]) || 0;
+          for (const k of priorFYMonths) acc.prior += Number(mv[k]) || 0;
+          plByTenant.set(t, acc);
         }
-        plCurrent = Math.max(0, plCurrent);
-        plPrior = Math.max(0, plPrior);
 
         const round2 = (n: number) => Math.round(n * 100) / 100;
-        const capturedCurrent = vendors.reduce((s, v) => s + v.currentFYAmount, 0);
-        const capturedPrior = vendors.reduce((s, v) => s + v.priorFYAmount, 0);
-        const currentGap = round2(plCurrent - capturedCurrent);
-        const priorGap = round2(plPrior - capturedPrior);
+        const capturedByTenant = new Map<string, { current: number; prior: number }>();
+        for (const v of vendors) {
+          for (const tx of v.transactions) {
+            const acc = capturedByTenant.get(tx.tenantId) || { current: 0, prior: 0 };
+            if (tx.period === 'prior_fy') acc.prior += tx.amount;
+            else acc.current += tx.amount;
+            capturedByTenant.set(tx.tenantId, acc);
+          }
+        }
+
+        // Per-org materiality: a $10 threshold applied to the SUM would let three
+        // orgs' benign $8 timing differences accumulate into a fabricated $24 line.
+        const MATERIALITY = 10;
+        let currentGap = 0, priorGap = 0;
+        let overCountCurrent = 0, overCountPrior = 0;
+        let plCurrent = 0, plPrior = 0;
+        for (const tenantId of crawledTenantIds) {
+          const pl = plByTenant.get(tenantId) || { current: 0, prior: 0 };
+          const cap = capturedByTenant.get(tenantId) || { current: 0, prior: 0 };
+          const tPlCurrent = Math.max(0, pl.current);
+          const tPlPrior = Math.max(0, pl.prior);
+          plCurrent += tPlCurrent;
+          plPrior += tPlPrior;
+
+          const gc = round2(tPlCurrent - cap.current);
+          const gp = round2(tPlPrior - cap.prior);
+          if (gc > MATERIALITY) currentGap += gc;
+          if (gp > MATERIALITY) priorGap += gp;
+          if (gc < -MATERIALITY) overCountCurrent += gc;
+          if (gp < -MATERIALITY) overCountPrior += gp;
+        }
+        currentGap = round2(currentGap);
+        priorGap = round2(priorGap);
 
         // Observability: an OVER-count (captured materially above P&L) yields no
         // "Other" line, but flag it — it can signal a future double-count.
-        if (process.env.NODE_ENV !== 'production' && (currentGap < -10 || priorGap < -10)) {
-          console.warn(`[Subscription Txns] P&L backstop: captured EXCEEDS P&L (currentGap=${currentGap}, priorGap=${priorGap}) — possible double-count`);
+        if (process.env.NODE_ENV !== 'production' && (overCountCurrent < 0 || overCountPrior < 0)) {
+          console.warn(`[Subscription Txns] P&L backstop: captured EXCEEDS P&L (current=${overCountCurrent}, prior=${overCountPrior}) — possible double-count`);
         }
 
-        // Only surface a MATERIAL shortfall (ignore rounding / timing noise).
-        if (currentGap > 10 || priorGap > 10) {
+        // Surface the shortfall — already filtered to material per-org gaps above.
+        if (currentGap > 0 || priorGap > 0) {
           const otherCurrent = Math.max(0, currentGap);
           const otherPrior = Math.max(0, priorGap);
           const otherName = 'Other / Unallocated Subscriptions';
@@ -1190,7 +1280,7 @@ async function postHandler(request: Request) {
           });
           vendors.sort((a, b) => b.totalAmount - a.totalAmount);
           if (process.env.NODE_ENV !== 'production') {
-            console.log(`[Subscription Txns] P&L backstop: added "Other" line — currentGap=$${otherCurrent}, priorGap=$${otherPrior} (P&L current=$${round2(plCurrent)} vs captured=$${round2(capturedCurrent)})`);
+            console.log(`[Subscription Txns] P&L backstop: added "Other" line — currentGap=$${otherCurrent}, priorGap=$${otherPrior} (P&L current=$${round2(plCurrent)} across ${crawledTenantIds.length} org(s))`);
           }
         }
       }
@@ -1304,27 +1394,49 @@ async function postHandler(request: Request) {
         }
       }
 
-      // Fetch the P&L Report and search by account NAME since that's what we have
-      const priorPLUrl = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${priorFYStartStr}&toDate=${priorFYEndStr}&standardLayout=true`;
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('[Subscription Txns] Prior FY P&L URL:', priorPLUrl);
-      }
+      /**
+       * Sum a P&L window across EVERY crawled org.
+       *
+       * The captured vendor totals now span all orgs, so the figure they are
+       * reconciled against must too — comparing a multi-org capture to one org's
+       * P&L would report a huge false variance. Returns null only when no org
+       * yielded a balance (the pre-existing "couldn't reconcile" signal); an org
+       * that simply has no spend on these accounts contributes 0.
+       */
+      const fetchPLTotalAcrossOrgs = async (fromStr: string, toStr: string, label: string) => {
+        const url = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${fromStr}&toDate=${toStr}&standardLayout=true`;
+        let total: number | null = null;
 
-      const priorPLResponse = await fetch(priorPLUrl, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'xero-tenant-id': connection.tenant_id,
-          'Accept': 'application/json'
+        for (const tenantId of crawledTenantIds) {
+          const token = tokenByTenantId.get(tenantId);
+          if (!token) continue;
+          try {
+            const res = await fetch(url, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'xero-tenant-id': tenantId,
+                'Accept': 'application/json'
+              }
+            });
+            if (!res.ok) {
+              const errorText = await res.text();
+              Sentry.captureMessage(`[Subscription Txns] ${label} P&L fetch failed status=${res.status}`, { level: 'error' as any, extra: { errorText, tenantId } } as any);
+              continue;
+            }
+            const data = await res.json();
+            const balance = extractAccountBalanceByName(data, accountNames);
+            if (balance !== null) total = (total ?? 0) + balance;
+          } catch (plErr) {
+            Sentry.captureException(plErr, { tags: { route: 'Xero/subscription-transactions' }, extra: { context: `${label} P&L fetch threw`, tenantId } } as any);
+          }
         }
-      });
+        return total;
+      };
 
-      if (priorPLResponse.ok) {
-        const priorPLData = await priorPLResponse.json();
-
-        // Extract balance using account names instead of codes
-        const priorActual = extractAccountBalanceByName(priorPLData, accountNames);
+      {
+        const priorActual = await fetchPLTotalAcrossOrgs(priorFYStartStr, priorFYEndStr, 'Prior FY');
         if (process.env.NODE_ENV !== 'production') {
-          console.log('[Subscription Txns] Prior FY P&L actual balance:', priorActual);
+          console.log('[Subscription Txns] Prior FY P&L actual balance (all orgs):', priorActual);
         }
 
         if (priorActual !== null) {
@@ -1337,30 +1449,13 @@ async function postHandler(request: Request) {
             Math.abs(reconciliation.priorFY.variance) < 100 ||
             Math.abs(reconciliation.priorFY.variancePercent || 0) < 1;
         }
-      } else {
-        const errorText = await priorPLResponse.text();
-        Sentry.captureMessage(`[Subscription Txns] Prior FY P&L fetch failed status=${priorPLResponse.status}`, { level: 'error' as any, extra: { errorText } } as any);
       }
 
-      // Fetch Current FY YTD P&L Report
-      const currentPLUrl = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${currentFYStartStr}&toDate=${toDateStr}&standardLayout=true`;
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('[Subscription Txns] Current FY P&L URL:', currentPLUrl);
-      }
-
-      const currentPLResponse = await fetch(currentPLUrl, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'xero-tenant-id': connection.tenant_id,
-          'Accept': 'application/json'
-        }
-      });
-
-      if (currentPLResponse.ok) {
-        const currentPLData = await currentPLResponse.json();
-        const currentActual = extractAccountBalanceByName(currentPLData, accountNames);
+      // Current FY YTD P&L, same all-orgs sum
+      {
+        const currentActual = await fetchPLTotalAcrossOrgs(currentFYStartStr, toDateStr, 'Current FY');
         if (process.env.NODE_ENV !== 'production') {
-          console.log('[Subscription Txns] Current FY P&L actual balance:', currentActual);
+          console.log('[Subscription Txns] Current FY P&L actual balance (all orgs):', currentActual);
         }
 
         if (currentActual !== null) {
@@ -1373,9 +1468,6 @@ async function postHandler(request: Request) {
             Math.abs(reconciliation.currentFY.variance) < 100 ||
             Math.abs(reconciliation.currentFY.variancePercent || 0) < 1;
         }
-      } else {
-        const errorText = await currentPLResponse.text();
-        Sentry.captureMessage(`[Subscription Txns] Current FY P&L fetch failed status=${currentPLResponse.status}`, { level: 'error' as any, extra: { errorText } } as any);
       }
     } catch (reconcileError) {
       Sentry.captureException(reconcileError, { tags: { route: 'Xero/subscription-transactions' }, extra: { context: "[Subscription Txns] Reconciliation error" } } as any);
@@ -1447,6 +1539,13 @@ async function postHandler(request: Request) {
           },
         },
         accountsAnalyzed: validAccountCodes,
+        // Which Xero orgs this analysis actually covers. A multi-org business must
+        // never be shown a one-org result as if it were the whole picture, so the
+        // orgs read and the orgs missed are both stated explicitly.
+        orgsAnalyzed,
+        orgsTotal: connections.length,
+        orgFailures,
+        accountNameConflicts,
         // P&L Reconciliation - compare our analysis to actual Xero P&L balance
         reconciliation,
       },
