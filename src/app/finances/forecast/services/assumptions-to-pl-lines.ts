@@ -48,7 +48,6 @@ export const SYS_CODES = {
   plannedSpendExpense: 'SYS-PLANNED-SPEND',
   otherIncome: 'SYS-OTHER-INCOME',
   otherExpense: 'SYS-OTHER-EXPENSE',
-  userOneOffs: 'SYS-ONEOFF-EXPENSES',
 } as const
 
 // ---------------------------------------------------------------------------
@@ -863,25 +862,6 @@ function convertParityBuckets(
   }
   if (assumptions.xeroOtherExpense) {
     buildFlatLine('Other Expenses', SYS_CODES.otherExpense, 'Other Expenses', everyYear(assumptions.xeroOtherExpense))
-  }
-
-  // Step 7 user one-offs — summary rule: 'once' hits Y1 only; recurring
-  // frequencies annualise into every year.
-  const userExpenses = assumptions.userOtherExpenses ?? []
-  if (userExpenses.length > 0) {
-    const annualByYear: Record<number, number> = {}
-    for (const y of years) {
-      let total = 0
-      for (const exp of userExpenses) {
-        if (exp.frequency === 'once') {
-          if (y === 1) total += exp.amount
-        } else if (exp.frequency === 'monthly') total += exp.amount * 12
-        else if (exp.frequency === 'quarterly') total += exp.amount * 4
-        else total += exp.amount
-      }
-      annualByYear[y] = total
-    }
-    buildFlatLine('Planned One-off Expenses', SYS_CODES.userOneOffs, 'Operating Expenses', annualByYear)
   }
 
   return lines

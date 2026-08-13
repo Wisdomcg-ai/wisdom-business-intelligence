@@ -43,7 +43,6 @@ interface WhatIfToggle {
   cogsAdj: number;
   teamAdj: number;
   opexAdj: number;
-  otherAdj: number;
 }
 
 type HealthStatus = 'good' | 'ok' | 'concern';
@@ -53,7 +52,7 @@ const emptySummary: YearlySummary = {
   // Phase 57 T07 (B2): subscriptions added to YearlySummary; defaults to 0 for
   // the fallback summary used when forecastDuration shrinks below activeYear.
   // T08 (B4) wires the live value into the waterfall + advisor + scenario math.
-  teamCosts: 0, subscriptions: 0, opex: 0, depreciation: 0, investments: 0, otherExpenses: 0,
+  teamCosts: 0, subscriptions: 0, opex: 0, depreciation: 0, investments: 0,
   otherIncome: 0, xeroOtherExpense: 0,
   netProfit: 0, netProfitPct: 0,
 };
@@ -111,7 +110,6 @@ function PLWaterfallChart({ data }: { data: YearlySummary }) {
     ...(subscriptions > 0 ? [{ name: 'Subscriptions', value: -subscriptions }] : []),
     { name: 'OpEx', value: -data.opex },
     ...((data.investments || 0) > 0 ? [{ name: 'Invest', value: -(data.investments || 0) }] : []),
-    { name: 'Other', value: -data.otherExpenses },
     { name: 'Net Profit', value: data.netProfit, isTotal: true },
   ];
 
@@ -422,7 +420,6 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
         cogsAdj: Math.round(revDrop * (y.cogs / y.revenue)),
         teamAdj: 0,
         opexAdj: 0,
-        otherAdj: 0,
       },
       ...(topHire ? [{
         id: 'delay-hire',
@@ -434,7 +431,6 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
         cogsAdj: 0,
         teamAdj: -hireSaving,
         opexAdj: 0,
-        otherAdj: 0,
       }] : []),
       {
         id: 'cogs-up',
@@ -446,7 +442,6 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
         cogsAdj: cogsDrop,
         teamAdj: 0,
         opexAdj: 0,
-        otherAdj: 0,
       },
       {
         id: 'opex-cut',
@@ -458,7 +453,6 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
         cogsAdj: 0,
         teamAdj: 0,
         opexAdj: -Math.round(y.opex * 0.1),
-        otherAdj: 0,
       },
       {
         id: 'price-up',
@@ -470,7 +464,6 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
         cogsAdj: Math.round(y.revenue * 0.05 * (y.cogs / y.revenue)), // Variable COGS doesn't change on price increase
         teamAdj: 0,
         opexAdj: 0,
-        otherAdj: 0,
       },
     ];
   }, [summary, state.newHires]);
@@ -526,7 +519,6 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
             cogsAdj: s.cogsAdj || 0,
             teamAdj: s.teamAdj || 0,
             opexAdj: s.opexAdj || 0,
-            otherAdj: 0,
           };
           setWhatIfToggles(prev => {
             if (prev.some(t => t.id === 'ai-suggested')) return prev;
@@ -563,14 +555,12 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
     const totalCogsAdj = activeToggles.reduce((s, t) => s + t.cogsAdj, 0);
     const totalTeamAdj = activeToggles.reduce((s, t) => s + t.teamAdj, 0);
     const totalOpexAdj = activeToggles.reduce((s, t) => s + t.opexAdj, 0);
-    const totalOtherAdj = activeToggles.reduce((s, t) => s + t.otherAdj, 0);
 
     const revenue = yearData.revenue + totalRevAdj;
     const cogs = yearData.cogs - totalCogsAdj;
     const grossProfit = revenue - cogs;
     const teamCosts = yearData.teamCosts + totalTeamAdj;
     const opex = yearData.opex + totalOpexAdj;
-    const otherExpenses = yearData.otherExpenses + totalOtherAdj;
     // Carry the Xero buckets through unchanged from yearData — what-if toggles
     // don't currently adjust other_income or xero_other_expense.
     const otherIncome = yearData.otherIncome ?? 0;
@@ -597,7 +587,6 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
       - subscriptions // Phase 57 T08 (B4): subtract subscriptions alongside opex
       - opex
       - depreciation
-      - otherExpenses
       - investments
       + otherIncome
       - xeroOtherExpense;
@@ -614,7 +603,6 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
       opex,
       depreciation,
       investments,
-      otherExpenses,
       otherIncome,
       xeroOtherExpense,
       netProfit,
@@ -641,14 +629,12 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
   // The fix uses `maxVisitedStep >= 7` as the primary signal: a forecast with
   // zero planned spends is a perfectly valid forecast (some operators have no
   // CapEx), so "operator visited the step" is the right completion rule.
-  // We fall back to data-presence (`plannedSpends` OR legacy `capexItems` OR
-  // `otherExpenses`) so any v10 draft that was completed before
+  // We fall back to data-presence (`plannedSpends` OR legacy `capexItems`) so any v10 draft that was completed before
   // `maxVisitedStep` existed in state still shows green.
   const capexStepComplete =
     state.maxVisitedStep >= 7
     || state.plannedSpends.length > 0
-    || state.capexItems.length > 0
-    || state.otherExpenses.length > 0;
+    || state.capexItems.length > 0;
 
   const completionSteps = useMemo(() => [
     { step: 1, label: 'Goals', hasData: goals.year1.revenue > 0, icon: Target },
@@ -1077,9 +1063,6 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
               )}
 
               {/* Other */}
-              {adjustedData.otherExpenses > 0 && (
-                <PLRow label="Other Expenses" amount={-adjustedData.otherExpenses} />
-              )}
 
               {/* Plus Other Income (Xero bucket — interest, grants, etc.) */}
               {(adjustedData.otherIncome ?? 0) > 0 && (

@@ -18,7 +18,6 @@ import {
   OpExLine,
   CapExItem,
   Investment,
-  OtherExpense,
   PlannedSpend,
   VendorBudget,
   ForecastSummary,
@@ -182,7 +181,6 @@ const createInitialState = (fiscalYearStart: number, businessId: string): Foreca
   capexItems: [],
   investments: [],
   plannedSpends: [],
-  otherExpenses: [],
   // Phase 57 (T02): empty until the mount-time fetch in useForecastWizard
   // resolves. Populated from /api/subscription-budgets?business_id=... on
   // wizard mount. T07 (B2) will read this for the rollup.
@@ -1213,30 +1211,6 @@ export function useForecastWizard(
     setState(prev => ({ ...prev, plannedSpends: items || [] }));
   }, []);
 
-  // Step 7: Other Expenses
-  const addOtherExpense = useCallback((expense: Omit<OtherExpense, 'id'>) => {
-    setState((prev) => ({
-      ...prev,
-      otherExpenses: [...prev.otherExpenses, { ...expense, id: generateId() }],
-    }));
-  }, []);
-
-  const updateOtherExpense = useCallback((expenseId: string, updates: Partial<OtherExpense>) => {
-    setState((prev) => ({
-      ...prev,
-      otherExpenses: prev.otherExpenses.map((exp) =>
-        exp.id === expenseId ? { ...exp, ...updates } : exp
-      ),
-    }));
-  }, []);
-
-  const removeOtherExpense = useCallback((expenseId: string) => {
-    setState((prev) => ({
-      ...prev,
-      otherExpenses: prev.otherExpenses.filter((exp) => exp.id !== expenseId),
-    }));
-  }, []);
-
   // Phase 57 (T02) — bulk replace subscriptions. Invoked by the mount-time
   // loader below; T12 (B4) will additionally invoke this from
   // Step6Subscriptions on every vendor edit so the rollup (T07) sees changes
@@ -1885,14 +1859,6 @@ export function useForecastWizard(
         return sum + item.annualDepreciation;
       }, 0);
 
-      // Other Expenses - one-off expenses only count in Y1
-      const otherExpenses = state.otherExpenses.reduce((sum, exp) => {
-        if (exp.frequency === 'once') return yearNum === 1 ? sum + exp.amount : sum;
-        if (exp.frequency === 'monthly') return sum + exp.amount * 12;
-        if (exp.frequency === 'quarterly') return sum + exp.amount * 4;
-        if (exp.frequency === 'annual') return sum + exp.amount;
-        return sum + exp.amount;
-      }, 0);
 
       // Investment costs (one-time strategic spends, Year 1 only)
       const investments = yearNum === 1
@@ -1944,7 +1910,6 @@ export function useForecastWizard(
         - subscriptions // Phase 57 T07 (B2): subscriptions are now their own bucket
         - opex
         - finalDepreciation
-        - otherExpenses // user-entered one-offs (Step 7), NOT Xero other_expense bucket
         - finalInvestments
         + xeroOtherIncome
         - xeroOtherExpense;
@@ -1965,7 +1930,6 @@ export function useForecastWizard(
         opex: Math.round(opex),
         depreciation: Math.round(finalDepreciation),
         investments: Math.round(finalInvestments),
-        otherExpenses: Math.round(otherExpenses), // user-entered list
         otherIncome: Math.round(xeroOtherIncome),
         xeroOtherExpense: Math.round(xeroOtherExpense),
         netProfit: Math.round(netProfit),
@@ -2247,12 +2211,6 @@ export function useForecastWizard(
       // reach the stored P&L (converter emits matching lines).
       xeroOtherIncome: state.priorYear?.otherIncome?.total ?? 0,
       xeroOtherExpense: state.priorYear?.otherExpenses?.total ?? 0,
-      userOtherExpenses: state.otherExpenses.map(exp => ({
-        id: exp.id,
-        description: exp.description,
-        amount: exp.amount,
-        frequency: exp.frequency,
-      })),
       // Hotfix (fix/step2-byMonth-priorYear-restore): at-save-time snapshot
       // of category-level prior-year monthly figures so the saved-assumptions
       // fallback in ForecastWizardV4.tsx can reconstruct
@@ -2429,9 +2387,6 @@ export function useForecastWizard(
     updatePlannedSpend,
     removePlannedSpend,
     setPlannedSpends,
-    addOtherExpense,
-    updateOtherExpense,
-    removeOtherExpense,
     setSubscriptions,
     initializeFromXero,
     saveDraft,
@@ -2449,7 +2404,7 @@ export function useForecastWizard(
     removeOpExLine, setNeedsAccountCodeRefresh, addCapExItem, updateCapExItem,
     removeCapExItem, addInvestment, updateInvestment, removeInvestment,
     addPlannedSpend, updatePlannedSpend, removePlannedSpend, setPlannedSpends,
-    addOtherExpense, updateOtherExpense, removeOtherExpense, setSubscriptions,
+    setSubscriptions,
     initializeFromXero, saveDraft, generateForecast,
   ]);
 

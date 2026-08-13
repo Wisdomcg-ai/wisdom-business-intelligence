@@ -40,6 +40,12 @@ export interface ParityYearSummary {
   opex?: number
   depreciation?: number
   investments?: number
+  /**
+   * Legacy only. The user-entered other-expenses bucket was removed — it had no
+   * editor, so it could only ever be zero — but this reads summaries already
+   * stored in `wizard_state`, and dropping the field would turn any historic
+   * non-zero value into a false divergence. Kept deliberately.
+   */
   otherExpenses?: number
   otherIncome?: number
   xeroOtherExpense?: number

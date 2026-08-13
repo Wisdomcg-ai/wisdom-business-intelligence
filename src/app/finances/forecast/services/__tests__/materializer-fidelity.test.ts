@@ -268,20 +268,6 @@ describe('M7/M13 — parity buckets', () => {
     expect(oe.forecast_months['2026-07']).toBe(500)
   })
 
-  it('user one-off expenses hit Y1 only; recurring hit every year', () => {
-    const a = baseAssumptions({
-      userOtherExpenses: [
-        { id: 'e1', amount: 24_000, frequency: 'once' },
-        { id: 'e2', amount: 1_000, frequency: 'monthly' },
-      ],
-    })
-    const out = convertAssumptionsToPLLines(ctx(a, 2))
-    const oneOffs = lineByName(out, 'Planned One-off Expenses')!
-    // Y1: 24k once + 12k monthly = 36k → 3k/mo
-    expect(oneOffs.forecast_months['2026-07']).toBe(3_000)
-    // Y2: monthly only = 12k → 1k/mo
-    expect(oneOffs.forecast_months['2027-07']).toBe(1_000)
-  })
 })
 
 describe('ad-hoc OpEx parity (Dragon FY2027: 11 lines, $26,356 divergence)', () => {
