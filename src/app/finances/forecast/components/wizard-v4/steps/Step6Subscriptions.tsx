@@ -139,6 +139,9 @@ interface AnalysisSummary {
   orgsAnalyzed?: string[];
   orgsTotal?: number;
   orgFailures?: { org: string; reason: string }[];
+  // A selected account code that names a DIFFERENT account in another org — its
+  // spend is deliberately left out rather than merged on the code alone.
+  accountNameConflicts?: { code: string; org: string; name: string; expected: string }[];
   reconciliation?: {
     priorFY: ReconciliationPeriod;
     currentFY: ReconciliationPeriod;
@@ -1502,6 +1505,15 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                   Not included:{' '}
                   {summary.orgFailures.map(f => `${f.org} (${f.reason.replace(/_/g, ' ')})`).join('; ')}.
                   These vendors are missing from the totals below.
+                </span>
+              )}
+              {summary.accountNameConflicts && summary.accountNameConflicts.length > 0 && (
+                <span className="block mt-1 text-amber-800">
+                  {summary.accountNameConflicts.map(c => (
+                    `Account ${c.code} is "${c.expected}" here but "${c.name}" in ${c.org}`
+                  )).join('; ')}
+                  {' '}— treated as different accounts, so that spend is excluded. Check the
+                  account codes if these should be the same.
                 </span>
               )}
             </div>

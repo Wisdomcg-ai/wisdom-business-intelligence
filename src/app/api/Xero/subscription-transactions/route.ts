@@ -19,6 +19,7 @@ import { requireSectionPermission } from '@/lib/permissions/requireSectionPermis
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId';
 import { deriveVendorFromTransactions } from '@/lib/xero/subscription-vendor-derivation';
+import { isSameAccount } from '@/lib/xero/account-name-match';
 
 export const dynamic = 'force-dynamic';
 // High-volume tenants (e.g. JDS: 3700+ bills + 3300+ bank lines) need a long
@@ -107,6 +108,7 @@ function parseXeroDate(dateStr: string): Date | null {
 function formatDate(date: Date): string {
   return date.toISOString().split('T')[0];
 }
+
 
 /**
  * Extract account balance from Xero P&L Report by account NAME
@@ -395,6 +397,8 @@ async function postHandler(request: Request) {
     const orgFailures: { org: string; reason: string }[] = [];
     /** Live access token per crawled tenant, reused by the P&L reconciliation below. */
     const tokenByTenantId = new Map<string, string>();
+    /** Selected codes whose account NAME differs between orgs — reported, not guessed at. */
+    const accountNameConflicts: { code: string; org: string; name: string; expected: string }[] = [];
 
     // Which orgs may legitimately be summed together.
     //
@@ -671,11 +675,36 @@ async function postHandler(request: Request) {
         console.log('[Subscription Txns] Got', accountsData.Accounts?.length || 0, 'accounts');
       }
 
-      // First org to define a code wins the label. Codes are the cross-org identity
-      // (Xero's AccountID is a per-tenant GUID); a code named differently in two
-      // orgs is rare and only affects the display name, never the arithmetic.
+      // A shared account CODE does not mean a shared account.
+      //
+      // Xero account codes are per-org, and sibling orgs drift: of the 74 codes
+      // Dragon Roofing's two orgs share, 26 carry different names. Some are
+      // cosmetic ("Entertainment (420)" vs "Entertainment") but others are simply
+      // different accounts wearing the same number — 401 is "Accounting" in Dragon
+      // Roofing and "Advertising" in Easy Hail; 402 is "Bad Debts expense" vs
+      // "Marketing". Applying the operator's selected codes blindly to every org
+      // would silently pull an unrelated account's spend into the forecast.
+      //
+      // So a code is crawled in an org only when that org's name for it matches the
+      // canonical name (first org to define it). Divergences are reported rather
+      // than quietly resolved either way — including the wrong account overstates,
+      // excluding a real one understates, and the operator is the one who can tell
+      // which it is. Excluded spend still reaches the forecast through the P&L
+      // backstop's "Other / Unallocated Subscriptions" line, so no money is lost.
+      const allowedCodes = new Set<string>();
       for (const acc of accountsData.Accounts || []) {
-        if (acc.Code && !accountNameMap.has(acc.Code)) accountNameMap.set(acc.Code, acc.Name);
+        if (!acc.Code) continue;
+        const canonical = accountNameMap.get(acc.Code);
+        if (canonical === undefined) {
+          accountNameMap.set(acc.Code, acc.Name);
+          allowedCodes.add(acc.Code);
+          continue;
+        }
+        if (isSameAccount(canonical, acc.Name)) {
+          allowedCodes.add(acc.Code);
+        } else if (validAccountCodes.includes(acc.Code)) {
+          accountNameConflicts.push({ code: acc.Code, org: orgName, name: acc.Name, expected: canonical });
+        }
       }
 
       crawledTenantIds.push(connection.tenant_id);
@@ -789,7 +818,7 @@ async function postHandler(request: Request) {
           if (!period) continue;
 
           for (const line of fullInvoice.LineItems) {
-            if (validAccountCodes.includes(line.AccountCode)) {
+            if (validAccountCodes.includes(line.AccountCode) && allowedCodes.has(line.AccountCode)) {
               const contactName = fullInvoice.Contact?.Name || '';
               const vendorName = extractVendorName(contactName, line.Description || '');
 
@@ -883,7 +912,7 @@ async function postHandler(request: Request) {
 
         // Check line items for matching account codes
         for (const line of txn.LineItems || []) {
-          if (validAccountCodes.includes(line.AccountCode)) {
+          if (validAccountCodes.includes(line.AccountCode) && allowedCodes.has(line.AccountCode)) {
             const contactName = txn.Contact?.Name || '';
             const vendorName = extractVendorName(contactName, line.Description || txn.Reference || '');
 
@@ -1516,6 +1545,7 @@ async function postHandler(request: Request) {
         orgsAnalyzed,
         orgsTotal: connections.length,
         orgFailures,
+        accountNameConflicts,
         // P&L Reconciliation - compare our analysis to actual Xero P&L balance
         reconciliation,
       },
