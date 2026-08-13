@@ -4,6 +4,8 @@ import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/as
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 import { applyDraftPublishGuard } from '@/lib/forecast/draft-publish-guard'
+import { checkSummaryParity } from '@/lib/forecast/summary-parity'
+import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 
@@ -337,6 +339,46 @@ async function postHandler(request: Request) {
       if (result) {
         plLinesGenerated = result.lines_count ?? generatedLines.length
         computedAt = result.computed_at ?? null
+      }
+
+      // ── Summary parity (WATCH MODE) ────────────────────────────────────────
+      //
+      // The wizard's on-screen summary and these materialised lines are derived
+      // independently — one from WizardState, one from ForecastAssumptions — and
+      // nothing has ever compared them. "The number on screen isn't the number in
+      // the report" is the most expensive recurring defect in this codebase, and
+      // every fix so far addressed one bucket rather than the divergence itself.
+      // Both halves exist in THIS request, so the comparison is free here.
+      //
+      // Watch mode by house rule: report, never block. A parity bug must not stop
+      // a coach publishing a forecast that is probably fine — and until history
+      // shows this is quiet, a hard failure here would be the more likely
+      // client-facing incident. Promote to blocking only once it has proven itself.
+      try {
+        const parity = checkSummaryParity(
+          summary?.year1,
+          generatedLines,
+          generateFiscalMonthKeys(fiscalYear, DEFAULT_YEAR_START_MONTH),
+        )
+        if (!parity.matches) {
+          Sentry.captureMessage('[wizard-v4/generate] Approved summary does not match stored P&L', {
+            level: 'warning' as any,
+            tags: { route: 'forecast-wizard-v4/generate', invariant: 'summary-parity' },
+            extra: {
+              forecastId: resultForecastId,
+              businessId,
+              fiscalYear,
+              divergences: parity.divergences,
+              monthsCovered: parity.monthsCovered,
+            },
+          } as any)
+        }
+      } catch (parityErr) {
+        // Never let the check itself break a publish.
+        Sentry.captureException(parityErr, {
+          tags: { route: 'forecast-wizard-v4/generate', invariant: 'summary-parity' },
+          extra: { context: 'parity check threw', forecastId: resultForecastId },
+        } as any)
       }
     }
 
