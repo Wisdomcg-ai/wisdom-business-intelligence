@@ -202,13 +202,43 @@ const getStorageKey = (businessId: string, fiscalYear: number) =>
 // Exported for testing — Phase 57 (T03, B3) added a non-trivial v10 → v11
 // soft-migration block that warrants direct unit-test coverage. The hook
 // itself remains the production entry point.
-export const loadStateFromStorage = (businessId: string, fiscalYear: number): ForecastWizardState | null => {
+export const loadStateFromStorage = (
+  businessId: string,
+  fiscalYear: number,
+  expectedForecastId?: string | null,
+): ForecastWizardState | null => {
   if (typeof window === 'undefined') return null;
   try {
     const key = getStorageKey(businessId, fiscalYear);
     const stored = localStorage.getItem(key);
     if (stored) {
       const parsed = JSON.parse(stored);
+
+      // Draft identity guard. The slot is keyed by business + fiscal year only,
+      // so every scenario for a business shares it. A draft belonging to a
+      // different forecast must never hydrate this one: the mount path skips the
+      // full API init when a usable draft is present, so the wrong lines would be
+      // shown under this forecast's name and then autosaved onto it.
+      //
+      // `undefined` on the stored side means the draft predates this guard and
+      // its owner is unknown. That is only safe when no specific forecast was
+      // requested — opening a NAMED forecast with an unowned draft is exactly the
+      // dangerous case, so it is discarded. The server copy is authoritative and
+      // the full init reloads it, so nothing durable is lost either way.
+      const requested = expectedForecastId ?? null;
+      const owner: string | null | undefined = parsed?.forecastId;
+      const ownerKnown = owner !== undefined;
+      if (parsed && (ownerKnown ? owner !== requested : requested !== null)) {
+        console.warn(
+          '[ForecastWizard] Discarding draft belonging to a different forecast (draft=',
+          ownerKnown ? owner : 'unknown',
+          'opening=',
+          requested,
+          ')',
+        );
+        return null;
+      }
+
       // Validate it has the expected structure and matching version
       if (parsed && parsed.businessId === businessId && parsed.fiscalYearStart === fiscalYear) {
         // Phase 56 (P1 B2): soft version handling. Previously, ANY mismatch
@@ -407,7 +437,17 @@ const saveStateToStorage = (state: ForecastWizardState) => {
   }
 };
 
-export function useForecastWizard(fiscalYearStart: number, businessId: string, startFresh?: boolean) {
+export function useForecastWizard(
+  fiscalYearStart: number,
+  businessId: string,
+  startFresh?: boolean,
+  /**
+   * The forecast being opened, when known. Stamped onto the local draft so a
+   * draft belonging to another scenario can never hydrate this one — see the
+   * identity guard in `loadStateFromStorage`.
+   */
+  existingForecastId?: string | null,
+) {
   // Track if we've initialized from storage to avoid overwriting
   const initializedRef = useRef(false);
   // Track if we restored from localStorage (has meaningful data)
@@ -433,13 +473,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         }
       }
       initializedRef.current = true;
-      return createInitialState(fiscalYearStart, businessId);
+      return { ...createInitialState(fiscalYearStart, businessId), forecastId: existingForecastId ?? null };
     }
 
     // Try to load from localStorage first
-    const stored = loadStateFromStorage(businessId, fiscalYearStart);
+    const stored = loadStateFromStorage(businessId, fiscalYearStart, existingForecastId);
     if (stored) {
       initializedRef.current = true;
+      // Stamp the owner so a draft written before this guard (or one resumed for
+      // an as-yet-unsaved forecast) records who it belongs to from now on.
+      stored.forecastId = existingForecastId ?? stored.forecastId ?? null;
       // Check if the restored state has meaningful data (not just defaults)
       const hasMeaningfulData = (
         stored.opexLines?.length > 0 ||
@@ -453,7 +496,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       }
       return stored;
     }
-    return createInitialState(fiscalYearStart, businessId);
+    return { ...createInitialState(fiscalYearStart, businessId), forecastId: existingForecastId ?? null };
   });
 
   // Auto-save to localStorage whenever state changes
@@ -624,6 +667,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
 
   // Phase 72-02 — plan-period slice. Pure persistence; no derived side effects.
   // Read by Step 3 (and any future plan-Y1 consumer) via getPlanY1MonthKeys.
+  /**
+   * Record which forecast this draft belongs to. Called once the server assigns
+   * an id to a brand-new forecast, so the local draft stops looking like an
+   * unowned one and the identity guard in `loadStateFromStorage` can match it on
+   * the next open.
+   */
+  const setForecastIdentity = useCallback((id: string | null) => {
+    setState(prev => (prev.forecastId === id ? prev : { ...prev, forecastId: id }));
+  }, []);
+
   const setPlanPeriod = useCallback((period: PlanPeriod | null) => {
     setState((prev) => ({ ...prev, planPeriod: period }));
   }, []);
@@ -2330,6 +2383,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     setActiveYear,
     setBusinessProfile,
     setPlanPeriod,
+    setForecastIdentity,
     setForecastDuration,
     updateGoals,
     setPriorYear,
@@ -2384,7 +2438,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     generateForecast,
   }), [
     goToStep, nextStep, prevStep, setActiveYear, setBusinessProfile,
-    setPlanPeriod, setForecastDuration, updateGoals, setPriorYear,
+    setPlanPeriod, setForecastIdentity, setForecastDuration, updateGoals, setPriorYear,
     setPriorYearDisplay, setCurrentYTD, setRevenuePattern, setRevenueLines,
     setCOGSLines, updateRevenueLine, addRevenueLine, removeRevenueLine,
     updateCOGSLine, addCOGSLine, removeCOGSLine, updateTeamMember,

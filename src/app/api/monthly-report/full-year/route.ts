@@ -197,11 +197,28 @@ async function postHandler(request: Request) {
     if (settingsRow?.budget_forecast_id) {
       const { data: fc } = await supabase
         .from('financial_forecasts')
-        .select('id, name')
+        .select('id, name, fiscal_year')
         .eq('id', settingsRow.budget_forecast_id)
         .single()
-      budgetForecast = fc
-    } else {
+
+      // `monthly_report_settings` has ONE row per business and no fiscal_year
+      // column, so `budget_forecast_id` is a single FY-agnostic pin. Honouring it
+      // for every year would vary a FY2026 report against a FY2027 budget once
+      // the coach pinned next year's plan. Mirrors the same guard in
+      // monthly-report/generate — the Monthly and Full Year tabs must resolve the
+      // budget identically or they will disagree on the same client's numbers.
+      if (fc && fc.fiscal_year != null && Number(fc.fiscal_year) !== Number(fiscal_year)) {
+        Sentry.captureMessage('[Report Full Year] Pinned budget belongs to another fiscal year — falling back', {
+          level: 'warning' as any,
+          tags: { invariant: 'budget-fy-mismatch' },
+          extra: { business_id, pinnedForecastId: fc.id, pinnedFY: fc.fiscal_year, reportFY: fiscal_year },
+        } as any)
+      } else {
+        budgetForecast = fc
+      }
+    }
+
+    if (!budgetForecast) {
       const { data: fc } = await supabase
         .from('financial_forecasts')
         .select('id, name')

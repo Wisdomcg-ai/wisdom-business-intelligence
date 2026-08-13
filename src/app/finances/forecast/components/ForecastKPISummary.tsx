@@ -37,7 +37,16 @@ export default function ForecastKPISummary({ assumptions, forecast, plLines }: F
   )
 
   // Net Profit
-  const netProfitGoal = forecast.net_profit_goal || 0
+  //
+  // Read from the SAME source as Revenue and Gross Profit above. The three cards
+  // are a single statement — a net profit taken from the published column while
+  // revenue comes from live assumptions divides a figure from one era by a figure
+  // from another and prints a margin that was never true of either. That became
+  // reachable once draft saves stopped writing the published goal columns (only a
+  // Generate does), so `net_profit_goal` can now legitimately lag `assumptions`.
+  const netProfitGoal = assumptions?.goals?.year1?.netProfitPct != null && revenueGoal > 0
+    ? revenueGoal * (assumptions.goals.year1.netProfitPct / 100)
+    : forecast.net_profit_goal || 0
   const netProfitPct = revenueGoal > 0 ? ((netProfitGoal / revenueGoal) * 100).toFixed(1) : '0'
 
   // Team
