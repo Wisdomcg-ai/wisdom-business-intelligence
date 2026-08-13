@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { recordHeartbeat } from '@/lib/cron/heartbeat'
 import { withQuerySchema } from '@/lib/api/with-schema'
+import { checkSummaryParity } from '@/lib/forecast/summary-parity'
+import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 
 /**
  * Metric invariants — daily plausibility checks over the Xero MIRROR.
@@ -41,6 +43,11 @@ const BS_UNCATEGORIZED_TOLERANCE = 0.01
 /** Months of P&L content lag tolerated before the mirror reads as stale.
  *  2 = the current (incomplete) month plus one full missed month. */
 const FRESHNESS_MAX_MONTHS_BEHIND = 2
+/** Dollars of difference tolerated between an approved summary and its stored P&L.
+ *  The materialiser rounds each line to cents, so a many-line forecast accumulates
+ *  sub-dollar drift that is arithmetic, not error. $1 is comfortably above it and
+ *  far below anything a coach would notice. */
+const FORECAST_PARITY_TOLERANCE = 1
 
 interface InvariantRow {
   run_at: string
@@ -218,6 +225,62 @@ async function getHandler(req: NextRequest) {
         passed: monthsBehind !== null && monthsBehind <= FRESHNESS_MAX_MONTHS_BEHIND,
         detail: plMonth ? `newest P&L month in mirror: ${plMonth}` : 'no P&L rows in the mirror for this tenant',
       })
+    }
+
+    // ── forecast_summary_parity ─────────────────────────────────────────────
+    //
+    // Does each live forecast's STORED P&L still equal the summary the coach
+    // approved? The Generate route checks this at publish time, but that only
+    // covers forecasts published from now on — a budget that drifted months ago
+    // stays wrong and invisible until someone regenerates it. This is the sweep
+    // that finds the ones already broken.
+    //
+    // Subject is the business name, so a coach reading the daily email sees WHO
+    // is affected rather than a forecast UUID. Watch severity per the house rule.
+    {
+      const { data: forecasts, error: fcError } = await supabase
+        .from('financial_forecasts')
+        .select('id, fiscal_year, wizard_state, business_id, business_profiles(business_name)')
+        .eq('is_active', true)
+      if (fcError) throw new Error(`forecast query failed: ${fcError.message}`)
+
+      const live = ((forecasts ?? []) as any[]).filter(f => f.wizard_state && f.wizard_state.year1)
+
+      for (const fc of live) {
+        const name =
+          (Array.isArray(fc.business_profiles) ? fc.business_profiles[0]?.business_name : fc.business_profiles?.business_name) ||
+          fc.business_id ||
+          fc.id
+
+        const { data: lines, error: lineError } = await supabase
+          .from('forecast_pl_lines')
+          .select('category, forecast_months')
+          .eq('forecast_id', fc.id)
+        if (lineError) throw new Error(`forecast line query failed: ${lineError.message}`)
+
+        const parity = checkSummaryParity(
+          fc.wizard_state.year1,
+          (lines ?? []) as { category?: string | null; forecast_months?: Record<string, number> | null }[],
+          generateFiscalMonthKeys(fc.fiscal_year, DEFAULT_YEAR_START_MONTH),
+          FORECAST_PARITY_TOLERANCE,
+        )
+
+        rows.push({
+          run_at: runAt,
+          check_name: 'forecast_summary_parity',
+          family: 'identity',
+          severity: 'watch',
+          subject: `${name} FY${fc.fiscal_year}`,
+          observed: parity.netProfit.difference,
+          threshold: FORECAST_PARITY_TOLERANCE,
+          passed: parity.matches,
+          detail: parity.matches
+            ? `stored P&L matches the approved summary across ${parity.monthsCovered} months`
+            : parity.divergences
+                .map(d => `${d.bucket}: approved ${d.approved} vs stored ${d.stored}`)
+                .join('; '),
+        })
+      }
     }
 
     // Persist ALL rows — pass and fail. History is what calibration reads.
