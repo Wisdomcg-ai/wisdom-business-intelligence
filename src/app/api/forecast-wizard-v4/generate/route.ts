@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
+import { applyDraftPublishGuard } from '@/lib/forecast/draft-publish-guard'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 
@@ -210,10 +211,22 @@ async function postHandler(request: Request) {
     }
 
     if (forecastId && !createNew) {
-      // UPDATE existing forecast
+      // UPDATE existing forecast.
+      //
+      // A draft update saves WORK; it must not move PUBLISHED numbers.
+      // `revenue_goal` / `gross_profit_goal` / `net_profit_goal` are read by the
+      // coach's client forecast page and the completeness checker, and
+      // `wizard_state` holds the approved summary. Materialisation is skipped for
+      // drafts (see the `!isDraft` gate below), so writing those four on a
+      // 3-second autosave advanced the headline while `forecast_pl_lines` stayed
+      // at the last Generate — the live row then described a forecast that had
+      // never been published. Only a final Generate moves the headline and the
+      // stored P&L together.
+      const updatePayload = applyDraftPublishGuard(forecastData, isDraft)
+
       const { data: updated, error: updateError } = await supabase
         .from('financial_forecasts')
-        .update(forecastData)
+        .update(updatePayload)
         .eq('id', forecastId)
         .select('id')
         .single()

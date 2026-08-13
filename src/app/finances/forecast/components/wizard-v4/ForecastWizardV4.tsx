@@ -50,7 +50,7 @@ export function ForecastWizardV4({
   onComplete,
   onClose,
 }: ForecastWizardV4Props) {
-  const { state, actions, summary, wasRestoredFromStorage, clearLocalStorage } = useForecastWizard(fiscalYear - 1, businessId, startFresh);
+  const { state, actions, summary, wasRestoredFromStorage, clearLocalStorage } = useForecastWizard(fiscalYear - 1, businessId, startFresh, existingForecastId);
   const wizardPathname = usePathname();
   const integrationsHref = wizardPathname.includes('/coach/clients/')
     ? wizardPathname.replace(/\/view\/.*$/, '/view/integrations')
@@ -413,6 +413,7 @@ export function ForecastWizardV4({
               if (activeForecast?.id) {
                 resolvedId = activeForecast.id;
                 setForecastId(activeForecast.id);
+                actionsRef.current.setForecastIdentity(activeForecast.id);
                 console.log('[ForecastWizardV4] Loaded forecast ID from versions API:', activeForecast.id);
               }
             }
@@ -657,6 +658,7 @@ export function ForecastWizardV4({
               if (active?.id) {
                 resolvedForecastId = active.id;
                 setForecastId(active.id);
+                actionsRef.current.setForecastIdentity(active.id);
                 console.log('[ForecastWizardV4] Auto-discovered active forecast:', active.id);
               }
             }
@@ -1380,6 +1382,7 @@ export function ForecastWizardV4({
       const savedId = await actions.saveDraft(forecastId, forecastName);
       if (savedId) {
         setForecastId(savedId);
+        actions.setForecastIdentity(savedId);
         setLastSaved(new Date());
         setSaveError(false);
       }
@@ -1408,6 +1411,7 @@ export function ForecastWizardV4({
       if (savedId) {
         setForecastName(newName);
         setForecastId(savedId);
+        actions.setForecastIdentity(savedId);
         setLastSaved(new Date());
         toast.success(`Saved as "${newName}"`);
       }
@@ -1493,6 +1497,7 @@ export function ForecastWizardV4({
           syncForecastId = await actions.saveDraft();
           if (syncForecastId) {
             setForecastId(syncForecastId);
+            actions.setForecastIdentity(syncForecastId);
           } else {
             toast.error('Failed to create draft forecast');
             return;
@@ -2079,6 +2084,7 @@ export function ForecastWizardV4({
               const stepSavedId = await actions.saveDraft(forecastId, forecastName);
               if (stepSavedId && stepSavedId !== forecastId) {
                 setForecastId(stepSavedId);
+                actions.setForecastIdentity(stepSavedId);
               }
               actions.goToStep(target);
             } catch (err) {

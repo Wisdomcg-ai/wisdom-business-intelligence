@@ -734,6 +734,23 @@ export interface ForecastWizardState {
   // Version marker for localStorage invalidation
   wizardVersion?: number;
 
+  /**
+   * Which forecast this draft belongs to — the identity guard for the
+   * localStorage draft.
+   *
+   * The draft slot is keyed only by business + fiscal year, so every scenario
+   * for a business shares ONE slot. Opening an existing forecast skips the full
+   * API init whenever a usable draft is present, which meant the draft's lines
+   * were shown under the newly-opened forecast's name and then autosaved onto
+   * it: edit Best Case, open Base Case, and Base Case silently became Best Case.
+   *
+   * Recording the owning forecast id lets the loader discard a draft that
+   * belongs to a different forecast. `null` means "an unsaved new forecast";
+   * `undefined` means a draft written before this guard existed and whose owner
+   * is therefore unknown.
+   */
+  forecastId?: string | null;
+
   // Phase 56 (P1 B2): when present, indicates the draft was loaded from a
   // localStorage entry written by an older WIZARD_VERSION. Carries the prior
   // version number so debug tooling can trace which fields fell through to
@@ -892,6 +909,8 @@ export interface WizardActions {
 
   // Phase 72-02 — plan-period slice (extended-period plans). See state.planPeriod.
   setPlanPeriod: (period: PlanPeriod | null) => void;
+  /** Record which forecast the local draft belongs to (see state.forecastId). */
+  setForecastIdentity: (id: string | null) => void;
 
   // Step 1: Duration & Goals
   setForecastDuration: (duration: ForecastDuration) => void;
