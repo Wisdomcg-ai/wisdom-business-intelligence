@@ -449,8 +449,14 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
           )}
           <span>Team: {state.teamMembers.length} people{state.newHires.length > 0 ? ` + ${state.newHires.length} hire${state.newHires.length > 1 ? 's' : ''}` : ''}{state.departures.length > 0 ? ` − ${state.departures.length} departure${state.departures.length > 1 ? 's' : ''}` : ''}</span>
           <span>OpEx increase: {state.defaultOpExIncreasePct || 3}%/year</span>
-          {state.capexItems.length > 0 && (
-            <span>CapEx: {formatCurrency(state.capexItems.reduce((s, i) => s + i.cost, 0))} in Y1</span>
+          {/* Read plannedSpends — the array Step 7 actually writes. `capexItems`
+              is the legacy shape only the saved-assumptions restore populates,
+              so this strip reported "no CapEx" no matter what the operator
+              entered. */}
+          {(state.plannedSpends?.length ?? 0) > 0 && (
+            <span>
+              CapEx: {formatCurrency(state.plannedSpends.reduce((s, i) => s + (i.amount || 0), 0))} in Y1
+            </span>
           )}
         </div>
       </div>

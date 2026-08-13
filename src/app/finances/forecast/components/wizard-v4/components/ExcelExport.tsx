@@ -7,6 +7,7 @@ import {
 } from '../types';
 import { shouldExcludeFromOpEx } from '../useForecastWizard';
 import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
+import { getPlannedSpendPLBreakdown } from '../types';
 import type { ForecastSummary } from '../types';
 
 interface ExcelExportProps {
@@ -53,7 +54,7 @@ async function downloadXlsx(sheets: SheetSpec[], filename: string): Promise<void
 
 export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
   const { goals, forecastDuration, revenueLines, cogsLines, teamMembers, newHires,
-    departures, opexLines, capexItems, investments, priorYear } = state;
+    departures, opexLines, capexItems, plannedSpends, investments, priorYear } = state;
 
   const months = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
   const fy = (offset: number) => `FY${(fiscalYear + offset).toString().slice(-2)}`;
@@ -238,8 +239,19 @@ export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
     rows.push(['TOTAL OPEX', ...monthlyOpexTotals, totalOpex]);
     rows.push([]);
 
-    // Depreciation
-    const annualDep = capexItems.reduce((s, item) => s + Math.round(item.cost / item.usefulLifeYears), 0);
+    // Depreciation.
+    //
+    // Read plannedSpends — the array Step 7 actually writes — through the SAME
+    // getPlannedSpendPLBreakdown helper the wizard summary and the materialiser
+    // use, so an operating lease correctly contributes expense rather than
+    // depreciation and a financed asset contributes both. This previously read
+    // the legacy `capexItems`, which Step 7 never populates, so the client's
+    // spreadsheet reported $0 depreciation no matter what was entered.
+    // `capexItems` remains as the fallback for forecasts restored from legacy
+    // saved assumptions.
+    const annualDep = (plannedSpends?.length ?? 0) > 0
+      ? plannedSpends.reduce((s, item) => s + getPlannedSpendPLBreakdown(item, 1).depreciation, 0)
+      : capexItems.reduce((s, item) => s + Math.round(item.cost / item.usefulLifeYears), 0);
     const monthlyDep = Math.round(annualDep / 12);
     rows.push(['DEPRECIATION', ...new Array(12).fill(monthlyDep), annualDep]);
     rows.push([]);
@@ -331,7 +343,23 @@ export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
     const variable = opexLines.filter(l => l.costBehavior === 'variable').length;
     aRows.push([`Fixed: ${fixed}`, `Variable: ${variable}`, `Other: ${opexLines.length - fixed - variable}`]);
 
-    if (capexItems.length > 0) {
+    if ((plannedSpends?.length ?? 0) > 0) {
+      // Name the financing choice explicitly — lease vs purchase is the decision
+      // the client makes at budget prep, and it changes the P&L, so the schedule
+      // has to say which one was assumed.
+      aRows.push([], ['CAPITAL EXPENDITURE'], ['Item', 'Amount', 'Month', 'Financing', 'Y1 Depreciation', 'Y1 Expense']);
+      plannedSpends.forEach(i => {
+        const b = getPlannedSpendPLBreakdown(i, 1);
+        aRows.push([
+          i.description,
+          i.amount,
+          `Month ${i.month}`,
+          (i.lease_type || i.paymentMethod || 'outright').replace(/_/g, ' '),
+          b.depreciation,
+          b.expenses,
+        ]);
+      });
+    } else if (capexItems.length > 0) {
       aRows.push([], ['CAPITAL EXPENDITURE'], ['Item', 'Cost', 'Month', 'Life']);
       capexItems.forEach(i => aRows.push([i.description, i.cost, `Month ${i.month}`, `${i.usefulLifeYears} years`]));
     }
