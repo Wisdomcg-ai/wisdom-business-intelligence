@@ -1325,7 +1325,7 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
               )}
             </button>
           )}
-          <ExcelExport state={state} summary={summary} fiscalYear={fiscalYear} />
+          <ExcelExport state={state} summary={summary} fiscalYear={fiscalYear} buildAssumptions={actions.buildAssumptions} />
           </div>
           {!(completionSteps[0].hasData && (completionSteps[2].hasData || summary.year1.revenue > 0)) && (
             <p className="text-xs text-white/50 mt-3">

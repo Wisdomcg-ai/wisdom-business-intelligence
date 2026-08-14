@@ -2389,6 +2389,7 @@ export function useForecastWizard(
     setPlannedSpends,
     setSubscriptions,
     initializeFromXero,
+    buildAssumptions,
     saveDraft,
     generateForecast,
   }), [
@@ -2405,7 +2406,7 @@ export function useForecastWizard(
     removeCapExItem, addInvestment, updateInvestment, removeInvestment,
     addPlannedSpend, updatePlannedSpend, removePlannedSpend, setPlannedSpends,
     setSubscriptions,
-    initializeFromXero, saveDraft, generateForecast,
+    initializeFromXero, saveDraft, generateForecast, buildAssumptions,
   ]);
 
   return {

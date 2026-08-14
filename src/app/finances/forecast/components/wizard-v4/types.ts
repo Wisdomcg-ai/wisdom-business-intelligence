@@ -898,6 +898,12 @@ export interface WizardActions {
   setPlanPeriod: (period: PlanPeriod | null) => void;
   /** Record which forecast the local draft belongs to (see state.forecastId). */
   setForecastIdentity: (id: string | null) => void;
+  /**
+   * The canonical assumptions payload — exactly what the server materialises
+   * into forecast_pl_lines. Exposed so consumers (the Excel export) can render
+   * from the same input rather than re-deriving the P&L themselves.
+   */
+  buildAssumptions: () => import('./types/assumptions').ForecastAssumptions;
 
   // Step 1: Duration & Goals
   setForecastDuration: (duration: ForecastDuration) => void;
