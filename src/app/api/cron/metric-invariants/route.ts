@@ -124,9 +124,21 @@ async function getHandler(req: NextRequest) {
       .select('tenant_id, account_name, account_type, section, monthly_values')
     if (bsError) throw new Error(`balance-sheet query failed: ${bsError.message}`)
 
+    // `xero_pl_lines` is LONG format (one row per account per period_month); the
+    // wide `monthly_values` shape this checker reads exists only on the compat
+    // view. Querying the table directly made every run fail with "column
+    // xero_pl_lines.monthly_values does not exist" — so this cron has never
+    // written a single row since it shipped, and the failure was only visible in
+    // cron_heartbeats. The balance-sheet table above IS natively wide, which is
+    // why only the P&L half was broken.
+    //
+    // basis='accruals' is required, not cosmetic: without it a future cash-basis
+    // sync would return a second row per account and silently double every P&L
+    // figure the invariants check.
     const { data: plData, error: plError } = await supabase
-      .from('xero_pl_lines')
+      .from('xero_pl_lines_wide_compat')
       .select('tenant_id, account_name, account_type, section, monthly_values')
+      .eq('basis', 'accruals')
     if (plError) throw new Error(`P&L query failed: ${plError.message}`)
 
     const bsByTenant = new Map<string, MirrorLine[]>()
