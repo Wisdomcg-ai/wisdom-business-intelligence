@@ -176,16 +176,34 @@ async function getHandler(req: NextRequest) {
           else if (l.account_type === 'equity') equity += v
         }
         const delta = round2(assets - liabilities - equity)
+
+        // A month with NO data satisfies the equation trivially — 0 − 0 − 0 = 0 —
+        // and would be recorded as a pass. A monitoring check that reports success
+        // for absent data is worse than no check: it converts "we are not syncing
+        // this tenant" into "this tenant is healthy". Distinguish the two.
+        //
+        // This is not hypothetical. Dragon Roofing has no balance-sheet rows at
+        // all before June 2026, and those empty months read as passes — which is
+        // what made the imbalance in its populated months look like a regression
+        // that "started in June" rather than the standing condition it is.
+        const grossMagnitude = bs.reduce((sum, l) => {
+          const v = Number(l.monthly_values?.[bsMonth] ?? 0)
+          return Number.isFinite(v) ? sum + Math.abs(v) : sum
+        }, 0)
+        const hasData = grossMagnitude > 0
+
         rows.push({
           run_at: runAt,
           check_name: 'bs_equation',
           family: 'identity',
           severity: 'watch',
           subject: tenantName,
-          observed: Math.abs(delta),
+          observed: hasData ? Math.abs(delta) : null,
           threshold: BS_EQUATION_TOLERANCE,
-          passed: Math.abs(delta) <= BS_EQUATION_TOLERANCE,
-          detail: `${bsMonth}: assets ${round2(assets)} − liabilities ${round2(liabilities)} − equity ${round2(equity)} = ${delta}`,
+          passed: hasData && Math.abs(delta) <= BS_EQUATION_TOLERANCE,
+          detail: hasData
+            ? `${bsMonth}: assets ${round2(assets)} − liabilities ${round2(liabilities)} − equity ${round2(equity)} = ${delta}`
+            : `${bsMonth}: no balance-sheet values for this tenant — cannot verify the equation`,
         })
 
         // ── bs_uncategorized: section-less rows must net to nothing ──
