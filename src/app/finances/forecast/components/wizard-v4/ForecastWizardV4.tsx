@@ -698,6 +698,23 @@ export function ForecastWizardV4({
           console.log('[ForecastWizardV4] Forecast is locked — read-only mode activated');
         }
 
+        // Restore the saved forecast DURATION.
+        //
+        // `forecast_duration` is persisted on the forecast row but was never read
+        // back: `buildAssumptions` does not carry it, and nothing here applied it.
+        // So reopening a saved forecast silently reset Step 1 to the
+        // createInitialState default of 3 years — the operator picks 1 year, and
+        // it is 3 again next time. It only ever appeared to stick because the
+        // localStorage draft happened to carry it; the moment that draft is
+        // absent or discarded, the default wins.
+        //
+        // Applied here, before any navigation, while `durationLocked` is still
+        // false — `setForecastDuration` refuses once the operator has left Step 1.
+        const savedDuration = Number(loadedForecast?.forecast_duration);
+        if (savedDuration === 1 || savedDuration === 2 || savedDuration === 3) {
+          actionsRef.current.setForecastDuration(savedDuration);
+        }
+
         console.log('[ForecastWizardV4] Loaded existing forecast:', {
           hasExistingForecast: !!existingForecastId,
           hasSavedAssumptions: !!savedAssumptions,
