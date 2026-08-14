@@ -9,11 +9,15 @@ import { shouldExcludeFromOpEx } from '../useForecastWizard';
 import { getFiscalMonthLabels, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 import { getPlannedSpendPLBreakdown } from '../types';
 import type { ForecastSummary } from '../types';
+import type { ForecastAssumptions } from '../types/assumptions';
+import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines';
 
 interface ExcelExportProps {
   state: ForecastWizardState;
   summary: ForecastSummary;
   fiscalYear: number;
+  /** The canonical assumptions payload — the same input Generate materialises. */
+  buildAssumptions: () => ForecastAssumptions;
 }
 
 type Row = (string | number)[];
@@ -52,214 +56,121 @@ async function downloadXlsx(sheets: SheetSpec[], filename: string): Promise<void
   URL.revokeObjectURL(url);
 }
 
-export function ExcelExport({ state, summary, fiscalYear }: ExcelExportProps) {
+export function ExcelExport({ state, summary, fiscalYear, buildAssumptions }: ExcelExportProps) {
   const { goals, forecastDuration, revenueLines, cogsLines, teamMembers, newHires,
     departures, opexLines, capexItems, plannedSpends, investments, priorYear } = state;
 
   const months = getFiscalMonthLabels(DEFAULT_YEAR_START_MONTH);
   const fy = (offset: number) => `FY${(fiscalYear + offset).toString().slice(-2)}`;
 
-  // Get monthly revenue for a line in a given year
-  // Handles key format mismatches by trying both stored keys and generated keys
-  const getLineMonthlyRevenue = (line: typeof revenueLines[0], yearNum: 1 | 2 | 3, monthKeys: string[]): number[] => {
-    const data = yearNum === 1 ? line.year1Monthly
-      : yearNum === 2 ? (line.year2Monthly || {})
-      : (line.year3Monthly || {});
+  /** Every month the forecast covers, across all of its years. */
+  const monthKeysAll = Array.from({ length: forecastDuration }, (_, i) =>
+    generateMonthKeys((state.fiscalYearStart || fiscalYear - 1) + i),
+  ).flat();
 
-    // Try direct key match first
-    const directValues = monthKeys.map(key => data[key] || 0);
-    const directTotal = directValues.reduce((a, b) => a + b, 0);
-    if (directTotal > 0) return directValues;
 
-    // If no match, the data might have different year keys — extract by position
-    const sortedKeys = Object.keys(data).sort();
-    if (sortedKeys.length >= 12) {
-      return sortedKeys.slice(0, 12).map(key => data[key] || 0);
-    }
-    if (sortedKeys.length > 0) {
-      // Partial data — map what exists
-      const result = new Array(12).fill(0);
-      sortedKeys.forEach((key, i) => { if (i < 12) result[i] = data[key] || 0; });
-      return result;
-    }
 
-    return directValues;
-  };
-
-  // Calculate monthly team costs with actual hire/departure timing
-  const getMonthlyTeamCosts = (yearNum: 1 | 2 | 3, monthKeys: string[]): number[] => {
-    const targetFY = (state.fiscalYearStart || fiscalYear - 1) + yearNum;
-    const monthlyCosts = new Array(12).fill(0);
-
-    // Existing team — flat monthly
-    for (const member of teamMembers) {
-      const salary = calculateNewSalary(member.currentSalary, member.increasePct || 0);
-      const annual = salary * Math.pow(1 + (member.increasePct || 0) / 100, yearNum - 1);
-      const monthly = annual / 12;
-      const superMonthly = member.type !== 'contractor' ? monthly * SUPER_RATE : 0;
-
-      const departure = departures.find(d => d.teamMemberId === member.id);
-      for (let i = 0; i < 12; i++) {
-        if (departure) {
-          const [dYear, dMonth] = departure.endMonth.split('-').map(Number);
-          const depKey = `${dYear}-${String(dMonth).padStart(2, '0')}`;
-          if (monthKeys[i] > depKey) continue;
-        }
-        monthlyCosts[i] += monthly + superMonthly;
-      }
-    }
-
-    // New hires — start from hire month
-    for (const hire of newHires) {
-      const salary = hire.salary * Math.pow(1.03, yearNum - 1);
-      const monthly = salary / 12;
-      const superMonthly = hire.type !== 'contractor' ? monthly * SUPER_RATE : 0;
-
-      for (let i = 0; i < 12; i++) {
-        if (monthKeys[i] >= hire.startMonth) {
-          monthlyCosts[i] += monthly + superMonthly;
-        }
-      }
-    }
-
-    return monthlyCosts.map(v => Math.round(v));
-  };
-
-  // Get monthly OpEx for a line
-  const getMonthlyOpEx = (line: typeof opexLines[0], yearNum: number, monthlyRevenue: number[]): number[] => {
-    // PR-A (M2): shared rule — team-classified lines only leave OpEx when
-    // Step 4 actually carries team data (matches summary + export).
-    if (shouldExcludeFromOpEx(line, teamMembers.length > 0 || newHires.length > 0)) {
-      return new Array(12).fill(0);
-    }
-    const defaultIncrease = state.defaultOpExIncreasePct || 3;
-    const growthFactor = Math.pow(1 + (line.annualIncreasePct || defaultIncrease) / 100, yearNum - 1);
-
-    switch (line.costBehavior) {
-      case 'fixed':
-        return new Array(12).fill(Math.round((line.monthlyAmount || 0) * growthFactor));
-      case 'variable':
-        return monthlyRevenue.map(rev => Math.round(rev * (line.percentOfRevenue || 0) / 100));
-      case 'seasonal': {
-        const pattern = priorYear?.seasonalityPattern || Array(12).fill(8.33);
-        const total = pattern.reduce((s, v) => s + v, 0);
-        const annualGrowth = Math.pow(1 + (line.seasonalGrowthPct || 0) / 100, yearNum);
-        const annual = line.priorYearAnnual * annualGrowth;
-        return pattern.map(p => Math.round(annual * (p / total)));
-      }
-      case 'adhoc':
-        return new Array(12).fill(Math.round((line.expectedAnnualAmount || 0) / 12));
-      default:
-        return new Array(12).fill(0);
-    }
-  };
 
   // Build a full monthly P&L tab for one year
+  /**
+   * Build one year's P&L sheet from the SAME lines the server stores.
+   *
+   * This tab used to re-derive the entire P&L — its own team loop, its own OpEx
+   * growth, its own depreciation — and had drifted: net profit was
+   * `gp − team − opex − dep`, omitting subscriptions, investments and the Xero
+   * other income/expense buckets; new hires were escalated at a hardcoded 3%
+   * instead of their own rate; seasonal OpEx carried an off-by-one the summary
+   * had already fixed. This is the spreadsheet CFO-only clients receive, so a
+   * second opinion about their numbers is the one thing it must not be.
+   *
+   * It now runs `convertAssumptionsToPLLines` over the canonical assumptions —
+   * byte-identical to what Generate materialises into forecast_pl_lines — so the
+   * sheet and the stored budget cannot disagree.
+   */
   const buildPLTab = (yearNum: 1 | 2 | 3): { rows: Row[]; colWidths: number[] } => {
     const yearOffset = yearNum - 1;
     const monthKeys = generateMonthKeys((state.fiscalYearStart || fiscalYear - 1) + yearOffset);
     const rows: Row[] = [];
 
-    // Header
+    const assumptions = buildAssumptions();
+    const plLines = convertAssumptionsToPLLines({
+      assumptions,
+      forecastStartMonth: monthKeysAll[0],
+      forecastEndMonth: monthKeysAll[monthKeysAll.length - 1],
+      fiscalYear,
+      forecastDuration,
+      existingLines: [],
+    });
+
+    const monthsOf = (line: { forecast_months?: Record<string, number> | null }) =>
+      monthKeys.map(k => Math.round(line.forecast_months?.[k] ?? 0));
+    const inCategory = (...names: string[]) => {
+      const want = new Set(names.map(n => n.toLowerCase()));
+      return plLines.filter(l => want.has((l.category || '').trim().toLowerCase()));
+    };
+    const sumInto = (target: number[], values: number[]) => {
+      values.forEach((v, i) => { target[i] += v; });
+    };
+    const total = (values: number[]) => values.reduce((a, b) => a + b, 0);
+
+    /** Emit a titled section and return its monthly totals. */
+    const section = (title: string, lines: ReturnType<typeof inCategory>, totalLabel: string) => {
+      rows.push([title]);
+      const totals = new Array(12).fill(0);
+      for (const line of lines) {
+        const values = monthsOf(line);
+        if (values.every(v => v === 0)) continue;
+        sumInto(totals, values);
+        rows.push([`  ${line.account_name}`, ...values, total(values)]);
+      }
+      rows.push([totalLabel, ...totals, total(totals)]);
+      rows.push([]);
+      return totals;
+    };
+
     rows.push([`P&L Forecast — ${fy(yearOffset)}`, ...months, 'TOTAL']);
     rows.push([]);
 
-    // Revenue lines
-    rows.push(['REVENUE']);
-    const monthlyRevenueTotals = new Array(12).fill(0);
-    revenueLines.forEach(line => {
-      const values = getLineMonthlyRevenue(line, yearNum, monthKeys);
-      values.forEach((val, i) => { monthlyRevenueTotals[i] += val; });
-      const total = values.reduce((a, b) => a + b, 0);
-      rows.push([`  ${line.name}`, ...values, total]);
-    });
-    const totalRevenue = monthlyRevenueTotals.reduce((a, b) => a + b, 0);
-    rows.push(['TOTAL REVENUE', ...monthlyRevenueTotals, totalRevenue]);
-    rows.push([]);
+    const monthlyRevenueTotals = section('REVENUE', inCategory('Revenue'), 'TOTAL REVENUE');
+    const totalRevenue = total(monthlyRevenueTotals);
 
-    // COGS lines — use per-month data if available, otherwise formula
-    rows.push(['COST OF SALES']);
-    const monthlyCogsTotals = new Array(12).fill(0);
-    cogsLines.forEach(line => {
-      const yearMonthly = yearNum === 1 ? line.year1Monthly
-        : yearNum === 2 ? line.year2Monthly
-        : line.year3Monthly;
-      const hasMonthly = yearMonthly && Object.keys(yearMonthly).length > 0;
+    const monthlyCogsTotals = section('COST OF SALES', inCategory('Cost of Sales'), 'TOTAL COGS');
 
-      const values = monthKeys.map((key, i) => {
-        let val = 0;
-        if (hasMonthly) {
-          val = yearMonthly![key] || 0;
-          // Fallback to sorted position if key mismatch
-          if (val === 0 && Object.values(yearMonthly!).some(v => v > 0)) {
-            const sorted = Object.keys(yearMonthly!).sort();
-            if (sorted[i]) val = yearMonthly![sorted[i]] || 0;
-          }
-        } else if (line.costBehavior === 'variable') {
-          val = Math.round(monthlyRevenueTotals[i] * (line.percentOfRevenue || 0) / 100);
-        } else {
-          val = line.monthlyAmount || 0;
-        }
-        monthlyCogsTotals[i] += val;
-        return val;
-      });
-      const total = values.reduce((a, b) => a + b, 0);
-      rows.push([`  ${line.name}`, ...values, total]);
-    });
-    const totalCogs = monthlyCogsTotals.reduce((a, b) => a + b, 0);
-    rows.push(['TOTAL COGS', ...monthlyCogsTotals, totalCogs]);
-    rows.push([]);
-
-    // Gross Profit
-    const monthlyGP = monthlyRevenueTotals.map((rev, i) => rev - monthlyCogsTotals[i]);
-    const totalGP = totalRevenue - totalCogs;
+    const monthlyGP = monthlyRevenueTotals.map((r, i) => r - monthlyCogsTotals[i]);
+    const totalGP = total(monthlyGP);
     rows.push(['GROSS PROFIT', ...monthlyGP, totalGP]);
-    rows.push(['Gross Margin %', ...monthlyGP.map((gp, i) =>
+    rows.push(['GP %', ...monthlyGP.map((gp, i) =>
       monthlyRevenueTotals[i] > 0 ? `${(gp / monthlyRevenueTotals[i] * 100).toFixed(1)}%` : ''
     ), totalRevenue > 0 ? `${(totalGP / totalRevenue * 100).toFixed(1)}%` : '']);
     rows.push([]);
 
-    // Team Costs
-    const monthlyTeam = getMonthlyTeamCosts(yearNum, monthKeys);
-    const totalTeam = monthlyTeam.reduce((a, b) => a + b, 0);
-    rows.push(['TEAM COSTS', ...monthlyTeam, totalTeam]);
-    rows.push([]);
-
-    // OpEx lines
-    rows.push(['OPERATING EXPENSES']);
-    const monthlyOpexTotals = new Array(12).fill(0);
-    opexLines.forEach(line => {
-      const values = getMonthlyOpEx(line, yearNum, monthlyRevenueTotals);
-      if (values.every(v => v === 0)) return; // Skip team cost lines
-      values.forEach((v, i) => { monthlyOpexTotals[i] += v; });
-      const total = values.reduce((a, b) => a + b, 0);
-      rows.push([`  ${line.name}`, ...values, total]);
-    });
-    const totalOpex = monthlyOpexTotals.reduce((a, b) => a + b, 0);
-    rows.push(['TOTAL OPEX', ...monthlyOpexTotals, totalOpex]);
-    rows.push([]);
-
-    // Depreciation.
+    // Everything that is not income and not cost of sales is an expense.
     //
-    // Read plannedSpends — the array Step 7 actually writes — through the SAME
-    // getPlannedSpendPLBreakdown helper the wizard summary and the materialiser
-    // use, so an operating lease correctly contributes expense rather than
-    // depreciation and a financed asset contributes both. This previously read
-    // the legacy `capexItems`, which Step 7 never populates, so the client's
-    // spreadsheet reported $0 depreciation no matter what was entered.
-    // `capexItems` remains as the fallback for forecasts restored from legacy
-    // saved assumptions.
-    const annualDep = (plannedSpends?.length ?? 0) > 0
-      ? plannedSpends.reduce((s, item) => s + getPlannedSpendPLBreakdown(item, 1).depreciation, 0)
-      : capexItems.reduce((s, item) => s + Math.round(item.cost / item.usefulLifeYears), 0);
-    const monthlyDep = Math.round(annualDep / 12);
-    rows.push(['DEPRECIATION', ...new Array(12).fill(monthlyDep), annualDep]);
-    rows.push([]);
+    // Matching on 'Operating Expenses' alone would DROP the Xero other-expenses
+    // bucket, which the materialiser files under its own 'Other Expenses'
+    // category — the exact class of silent omission this rewrite exists to end.
+    // Defining the expense side by exclusion also means a category added later
+    // shows up as a cost rather than vanishing, which is the safe direction to
+    // be wrong in. Same rule as checkSummaryParity.
+    const expenseLines = plLines.filter(l => {
+      const c = (l.category || '').trim().toLowerCase();
+      return c !== 'revenue' && c !== 'other income' && c !== 'cost of sales' && c !== 'cogs';
+    });
+    const monthlyOpexTotals = section('OPERATING EXPENSES', expenseLines, 'TOTAL OPERATING EXPENSES');
 
-    // Net Profit
-    const monthlyNP = monthlyGP.map((gp, i) => gp - monthlyTeam[i] - monthlyOpexTotals[i] - monthlyDep);
-    const totalNP = monthlyNP.reduce((a, b) => a + b, 0);
-    rows.push(['NET PROFIT', ...monthlyNP, totalNP]);
+    // Other income is added, not subtracted — it is filed under a revenue-like
+    // category by the materialiser and must not inflate the expense side.
+    const otherIncomeLines = inCategory('Other Income');
+    const monthlyOtherIncome = new Array(12).fill(0);
+    if (otherIncomeLines.length > 0) {
+      for (const line of otherIncomeLines) sumInto(monthlyOtherIncome, monthsOf(line));
+      rows.push(['OTHER INCOME', ...monthlyOtherIncome, total(monthlyOtherIncome)]);
+      rows.push([]);
+    }
+
+    const monthlyNP = monthlyGP.map((gp, i) => gp - monthlyOpexTotals[i] + monthlyOtherIncome[i]);
+    const totalNP = total(monthlyNP);
+    rows.push(['NET PROFIT (before tax)', ...monthlyNP, totalNP]);
     rows.push(['Net Margin %', ...monthlyNP.map((np, i) =>
       monthlyRevenueTotals[i] > 0 ? `${(np / monthlyRevenueTotals[i] * 100).toFixed(1)}%` : ''
     ), totalRevenue > 0 ? `${(totalNP / totalRevenue * 100).toFixed(1)}%` : '']);
