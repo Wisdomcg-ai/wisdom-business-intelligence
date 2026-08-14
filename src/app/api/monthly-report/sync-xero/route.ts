@@ -15,7 +15,7 @@ import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds';
 import { syncBusinessXeroPL } from '@/lib/xero/sync-orchestrator';
 import { replaceTenantBSRows } from './bs-writer';
-import { parseSingleMonthBSReport } from './report-parsers';
+import { parseSingleMonthBSReport, mapXeroClassToType } from './report-parsers';
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
@@ -221,6 +221,25 @@ async function postHandler(request: Request) {
       // P&L was handled above by syncBusinessXeroPL. BS still uses this route's
       // own per-tenant fetcher until Phase 44.2-06D ports BS to the orchestrator.
       stage = `fetch_monthly_bs:${tenantId}`;
+
+      // Chart of accounts for THIS tenant, keyed by Xero account GUID. The BS
+      // report carries that GUID on every data row, and xero_class is the
+      // authoritative asset/liability/equity classification — layout-independent,
+      // unlike the section titles a client can rename at will.
+      const { data: catalogRows } = await supabaseAdmin
+        .from('xero_accounts')
+        .select('xero_account_id, xero_class')
+        .eq('tenant_id', tenantId);
+      const classByAccountId = new Map<string, string>();
+      for (const a of catalogRows || []) {
+        if (a.xero_account_id && a.xero_class) classByAccountId.set(a.xero_account_id, a.xero_class);
+      }
+      const classifyByAccountId = (accountId: string) =>
+        mapXeroClassToType(classByAccountId.get(accountId));
+
+      /** Rows we could classify by neither catalog nor section title. */
+      const unclassifiedBS: { name: string; section: string; accountId: string | null }[] = [];
+
       const bsMonths = getMonthList(13).slice(0, 3); // most-recent 3 month-ends
       const tenantBSAccounts = new Map<string, {
         business_id: string;
@@ -243,8 +262,15 @@ async function postHandler(request: Request) {
         }
         if (!bsResult.report) continue;
 
-        const bsAccounts = parseSingleMonthBSReport(bsResult.report);
+        const bsAccounts = parseSingleMonthBSReport(bsResult.report, classifyByAccountId);
         for (const [name, data] of bsAccounts) {
+          if (!data.account_type) {
+            // Do NOT silently drop it — that is the defect this fix exists to end.
+            if (!unclassifiedBS.some((u) => u.name === name)) {
+              unclassifiedBS.push({ name, section: data.section, accountId: data.account_id });
+            }
+            continue;
+          }
           const existing = tenantBSAccounts.get(name) || {
             business_id: ids.businessId,
             tenant_id: tenantId,
@@ -263,6 +289,21 @@ async function postHandler(request: Request) {
       const tenantBSLines = Array.from(tenantBSAccounts.values()).filter(
         (l) => Object.keys(l.monthly_values).length > 0,
       );
+
+      // A row we cannot classify means the stored balance sheet is INCOMPLETE, and
+      // an incomplete balance sheet does not balance. Surfacing it is the whole
+      // point: the previous parser discarded these silently, so 888 bank rows
+      // vanished across 13 tenants and no real tenant's BS ever balanced.
+      if (unclassifiedBS.length > 0) {
+        Sentry.captureMessage(
+          `[Sync Xero BS] ${tenantLabel}: ${unclassifiedBS.length} unclassified balance-sheet row(s) — stored BS will not balance`,
+          {
+            level: 'warning' as any,
+            tags: { invariant: 'bs-unclassified-row' },
+            extra: { tenantId, tenantLabel, rows: unclassifiedBS.slice(0, 25) },
+          } as any,
+        );
+      }
 
       // Replace this tenant's BS rows atomically-enough (R25 / DM-N5).
       // delete + insert are scoped to the same id-space (ids.businessId — the table

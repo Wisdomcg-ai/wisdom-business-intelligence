@@ -57,9 +57,19 @@ describe('parseSingleMonthReport (P&L) — DM-N7 same-name aggregation', () => {
   })
 })
 
+// Real Xero BS data rows ALWAYS carry an account GUID — verified across all 12
+// captured fixtures: 250 rows with an id, and the only 12 without are the
+// computed "Net Assets" row. The parser now uses that attribute both to classify
+// against the chart of accounts and to tell accounts apart from computed totals,
+// so these fixtures carry one too. `seq` keeps duplicate-display-name rows
+// distinct accounts, which is the case this file exists to cover.
+let seq = 0
 const bsRow = (name: string, value: string) => ({
   RowType: 'Row',
-  Cells: [{ Value: name }, { Value: value }],
+  Cells: [
+    { Value: name, Attributes: [{ Value: `acct-${++seq}`, Id: 'account' }] },
+    { Value: value },
+  ],
 })
 
 describe('parseSingleMonthBSReport (Balance Sheet) — DM-N7 same-name aggregation', () => {
