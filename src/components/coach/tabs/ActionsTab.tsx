@@ -18,6 +18,8 @@ import {
 
 // ─── Types ───────────────────────────────────────────────────────
 
+import { formatDate } from '@/lib/timezone'
+
 interface SessionAction {
   id: string
   description: string
@@ -66,10 +68,10 @@ function isOverdue(dueDate: string | null, isComplete: boolean): boolean {
   return new Date(dueDate) < today
 }
 
-function formatDate(dateStr: string | null): string {
+function formatRelativeDate(dateStr: string | null): string {
   if (!dateStr) return '--'
   const d = new Date(dateStr)
-  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+  return formatDate(d, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function priorityBadge(priority: string | null) {
@@ -377,7 +379,7 @@ export function ActionsTab({ businessId, ownerId }: ActionsTabProps) {
                           }`}>
                             <Clock className="w-3 h-3" />
                             {overdue && 'Overdue: '}
-                            {formatDate(action.due_date)}
+                            {formatRelativeDate(action.due_date)}
                           </span>
                         )}
 
@@ -385,7 +387,7 @@ export function ActionsTab({ businessId, ownerId }: ActionsTabProps) {
                         {action.completed_at && (
                           <span className="flex items-center gap-1 text-xs text-brand-teal">
                             <CheckCircle className="w-3 h-3" />
-                            Done {formatDate(action.completed_at)}
+                            Done {formatRelativeDate(action.completed_at)}
                           </span>
                         )}
                       </div>
@@ -465,14 +467,14 @@ export function ActionsTab({ businessId, ownerId }: ActionsTabProps) {
                           }`}>
                             <Clock className="w-3 h-3" />
                             {overdue && 'Overdue: '}
-                            {formatDate(loop.due_date)}
+                            {formatRelativeDate(loop.due_date)}
                           </span>
                         )}
 
                         {loop.closed_at && (
                           <span className="flex items-center gap-1 text-xs text-brand-teal">
                             <CheckCircle className="w-3 h-3" />
-                            Closed {formatDate(loop.closed_at)}
+                            Closed {formatRelativeDate(loop.closed_at)}
                           </span>
                         )}
                       </div>
@@ -545,7 +547,7 @@ export function ActionsTab({ businessId, ownerId }: ActionsTabProps) {
                           }`}>
                             <Clock className="w-3 h-3" />
                             {overdue && 'Overdue: '}
-                            {formatDate(issue.due_date)}
+                            {formatRelativeDate(issue.due_date)}
                           </span>
                         )}
                       </div>

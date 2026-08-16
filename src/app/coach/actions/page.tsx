@@ -22,6 +22,8 @@ import {
   X
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 interface PendingItem {
   id: string
   type: 'loop' | 'issue'
@@ -215,7 +217,7 @@ function ActionCard({ item }: { item: PendingItem }) {
                 <Building2 className="w-4 h-4 text-gray-400" />
                 <span className="max-w-[120px] sm:max-w-[150px] truncate">{item.clientName}</span>
               </div>
-              <p className="text-xs text-gray-500 mt-0.5">{formatDate(item.updatedAt)}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{formatRelativeDate(item.updatedAt)}</p>
             </div>
             <ChevronRight className="w-5 h-5 text-gray-400" />
           </div>
@@ -225,7 +227,7 @@ function ActionCard({ item }: { item: PendingItem }) {
   )
 }
 
-function formatDate(dateStr: string) {
+function formatRelativeDate(dateStr: string) {
   const date = new Date(dateStr)
   const now = new Date()
   const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
@@ -233,7 +235,7 @@ function formatDate(dateStr: string) {
   if (diffDays === 0) return 'Today'
   if (diffDays === 1) return 'Yesterday'
   if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
+  return formatDate(date, { month: 'short', day: 'numeric' })
 }
 
 export default function ActionsPage() {

@@ -15,6 +15,8 @@ import {
   Calendar
 } from 'lucide-react'
 
+import { formatTime } from '@/lib/timezone'
+
 type ViewMode = 'month' | 'week' | 'day'
 
 interface ClientOption {
@@ -146,7 +148,7 @@ function ScheduleContent() {
       return newStart < sEnd && newEnd > sStart
     })
     if (overlap) {
-      throw new Error(`Time conflict with ${overlap.businessName} at ${new Date(overlap.scheduledAt).toLocaleTimeString('en-AU', { timeZone: 'Australia/Sydney', hour: '2-digit', minute: '2-digit', hour12: true })}`)
+      throw new Error(`Time conflict with ${overlap.businessName} at ${formatTime(new Date(overlap.scheduledAt), { hour: '2-digit', minute: '2-digit', hour12: true })}`)
     }
 
     const clientName = clients.find(c => c.id === data.businessId)?.businessName || 'Session'

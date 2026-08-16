@@ -15,6 +15,8 @@ import {
   Minus
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 interface ClientROI {
   businessId: string
   businessName: string
@@ -389,7 +391,7 @@ export function CoachingROI() {
                   <td className="px-6 py-4">
                     <p className="font-medium text-gray-900">{client.businessName}</p>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      Since {new Date(client.engagementStartDate).toLocaleDateString('en-AU', {
+                      Since {formatDate(new Date(client.engagementStartDate), {
                         month: 'short',
                         year: 'numeric'
                       })}

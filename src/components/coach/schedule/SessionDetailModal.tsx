@@ -26,6 +26,8 @@ import {
 import type { CalendarSession } from './CalendarView'
 import { downloadICS, getGoogleCalendarUrl } from '@/lib/utils/ics-generator'
 
+import { formatDate, formatTime } from '@/lib/timezone'
+
 interface SessionDetailModalProps {
   session: CalendarSession
   isOpen: boolean
@@ -66,9 +68,8 @@ export function SessionDetailModal({
 
   const TZ = 'Australia/Sydney'
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-AU', {
-      timeZone: TZ,
+  const formatLocalDate = (date: Date) => {
+    return formatDate(date, {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -76,9 +77,8 @@ export function SessionDetailModal({
     })
   }
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('en-AU', {
-      timeZone: TZ,
+  const formatLocalTime = (date: Date) => {
+    return formatTime(date, {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
@@ -88,7 +88,7 @@ export function SessionDetailModal({
   const getEndTime = () => {
     const endTime = new Date(sessionDate)
     endTime.setMinutes(endTime.getMinutes() + session.durationMinutes)
-    return formatTime(endTime)
+    return formatLocalTime(endTime)
   }
 
   const handleCancel = async () => {
@@ -180,7 +180,7 @@ export function SessionDetailModal({
                   <Calendar className="w-4 h-4" />
                   <span className="text-sm">Date</span>
                 </div>
-                <p className="font-medium text-gray-900">{formatDate(sessionDate)}</p>
+                <p className="font-medium text-gray-900">{formatLocalDate(sessionDate)}</p>
               </div>
               <div className="p-4 bg-gray-50 rounded-xl">
                 <div className="flex items-center gap-2 text-gray-600 mb-1">
@@ -188,7 +188,7 @@ export function SessionDetailModal({
                   <span className="text-sm">Time</span>
                 </div>
                 <p className="font-medium text-gray-900">
-                  {formatTime(sessionDate)} - {getEndTime()}
+                  {formatLocalTime(sessionDate)} - {getEndTime()}
                 </p>
                 <p className="text-xs text-gray-500">{session.durationMinutes} minutes</p>
               </div>

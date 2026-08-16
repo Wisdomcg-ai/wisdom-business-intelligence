@@ -2,6 +2,8 @@
 
 import { Cloud, CloudOff, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 interface SaveIndicatorProps {
@@ -17,7 +19,7 @@ function getTimeAgo(date: Date): string {
   if (seconds < 60) return 'just now'
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-  return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
+  return formatDate(date, { day: 'numeric', month: 'short' })
 }
 
 export function SaveIndicator({
