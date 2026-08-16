@@ -91,3 +91,48 @@ describe('a 1-year forecast skips the multi-year step', () => {
     expect(result.current.state.currentStep).toBe(8)
   })
 })
+
+/**
+ * The RESTORED-draft path — the case #374 missed.
+ *
+ * #374 restored the saved duration via `setForecastDuration`, which refuses once
+ * `durationLocked` is true. A restored localStorage draft carries
+ * durationLocked: true (the operator had left Step 1 in the earlier session), so
+ * the restore silently no-opped on exactly the path most reopens take. Step 1
+ * kept showing 3 years even though the row said 1.
+ *
+ * `hydrateForecastDuration` restores persisted truth regardless of the lock —
+ * the lock exists to stop an OPERATOR changing it mid-build, not to block
+ * re-loading what was already saved.
+ */
+describe('hydrating a saved duration onto a LOCKED (restored) draft', () => {
+  it('applies the saved duration even when durationLocked is true', () => {
+    const { result } = fresh('biz-hydrate-locked')
+    act(() => { result.current.actions.nextStep() }) // leaves Step 1 → locks
+    expect(result.current.state.durationLocked).toBe(true)
+
+    // setForecastDuration is refused here — that is the #374 bug.
+    act(() => { result.current.actions.setForecastDuration(1) })
+    expect(result.current.state.forecastDuration).toBe(3)
+
+    // hydrate restores the saved value regardless.
+    act(() => { result.current.actions.hydrateForecastDuration(1) })
+    expect(result.current.state.forecastDuration).toBe(1)
+  })
+
+  it('keeps the lock intact — hydrating is not an unlock', () => {
+    const { result } = fresh('biz-hydrate-keeps-lock')
+    act(() => { result.current.actions.nextStep() })
+    act(() => { result.current.actions.hydrateForecastDuration(1) })
+    expect(result.current.state.durationLocked).toBe(true)
+  })
+
+  it('clamps activeYear that the restored duration cannot support', () => {
+    const { result } = fresh('biz-hydrate-activeyear')
+    act(() => { result.current.actions.setActiveYear(3) })
+    act(() => { result.current.actions.nextStep() })
+    act(() => { result.current.actions.hydrateForecastDuration(1) })
+    expect(result.current.state.forecastDuration).toBe(1)
+    expect(result.current.state.activeYear).toBe(1)
+  })
+})

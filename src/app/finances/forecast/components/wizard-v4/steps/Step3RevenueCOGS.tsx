@@ -1821,9 +1821,36 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     const totalSeason = seasonality.reduce((s, v) => s + v, 0);
 
     const yearKey = activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';
+    const existing = (cogsLineLookup?.[yearKey] as Record<string, number> | undefined) || {};
+
+    // Completed months are Xero ACTUALS and must survive a % edit — they are
+    // what happened, not a plan. This rebuilt the whole 12-month grid from
+    // seasonality, so adjusting any COGS % silently rewrote July's real cost.
+    // Revenue has guarded this since #349 (see redistributeYearForActiveTab);
+    // COGS never got the same treatment.
+    //
+    // Actuals are held; the % target is met across the REMAINING months only,
+    // mirroring revenue: subtract what already happened, spread the rest by
+    // seasonality over the months still open.
+    const isLockedMonth = (key: string) => activeYear === 1 && isActualMonth(key);
+
+    let actualsTotal = 0;
+    let openSeasonality = 0;
+    yearMKeys.forEach((key, idx) => {
+      if (isLockedMonth(key)) actualsTotal += existing[key] || 0;
+      else openSeasonality += seasonality[idx] ?? 8.33;
+    });
+
+    const projectedTarget = Math.max(0, lineTarget - actualsTotal);
     const monthly: Record<string, number> = {};
     yearMKeys.forEach((key, idx) => {
-      monthly[key] = Math.round(lineTarget * ((seasonality[idx] ?? 8.33) / totalSeason));
+      if (isLockedMonth(key)) {
+        monthly[key] = existing[key] || 0;
+        return;
+      }
+      monthly[key] = openSeasonality > 0
+        ? Math.round(projectedTarget * ((seasonality[idx] ?? 8.33) / openSeasonality))
+        : 0;
     });
     actions.updateCOGSLine(lineId, { [yearKey]: monthly });
   };
@@ -2643,6 +2670,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                   const lineTotal = monthValues.reduce((a, b) => a + b, 0);
 
                   const handleCOGSMonthChange = (key: string, value: string) => {
+                    // Completed months are actuals — read-only, same rule as revenue.
+                    if (activeYear === 1 && isActualMonth(key)) return;
                     const numValue = parseFloat(value.replace(/[^0-9.]/g, '')) || 0;
                     const updated = { ...existingMonthly };
                     if (!hasMonthlyData) {
@@ -2707,6 +2736,8 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                               value={val || ''}
                               onChange={(e) => handleCOGSMonthChange(key, e.target.value)}
                               onKeyDown={(e) => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); }}
+                              readOnly={isActual}
+                              title={isActual ? 'Actual from Xero — locked' : undefined}
                               placeholder="0"
                               className={`w-full px-1 py-1 text-xs text-right border border-gray-200 rounded focus:ring-1 focus:ring-brand-navy focus:border-brand-navy ${
                                 !hasMonthlyData ? 'text-gray-400' : 'text-gray-900'

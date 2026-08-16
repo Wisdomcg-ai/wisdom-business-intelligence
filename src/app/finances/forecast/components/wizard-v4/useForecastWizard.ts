@@ -654,6 +654,24 @@ export function useForecastWizard(
     });
   }, []);
 
+  /**
+   * Restore the forecast duration from the SAVED forecast row.
+   *
+   * Distinct from `setForecastDuration`, which refuses once `durationLocked`
+   * flips (leaving Step 1). That guard exists to stop an OPERATOR changing the
+   * duration mid-build — it must not block re-hydrating what was already saved.
+   * A restored draft carries `durationLocked: true`, so #374's fix silently
+   * no-opped on exactly the path most people hit: reopening an existing
+   * forecast. That is why Step 1 kept showing 3 years.
+   */
+  const hydrateForecastDuration = useCallback((duration: ForecastDuration) => {
+    setState((prev) => {
+      if (prev.forecastDuration === duration) return prev;
+      const newActiveYear = prev.activeYear > duration ? 1 : prev.activeYear;
+      return { ...prev, forecastDuration: duration, activeYear: newActiveYear as 1 | 2 | 3 };
+    });
+  }, []);
+
   const updateGoals = useCallback((goals: Goals) => {
     setState((prev) => ({ ...prev, goals }));
   }, []);
@@ -2342,6 +2360,7 @@ export function useForecastWizard(
     setBusinessProfile,
     setPlanPeriod,
     setForecastIdentity,
+    hydrateForecastDuration,
     setForecastDuration,
     updateGoals,
     setPriorYear,
@@ -2394,7 +2413,7 @@ export function useForecastWizard(
     generateForecast,
   }), [
     goToStep, nextStep, prevStep, setActiveYear, setBusinessProfile,
-    setPlanPeriod, setForecastIdentity, setForecastDuration, updateGoals, setPriorYear,
+    setPlanPeriod, setForecastIdentity, setForecastDuration, hydrateForecastDuration, updateGoals, setPriorYear,
     setPriorYearDisplay, setCurrentYTD, setRevenuePattern, setRevenueLines,
     setCOGSLines, updateRevenueLine, addRevenueLine, removeRevenueLine,
     updateCOGSLine, addCOGSLine, removeCOGSLine, updateTeamMember,

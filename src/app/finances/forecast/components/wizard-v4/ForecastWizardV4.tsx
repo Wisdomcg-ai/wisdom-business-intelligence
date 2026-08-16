@@ -146,12 +146,31 @@ export function ForecastWizardV4({
           const needsTeam = !state.teamMembers || state.teamMembers.length === 0;
           if (needsTeam) {
             fetchPromises.push(fetch(`/api/Xero/employees?business_id=${businessId}`));
-            // Also fetch saved forecast assumptions as fallback
-            if (existingForecastId) {
-              fetchPromises.push(fetch(`/api/forecast/${existingForecastId}`));
-            }
           }
-          const [goalsRes, profileRes, teamRes, forecastRes] = await Promise.all(fetchPromises);
+          // ALWAYS load the saved forecast row when we have an id — not just as a
+          // team fallback. It carries `forecast_duration`, and a restored draft
+          // has no other source for it: buildAssumptions never persisted the
+          // duration, so Step 1 fell back to the 3-year default on every reopen.
+          const forecastIdx = needsTeam ? 3 : 2;
+          if (existingForecastId) {
+            fetchPromises.push(fetch(`/api/forecast/${existingForecastId}`));
+          }
+          const settled = await Promise.all(fetchPromises);
+          const [goalsRes, profileRes] = settled;
+          const teamRes = needsTeam ? settled[2] : undefined;
+          const forecastRes = existingForecastId ? settled[forecastIdx] : undefined;
+
+          // Restore the saved duration. Uses hydrate (not set) because a restored
+          // draft carries durationLocked: true, which makes setForecastDuration a
+          // no-op — the reason #374 did not fix this path.
+          if (forecastRes?.ok) {
+            try {
+              const dur = Number((await forecastRes.clone().json())?.forecast?.forecast_duration);
+              if (dur === 1 || dur === 2 || dur === 3) {
+                actionsRef.current.hydrateForecastDuration(dur);
+              }
+            } catch { /* duration restore is best-effort */ }
+          }
 
           if (goalsRes.ok) {
             const goalsData = await goalsRes.json();
@@ -712,7 +731,7 @@ export function ForecastWizardV4({
         // false — `setForecastDuration` refuses once the operator has left Step 1.
         const savedDuration = Number(loadedForecast?.forecast_duration);
         if (savedDuration === 1 || savedDuration === 2 || savedDuration === 3) {
-          actionsRef.current.setForecastDuration(savedDuration);
+          actionsRef.current.hydrateForecastDuration(savedDuration as 1 | 2 | 3);
         }
 
         console.log('[ForecastWizardV4] Loaded existing forecast:', {
