@@ -51,6 +51,16 @@ export const MONITORED_CRONS: readonly MonitoredCron[] = [
     maxStaleHours: 30,
     activeFrom: '2026-08-08T08:00:00Z',
   },
+  // Daily 03:00 UTC, 2h before metric-invariants reads what it writes. Omitting
+  // it would recreate this branch's own bug one level up: the BS mirror went
+  // stale for months because nothing refreshed it, and a dead refresher that
+  // nobody watches is the same silence wearing a different hat.
+  {
+    path: '/api/cron/sync-bs-mirror',
+    label: 'BS mirror refresh',
+    maxStaleHours: 30,
+    activeFrom: '2026-08-17T00:00:00Z',
+  },
 ]
 
 export interface HeartbeatSnapshot {
