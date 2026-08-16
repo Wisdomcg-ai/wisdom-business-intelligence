@@ -898,6 +898,8 @@ export interface WizardActions {
   setPlanPeriod: (period: PlanPeriod | null) => void;
   /** Record which forecast the local draft belongs to (see state.forecastId). */
   setForecastIdentity: (id: string | null) => void;
+  /** Restore a SAVED duration, bypassing durationLocked (not an operator edit). */
+  hydrateForecastDuration: (duration: ForecastDuration) => void;
   /**
    * The canonical assumptions payload — exactly what the server materialises
    * into forecast_pl_lines. Exposed so consumers (the Excel export) can render
