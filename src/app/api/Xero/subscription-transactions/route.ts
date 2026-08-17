@@ -85,9 +85,20 @@ interface VendorSummary {
   renewalMonth: number | null;
   // Phase 64: per-account prior-FY $ amount for this vendor. Sidebar uses
   // these exact splits instead of attributing the full monthlyBudget to
-  // every account in accountCodes (which double-counted multi-account
+  // every account in accountSplits (which double-counted multi-account
   // vendors). Keyed by accountCode.
   accountSplits: Record<string, number>;
+  // Dossier (18 Aug 2026) — the evidence behind the suggestion, so Step 5 can
+  // answer "is this still running, what are we actually paying now, and is a
+  // single payment a renewal or a one-off" instead of showing a bare number.
+  status: 'active' | 'lapsed' | 'new' | 'one-off';
+  stoppedMonth: string | null;
+  lastPaymentAmount: number;
+  daysSinceLastPayment: number | null;
+  priorYearTwin: boolean;
+  /** Old FY-average basis, kept as evidence; the gap vs suggestedMonthlyBudget
+   *  is the price movement during the year. */
+  fyAverageMonthly: number;
 }
 
 // Parse Xero date format (can be ISO string or /Date(timestamp)/ format)
@@ -1050,6 +1061,15 @@ async function postHandler(request: Request) {
           // amount so the sidebar can attribute the vendor's spend to each
           // account exactly (no double-counting for multi-account vendors).
           accountSplits: {},
+          // Dossier defaults — overwritten by deriveVendorFromTransactions in
+          // section 4; these only survive for a vendor with zero transactions,
+          // which the derivation also treats as a one-off.
+          status: 'one-off',
+          stoppedMonth: null,
+          lastPaymentAmount: 0,
+          daysSinceLastPayment: null,
+          priorYearTwin: false,
+          fyAverageMonthly: 0,
         });
       }
 
@@ -1113,11 +1133,17 @@ async function postHandler(request: Request) {
       // Detect frequency and size the budget PER XERO ORG, then sum — see
       // `deriveVendorFromTransactions` for why pooling multi-org streams
       // under-states both. Phase 63 renewal month comes from the dominant org.
-      const derived = deriveVendorFromTransactions(vendor.transactions);
+      const derived = deriveVendorFromTransactions(vendor.transactions, toDateStr);
       vendor.suggestedFrequency = derived.suggestedFrequency;
       vendor.confidence = derived.confidence;
       vendor.renewalMonth = derived.renewalMonth;
       vendor.suggestedMonthlyBudget = derived.suggestedMonthlyBudget;
+      vendor.fyAverageMonthly = derived.fyAverageMonthly;
+      vendor.status = derived.dossier.status;
+      vendor.stoppedMonth = derived.dossier.stoppedMonth;
+      vendor.lastPaymentAmount = derived.dossier.lastPaymentAmount;
+      vendor.daysSinceLastPayment = derived.dossier.daysSinceLastPayment;
+      vendor.priorYearTwin = derived.dossier.priorYearTwin;
 
       // Sort transactions by date (newest first)
       vendor.transactions.sort((a, b) =>
@@ -1271,6 +1297,16 @@ async function postHandler(request: Request) {
             // Annualise the prior-FY shortfall (or current-FY if no prior) as a
             // monthly budget hint so it carries into the forecast.
             suggestedMonthlyBudget: round2((otherPrior || otherCurrent) / 12),
+            // Synthetic line — there is no payment stream to build a dossier
+            // from. 'active' keeps it included by default: it represents real
+            // P&L spend the vendor capture missed, and dropping it would
+            // silently understate the subscription budget.
+            status: 'active',
+            stoppedMonth: null,
+            lastPaymentAmount: 0,
+            daysSinceLastPayment: null,
+            priorYearTwin: false,
+            fyAverageMonthly: round2((otherPrior || otherCurrent) / 12),
             // MUST be empty: a dollar-gap-only line. Claiming the selected
             // accounts here makes the wizard treat those accounts as fully
             // covered and silently drop real OpEx lines that share them.

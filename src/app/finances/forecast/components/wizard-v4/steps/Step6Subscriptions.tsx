@@ -36,6 +36,68 @@ import { CommitNumberInput } from '../components/CommitNumberInput';
  *    without either hazard.
  * memo: a commit re-renders all ~40 vendor rows; unchanged cells now skip.
  */
+/** Month label for a 'YYYY-MM' key, e.g. '2026-03' → 'Mar'. */
+function shortMonth(ym: string): string {
+  const m = parseInt(ym.slice(5, 7), 10);
+  return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1] ?? ym;
+}
+
+/**
+ * Lifecycle badge — the dossier's answer to "is this still running?".
+ * Lapsed names the stop month so "stopped Mar" is a fact the coach can take to
+ * the client, not a judgement they have to reconstruct from the transactions.
+ */
+const VendorStatusBadge = memo(function VendorStatusBadge({ vendor }: { vendor: VendorBudget }) {
+  if (!vendor.status || vendor.status === 'active') return null;
+  const styles: Record<string, string> = {
+    'lapsed': 'bg-amber-50 text-amber-700 border-amber-200',
+    'new': 'bg-blue-50 text-blue-700 border-blue-200',
+    'one-off': 'bg-gray-100 text-gray-600 border-gray-200',
+  };
+  const label =
+    vendor.status === 'lapsed'
+      ? `Stopped${vendor.stoppedMonth ? ` ${shortMonth(vendor.stoppedMonth)}` : ''}`
+      : vendor.status === 'new'
+        ? 'New this year'
+        : 'One-off';
+  const title =
+    vendor.status === 'lapsed'
+      ? `No payments since ${vendor.stoppedMonth ?? 'earlier in the year'} — excluded from the budget by default. Toggle Include if it should carry forward.`
+      : vendor.status === 'new'
+        ? 'First payment falls in the current financial year.'
+        : 'A single payment with no matching payment ~12 months earlier — likely a purchase, not a subscription. Excluded by default.';
+  return (
+    <span
+      className={`px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide rounded border ${styles[vendor.status]}`}
+      title={title}
+    >
+      {label}
+    </span>
+  );
+});
+
+/**
+ * Price-creep evidence: when the FY average and the current price point differ
+ * by ≥ 5%, show both. The budget suggestion already uses the current price —
+ * this line explains WHY it doesn't match the average the operator can compute
+ * from the transaction list, and quietly reports the year's price movement.
+ */
+const VendorPriceEvidence = memo(function VendorPriceEvidence({ vendor }: { vendor: VendorBudget }) {
+  const avg = vendor.fyAverageMonthly ?? 0;
+  const current = vendor.suggestedMonthlyBudget;
+  if (avg <= 0 || current <= 0) return null;
+  if (Math.abs(current - avg) / avg < 0.05) return null;
+  const rose = current > avg;
+  return (
+    <span
+      className={`ml-2 ${rose ? 'text-amber-600' : 'text-green-600'}`}
+      title={`FY average ${formatCurrency(avg)}/mo vs the current price point ${formatCurrency(current)}/mo. The suggestion uses the current price — averaging a year that contains a price change budgets the old price.`}
+    >
+      {rose ? 'Price rose' : 'Price fell'}: avg {formatCurrency(avg)} → now {formatCurrency(current)}
+    </span>
+  );
+});
+
 const VendorBudgetInput = memo(function VendorBudgetInput({
   value,
   disabled,
@@ -171,6 +233,15 @@ interface VendorBudget {
   // attributed to each. {} or undefined for legacy rows → sidebar falls back
   // to even-split of accountCodes.
   accountSplits?: Record<string, number>;
+  // Dossier (18 Aug 2026) — evidence from the analyze API. Optional: vendors
+  // restored from saved budgets predate these and simply show no badge.
+  status?: 'active' | 'lapsed' | 'new' | 'one-off';
+  stoppedMonth?: string | null;
+  lastPaymentAmount?: number;
+  priorYearTwin?: boolean;
+  /** FY-average monthly basis; when it differs from the suggestion the gap is
+   *  the price movement during the year. */
+  fyAverageMonthly?: number;
 }
 
 interface ReconciliationPeriod {
@@ -743,12 +814,23 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         monthlyBudget: v.suggestedMonthlyBudget,
         transactions: v.transactions || [],
         isExpanded: false,
-        isActive: true,
+        // Silent inclusion is how budgets rot: a monthly that STOPPED mid-year
+        // or a single payment with no prior-year twin (a purchase, not a sub)
+        // starts EXCLUDED, with the badge saying why. One click re-includes it
+        // — and mergeByVendorKey preserves the operator's choice thereafter,
+        // so this default only ever applies to newly-discovered vendors.
+        isActive: v.status !== 'lapsed' && v.status !== 'one-off',
         accountCodes: v.accountCodes ?? analyzedAccountCodes,
         // Phase 63: pulled from analyze API for annual subs.
         renewalMonth: v.renewalMonth ?? null,
         // Phase 64: per-account prior-FY $ amounts from the analyze step.
         accountSplits: v.accountSplits ?? {},
+        // Dossier evidence for the badge + evidence line.
+        status: v.status,
+        stoppedMonth: v.stoppedMonth ?? null,
+        lastPaymentAmount: v.lastPaymentAmount ?? 0,
+        priorYearTwin: v.priorYearTwin ?? false,
+        fyAverageMonthly: v.fyAverageMonthly ?? 0,
       }));
 
       // Phase 51 (UX-S6-02): merge with existing vendor list so operator's
@@ -1851,13 +1933,17 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                           </td>
                         )}
                         <td className="px-4 py-3">
-                          <div className="font-medium text-gray-900">{vendor.vendorName}</div>
+                          <div className="font-medium text-gray-900 flex items-center gap-2">
+                            {vendor.vendorName}
+                            <VendorStatusBadge vendor={vendor} />
+                          </div>
                           {!isManualMode && (
                             <div className="text-xs text-gray-500">
                               {vendor.transactionCount} payment{vendor.transactionCount !== 1 ? 's' : ''}
                               {vendor.confidence === 'high' && (
                                 <span className="ml-2 text-green-600">High confidence</span>
                               )}
+                              <VendorPriceEvidence vendor={vendor} />
                             </div>
                           )}
                         </td>

@@ -50,15 +50,22 @@ describe('single-org vendors are unchanged', () => {
     expect(d.suggestedMonthlyBudget).toBeCloseTo(1200, 2)
   })
 
-  it('an annual sub spreads the prior-FY payment over 12 months', () => {
+  it('an annual sub budgets the LATEST renewal price, not last year\'s', () => {
     const txs: DerivableTransaction[] = [
       { date: '2025-09-15', amount: 6000, period: 'prior_fy', tenantId: DRAGON },
       { date: '2026-09-15', amount: 6600, period: 'current_fy', tenantId: DRAGON },
     ]
-    const d = deriveVendorFromTransactions(txs)
+    const d = deriveVendorFromTransactions(txs, '2026-10-01')
     expect(d.suggestedFrequency).toBe('annual')
-    expect(d.suggestedMonthlyBudget).toBeCloseTo(500, 2) // 6000 / 12
+    // DELIBERATE semantics change (dossier upgrade): the vendor renewed at
+    // $6,600, so that is the price being paid — 6600/12, not 6000/12. The old
+    // basis is preserved as evidence:
+    expect(d.suggestedMonthlyBudget).toBeCloseTo(550, 2)
+    expect(d.fyAverageMonthly).toBeCloseTo(500, 2)
     expect(d.renewalMonth).toBe(9)
+    // And the twin (~12mo gap, +10% amount) makes annual an evidenced call:
+    expect(d.dossier.priorYearTwin).toBe(true)
+    expect(d.confidence).toBe('high')
   })
 })
 
@@ -145,5 +152,123 @@ describe('degenerate input', () => {
       { date: '2025-09-20', amount: -100, period: 'prior_fy', tenantId: DRAGON },
     ])
     expect(Number.isNaN(d.suggestedMonthlyBudget)).toBe(false)
+  })
+})
+
+
+/**
+ * Dossier — the CFO questions of 18 Aug 2026:
+ *   1. which subscriptions were annual (1 payment/yr) — and are they renewals
+ *      or one-offs?
+ *   2. which monthlies stopped mid-year, and when?
+ *   3. what is the current price to carry forward (not the FY average)?
+ * All recency judgements pass an explicit referenceDate so these tests are
+ * deterministic and a replayed crawl derives identically.
+ */
+describe('vendor dossier', () => {
+  const REF = '2026-08-18'
+
+  it('a monthly sub paying on cadence is active', () => {
+    const d = deriveVendorFromTransactions(
+      monthlyStream(DRAGON, 500, { months: 12, startYear: 2025, startMonth: 9 }), REF)
+    expect(d.dossier.status).toBe('active')
+    expect(d.dossier.stoppedMonth).toBeNull()
+  })
+
+  it('a monthly sub that stopped mid-year is lapsed, with the stop month named', () => {
+    // 9 payments Jul 2025 → Mar 2026, then silence — Matt's question #2.
+    const d = deriveVendorFromTransactions(
+      monthlyStream(DRAGON, 350, { months: 9, startYear: 2025, startMonth: 7 }), REF)
+    expect(d.dossier.status).toBe('lapsed')
+    expect(d.dossier.stoppedMonth).toBe('2026-03')
+    expect(d.dossier.daysSinceLastPayment).toBeGreaterThan(60)
+  })
+
+  it('a stopped monthly still reports its real cadence-priced budget for reinstatement', () => {
+    const d = deriveVendorFromTransactions(
+      monthlyStream(DRAGON, 350, { months: 9, startYear: 2025, startMonth: 7 }), REF)
+    // Suggestion stays sensible ($350/mo); INCLUSION is the operator's call
+    // via the default-excluded toggle, not a zeroed number.
+    expect(d.suggestedMonthlyBudget).toBeCloseTo(350, 2)
+  })
+
+  it('carry-forward uses the CURRENT price after a mid-year rise, average kept as evidence', () => {
+    // $160/mo for 8 months, then a rise to $190 for the last 4 — the classic
+    // quiet price creep. The average books $170; the price being paid is $190.
+    const txs = [
+      ...monthlyStream(DRAGON, 160, { months: 8, startYear: 2025, startMonth: 9 }),
+      ...monthlyStream(DRAGON, 190, { months: 4, startYear: 2026, startMonth: 5 }),
+    ]
+    const d = deriveVendorFromTransactions(txs, REF)
+    expect(d.suggestedFrequency).toBe('monthly')
+    expect(d.suggestedMonthlyBudget).toBeCloseTo(190, 2)
+    expect(d.fyAverageMonthly).toBeCloseTo(170, 2)
+  })
+
+  it('median-of-3 keeps one pro-rata month from setting the budget', () => {
+    const txs = [
+      ...monthlyStream(DRAGON, 500, { months: 11, startYear: 2025, startMonth: 9 }),
+      // Final month double-billed (catch-up invoice)
+      ...monthlyStream(DRAGON, 1000, { months: 1, startYear: 2026, startMonth: 8 }),
+    ]
+    const d = deriveVendorFromTransactions(txs, '2026-09-01')
+    expect(d.suggestedMonthlyBudget).toBeCloseTo(500, 2)
+  })
+
+  it('a single payment with a prior-year twin is an ANNUAL renewal, not a one-off', () => {
+    // Question #1: 1 payment this FY. The twin ~12 months earlier at a similar
+    // amount is the evidence it renews.
+    const txs: DerivableTransaction[] = [
+      { date: '2025-07-20', amount: 4200, period: 'prior_fy', tenantId: DRAGON },
+      { date: '2026-07-22', amount: 4550, period: 'current_fy', tenantId: DRAGON },
+    ]
+    const d = deriveVendorFromTransactions(txs, REF)
+    expect(d.suggestedFrequency).toBe('annual')
+    expect(d.confidence).toBe('high')
+    expect(d.dossier.priorYearTwin).toBe(true)
+    expect(d.dossier.status).toBe('active')
+    expect(d.suggestedMonthlyBudget).toBeCloseTo(4550 / 12, 2)
+  })
+
+  it('a single old payment with NO twin is a one-off — excluded by default', () => {
+    const txs: DerivableTransaction[] = [
+      { date: '2026-02-10', amount: 3800, period: 'current_fy', tenantId: DRAGON },
+    ]
+    const d = deriveVendorFromTransactions(txs, REF)
+    expect(d.dossier.status).toBe('one-off')
+    expect(d.dossier.priorYearTwin).toBe(false)
+  })
+
+  it('a single RECENT payment reads as new, not one-off — the second charge may be coming', () => {
+    const txs: DerivableTransaction[] = [
+      { date: '2026-08-01', amount: 89, period: 'current_fy', tenantId: DRAGON },
+    ]
+    const d = deriveVendorFromTransactions(txs, REF)
+    expect(d.dossier.status).toBe('new')
+  })
+
+  it('a 12-payment monthly is never flipped to annual by twin-matching Januarys', () => {
+    const d = deriveVendorFromTransactions(
+      monthlyStream(DRAGON, 250, { months: 14, startYear: 2025, startMonth: 7 }), REF)
+    expect(d.suggestedFrequency).toBe('monthly')
+  })
+
+  it('multi-org: carry-forward sums each org\'s CURRENT price', () => {
+    // Dragon's org at $1,200 all year; Easy Hail rose $700 → $760 mid-year.
+    const txs = [
+      ...monthlyStream(DRAGON, 1200, { months: 12, startYear: 2025, startMonth: 9 }),
+      ...monthlyStream(EASY_HAIL, 700, { months: 8, startYear: 2025, startMonth: 9, day: 18 }),
+      ...monthlyStream(EASY_HAIL, 760, { months: 4, startYear: 2026, startMonth: 5, day: 18 }),
+    ]
+    const d = deriveVendorFromTransactions(txs, REF)
+    expect(d.orgCount).toBe(2)
+    expect(d.suggestedMonthlyBudget).toBeCloseTo(1960, 2)
+  })
+
+  it('multi-org: vendor is lapsed only when EVERY org has stopped', () => {
+    const stopped = monthlyStream(DRAGON, 300, { months: 6, startYear: 2025, startMonth: 9 })
+    const alive = monthlyStream(EASY_HAIL, 400, { months: 12, startYear: 2025, startMonth: 9 })
+    expect(deriveVendorFromTransactions([...stopped, ...alive], REF).dossier.status).toBe('active')
+    expect(deriveVendorFromTransactions(stopped, REF).dossier.status).toBe('lapsed')
   })
 })
