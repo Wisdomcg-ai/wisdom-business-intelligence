@@ -145,7 +145,27 @@ export default function CoachViewPage({ params }: PageProps) {
     }
   }, [activeBusiness?.id, clientId])
 
-  // Load the page component after business is set
+  // Start downloading the page's JS chunk IMMEDIATELY — before the business
+  // context resolves. The chunk fetch depends on nothing but the path, yet it
+  // used to sit behind `businessSet`, which requires 5-6 serial round-trips
+  // (auth.getUser ×2, system_roles, businesses, business_profiles, sometimes a
+  // users fallback) before the browser issued a single byte of the request.
+  // For the forecast page that gated the biggest chunk in the app behind the
+  // slowest chain in the app. Only the MOUNT must wait for businessSet — the
+  // loaded component reads activeBusiness from context, so rendering it early
+  // would show the wrong business — the download never had to.
+  const chunkPromiseRef = useRef<Promise<any> | null>(null)
+  useEffect(() => {
+    const componentLoader = getPageComponent(pathArray)
+    const inflight = componentLoader ? componentLoader() : null
+    // Nothing awaits this until businessSet resolves; without a handler a
+    // failed fetch would surface as an unhandled rejection in the console.
+    // The awaiting effect below still sees the rejection and shows the error.
+    if (inflight) inflight.catch(() => {})
+    chunkPromiseRef.current = inflight
+  }, [pathString]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Mount the page component once the business is set (chunk overlap above)
   useEffect(() => {
     if (!businessSet) return
 
@@ -154,15 +174,17 @@ export default function CoachViewPage({ params }: PageProps) {
       setError(null)
 
       try {
-        const componentLoader = getPageComponent(pathArray)
+        // Same-render safety: the prefetch effect above runs earlier in the
+        // effect list, but fall back to a direct load if it hasn't.
+        const inflight = chunkPromiseRef.current ?? getPageComponent(pathArray)?.()
 
-        if (!componentLoader) {
+        if (!inflight) {
           setError(`Page not found: ${pathString}`)
           setIsLoading(false)
           return
         }
 
-        const module = await componentLoader()
+        const module = await inflight
         setPageComponent(() => module.default)
       } catch (err) {
         console.error('Error loading page component:', err)

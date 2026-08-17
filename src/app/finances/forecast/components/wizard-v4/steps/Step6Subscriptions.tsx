@@ -14,6 +14,7 @@ import {
   Plus, Trash2, PenLine, AlertTriangle
 } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency } from '../types';
+import { CommitNumberInput } from '../components/CommitNumberInput';
 
 /**
  * Budget cell for the vendor table — the same local-draft pattern proven by
@@ -52,62 +53,21 @@ const VendorBudgetInput = memo(function VendorBudgetInput({
   suffix?: string;
   title?: string;
 }) {
-  const format = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(2));
-  const [localValue, setLocalValue] = useState(() => format(value));
-  const [isFocused, setIsFocused] = useState(false);
-
-  useEffect(() => {
-    if (!isFocused) setLocalValue(format(value));
-  }, [value, isFocused]);
-
-  const commit = () => {
-    const trimmed = localValue.trim();
-    if (trimmed === '') {
-      // Empty is "never mind", not "$0" — revert to the canonical value.
-      setLocalValue(format(value));
-      return;
-    }
-    const parsed = parseFloat(trimmed.replace(/[^0-9.\-]/g, ''));
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      setLocalValue(format(value));
-      return;
-    }
-    onCommit(parsed);
-    setLocalValue(format(parsed));
-  };
-
+  // Thin chrome ($ prefix, /mo suffix) around the wizard's single
+  // commit-on-blur primitive — the parse/revert/Enter-keeps-focus semantics
+  // live in ONE place, not per step.
   return (
     <div className={prefix || suffix ? 'relative flex-1 max-w-[110px]' : undefined}>
       {prefix && (
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{prefix}</span>
       )}
-      <input
-        type="text"
-        inputMode="decimal"
-        value={localValue}
+      <CommitNumberInput
+        value={value}
+        zeroAsEmpty={false}
+        displayWhole={false}
         disabled={disabled}
         title={title}
-        onChange={(e) => setLocalValue(e.target.value)}
-        onFocus={(e) => {
-          setIsFocused(true);
-          e.target.select();
-        }}
-        onBlur={() => {
-          setIsFocused(false);
-          commit();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            // Commit WITHOUT blurring: .blur() dropped focus to <body>, and with
-            // the old remount hack the node was destroyed under the operator.
-            commit();
-            e.currentTarget.select();
-          }
-          if (e.key === 'Escape') {
-            setLocalValue(format(value));
-            e.currentTarget.select();
-          }
-        }}
+        onCommit={onCommit}
         className="w-full pl-7 pr-9 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100 tabular-nums"
       />
       {suffix && (

@@ -9,6 +9,7 @@ import { DataIntegrityBanner } from '@/components/data-integrity/DataIntegrityBa
 import type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read-service';
 import { useEditableValue } from '../hooks/useEditableValue';
 import { getEffectiveSeasonality } from '../utils/line-distribution';
+import { CommitNumberInput } from '../components/CommitNumberInput';
 
 /**
  * RevenueLineMixInputs — Phase 51-01 (UX-S3-01)
@@ -2745,19 +2746,13 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                           <span className="px-2">{monthTotal > 0 ? formatCurrency(monthTotal) : '-'}</span>
                         ) : (
                           /* Top-down entry: type the month's total and the lines
-                             below split it by their current mix. Uncontrolled +
-                             commit on blur/Enter so typing is never reformatted
-                             mid-keystroke. */
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            key={`tot-${key}-${Math.round(monthTotal)}`}
-                            defaultValue={monthTotal ? Math.round(monthTotal) : ''}
-                            onBlur={(e) => handleMonthTotalCommit(key, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                              if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault();
-                            }}
+                             below split it by their current mix. CommitNumberInput
+                             commits on blur/Enter without the old remount-key hack
+                             — Enter keeps focus, clearing reverts instead of
+                             committing $0 (parseFloat('') used to zero the month). */
+                          <CommitNumberInput
+                            value={monthTotal}
+                            onCommit={(parsed) => handleMonthTotalCommit(key, String(parsed))}
                             placeholder="0"
                             data-testid={`month-total-${key}`}
                             title="Type a target for this month — the revenue lines below split it by their current mix"

@@ -14,6 +14,7 @@ import {
   SUPER_RATE,
 } from '../types';
 import { getFiscalYear, getFiscalMonthIndex, getFiscalYearDateRange, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
+import { CommitNumberInput } from '../components/CommitNumberInput';
 // Phase 52-01 (XERO-S4-01/03/04) — Import-from-Xero modal + Option D edit affordance.
 // Phase 52-02 (XERO-S4-05) — Refresh-from-Xero reconciliation flow (4 new helpers).
 import {
@@ -2750,12 +2751,14 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
               <td className="px-2 py-1.5">
                 {isContractor || row.type === 'casual' ? (
                   <div className="flex items-center justify-end">
-                    <input
-                      type="number"
-                      defaultValue={row.hourlyRate || ''}
-                      key={`rate-${row.id}-${row.hourlyRate}`}
-                      onBlur={(e) => {
-                        const newRate = parseFloat(e.target.value) || 0;
+                    {/* CommitNumberInput, not the old remount-key hack: Enter
+                        keeps focus, clearing reverts instead of committing a
+                        $0/hr rate (which for a casual also zeroed their salary). */}
+                    <CommitNumberInput
+                      value={row.hourlyRate || null}
+                      placeholder="-"
+                      className="w-full px-1.5 py-1 text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
+                      onCommit={(newRate) => {
                         if (isContractor) {
                           if (row.isNewHire) {
                             actions.updateNewHire(row.newHireId!, { hourlyRate: newRate });
@@ -2772,8 +2775,6 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
                           }
                         }
                       }}
-                      placeholder="-"
-                      className="w-full px-1.5 py-1 text-right border border-gray-200 rounded focus:border-brand-navy focus:ring-1 focus:ring-brand-navy"
                     />
                   </div>
                 ) : (
@@ -2786,12 +2787,9 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
               {showDetailColumns && (
               <td className="px-2 py-1.5 text-right">
                 {isContractor || row.type !== 'full-time' ? (
-                  <input
-                    type="number"
-                    defaultValue={row.hoursPerWeek || ''}
-                    key={`hours-${row.id}-${row.hoursPerWeek}`}
-                    onBlur={(e) => {
-                      const newHours = parseFloat(e.target.value) || 0;
+                  <CommitNumberInput
+                    value={row.hoursPerWeek || null}
+                    onCommit={(newHours) => {
                       if (isContractor) {
                         if (row.isNewHire) {
                           actions.updateNewHire(row.newHireId!, { hoursPerWeek: newHours });
