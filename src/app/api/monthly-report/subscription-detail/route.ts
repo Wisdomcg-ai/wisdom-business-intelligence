@@ -7,6 +7,13 @@ import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { extractVendorName, createVendorKey } from '@/lib/utils/vendor-normalization'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId'
+import {
+  expectedMonthlyBudget,
+  classifyLeakage,
+  type BudgetRowForVariance,
+  type VendorActualForVariance,
+} from '@/lib/subscriptions/variance'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -142,26 +149,13 @@ async function postHandler(request: Request) {
       return NextResponse.json({ success: true, data: emptyData })
     }
 
-    // Check for Xero connection
-    const { data: connection } = await supabase
-      .from('xero_connections')
-      .select('*')
-      .eq('business_id', business_id)
-      .eq('is_active', true)
-      .maybeSingle()
-
-    if (!connection) {
+    // ALL active connections — .maybeSingle() here silently reported ONE org's
+    // subscriptions for multi-org businesses (Dragon has two orgs, IICT three),
+    // the exact fraction-of-the-truth failure the wizard's crawl was cured of.
+    const { connections } = await resolveXeroConnections(supabase, business_id)
+    if (!connections || connections.length === 0) {
       return NextResponse.json({ success: true, data: emptyData })
     }
-
-    // Get valid access token
-    const tokenResult = await getValidAccessToken({ id: connection.id }, supabase)
-    if (!tokenResult.success || !tokenResult.accessToken) {
-      return NextResponse.json({ success: true, data: emptyData })
-    }
-
-    const accessToken = tokenResult.accessToken
-    const tenantId = connection.tenant_id
 
     // Parse report month for date ranges
     const [year, monthNum] = report_month.split('-').map(Number)
@@ -170,25 +164,7 @@ async function postHandler(request: Request) {
     const priorMonth = monthNum === 1 ? 12 : monthNum - 1
     const priorYear = monthNum === 1 ? year - 1 : year
 
-    // Fetch Chart of Accounts for code→name lookup
     const accountNameMap = new Map<string, string>()
-    try {
-      const coaRes = await fetch('https://api.xero.com/api.xro/2.0/Accounts', {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'xero-tenant-id': tenantId,
-          'Accept': 'application/json',
-        },
-      })
-      if (coaRes.ok) {
-        const coaData = await coaRes.json()
-        for (const acc of (coaData.Accounts || [])) {
-          if (acc.Code && acc.Name) accountNameMap.set(acc.Code, acc.Name)
-        }
-      }
-    } catch (err) {
-      Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch accounts" } } as any)
-    }
 
     // Vendor totals: accountCode → vendorKey → { vendor_name, actual, prior_actual, transaction_count }
     // transaction_count tracks current-month bank-tx lines so the UI can flag
@@ -227,8 +203,13 @@ async function postHandler(request: Request) {
     const priorNextMonth = priorMonth === 12 ? 1 : priorMonth + 1
     const priorNextYear = priorMonth === 12 ? priorYear + 1 : priorYear
 
+    // Per-tenant current-month vendor totals for the phase-2 write-through:
+    // tenant → vendorKey → { name, amount }. Kept per-tenant so multi-org rows
+    // land separably in subscription_vendor_actuals.
+    const tenantMonthActuals = new Map<string, Map<string, { name: string; amount: number }>>()
+
     // Process bank transactions into vendor breakdown
-    function processBankTxns(txns: any[], isCurrent: boolean) {
+    function processBankTxns(txns: any[], isCurrent: boolean, txnTenantId: string) {
       for (const bt of txns) {
         const contactName = bt.Contact?.Name || ''
         for (const li of (bt.LineItems || [])) {
@@ -236,35 +217,76 @@ async function postHandler(request: Request) {
             const vendorName = extractVendorName(contactName, li.Description || bt.Reference || '')
             const amount = li.LineAmount || 0
             addLineItem(li.AccountCode, vendorName, amount, isCurrent)
+            if (isCurrent) {
+              const key = createVendorKey(vendorName)
+              let perTenant = tenantMonthActuals.get(txnTenantId)
+              if (!perTenant) { perTenant = new Map(); tenantMonthActuals.set(txnTenantId, perTenant) }
+              const cur = perTenant.get(key)
+              if (cur) cur.amount += amount
+              else perTenant.set(key, { name: vendorName, amount })
+            }
           }
         }
       }
     }
 
-    // Fetch CURRENT month bank transactions (all pages)
-    try {
-      const txns = await fetchAllPages(
-        'https://api.xero.com/api.xro/2.0/BankTransactions',
-        `Date>=DateTime(${year},${monthNum},1)&&Date<DateTime(${nextYear},${nextMonth},1)&&Type=="SPEND"`,
-        accessToken, tenantId, 'BankTransactions'
-      )
-      processBankTxns(txns, true)
-    } catch (err) {
-      Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch current bank txns" } } as any)
-    }
+    // Crawl EVERY active org: COA (merged code→name lookup) + current and prior
+    // month bank transactions. One dead org's token must not blank the others.
+    for (const connection of connections) {
+      const tokenResult = await getValidAccessToken({ id: connection.id }, supabase)
+      if (!tokenResult.success || !tokenResult.accessToken) {
+        Sentry.captureMessage(
+          `[SubscriptionDetail] token unavailable for tenant ${connection.tenant_id} — org skipped, totals partial`,
+          { level: 'warning' as any, tags: { route: 'monthly-report/subscription-detail' } } as any,
+        )
+        continue
+      }
+      const accessToken = tokenResult.accessToken
+      const tenantId = connection.tenant_id
 
-    await sleep(300)
+      try {
+        const coaRes = await fetch('https://api.xero.com/api.xro/2.0/Accounts', {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'xero-tenant-id': tenantId,
+            'Accept': 'application/json',
+          },
+        })
+        if (coaRes.ok) {
+          const coaData = await coaRes.json()
+          for (const acc of (coaData.Accounts || [])) {
+            if (acc.Code && acc.Name && !accountNameMap.has(acc.Code)) accountNameMap.set(acc.Code, acc.Name)
+          }
+        }
+      } catch (err) {
+        Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch accounts", tenantId } } as any)
+      }
 
-    // Fetch PRIOR month bank transactions (all pages)
-    try {
-      const txns = await fetchAllPages(
-        'https://api.xero.com/api.xro/2.0/BankTransactions',
-        `Date>=DateTime(${priorYear},${priorMonth},1)&&Date<DateTime(${priorNextYear},${priorNextMonth},1)&&Type=="SPEND"`,
-        accessToken, tenantId, 'BankTransactions'
-      )
-      processBankTxns(txns, false)
-    } catch (err) {
-      Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch prior bank txns" } } as any)
+      try {
+        const txns = await fetchAllPages(
+          'https://api.xero.com/api.xro/2.0/BankTransactions',
+          `Date>=DateTime(${year},${monthNum},1)&&Date<DateTime(${nextYear},${nextMonth},1)&&Type=="SPEND"`,
+          accessToken, tenantId, 'BankTransactions'
+        )
+        processBankTxns(txns, true, tenantId)
+      } catch (err) {
+        Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch current bank txns", tenantId } } as any)
+      }
+
+      await sleep(300)
+
+      try {
+        const txns = await fetchAllPages(
+          'https://api.xero.com/api.xro/2.0/BankTransactions',
+          `Date>=DateTime(${priorYear},${priorMonth},1)&&Date<DateTime(${priorNextYear},${priorNextMonth},1)&&Type=="SPEND"`,
+          accessToken, tenantId, 'BankTransactions'
+        )
+        processBankTxns(txns, false, tenantId)
+      } catch (err) {
+        Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch prior bank txns", tenantId } } as any)
+      }
+
+      await sleep(300)
     }
 
     // Fetch per-vendor budgets from subscription_budgets.
@@ -278,18 +300,38 @@ async function postHandler(request: Request) {
       vendor_key: string
       monthly_budget: number
       account_codes: string[] | null
+      frequency: string | null
+      renewal_month: number | null
     }
     let budgetRows: BudgetRow[] = []
     try {
       const { data: budgets } = await supabase
         .from('subscription_budgets')
-        .select('vendor_name, vendor_key, monthly_budget, account_codes')
+        .select('vendor_name, vendor_key, monthly_budget, account_codes, frequency, renewal_month')
         .eq('business_id', business_id)
         .eq('is_active', true)
 
       budgetRows = (budgets || []) as BudgetRow[]
       for (const b of budgetRows) {
-        budgetMap.set(b.vendor_key, b.monthly_budget || 0)
+        // CADENCE-AWARE expected figure, not the smoothed 1/12. The P&L
+        // forecast smooths annual subs; the variance view must not — a $12k
+        // renewal against a smoothed $1k budget reads as an $11k blowout in
+        // its month and phantom savings in the other eleven, which trains
+        // people to ignore this report. The renewal month carries the annual
+        // amount; the other months expect $0.
+        budgetMap.set(
+          b.vendor_key,
+          expectedMonthlyBudget(
+            {
+              vendor_key: b.vendor_key,
+              vendor_name: b.vendor_name,
+              monthly_budget: b.monthly_budget || 0,
+              frequency: (b.frequency ?? null) as BudgetRowForVariance['frequency'],
+              renewal_month: b.renewal_month,
+            },
+            report_month,
+          ),
+        )
       }
     } catch (err) {
       Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch budgets" } } as any)
@@ -475,6 +517,84 @@ async function postHandler(request: Request) {
       })
       .filter(a => a.vendors.length > 0)
 
+    // ── Phase 3: leakage classification ──
+    // Three lines a CFO actually acts on, computed from the same vendor rows
+    // the table shows: NEW vendors billing with no budget (the biggest SME
+    // leak), monthly vendors billing materially above budget (price creep),
+    // and budgeted monthlies that billed NOTHING (possibly cancelled — the
+    // inverse leak, an overstated budget masking overspend elsewhere).
+    const vendorActualsFlat: VendorActualForVariance[] = []
+    {
+      const seen = new Map<string, VendorActualForVariance>()
+      for (const accountVendors of vendorData.values()) {
+        for (const [vendorKey, v] of accountVendors) {
+          const cur = seen.get(vendorKey)
+          if (cur) {
+            cur.actual += v.actual
+            cur.transaction_count += v.transaction_count
+          } else {
+            seen.set(vendorKey, {
+              vendor_key: vendorKey,
+              vendor_name: v.vendor_name,
+              actual: v.actual,
+              transaction_count: v.transaction_count,
+            })
+          }
+        }
+      }
+      vendorActualsFlat.push(...seen.values())
+    }
+    const leakage = classifyLeakage(
+      vendorActualsFlat,
+      budgetRows.map((b) => ({
+        vendor_key: b.vendor_key,
+        vendor_name: b.vendor_name,
+        monthly_budget: b.monthly_budget || 0,
+        frequency: (b.frequency ?? null) as BudgetRowForVariance['frequency'],
+        renewal_month: b.renewal_month,
+      })),
+      report_month,
+    )
+
+    // ── Phase 2 write-through: persist this month's vendor actuals ──
+    // The wizard's analyze crawl bulk-writes history; viewing a report keeps
+    // the viewed month fresh. Failure never blocks the response, but is never
+    // silent either (house rule: invariant-tagged capture on swallowed writes).
+    try {
+      const ids = await resolveBusinessProfileIds(supabase, business_id)
+      const rows: { business_id: string; tenant_id: string; vendor_key: string; vendor_name: string; month: string; amount: number; source: string; updated_at: string }[] = []
+      for (const [tenantId, vendorsOfTenant] of tenantMonthActuals) {
+        for (const [vendorKey, v] of vendorsOfTenant) {
+          rows.push({
+            business_id: ids.businessId,
+            tenant_id: tenantId,
+            vendor_key: vendorKey,
+            vendor_name: v.name,
+            month: report_month,
+            amount: Math.round(v.amount * 100) / 100,
+            source: 'report',
+            updated_at: new Date().toISOString(),
+          })
+        }
+      }
+      if (rows.length > 0) {
+        const { error: persistError } = await supabase
+          .from('subscription_vendor_actuals')
+          .upsert(rows, { onConflict: 'business_id,tenant_id,vendor_key,month' })
+        if (persistError) {
+          Sentry.captureMessage(
+            `[SubscriptionDetail] vendor-actuals write-through failed: ${persistError.message}`,
+            { level: 'warning' as any, tags: { invariant: 'subscription-actuals-persist' }, extra: { business_id, report_month, rows: rows.length } } as any,
+          )
+        }
+      }
+    } catch (persistErr) {
+      Sentry.captureException(persistErr, {
+        tags: { invariant: 'subscription-actuals-persist' },
+        extra: { context: '[SubscriptionDetail] write-through threw', business_id, report_month },
+      } as any)
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -486,6 +606,7 @@ async function postHandler(request: Request) {
           variance: Math.round((grandBudget - grandActual) * 100) / 100,
         },
         report_month,
+        leakage,
       },
     })
   } catch (error) {

@@ -19,6 +19,7 @@ import { requireSectionPermission } from '@/lib/permissions/requireSectionPermis
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId';
 import { deriveVendorFromTransactions } from '@/lib/xero/subscription-vendor-derivation';
+import { aggregateVendorMonthActuals } from '@/lib/subscriptions/variance';
 import { isSameAccount } from '@/lib/xero/account-name-match';
 
 export const dynamic = 'force-dynamic';
@@ -1155,6 +1156,52 @@ async function postHandler(request: Request) {
 
     // Sort vendors by total amount (highest first)
     vendors.sort((a, b) => b.totalAmount - a.totalAmount);
+
+    // ── Phase 2 (18 Aug 2026): persist vendor × month actuals ──
+    // This crawl just computed per-vendor monthly actuals across ~24 months and
+    // used to throw them away, which is why the monthly report had to re-crawl
+    // Xero live on every render and no price-creep HISTORY existed anywhere.
+    // Fire-and-forget against the response (the wizard doesn't need it), but
+    // NEVER silent on failure — house rule: every swallowed write failure gets
+    // a Sentry capture with an invariant tag.
+    //
+    // business_id from the request can be in EITHER id-space (the #1 recurring
+    // incident class); the table FKs businesses(id), so resolve to canonical.
+    try {
+      const ids = await resolveBusinessProfileIds(supabase, business_id);
+      const actualRows = vendors.flatMap(v =>
+        aggregateVendorMonthActuals(
+          ids.businessId,
+          v.vendorKey,
+          v.vendorName,
+          (v.transactions || []).map((t: any) => ({
+            date: t.date,
+            amount: t.amount,
+            tenantId: t.tenantId,
+          })),
+          'analyze',
+        ),
+      );
+      if (actualRows.length > 0) {
+        const { error: actualsError } = await supabase
+          .from('subscription_vendor_actuals')
+          .upsert(
+            actualRows.map(r => ({ ...r, updated_at: new Date().toISOString() })),
+            { onConflict: 'business_id,tenant_id,vendor_key,month' },
+          );
+        if (actualsError) {
+          Sentry.captureMessage(
+            `[Subscription Txns] vendor-actuals persist failed: ${actualsError.message}`,
+            { level: 'warning' as any, tags: { invariant: 'subscription-actuals-persist' }, extra: { business_id, rows: actualRows.length } } as any,
+          );
+        }
+      }
+    } catch (persistErr) {
+      Sentry.captureException(persistErr, {
+        tags: { invariant: 'subscription-actuals-persist' },
+        extra: { context: '[Subscription Txns] vendor-actuals persist threw', business_id },
+      } as any);
+    }
 
     // =====================================================
     // 4b. P&L BACKSTOP (Layer 1) — reconcile to the synced xero_pl_lines P&L

@@ -385,10 +385,29 @@ export interface SubscriptionAccountGroup {
   total_variance: number
 }
 
+export interface SubscriptionLeakageLine {
+  vendor_key: string
+  vendor_name: string
+  actual: number
+  expected: number
+  delta: number
+}
+
+/** Phase 3 (18 Aug 2026): the three subscription-leakage classes a coach acts
+ *  on, computed server-side from the same vendor rows the table shows. */
+export interface SubscriptionLeakageSummary {
+  new_unbudgeted: SubscriptionLeakageLine[]
+  price_rises: SubscriptionLeakageLine[]
+  lapsed_still_budgeted: SubscriptionLeakageLine[]
+  totals: { new_unbudgeted: number; price_rises: number; lapsed_still_budgeted: number }
+}
+
 export interface SubscriptionDetailData {
   accounts: SubscriptionAccountGroup[]
   grand_total: { prior_month: number; actual: number; budget: number; variance: number }
   report_month: string
+  /** Optional: absent on cached/legacy responses. */
+  leakage?: SubscriptionLeakageSummary
 }
 
 // ============================================

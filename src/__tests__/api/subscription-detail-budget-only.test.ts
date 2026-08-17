@@ -79,7 +79,7 @@ vi.mock('@/lib/utils/verify-business-access', () => ({
 // ── Service-role supabase mock (the module-level `supabase`) ─────────────────
 //
 // The route does several .from(...) queries:
-//   - xero_connections (.select('*').eq().eq().maybeSingle())
+//   - xero_connections (.select('*').eq().eq().order().order().limit() → array, via resolveXeroConnections)
 //   - subscription_budgets (.select(...).eq().eq() → returns array)
 //   - xero_pl_lines_wide_compat (.select(...).eq().in() → returns array)
 //   - monthly_report_settings (.select('budget_forecast_id').eq().maybeSingle())
@@ -193,13 +193,16 @@ beforeEach(() => {
     priorBankTxns: [],
   }
   // Default xero_connections row so the route doesn't short-circuit.
+  // rows (not single): the route now enumerates ALL active connections via
+  // resolveXeroConnections — the old .maybeSingle() silently crawled one org
+  // of a multi-org business (Dragon has two, IICT three).
   tableFixtures['xero_connections'] = {
-    single: {
+    rows: [{
       id: 'conn-1',
       business_id: 'biz-1',
       tenant_id: 'tenant-1',
       is_active: true,
-    },
+    }],
   }
   vi.stubGlobal('fetch', vi.fn(mockFetch))
 })
