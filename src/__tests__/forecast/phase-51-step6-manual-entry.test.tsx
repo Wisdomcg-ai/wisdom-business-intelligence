@@ -200,7 +200,10 @@ describe('UX-S6-03 — Step 6 manual subscription entry', () => {
 
     // The Stripe row should reflect the entered monthly amount in the monthly budget input
     const stripeRow = screen.getByText('Stripe').closest('tr') as HTMLElement;
-    const stripeMonthly = within(stripeRow).getByRole('spinbutton') as HTMLInputElement;
+    // textbox, not spinbutton: the budget cell is deliberately type="text" +
+    // inputMode="decimal" (VendorBudgetInput) — type="number" spinners let a
+    // stray scroll or arrow key silently change a budget.
+    const stripeMonthly = within(stripeRow).getByRole('textbox') as HTMLInputElement;
     expect(Number(stripeMonthly.value)).toBe(50);
   });
 

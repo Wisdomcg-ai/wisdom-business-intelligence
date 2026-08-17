@@ -7,13 +7,116 @@
 // continuity. See WIZARD_STEPS in ../types.ts for the canonical step
 // numbering and ForecastWizardV4.tsx renderStep() for the switch.
 
-import React, { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle, memo } from 'react';
 import {
   Search, CreditCard, AlertCircle, CheckCircle, Loader2, RefreshCw,
   ChevronDown, ChevronRight, Save, DollarSign, Calendar, TrendingUp,
   Plus, Trash2, PenLine, AlertTriangle
 } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency } from '../types';
+
+/**
+ * Budget cell for the vendor table — the same local-draft pattern proven by
+ * Step4Team's CurrencyInput/NumberInput: controlled on a LOCAL string while
+ * focused, re-synced from the prop only when NOT focused, committed on blur.
+ *
+ * Replaces the remount-as-sync hack (an uncontrolled input whose React key
+ * embedded the value, so every commit destroyed the DOM node and remounted a
+ * fresh one). That hack had real costs:
+ *  - Enter blurred to <body> and the node the operator was in was destroyed —
+ *    focus vanished and the next Tab restarted from the top of the page. On a
+ *    40-vendor list, a mouse reach after every confirmed value.
+ *  - Clearing a field committed a hard $0 (parseFloat('') || 0) — a silent
+ *    zeroing path on a CFO-accuracy product, with a stale comment claiming it
+ *    was fixed. An empty commit now reverts to the prior value instead;
+ *    typing 0 explicitly still zeroes.
+ *  - type="number" spinners: a scroll or stray arrow key silently changed a
+ *    budget. text + inputMode="decimal" keeps the numeric keyboard on touch
+ *    without either hazard.
+ * memo: a commit re-renders all ~40 vendor rows; unchanged cells now skip.
+ */
+const VendorBudgetInput = memo(function VendorBudgetInput({
+  value,
+  disabled,
+  onCommit,
+  prefix,
+  suffix,
+  title,
+}: {
+  /** Canonical value from state, already in this field's display unit. */
+  value: number;
+  disabled: boolean;
+  /** Called with the parsed value on blur/Enter. NOT called for empty input. */
+  onCommit: (parsed: number) => void;
+  prefix?: string;
+  suffix?: string;
+  title?: string;
+}) {
+  const format = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(2));
+  const [localValue, setLocalValue] = useState(() => format(value));
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) setLocalValue(format(value));
+  }, [value, isFocused]);
+
+  const commit = () => {
+    const trimmed = localValue.trim();
+    if (trimmed === '') {
+      // Empty is "never mind", not "$0" — revert to the canonical value.
+      setLocalValue(format(value));
+      return;
+    }
+    const parsed = parseFloat(trimmed.replace(/[^0-9.\-]/g, ''));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setLocalValue(format(value));
+      return;
+    }
+    onCommit(parsed);
+    setLocalValue(format(parsed));
+  };
+
+  return (
+    <div className={prefix || suffix ? 'relative flex-1 max-w-[110px]' : undefined}>
+      {prefix && (
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{prefix}</span>
+      )}
+      <input
+        type="text"
+        inputMode="decimal"
+        value={localValue}
+        disabled={disabled}
+        title={title}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onFocus={(e) => {
+          setIsFocused(true);
+          e.target.select();
+        }}
+        onBlur={() => {
+          setIsFocused(false);
+          commit();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            // Commit WITHOUT blurring: .blur() dropped focus to <body>, and with
+            // the old remount hack the node was destroyed under the operator.
+            commit();
+            e.currentTarget.select();
+          }
+          if (e.key === 'Escape') {
+            setLocalValue(format(value));
+            e.currentTarget.select();
+          }
+        }}
+        className="w-full pl-7 pr-9 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100 tabular-nums"
+      />
+      {suffix && (
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">{suffix}</span>
+      )}
+    </div>
+  );
+});
+
 
 interface Step6SubscriptionsProps {
   state: ForecastWizardState;
@@ -374,6 +477,10 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
     // Phase 63: single amount field interpreted in the chosen frequency's
     // unit. UI converts → monthlyBudget on submit.
     amount: 0,
+    // Raw text mirror of `amount` while the operator types. `amount` stays the
+    // parsed number so the submit guard and Add-button disabled logic are
+    // unchanged; the input binds to the string so decimals survive typing.
+    amountText: '',
     monthlyBudget: 0,
     startMonth: defaultStartMonth,
     category: MANUAL_CATEGORY_OPTIONS[0] as string,
@@ -940,6 +1047,7 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
       name: '',
       frequency: 'monthly',
       amount: 0,
+      amountText: '',
       monthlyBudget: 0,
       startMonth: defaultStartMonth,
       category: MANUAL_CATEGORY_OPTIONS[0],
@@ -998,7 +1106,11 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
       if (!response.ok) throw new Error('Failed to save budgets');
 
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      // Clear any prior 3s timer before re-arming. With the debounced autosave,
+      // back-to-back saves used to stack timeouts: an old timer fired mid-way
+      // through the next save's window and the pill strobed between states.
+      if (saveSuccessTimerRef.current) clearTimeout(saveSuccessTimerRef.current);
+      saveSuccessTimerRef.current = setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       console.error('Error saving budgets:', err);
       setError('Failed to save subscription budgets. Please try again.');
@@ -1028,9 +1140,17 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
   // state changes (saveDraft/generateForecast close over state), so including
   // it re-fires this effect on every render. actionsRef keeps the latest.
   const actionsRef = useRef(actions);
-  actionsRef.current = actions;
+  // Assigned in an effect, not during render: mutating a ref mid-render is
+  // unsafe under StrictMode/concurrent re-renders (the render may be discarded
+  // but the mutation survives).
+  useEffect(() => {
+    actionsRef.current = actions;
+  });
   const mirrorSignature = useMemo(
-    () => vendors.map(v => `${v.vendorKey}:${v.monthlyBudget}:${v.isActive ? 1 : 0}:${v.frequency}`).join('|'),
+    // accountCodes is part of the signature: a re-analyze that changes only a
+    // vendor's mapped account codes must still reach state.subscriptions, or
+    // the OpEx-ceiling math downstream keeps reading the stale codes.
+    () => vendors.map(v => `${v.vendorKey}:${v.monthlyBudget}:${v.isActive ? 1 : 0}:${v.frequency}:${(v.accountCodes ?? []).join(',')}`).join('|'),
     [vendors],
   );
   useEffect(() => {
@@ -1043,6 +1163,13 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
 
   // Auto-save: debounce vendor changes while in review phase
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Save-success pill timer. A ref so overlapping saves clear the previous
+  // timer instead of stacking, and so unmount cancels it — a timeout firing
+  // setSaveSuccess on an unmounted step is a React warning and a state leak.
+  const saveSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (saveSuccessTimerRef.current) clearTimeout(saveSuccessTimerRef.current);
+  }, []);
   const hasAutoSavedInitial = useRef(false);
 
   useEffect(() => {
@@ -1218,12 +1345,11 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         </div>
       )}
 
-      {saveSuccess && (
-        <div className="px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm flex items-center gap-2">
-          <CheckCircle className="w-5 h-5" />
-          <span>Subscription budgets saved successfully!</span>
-        </div>
-      )}
+      {/* No standalone save-success banner here. The step auto-saves 1.5s after
+          every edit, and a full-width banner appearing above the table for 3s
+          shoved the whole table down and back up on each save — the on-screen
+          "glitching" reported 18 Aug 2026. The header pill (fixed-width, no
+          reflow) is the save-state indicator. */}
 
       {/* Phase 1: Account Selection — Xero mode only */}
       {phase === 'select-accounts' && !isManualMode && (
@@ -1577,18 +1703,20 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                     Change selected accounts
                   </button>
                 )}
+                {/* min-w keeps the three states the same width so the header
+                    row never reflows as the pill cycles Saving → Saved → Auto. */}
                 {isSaving ? (
-                  <span className="flex items-center gap-2 text-sm text-gray-500">
+                  <span className="flex items-center justify-end gap-2 text-sm text-gray-500 min-w-[7rem]">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Saving...
                   </span>
                 ) : saveSuccess ? (
-                  <span className="flex items-center gap-2 text-sm text-green-600">
+                  <span className="flex items-center justify-end gap-2 text-sm text-green-600 min-w-[7rem]">
                     <CheckCircle className="w-4 h-4" />
                     Saved
                   </span>
                 ) : vendors.length > 0 ? (
-                  <span className="flex items-center gap-2 text-sm text-gray-400">
+                  <span className="flex items-center justify-end gap-2 text-sm text-gray-400 min-w-[7rem]">
                     <Save className="w-4 h-4" />
                     Auto-saved
                   </span>
@@ -1634,8 +1762,11 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                       <input
                         type="number"
-                        value={newVendor.amount || ''}
-                        onChange={(e) => setNewVendor({ ...newVendor, amount: parseFloat(e.target.value) || 0 })}
+                        // Raw string while typing — parseFloat-per-keystroke made
+                        // decimals untypeable ("12." collapsed to 12) and a
+                        // leading 0 blanked the field via `|| ''`.
+                        value={newVendor.amountText}
+                        onChange={(e) => setNewVendor({ ...newVendor, amountText: e.target.value, amount: parseFloat(e.target.value) || 0 })}
                         placeholder={newVendor.frequency === 'annual' ? 'Annual' : newVendor.frequency === 'quarterly' ? 'Quarterly' : 'Monthly'}
                         className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand-navy font-normal"
                         onKeyDown={(e) => e.key === 'Enter' && addManualVendor()}
@@ -1690,6 +1821,7 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                           name: '',
                           frequency: 'monthly',
                           amount: 0,
+      amountText: '',
                           monthlyBudget: 0,
                           startMonth: defaultStartMonth,
                           category: MANUAL_CATEGORY_OPTIONS[0],
@@ -1803,30 +1935,14 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                               alongside; all others stay as "$X/mo". */}
                           {vendor.frequency === 'annual' ? (
                             <div className="flex items-center justify-end gap-1.5">
-                              <div className="relative flex-1 max-w-[110px]">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                                <input
-                                  type="number"
-                                  // UNCONTROLLED + commit on blur/Enter. The old
-                                  // controlled input recomputed (monthlyBudget * 12)
-                                  // .toFixed(2) on EVERY keystroke, so a typed digit
-                                  // round-tripped through /12 and back and was
-                                  // silently destroyed (type "2" after "1.00" → the
-                                  // field snapped back to "1.00" and the caret
-                                  // jumped to the end). key ensures the defaultValue
-                                  // refreshes when the underlying number really changes.
-                                  key={`ann-${vendor.vendorKey}-${vendor.monthlyBudget}`}
-                                  defaultValue={(vendor.monthlyBudget * 12).toFixed(2)}
-                                  onBlur={(e) => handleAnnualBudgetChange(vendor.vendorKey, e.target.value)}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                  disabled={!vendor.isActive}
-                                  className="w-full pl-7 pr-9 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100 tabular-nums"
-                                  step="0.01"
-                                  min="0"
-                                  title="Annual cost — smoothed to monthly for forecasting"
-                                />
-                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">/yr</span>
-                              </div>
+                              <VendorBudgetInput
+                                value={vendor.monthlyBudget * 12}
+                                disabled={!vendor.isActive}
+                                onCommit={(annual) => handleAnnualBudgetChange(vendor.vendorKey, String(annual))}
+                                prefix="$"
+                                suffix="/yr"
+                                title="Annual cost — smoothed to monthly for forecasting"
+                              />
                               <select
                                 value={vendor.renewalMonth ?? ''}
                                 onChange={(e) => handleRenewalMonthChange(vendor.vendorKey, e.target.value)}
@@ -1841,25 +1957,13 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                               </select>
                             </div>
                           ) : (
-                            <div className="relative">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                              <input
-                                type="number"
-                                // UNCONTROLLED + commit on blur/Enter — the controlled
-                                // version ran parseFloat on every keystroke, so a
-                                // decimal point could never survive ("12." → 12) and
-                                // clearing the field produced a hard 0.
-                                key={`mo-${vendor.vendorKey}-${vendor.monthlyBudget}`}
-                                defaultValue={vendor.monthlyBudget}
-                                onBlur={(e) => handleMonthlyBudgetChange(vendor.vendorKey, e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                disabled={!vendor.isActive}
-                                className="w-full pl-7 pr-9 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100 tabular-nums"
-                                step="0.01"
-                                min="0"
-                              />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">/mo</span>
-                            </div>
+                            <VendorBudgetInput
+                              value={vendor.monthlyBudget}
+                              disabled={!vendor.isActive}
+                              onCommit={(monthly) => handleMonthlyBudgetChange(vendor.vendorKey, String(monthly))}
+                              prefix="$"
+                              suffix="/mo"
+                            />
                           )}
                         </td>
                         <td className="px-4 py-3 text-right font-medium text-gray-900 tabular-nums">
