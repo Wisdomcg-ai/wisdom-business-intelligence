@@ -101,7 +101,29 @@ export function ForecastWizardV4({
       clearLocalStorage();
     }
 
+    // Boot-scoped GET dedupe.
+    //
+    // The restore path fetched /api/forecast/{id} TWICE in one open: once in the
+    // Promise.all batch below (for forecast_duration and team) and again later
+    // for the prior-year assumptions. Same URL, same data — but every hop pays
+    // auth.getUser + verifyBusinessAccess + permission checks before it touches
+    // a row, so the duplicate is pure added latency on the boot the operator is
+    // staring at.
+    //
+    // Scoped to THIS boot and cleared on entry, so reopening the wizard after a
+    // save always refetches — a module-level cache would serve stale assumptions.
+    const bootCache = new Map<string, Promise<Response>>();
+    const bootFetch = (url: string): Promise<Response> => {
+      const hit = bootCache.get(url);
+      // Response bodies are single-use; hand every caller its own clone.
+      if (hit) return hit.then((r) => r.clone());
+      const inflight = fetch(url);
+      bootCache.set(url, inflight);
+      return inflight.then((r) => r.clone());
+    };
+
     const loadData = async () => {
+      bootCache.clear();
       // Check if state was restored from localStorage with meaningful data
       // If so, skip API fetching and initialization (but not if starting fresh)
       //
@@ -153,7 +175,7 @@ export function ForecastWizardV4({
           // duration, so Step 1 fell back to the 3-year default on every reopen.
           const forecastIdx = needsTeam ? 3 : 2;
           if (existingForecastId) {
-            fetchPromises.push(fetch(`/api/forecast/${existingForecastId}`));
+            fetchPromises.push(bootFetch(`/api/forecast/${existingForecastId}`));
           }
           const settled = await Promise.all(fetchPromises);
           const [goalsRes, profileRes] = settled;
@@ -448,7 +470,7 @@ export function ForecastWizardV4({
         if (priorYearMissing && resolvedId) {
           try {
             console.log('[ForecastWizardV4] Prior year missing from cache, loading from saved forecast:', resolvedId);
-            const forecastRes = await fetch(`/api/forecast/${resolvedId}`);
+            const forecastRes = await bootFetch(`/api/forecast/${resolvedId}`);
             if (forecastRes.ok) {
               const forecastData = await forecastRes.json();
               const savedAssumptions = forecastData?.forecast?.assumptions || null;
@@ -595,7 +617,18 @@ export function ForecastWizardV4({
       setIsLoading(true);
       setError(null);
 
-      // Try to load prior year from a locked prior-FY forecast (richer than Xero P&L)
+      // Try to load prior year from a locked prior-FY forecast (richer than Xero P&L).
+      //
+      // This chain used to be awaited INLINE before anything else was issued, so
+      // its two serial hops (versions → actuals-summary) gated goals, employees,
+      // the business profile and the current-FY versions probe — four requests
+      // that depend on none of it. Each hop pays auth + business-access +
+      // permission checks server-side before touching data, so the serialisation
+      // was pure added boot latency. It now runs as a promise and everything
+      // independent of it is issued in parallel below; only the Xero pl-summary
+      // fallback decision genuinely needs its result, and that await sits as
+      // late as possible.
+      const priorChain = (async (): Promise<{ fromForecast: boolean; data: PriorYearData | null }> => {
       let priorYearFromForecast = false;
       let priorYearForecastData: PriorYearData | null = null;
       try {
@@ -649,18 +682,28 @@ export function ForecastWizardV4({
       } catch (e) {
         console.warn('[ForecastWizardV4] Could not load prior forecast actuals, will try Xero:', e);
       }
+      return { fromForecast: priorYearFromForecast, data: priorYearForecastData };
+      })();
 
       try {
-        // Build fetch requests - include existing forecast if we're editing one
-        // Skip Xero P&L fetch if we already loaded prior year from a locked forecast
-        const fetchPromises: Promise<Response>[] = [
-          fetch(`/api/goals?business_id=${businessId}`),
-          priorYearFromForecast
-            ? Promise.resolve(new Response(JSON.stringify({ summary: null }), { status: 200 }))
-            : fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`),
-          fetch(`/api/Xero/employees?business_id=${businessId}`),
-          fetch(`/api/business-profile?business_id=${businessId}`),
-        ];
+        // Everything with no dependency on the prior-FY chain goes out NOW.
+        const goalsP = fetch(`/api/goals?business_id=${businessId}`);
+        const teamP = fetch(`/api/Xero/employees?business_id=${businessId}`);
+        const profileP = fetch(`/api/business-profile?business_id=${businessId}`);
+        // The current-FY versions probe is independent of the PRIOR-FY chain
+        // too — it used to wait behind it for no reason.
+        const versionsCurP =
+          !existingForecastId && !startFresh
+            ? fetch(`/api/forecasts/versions?business_id=${businessId}&fiscal_year=${fiscalYear}`)
+            : null;
+
+        // Only the pl-summary fallback decision needs the prior chain: a locked
+        // prior forecast makes the Xero P&L fetch unnecessary. Await it here —
+        // the four requests above are already in flight while it resolves.
+        const { fromForecast: priorYearFromForecast, data: priorYearForecastData } = await priorChain;
+        const plP = priorYearFromForecast
+          ? Promise.resolve(new Response(JSON.stringify({ summary: null }), { status: 200 }))
+          : fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`);
 
         // If editing an existing forecast, fetch its saved assumptions.
         // Otherwise auto-discover the active forecast for this FY, UNLESS
@@ -668,9 +711,9 @@ export function ForecastWizardV4({
         // means the user explicitly wants a brand-new forecast row, not the
         // saved assumptions of whatever's already active for this FY.
         let resolvedForecastId = existingForecastId || null;
-        if (!resolvedForecastId && !startFresh) {
+        if (versionsCurP) {
           try {
-            const versionsRes = await fetch(`/api/forecasts/versions?business_id=${businessId}&fiscal_year=${fiscalYear}`);
+            const versionsRes = await versionsCurP;
             if (versionsRes.ok) {
               const versionsData = await versionsRes.json();
               const active = (versionsData.versions || []).find((v: { is_active?: boolean }) => v.is_active) || (versionsData.versions || [])[0];
@@ -684,12 +727,10 @@ export function ForecastWizardV4({
           } catch { /* ignore */ }
         }
 
-        if (resolvedForecastId) {
-          fetchPromises.push(fetch(`/api/forecast/${resolvedForecastId}`));
-        }
+        const forecastP = resolvedForecastId ? fetch(`/api/forecast/${resolvedForecastId}`) : null;
 
-        const responses = await Promise.all(fetchPromises);
-        const [goalsRes, plRes, teamRes, profileRes, forecastRes] = responses;
+        const [goalsRes, plRes, teamRes, profileRes] = await Promise.all([goalsP, plP, teamP, profileP]);
+        const forecastRes = forecastP ? await forecastP : undefined;
 
         const dataPromises: Promise<any>[] = [
           goalsRes.ok ? goalsRes.json() : Promise.resolve({ goals: null }),

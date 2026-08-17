@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react'
+import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
@@ -11,9 +12,25 @@ import PageHeader from '@/components/ui/PageHeader'
 import ForecastService from './services/forecast-service'
 import './forecast-styles.css'
 import type { FinancialForecast, PLLine, XeroConnection } from './types'
-import PLForecastTable from './components/PLForecastTable'
-import AssumptionsTab from './components/AssumptionsTab'
-import { ForecastWizardV4 } from './components/wizard-v4'
+// Code-split everything the operator cannot see on arrival. All of these are
+// already conditionally RENDERED — only the imports were eager, so the whole
+// module graph was downloaded and parsed before first paint. The wizard subtree
+// alone is ~27k lines (all nine steps + useForecastWizard), and it is gated
+// behind `isNewForecast && showWizardV4`; the tabs are mutually exclusive; the
+// rest are modals. ssr:false because every one of them is client-only anyway.
+// Same pattern already used in finances/monthly-report/page.tsx.
+const PLForecastTable = dynamic(() => import('./components/PLForecastTable'), { ssr: false })
+const AssumptionsTab = dynamic(() => import('./components/AssumptionsTab'), { ssr: false })
+const VersionsTab = dynamic(() => import('./components/VersionsTab'), { ssr: false })
+const CSVImportWizard = dynamic(() => import('./components/CSVImportWizard'), { ssr: false })
+const SaveVersionModal = dynamic(() => import('./components/SaveVersionModal'), { ssr: false })
+// Imported from its own module, NOT the wizard-v4 barrel: the barrel re-exports
+// useForecastWizard and the runtime helpers in types.ts, which would drag them
+// back into this chunk and defeat the split.
+const ForecastWizardV4 = dynamic(
+  () => import('./components/wizard-v4/ForecastWizardV4').then((m) => m.ForecastWizardV4),
+  { ssr: false },
+)
 import { ForecastSelector } from './components/ForecastSelector'
 import ForecastKPISummary from './components/ForecastKPISummary'
 import ForecastMultiYearSummary from './components/ForecastMultiYearSummary'
@@ -22,9 +39,6 @@ import ExportControls from './components/ExportControls'
 import { LoadingState } from './components/LoadingState'
 import ErrorState from './components/ErrorState'
 import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp'
-import CSVImportWizard from './components/CSVImportWizard'
-import SaveVersionModal from './components/SaveVersionModal'
-import VersionsTab from './components/VersionsTab'
 import XeroConnectionPanel from './components/XeroConnectionPanel'
 import ForecastTabs, { FORECAST_TAB_IDS, type ForecastTab } from './components/ForecastTabs'
 import ForecastOverview from './components/ForecastOverview'
@@ -39,13 +53,19 @@ import { FYSelectorTabs } from './components/FYSelectorTabs'
 import { PlanningSeasonBanner } from './components/PlanningSeasonBanner'
 // Note: Coach view is at /coach/clients/[id]/forecast
 
-export default function FinancialForecastPage() {
+function FinancialForecastPageInner() {
   const supabase = createClient()
   const searchParams = useSearchParams()
   const { activeBusiness, currentUser, isLoading: contextLoading } = useBusinessContext()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const hasAutoSyncedRef = useRef(false)
+  // True once the first load has painted. Subsequent loads (an FY tab switch)
+  // must NOT replace the whole page with a spinner — see the render gate below.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
+  // Set when loadInitialData resolves the FY itself, so the effect can ignore
+  // the re-fire its own setState causes.
+  const selfAssignedFYRef = useRef(false)
 
   const [businessId, setBusinessId] = useState('')
   const [userId, setUserId] = useState('')
@@ -161,9 +181,20 @@ export default function FinancialForecastPage() {
 
   useEffect(() => {
     setMounted(true)
-    if (!contextLoading) {
-      loadInitialData()
+    if (contextLoading) return
+    // `selectedFiscalYear` is in the dep list so switching FY tabs reloads, but
+    // it starts null and loadInitialData RESOLVES it (see the setSelectedFiscalYear
+    // below). That self-assignment re-fired this effect and ran the whole chain a
+    // second time on every cold load — auth, business_profiles, the Promise.all,
+    // loadPLLines, the paginated actuals scan, and a second /api/Xero/status that
+    // could kick off a second Xero OAuth refresh. Both runs resolve the SAME year,
+    // so the second was pure waste against the DB and Xero's rate limit.
+    // Swallow exactly the echo of our own resolution; real FY switches still load.
+    if (selfAssignedFYRef.current) {
+      selfAssignedFYRef.current = false
+      return
     }
+    loadInitialData()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contextLoading, activeBusiness?.id, selectedFiscalYear])
 
@@ -212,6 +243,15 @@ export default function FinancialForecastPage() {
     }
   ])
 
+  // Every exit from loadInitialData goes through here. `hasLoadedOnce` gates the
+  // full-screen spinner, so a path that set isLoading(false) without marking it
+  // would leave the page stuck behind the spinner forever — e.g. a business with
+  // no forecast, which returns early.
+  const finishLoading = useCallback(() => {
+    setIsLoading(false)
+    setHasLoadedOnce(true)
+  }, [])
+
   const loadInitialData = async () => {
     try {
       setIsLoading(true)
@@ -219,7 +259,7 @@ export default function FinancialForecastPage() {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        setIsLoading(false)
+        finishLoading()
         return
       }
 
@@ -233,7 +273,7 @@ export default function FinancialForecastPage() {
         activeBusinessId: activeBusiness?.id ?? null,
       })
       if (!bizId) {
-        setIsLoading(false)
+        finishLoading()
         return
       }
       setBusinessId(bizId)
@@ -280,6 +320,9 @@ export default function FinancialForecastPage() {
         : getCurrentFiscalYear(yearStart)
       const fiscalYear = selectedFiscalYear ?? targetFY
       if (!selectedFiscalYear) {
+        // Resolving the FY ourselves re-fires the load effect; flag it so that
+        // firing is skipped rather than re-running this entire function.
+        selfAssignedFYRef.current = true
         setSelectedFiscalYear(fiscalYear)
       }
 
@@ -312,7 +355,7 @@ export default function FinancialForecastPage() {
 
       if (forecastError || !loadedForecast) {
         console.error('[Forecast] Error loading forecast:', forecastError)
-        setIsLoading(false)
+        finishLoading()
         return
       }
 
@@ -374,7 +417,7 @@ export default function FinancialForecastPage() {
         setXeroConnection(xeroConn)
       }
 
-      setIsLoading(false)
+      finishLoading()
 
       // Load versions
       if (loadedForecast?.id) {
@@ -383,9 +426,32 @@ export default function FinancialForecastPage() {
     } catch (err) {
       console.error('[Forecast] Error in loadInitialData:', err)
       setError(err instanceof Error ? err.message : 'Failed to load forecast data')
-      setIsLoading(false)
+      finishLoading()
     }
   }
+
+  // Warm the wizard chunk once the page is idle.
+  //
+  // Splitting the wizard out fixed the PAGE load, but "Forecast Builder" is a
+  // button on THIS page, not a separate route — so on its own the split would
+  // just move the wait from page-open to builder-open. Fetching the chunk during
+  // idle time means it is already in the browser cache by the time the operator
+  // clicks, so both complaints improve instead of trading against each other.
+  useEffect(() => {
+    if (!hasLoadedOnce) return
+    const warm = () => { void import('./components/wizard-v4/ForecastWizardV4') }
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number
+      cancelIdleCallback?: (id: number) => void
+    }
+    const id = w.requestIdleCallback
+      ? w.requestIdleCallback(warm, { timeout: 3000 })
+      : window.setTimeout(warm, 1500)
+    return () => {
+      if (w.cancelIdleCallback) w.cancelIdleCallback(id)
+      else window.clearTimeout(id)
+    }
+  }, [hasLoadedOnce])
 
   // Parse assumptions from forecast record for assumption cards
   const parsedAssumptions = useMemo(() => {
@@ -502,7 +568,13 @@ export default function FinancialForecastPage() {
     }
   }, [businessId, selectedFiscalYear, forecast?.fiscal_year])
 
-  if (!mounted || isLoading) {
+  // Full-screen spinner ONLY before the first paint. It used to gate on
+  // `isLoading` alone, so every FY tab click — which sets isLoading(true) via the
+  // load effect — tore the entire page down to a centred spinner, header, tabs
+  // and all, then rebuilt it. Switching year read as the app reloading itself.
+  // After the first load the chrome stays put and the content area shows a quiet
+  // busy state instead.
+  if (!mounted || (isLoading && !hasLoadedOnce)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -1011,5 +1083,25 @@ export default function FinancialForecastPage() {
 
       </div>
     </>
+  )
+}
+
+/**
+ * `useSearchParams()` without a Suspense boundary opts the WHOLE route out of
+ * server rendering (Next's CSR bailout). The built artefact proved it: the
+ * prerendered HTML for this route contained no forecast markup at all, so the
+ * browser received an empty shell and could not paint anything until the entire
+ * client module graph had downloaded, parsed and hydrated. That was the single
+ * largest contributor to "the forecast page takes a long time to load".
+ *
+ * Wrapping the reader in Suspense lets the shell prerender again. 13 of the
+ * pages in this repo that call useSearchParams already do this — the forecast
+ * page was simply missed.
+ */
+export default function FinancialForecastPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <FinancialForecastPageInner />
+    </Suspense>
   )
 }
