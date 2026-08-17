@@ -1549,6 +1549,49 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
 
   const cogsPctTotal = Object.values(cogsLinePercentages).reduce((a, b) => a + b, 0);
 
+  // Coaches ask for COGS ("COGS should be 60% of revenue"); the wizard only ever
+  // said GROSS PROFIT ("Reset to 40% GP"). Same number from opposite sides, and
+  // the operator has to do the subtraction to know whether the control is even
+  // the one they want — reported 17 Aug 2026 as "i have no idea what it is
+  // calculating". State the target in COGS terms and show where COGS actually
+  // sits, so "am I at 60%?" is answerable by looking rather than by arithmetic.
+  const cogsTargetPct = (() => {
+    const gpKey = activeYear === 1 ? 'year1' : activeYear === 2 ? 'year2' : 'year3';
+    const gp = goals[gpKey]?.grossProfitPct ?? 0;
+    return gp > 0 && gp < 100 ? 100 - gp : 0;
+  })();
+  const cogsActualPct = totalRevenue > 0 ? (totalCOGS / totalRevenue) * 100 : 0;
+
+  // Shared by the summary and monthly views so the two cannot drift.
+  const renderCogsTargetControls = () => {
+    if (cogsTargetPct <= 0 || totalRevenue <= 0 || cogsLines.length === 0) return null;
+    const onTarget = Math.abs(cogsActualPct - cogsTargetPct) < 0.5;
+    return (
+      <>
+        <span
+          className={`px-2 py-0.5 text-xs font-medium rounded ${
+            onTarget ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'
+          }`}
+          title={
+            onTarget
+              ? `Total COGS is ${cogsActualPct.toFixed(1)}% of revenue, matching your Step 1 goal.`
+              : `Total COGS is ${cogsActualPct.toFixed(1)}% of revenue but your Step 1 goal implies ${cogsTargetPct}% — a gap of ${formatCurrency(Math.abs(totalRevenue * (cogsTargetPct / 100) - totalCOGS))}.`
+          }
+        >
+          COGS {cogsActualPct.toFixed(1)}% of revenue
+          {!onTarget && ` · target ${cogsTargetPct}%`}
+        </span>
+        <button
+          onClick={() => redistributeCOGSToHitGPTarget('reset')}
+          title={`Rebuild the variable COGS lines from prior-year mix and seasonality so total COGS = ${cogsTargetPct}% of revenue (a ${100 - cogsTargetPct}% gross margin). Actual months stay locked.`}
+          className="px-2 py-0.5 text-xs font-medium text-gray-600 hover:text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
+        >
+          Set COGS to {cogsTargetPct}% of revenue
+        </button>
+      </>
+    );
+  };
+
   // Redistribute variable COGS lines so the active-year total COGS hits the
   // Step-1 GP% target (total COGS = revenue × (1 − GP%/100)).
   //
@@ -1808,30 +1851,20 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     revenueLines,
   ]);
 
-  // Handle COGS mix % change — redistribute COGS total by mix using seasonality
-  const handleCogsMixChange = (lineId: string, newMixPct: number) => {
-    if (totalCOGS <= 0) return;
-    const lineTarget = Math.round(totalCOGS * (newMixPct / 100));
-    const yearMKeys = generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
-    // Phase 51-03 (UX-S3-03): per-line override (on the COGS line) → business
-    // → 8.33 fallback. Variable-COGS lines hide the editor button (Task 5),
-    // but the read still funnels through the helper for symmetry + safety.
-    const cogsLineLookup = cogsLines.find(l => l.id === lineId);
-    const seasonality = getEffectiveSeasonality(cogsLineLookup ?? {}, priorYear?.seasonalityPattern);
-    const totalSeason = seasonality.reduce((s, v) => s + v, 0);
-
-    const yearKey = activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';
-    const existing = (cogsLineLookup?.[yearKey] as Record<string, number> | undefined) || {};
-
-    // Completed months are Xero ACTUALS and must survive a % edit — they are
-    // what happened, not a plan. This rebuilt the whole 12-month grid from
-    // seasonality, so adjusting any COGS % silently rewrote July's real cost.
-    // Revenue has guarded this since #349 (see redistributeYearForActiveTab);
-    // COGS never got the same treatment.
-    //
-    // Actuals are held; the % target is met across the REMAINING months only,
-    // mirroring revenue: subtract what already happened, spread the rest by
-    // seasonality over the months still open.
+  // Spread an annual target for ONE COGS line across the active year's months.
+  //
+  // Completed months are Xero ACTUALS and must survive a % edit — they are what
+  // happened, not a plan. Rebuilding the whole 12-month grid from seasonality
+  // silently rewrote July's real cost (#375). Actuals are held; the target is
+  // met across the REMAINING months only, mirroring revenue since #349.
+  const spreadCogsLineToTarget = (
+    line: typeof cogsLines[0],
+    annualTarget: number,
+    yearMKeys: string[],
+    yearKey: string,
+  ): Record<string, number> => {
+    const seasonality = getEffectiveSeasonality(line ?? {}, priorYear?.seasonalityPattern);
+    const existing = (line?.[yearKey as keyof typeof line] as Record<string, number> | undefined) || {};
     const isLockedMonth = (key: string) => activeYear === 1 && isActualMonth(key);
 
     let actualsTotal = 0;
@@ -1841,7 +1874,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
       else openSeasonality += seasonality[idx] ?? 8.33;
     });
 
-    const projectedTarget = Math.max(0, lineTarget - actualsTotal);
+    const projectedTarget = Math.max(0, annualTarget - actualsTotal);
     const monthly: Record<string, number> = {};
     yearMKeys.forEach((key, idx) => {
       if (isLockedMonth(key)) {
@@ -1852,7 +1885,104 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         ? Math.round(projectedTarget * ((seasonality[idx] ?? 8.33) / openSeasonality))
         : 0;
     });
-    actions.updateCOGSLine(lineId, { [yearKey]: monthly });
+    return monthly;
+  };
+
+  // Handle COGS mix % change — set the edited line to that share of the COGS
+  // TARGET and rescale the other lines so the total is unchanged.
+  //
+  // The denominator must be PINNED. This previously computed
+  //   lineTarget = totalCOGS * (newMixPct / 100)
+  // and wrote only the edited line. But totalCOGS is the SUM OVER LINES, so the
+  // write moved the very denominator the % was measured against, and the
+  // committed value could never equal what the operator typed. Verified on
+  // Dragon Roofing (17 Aug 2026): COGS was correct at $5,418,350 = 60.00% of
+  // revenue; Tradies Contractors was $3,484,861 = 64.32%. The operator typed
+  // 55%, which stored $2,978,626 — 55% of the OLD total — while the other ten
+  // lines kept their dollars. Total fell to $4,912,115, so Tradies then
+  // DISPLAYED 60.64%, not the 55% typed, and overall COGS silently slid from
+  // 60.00% to 54.39% of revenue: a $506,235 hole in the plan, and gross profit
+  // overstated by the same amount.
+  //
+  // Revenue has been right since Phase 51-01, which made its % mean "share of
+  // GOAL" against the fixed goals.year[N].revenue (see yearTargetRevenue).
+  // This is the COGS twin: the % means share of the COGS target implied by the
+  // Step-1 GP% goal, so holding the mix steady also holds total COGS on target.
+  const handleCogsMixChange = (lineId: string, newMixPct: number) => {
+    const editedLine = cogsLines.find((l) => l.id === lineId);
+    if (!editedLine) return;
+
+    const yearKey = activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';
+    const goalKey = activeYear === 1 ? 'year1' : activeYear === 2 ? 'year2' : 'year3';
+    const yearMKeys = generateMonthKeys(fiscalYear - 1 + (activeYear - 1));
+
+    // Prefer the goal-implied target so the mix cannot drag the total off the
+    // operator's GP%. Fall back to the current total when no usable GP goal
+    // exists — the mix still round-trips, it just pins to today's total.
+    const gpPct = goals[goalKey]?.grossProfitPct ?? 0;
+    const targetFromGoal =
+      gpPct > 0 && gpPct < 100 && totalRevenue > 0 ? totalRevenue * (1 - gpPct / 100) : 0;
+    const pinnedTotal = targetFromGoal > 0 ? targetFromGoal : totalCOGS;
+    if (pinnedTotal <= 0) return;
+
+    const roundedTotal = Math.round(pinnedTotal);
+    const others = cogsLines.filter((l) => l.id !== lineId);
+
+    // A line can never fall below what it has ALREADY SPENT. Y1 actual months
+    // are Xero facts, so they are a hard floor on that line's annual total.
+    // Without this the pin is a lie: spreadCogsLineToTarget holds the actuals
+    // regardless, so a target under the floor produces a line bigger than asked
+    // and the "pinned" total silently overshoots. Honouring the floor here also
+    // ends the #375 sharp edge where asking for less than the actuals zeroed
+    // every remaining month with no explanation.
+    const floorOf = (line: typeof cogsLines[0]) => {
+      if (activeYear !== 1) return 0;
+      const m = (line[yearKey as keyof typeof line] as Record<string, number> | undefined) || {};
+      return yearMKeys.reduce((s, k) => (isActualMonth(k) ? s + (m[k] || 0) : s), 0);
+    };
+
+    const editedTarget = Math.max(
+      floorOf(editedLine),
+      Math.round(roundedTotal * (newMixPct / 100)),
+    );
+    const remainderTarget = Math.max(0, roundedTotal - editedTarget);
+
+    // Rescale the others pro-rata so their RELATIVE mix is preserved — the
+    // operator moved one line, not the balance among the rest. With no current
+    // amounts to weight by, fall back to an even split.
+    const othersCurrent = others.map((l) => calculateCOGSAmount(l));
+    const othersSum = othersCurrent.reduce((a, b) => a + b, 0);
+    const othersFloors = others.map(floorOf);
+
+    // Per-line targets with residue on the LAST other line, so the parts sum to
+    // the pinned total exactly — independent rounding drifts by a dollar per
+    // line, which is what lets a "pinned" total quietly stop being pinned.
+    // Each line is then lifted to its own actuals floor; when the floors alone
+    // exceed the target the total must overshoot, because the money is already
+    // out the door.
+    const otherTargets: number[] = [];
+    let running = 0;
+    others.forEach((l, i) => {
+      const isLast = i === others.length - 1;
+      const raw = isLast
+        ? Math.max(0, remainderTarget - running)
+        : Math.round(remainderTarget * (othersSum > 0 ? othersCurrent[i] / othersSum : 1 / others.length));
+      if (!isLast) running += raw;
+      otherTargets.push(Math.max(othersFloors[i], raw));
+    });
+
+    const updated = cogsLines.map((line) => {
+      if (line.id === lineId) {
+        return { ...line, [yearKey]: spreadCogsLineToTarget(line, editedTarget, yearMKeys, yearKey) };
+      }
+      const idx = others.findIndex((o) => o.id === line.id);
+      return {
+        ...line,
+        [yearKey]: spreadCogsLineToTarget(line, otherTargets[idx] ?? 0, yearMKeys, yearKey),
+      };
+    });
+
+    actions.setCOGSLines(updated);
   };
 
   // Check if lines came from Xero/CSV
@@ -2008,7 +2138,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
               <tr className="border-b border-gray-200">
                 <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '24%' }}>Line Item</th>
                 <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '14%' }}>Prior Year</th>
-                <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wide" style={{ width: '12%' }}>
+                <th
+                  className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wide"
+                  style={{ width: '12%' }}
+                  title="Each line&apos;s share of TOTAL COGS — not its % of revenue. The shares sum to 100%; changing one re-slices the others and holds total COGS on your target."
+                >
                   % Split
                   {(activeYear === 2 || activeYear === 3) && (
                     <span className="ml-1 text-gray-400 normal-case">/ Growth</span>
@@ -2224,20 +2358,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {(() => {
-                        const gpKey = activeYear === 1 ? 'year1' : activeYear === 2 ? 'year2' : 'year3';
-                        const gpTarget = goals[gpKey]?.grossProfitPct ?? 0;
-                        if (gpTarget <= 0 || gpTarget >= 100 || totalRevenue <= 0 || cogsLines.length === 0) return null;
-                        return (
-                          <button
-                            onClick={() => redistributeCOGSToHitGPTarget('reset')}
-                            title={`Distribute variable COGS lines using prior-year mix and seasonality so total COGS = revenue × (1 − ${gpTarget}%/100).`}
-                            className="px-2 py-0.5 text-xs font-medium text-gray-600 hover:text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
-                          >
-                            Reset to {gpTarget}% GP
-                          </button>
-                        );
-                      })()}
+                      {renderCogsTargetControls()}
                       <button
                         onClick={() => setShowAddCOGS(true)}
                         className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
@@ -2397,7 +2518,10 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 min-w-[180px]">
                     Line Item
                   </th>
-                  <th className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase w-[60px]">
+                  <th
+                    className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase w-[60px]"
+                    title="Each line&apos;s share of TOTAL COGS — not its % of revenue. The shares sum to 100%; changing one re-slices the others and holds total COGS on your target."
+                  >
                     % Split
                   </th>
                   {months.map((m, idx) => {
@@ -2622,20 +2746,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Cost of Sales</span>
                       <div className="flex items-center gap-2">
-                        {(() => {
-                          const gpKey = activeYear === 1 ? 'year1' : activeYear === 2 ? 'year2' : 'year3';
-                          const gpTarget = goals[gpKey]?.grossProfitPct ?? 0;
-                          if (gpTarget <= 0 || gpTarget >= 100 || totalRevenue <= 0 || cogsLines.length === 0) return null;
-                          return (
-                            <button
-                              onClick={() => redistributeCOGSToHitGPTarget('reset')}
-                              title={`Distribute variable COGS lines using prior-year mix and seasonality so total COGS = revenue × (1 − ${gpTarget}%/100).`}
-                              className="px-2 py-0.5 text-xs font-medium text-gray-600 hover:text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
-                            >
-                              Reset to {gpTarget}% GP
-                            </button>
-                          );
-                        })()}
+                        {renderCogsTargetControls()}
                         <button
                           onClick={() => setShowAddCOGS(true)}
                           className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
