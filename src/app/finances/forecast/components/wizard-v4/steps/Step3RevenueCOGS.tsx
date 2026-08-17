@@ -1601,6 +1601,44 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     );
   };
 
+  // Monthly revenue for the active year — the shape a VARIABLE cost must follow.
+  const revenueByMonth = useMemo(() => {
+    const rk = activeYear === 1 ? 'year1Monthly' : activeYear === 2 ? 'year2Monthly' : 'year3Monthly';
+    const out: Record<string, number> = {};
+    for (const k of monthKeys) {
+      out[k] = revenueLines.reduce((s, l) => {
+        const m = (l[rk as keyof typeof l] as Record<string, number> | undefined) || {};
+        return s + (m[k] || 0);
+      }, 0);
+    }
+    return out;
+  }, [revenueLines, activeYear, monthKeys]);
+
+  // Per-month weights for spreading a COGS line's annual target.
+  //
+  // A VARIABLE cost is defined in this very screen as one that "changes with
+  // revenue", so its months must follow the REVENUE shape. They were following
+  // prior-year seasonality instead — an independent curve — so once an operator
+  // typed their own monthly revenue the two decoupled completely. Reported on
+  // Dragon Roofing 18 Aug 2026: annual COGS was a correct 60.0% of revenue while
+  // the months ran 22.6% to 128.9%, planning NEGATIVE gross profit in February
+  // (−28.9%) and June (−19.0%) — June drew 17.6% of the year's COGS against 8.9%
+  // of its revenue. Following revenue makes every projected month land on the
+  // same COGS%, which is what "COGS is 60% of revenue" is understood to mean.
+  //
+  // FIXED lines keep seasonality: they are by definition the costs that do NOT
+  // move with revenue, so weighting them by it would be the same error inverted.
+  const cogsMonthWeights = (line: typeof cogsLines[0], yearMKeys: string[]): number[] => {
+    if (line?.costBehavior === 'variable') {
+      const revWeights = yearMKeys.map((k) => revenueByMonth[k] || 0);
+      if (revWeights.some((v) => v > 0)) return revWeights;
+      // No revenue entered yet — fall through to seasonality rather than
+      // collapsing every month to zero.
+    }
+    const seasonality = getEffectiveSeasonality(line ?? {}, priorYear?.seasonalityPattern);
+    return yearMKeys.map((_, idx) => seasonality[idx] ?? 8.33);
+  };
+
   // Redistribute variable COGS lines so the active-year total COGS hits the
   // Step-1 GP% target (total COGS = revenue × (1 − GP%/100)).
   //
@@ -1751,7 +1789,11 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     const updatedCOGSLines = cogsLines.map((line) => {
       if (line.costBehavior !== 'variable') return line;
       const annualTarget = lineYearTargets[line.id] ?? 0;
-      const seasonality = getEffectiveSeasonality(line, priorYear?.seasonalityPattern);
+      // Follow revenue, not prior-year seasonality — only variable lines reach
+      // here, and a variable cost moves with revenue by definition. Weighting
+      // by an independent curve is what let the annual total sit on 60% while
+      // individual months ranged 22.6%–128.9%.
+      const seasonality = cogsMonthWeights(line, monthKeys);
 
       if (isY1) {
         const oldMonthly = (line[yearMonthlyKey] as Record<string, number> | undefined) || {};
@@ -1872,7 +1914,7 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
     yearMKeys: string[],
     yearKey: string,
   ): Record<string, number> => {
-    const seasonality = getEffectiveSeasonality(line ?? {}, priorYear?.seasonalityPattern);
+    const seasonality = cogsMonthWeights(line, yearMKeys);
     const existing = (line?.[yearKey as keyof typeof line] as Record<string, number> | undefined) || {};
     const isLockedMonth = (key: string) => activeYear === 1 && isActualMonth(key);
 
