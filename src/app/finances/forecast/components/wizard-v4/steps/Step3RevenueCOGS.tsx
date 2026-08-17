@@ -1581,9 +1581,18 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
           COGS {cogsActualPct.toFixed(1)}% of revenue
           {!onTarget && ` · target ${cogsTargetPct}%`}
         </span>
+        {/* 'auto', not 'reset'. Mode 'reset' skips the preserve-current-
+            proportions tier and rebuilds from PRIOR-YEAR mix — so the one
+            control that reaches the target would also discard the split the
+            operator had just finished setting. Someone asking for "60% COGS
+            with my split" would lose half the request in the act of getting
+            the other half. 'auto' scales the existing lines to the target and
+            keeps their relative mix. Starting over from prior-year mix is
+            still reachable by clearing lines; it is not what this button is
+            for. */}
         <button
-          onClick={() => redistributeCOGSToHitGPTarget('reset')}
-          title={`Rebuild the variable COGS lines from prior-year mix and seasonality so total COGS = ${cogsTargetPct}% of revenue (a ${100 - cogsTargetPct}% gross margin). Actual months stay locked.`}
+          onClick={() => redistributeCOGSToHitGPTarget('auto')}
+          title={`Scale the variable COGS lines so total COGS = ${cogsTargetPct}% of revenue (a ${100 - cogsTargetPct}% gross margin), keeping your current split between lines. Actual months stay locked.`}
           className="px-2 py-0.5 text-xs font-medium text-gray-600 hover:text-brand-navy hover:bg-brand-navy/5 rounded transition-colors"
         >
           Set COGS to {cogsTargetPct}% of revenue
