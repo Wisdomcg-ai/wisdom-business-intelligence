@@ -1579,6 +1579,17 @@ async function postHandler(request: Request) {
         lastTransaction: v.lastTransaction,
         monthsSpan: v.monthsSpan,
         suggestedMonthlyBudget: Math.round(v.suggestedMonthlyBudget * 100) / 100,
+        // Dossier (18 Aug 2026). This response block is an explicit WHITELIST —
+        // the #382 dossier was derived and assigned upstream but silently
+        // stripped right here, so the Step 5 badges never rendered in prod
+        // while the derivation itself worked. Anything added to VendorSummary
+        // must also be added HERE or it does not exist to the client.
+        status: v.status,
+        stoppedMonth: v.stoppedMonth,
+        lastPaymentAmount: Math.round((v.lastPaymentAmount || 0) * 100) / 100,
+        daysSinceLastPayment: v.daysSinceLastPayment,
+        priorYearTwin: v.priorYearTwin,
+        fyAverageMonthly: Math.round((v.fyAverageMonthly || 0) * 100) / 100,
         // Per-vendor account codes derived from this vendor's actual
         // transactions (NOT the full selected-account list). The Step 5
         // sidebar uses this to attribute per-account totals correctly.
