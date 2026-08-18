@@ -133,13 +133,15 @@ type XeroFixtures = {
   accounts: any[]
   currentBankTxns: any[]
   priorBankTxns: any[]
+  currentBills: any[]
+  priorBills: any[]
 }
 let xeroFixtures: XeroFixtures = {
   accounts: [],
   currentBankTxns: [],
   priorBankTxns: [],
-  currentBills: [] as any[],
-  priorBills: [] as any[],
+  currentBills: [],
+  priorBills: [],
 }
 let bankTxnCallCount = 0
 let billsCallCount = 0
@@ -201,8 +203,6 @@ function makeRequest(body: any): NextRequest {
 beforeEach(() => {
   bankTxnCallCount = 0
   billsCallCount = 0
-  xeroFixtures.currentBills = []
-  xeroFixtures.priorBills = []
   tableFixtures = {}
   xeroFixtures = {
     accounts: [
@@ -211,6 +211,8 @@ beforeEach(() => {
     ],
     currentBankTxns: [],
     priorBankTxns: [],
+    currentBills: [],
+    priorBills: [],
   }
   // Default xero_connections row so the route doesn't short-circuit.
   // rows (not single): the route now enumerates ALL active connections via
