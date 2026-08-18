@@ -208,6 +208,26 @@ async function postHandler(request: Request) {
     // land separably in subscription_vendor_actuals.
     const tenantMonthActuals = new Map<string, Map<string, { name: string; amount: number }>>()
 
+    // One accumulation path for BOTH expense populations, so a vendor reads the
+    // same whether the client pays by card or by bill.
+    function accumulateLine(
+      accountCode: string,
+      vendorName: string,
+      amount: number,
+      isCurrent: boolean,
+      txnTenantId: string,
+    ) {
+      addLineItem(accountCode, vendorName, amount, isCurrent)
+      if (isCurrent) {
+        const key = createVendorKey(vendorName)
+        let perTenant = tenantMonthActuals.get(txnTenantId)
+        if (!perTenant) { perTenant = new Map(); tenantMonthActuals.set(txnTenantId, perTenant) }
+        const cur = perTenant.get(key)
+        if (cur) cur.amount += amount
+        else perTenant.set(key, { name: vendorName, amount })
+      }
+    }
+
     // Process bank transactions into vendor breakdown
     function processBankTxns(txns: any[], isCurrent: boolean, txnTenantId: string) {
       for (const bt of txns) {
@@ -215,18 +235,41 @@ async function postHandler(request: Request) {
         for (const li of (bt.LineItems || [])) {
           if (account_codes.includes(li.AccountCode)) {
             const vendorName = extractVendorName(contactName, li.Description || bt.Reference || '')
-            const amount = li.LineAmount || 0
-            addLineItem(li.AccountCode, vendorName, amount, isCurrent)
-            if (isCurrent) {
-              const key = createVendorKey(vendorName)
-              let perTenant = tenantMonthActuals.get(txnTenantId)
-              if (!perTenant) { perTenant = new Map(); tenantMonthActuals.set(txnTenantId, perTenant) }
-              const cur = perTenant.get(key)
-              if (cur) cur.amount += amount
-              else perTenant.set(key, { name: vendorName, amount })
-            }
+            accumulateLine(li.AccountCode, vendorName, li.LineAmount || 0, isCurrent, txnTenantId)
           }
         }
+      }
+    }
+
+    // Supplier bills (ACCPAY invoices). Paying a bill creates a Payment in
+    // Xero, NOT a SPEND bank transaction, so bills and spend-money are DISJOINT
+    // expense populations — the wizard's crawl sums both and reconciles against
+    // the P&L, which is the proof there is no double count. This route only
+    // read bank transactions, so every bill-paid subscription showed $0 actual
+    // and landed in "budgeted, not billed" as a false positive — the gap that
+    // made that card a question list instead of a conclusion list.
+    // Vendor naming mirrors the wizard exactly (extractVendorName over contact
+    // + line description) so a vendor keys identically on both paths.
+    function processInvoices(invoices: any[], isCurrent: boolean, txnTenantId: string) {
+      let sawLineItems = false
+      for (const inv of invoices) {
+        const contactName = inv.Contact?.Name || ''
+        for (const li of (inv.LineItems || [])) {
+          sawLineItems = true
+          if (account_codes.includes(li.AccountCode)) {
+            const vendorName = extractVendorName(contactName, li.Description || '')
+            accumulateLine(li.AccountCode, vendorName, li.LineAmount || 0, isCurrent, txnTenantId)
+          }
+        }
+      }
+      // Xero includes LineItems on paged Invoices responses (same contract the
+      // bank-txn fetch relies on). If that ever stops holding, bills would
+      // silently vanish from the report again — fail loud instead.
+      if (invoices.length > 0 && !sawLineItems) {
+        Sentry.captureMessage(
+          '[SubscriptionDetail] paged Invoices response carried NO line items — bills missing from vendor actuals',
+          { level: 'warning' as any, tags: { invariant: 'subscription-bills-lineitems' }, extra: { tenantId: txnTenantId, invoices: invoices.length } } as any,
+        )
       }
     }
 
@@ -284,6 +327,35 @@ async function postHandler(request: Request) {
         processBankTxns(txns, false, tenantId)
       } catch (err) {
         Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch prior bank txns", tenantId } } as any)
+      }
+
+      await sleep(300)
+
+      // Supplier bills for both months — same window shape as the bank fetches.
+      // No status filter, mirroring the wizard's crawl (Xero excludes DELETED
+      // and VOIDED by default), so the budget basis and the actuals basis agree.
+      try {
+        const bills = await fetchAllPages(
+          'https://api.xero.com/api.xro/2.0/Invoices',
+          `Type=="ACCPAY"&&Date>=DateTime(${year},${monthNum},1)&&Date<DateTime(${nextYear},${nextMonth},1)`,
+          accessToken, tenantId, 'Invoices'
+        )
+        processInvoices(bills, true, tenantId)
+      } catch (err) {
+        Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch current bills", tenantId } } as any)
+      }
+
+      await sleep(300)
+
+      try {
+        const bills = await fetchAllPages(
+          'https://api.xero.com/api.xro/2.0/Invoices',
+          `Type=="ACCPAY"&&Date>=DateTime(${priorYear},${priorMonth},1)&&Date<DateTime(${priorNextYear},${priorNextMonth},1)`,
+          accessToken, tenantId, 'Invoices'
+        )
+        processInvoices(bills, false, tenantId)
+      } catch (err) {
+        Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch prior bills", tenantId } } as any)
       }
 
       await sleep(300)
