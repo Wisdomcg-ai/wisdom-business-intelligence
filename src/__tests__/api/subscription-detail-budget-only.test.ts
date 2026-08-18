@@ -133,19 +133,37 @@ type XeroFixtures = {
   accounts: any[]
   currentBankTxns: any[]
   priorBankTxns: any[]
+  currentBills: any[]
+  priorBills: any[]
 }
 let xeroFixtures: XeroFixtures = {
   accounts: [],
   currentBankTxns: [],
   priorBankTxns: [],
+  currentBills: [],
+  priorBills: [],
 }
 let bankTxnCallCount = 0
+let billsCallCount = 0
 
 function mockFetch(url: any): Promise<Response> {
   const u = String(url)
   if (u.includes('/api.xro/2.0/Accounts') && !u.includes('BankTransactions')) {
     return Promise.resolve(
       new Response(JSON.stringify({ Accounts: xeroFixtures.accounts }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  }
+  if (u.includes('/api.xro/2.0/Invoices')) {
+    billsCallCount += 1
+    // First call = current month, second = prior month (mirrors the bank-txn
+    // call ordering; page=1 returns <100 items so one fetch per period).
+    const isCurrent = billsCallCount === 1
+    const items = isCurrent ? xeroFixtures.currentBills : xeroFixtures.priorBills
+    return Promise.resolve(
+      new Response(JSON.stringify({ Invoices: items }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
@@ -170,6 +188,7 @@ function mockFetch(url: any): Promise<Response> {
 
 // ─── Imports AFTER mock declarations ──────────────────────────────────────────
 import { POST } from '@/app/api/monthly-report/subscription-detail/route'
+import { createVendorKey, extractVendorName } from '@/lib/utils/vendor-normalization'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -183,6 +202,7 @@ function makeRequest(body: any): NextRequest {
 
 beforeEach(() => {
   bankTxnCallCount = 0
+  billsCallCount = 0
   tableFixtures = {}
   xeroFixtures = {
     accounts: [
@@ -191,6 +211,8 @@ beforeEach(() => {
     ],
     currentBankTxns: [],
     priorBankTxns: [],
+    currentBills: [],
+    priorBills: [],
   }
   // Default xero_connections row so the route doesn't short-circuit.
   // rows (not single): the route now enumerates ALL active connections via
@@ -373,5 +395,101 @@ describe('S2 — subscription-detail budget-only vendor visibility', () => {
     expect(v.transaction_count).toBe(1)
     // budget may be 0 or undefined for unbudgeted — assert "not > 0".
     expect(v.budget ?? 0).toBe(0)
+  })
+
+  // ── Bills gap (19 Aug 2026) ────────────────────────────────────────────────
+  // Paying a supplier bill creates a Payment in Xero, not a SPEND bank
+  // transaction, so bill-paid subscriptions were INVISIBLE to this route: $0
+  // actual, "not billed this month" badge, and a false line in the
+  // budgeted-not-billed leakage card. These pin the fix.
+
+  it('Test 5: a bill-paid vendor shows its actual instead of a false "not billed"', async () => {
+    // The stored vendor_key must come through the SAME canonical path the
+    // route uses (extractVendorName may collapse/rename) — that is how real
+    // budget rows were keyed on save.
+    const vultrKey = createVendorKey(extractVendorName('Vultr.com', 'Cloud hosting'))
+
+    xeroFixtures.currentBankTxns = []
+    xeroFixtures.currentBills = [
+      {
+        Type: 'ACCPAY',
+        Contact: { Name: 'Vultr.com' },
+        LineItems: [{ AccountCode: '440', LineAmount: 777, Description: 'Cloud hosting' }],
+      },
+    ]
+    tableFixtures['subscription_budgets'] = {
+      rows: [{
+        vendor_name: 'Vultr.com', vendor_key: vultrKey, monthly_budget: 777,
+        account_codes: ['440'], frequency: 'monthly', renewal_month: null,
+      }],
+    }
+
+    const res = await POST(makeRequest({
+      business_id: 'biz-1',
+      report_month: '2026-04',
+      account_codes: ['440'],
+    }))
+    const json = await res.json()
+    const acc = json.data.accounts.find((a: any) => a.account_code === '440')
+    const v = acc.vendors.find((x: any) => x.vendor_key === vultrKey)
+    expect(v).toBeTruthy()
+    expect(v.actual).toBe(777)
+    // transaction_count > 0 is what suppresses the "not billed this month"
+    // badge AND keeps the vendor out of lapsed_still_budgeted.
+    expect(v.transaction_count).toBeGreaterThan(0)
+    expect(
+      (json.data.leakage?.lapsed_still_budgeted ?? []).map((l: any) => l.vendor_key),
+    ).not.toContain(vultrKey)
+  })
+
+  it('Test 6: bank and bill spend for the SAME vendor sum into one row', async () => {
+    xeroFixtures.currentBankTxns = [
+      {
+        Type: 'SPEND',
+        Contact: { Name: 'Adobe' },
+        LineItems: [{ AccountCode: '440', LineAmount: 50, Description: '' }],
+      },
+    ]
+    xeroFixtures.currentBills = [
+      {
+        Type: 'ACCPAY',
+        Contact: { Name: 'Adobe' },
+        LineItems: [{ AccountCode: '440', LineAmount: 30, Description: 'Extra seat' }],
+      },
+    ]
+    tableFixtures['subscription_budgets'] = { rows: [] }
+
+    const res = await POST(makeRequest({
+      business_id: 'biz-1',
+      report_month: '2026-04',
+      account_codes: ['440'],
+    }))
+    const json = await res.json()
+    const acc = json.data.accounts.find((a: any) => a.account_code === '440')
+    expect(acc.vendors).toHaveLength(1)
+    expect(acc.vendors[0].actual).toBe(80)
+    expect(acc.vendors[0].transaction_count).toBe(2)
+  })
+
+  it('Test 7: prior-month bills populate the prior column', async () => {
+    xeroFixtures.priorBills = [
+      {
+        Type: 'ACCPAY',
+        Contact: { Name: 'Vultr.com' },
+        LineItems: [{ AccountCode: '440', LineAmount: 750, Description: '' }],
+      },
+    ]
+    tableFixtures['subscription_budgets'] = { rows: [] }
+
+    const res = await POST(makeRequest({
+      business_id: 'biz-1',
+      report_month: '2026-04',
+      account_codes: ['440'],
+    }))
+    const json = await res.json()
+    const acc = json.data.accounts.find((a: any) => a.account_code === '440')
+    const v = acc.vendors.find((x: any) => x.vendor_name === 'Vultr.com')
+    expect(v.prior_month_actual).toBe(750)
+    expect(v.actual).toBe(0)
   })
 })
