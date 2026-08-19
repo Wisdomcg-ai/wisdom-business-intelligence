@@ -131,15 +131,34 @@ async function getHandler(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const startedAtMs = Date.now()
+
+  // Stamp BEFORE the work. This route's completion heartbeat sits after the
+  // loop, so when the fleet outgrew the time ceiling every run died silently
+  // and 8 days of kills read as "cron not scheduled" — the same misdirection
+  // that hid the two-month CRON_SECRET outage. The completion path overwrites
+  // this with the real outcome.
+  await recordHeartbeat({
+    cronPath: CRON_PATH,
+    status: 'partial',
+    errorMessage: 'run started — not yet completed',
+  }).catch(() => { /* best-effort marker; never block the run */ })
+
   try {
     const supabase = createServiceRoleClient()
 
-    // Snapshot active connections. We capture the row IDs ONCE here; the loop
-    // below tolerates per-row deactivation that happens during iteration.
+    // Snapshot active connections, STALEST TOKEN FIRST. Ordering is the fix
+    // for starvation: with no order clause the same tail rows (JDS, IICT
+    // Limited, Digital Bond as of Aug 2026) sat past the kill ceiling on
+    // every run and never got a cron refresh at all. Stalest-first means a
+    // budget cut-off skips the freshest tokens, so no connection can be
+    // skipped two runs in a row — the whole fleet refreshes at least every
+    // ~2 cycles regardless of size.
     const { data, error } = await supabase
       .from('xero_connections')
       .select('id, business_id, tenant_id, tenant_name, expires_at')
       .eq('is_active', true)
+      .order('expires_at', { ascending: true })
 
     if (error) {
       throw new Error(error.message ?? 'Failed to fetch xero_connections')
@@ -179,9 +198,27 @@ async function getHandler(req: NextRequest) {
     let deactivated = 0
     const results: PerConnectionResult[] = []
 
+    // Stop STARTING new refreshes past this point. Each connection costs up
+    // to ~32s (lock-waits + Xero retries + rotation-safe saves), so the old
+    // implicit ceiling under maxDuration=300 was ~9 connections — crossed on
+    // 11 Aug 2026 when the fleet reached 12, after which every run was killed
+    // mid-loop. The headroom lets the in-flight refresh finish and the
+    // completion heartbeat write instead of dying at the wall.
+    const TIME_BUDGET_MS = 240_000
+    const skipped: { connection_id: string; tenant_name: string | null }[] = []
+
     // Sequential per-connection loop. Each iteration is wrapped in its own
     // try/catch so one bad connection cannot abort the rest of the run.
     for (const row of rows) {
+      if (Date.now() - startedAtMs > TIME_BUDGET_MS) {
+        // No silent caps: name what was left undone. Stalest-first above
+        // means these are the FRESHEST tokens — first in line next run.
+        skipped.push(...rows.slice(rows.indexOf(row)).map(r => ({
+          connection_id: r.id,
+          tenant_name: r.tenant_name ?? null,
+        })))
+        break
+      }
       const baseResult: Pick<PerConnectionResult, 'connection_id' | 'tenant_name' | 'business_id'> = {
         connection_id: row.id,
         tenant_name: row.tenant_name ?? null,
@@ -329,14 +366,18 @@ async function getHandler(req: NextRequest) {
       }
     }
 
-    // Phase 69-04: heartbeat. Status='partial' if any rows failed; otherwise
-    // 'success'. Aggregate failure path captures this differently below.
+    // Phase 69-04: heartbeat. Status='partial' if any rows failed, were
+    // deactivated, or were skipped on the time budget; otherwise 'success'.
     const heartbeatStatus: 'success' | 'partial' =
-      failed > 0 || deactivated > 0 ? 'partial' : 'success'
+      failed > 0 || deactivated > 0 || skipped.length > 0 ? 'partial' : 'success'
     await recordHeartbeat({
       cronPath: CRON_PATH,
       status: heartbeatStatus,
-      metadata: { total, refreshed, still_valid, failed, deactivated },
+      metadata: {
+        total, refreshed, still_valid, failed, deactivated,
+        skipped: skipped.length,
+        duration_ms: Date.now() - startedAtMs,
+      },
     })
 
     return NextResponse.json({
@@ -346,6 +387,7 @@ async function getHandler(req: NextRequest) {
       still_valid,
       failed,
       deactivated,
+      skipped: skipped.length > 0 ? skipped : undefined,
       results,
     })
   } catch (err: any) {

@@ -85,7 +85,10 @@ function makeRequest(headers: Record<string, string> = {}) {
 function mockConnectionsQuery(rows: any[] | null, error: any = null) {
   const builder = {
     select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockResolvedValue({ data: rows, error }),
+    eq: vi.fn().mockReturnThis(),
+    // The route orders stalest-token-first (the starvation fix of 19 Aug 2026);
+    // the chain now resolves at .order().
+    order: vi.fn().mockResolvedValue({ data: rows, error }),
   }
   supabaseFromMock.mockReturnValue(builder)
   return builder
@@ -269,12 +272,18 @@ describe('phase-69 heartbeat — cron writes one cron_heartbeats row per invocat
     )
     expect(res.status).toBe(200)
 
-    expect(recordHeartbeatMock).toHaveBeenCalledTimes(1)
-    const [opts] = recordHeartbeatMock.mock.calls[0]
+    // TWO heartbeats since 19 Aug 2026: a start marker BEFORE the work (a run
+    // killed at maxDuration must leave evidence — 8 days of silent kills read
+    // as "cron not scheduled") and the completion with the real outcome.
+    expect(recordHeartbeatMock).toHaveBeenCalledTimes(2)
+    const [marker] = recordHeartbeatMock.mock.calls[0]
+    expect(marker.status).toBe('partial')
+    expect(marker.errorMessage).toBe('run started — not yet completed')
+    const [opts] = recordHeartbeatMock.mock.calls[1]
     expect(opts.cronPath).toBe('/api/cron/refresh-xero-tokens')
     expect(opts.status).toBe('success')
     // Metadata carries the aggregate counters for queryability.
-    expect(opts.metadata).toMatchObject({ total: 1 })
+    expect(opts.metadata).toMatchObject({ total: 1, skipped: 0 })
   })
 
   it('writes status=failed heartbeat when the aggregate path throws', async () => {
@@ -286,8 +295,9 @@ describe('phase-69 heartbeat — cron writes one cron_heartbeats row per invocat
     )
     expect(res.status).toBe(500)
 
-    expect(recordHeartbeatMock).toHaveBeenCalledTimes(1)
-    const [opts] = recordHeartbeatMock.mock.calls[0]
+    // Start marker + the failure record.
+    expect(recordHeartbeatMock).toHaveBeenCalledTimes(2)
+    const [opts] = recordHeartbeatMock.mock.calls[1]
     expect(opts.cronPath).toBe('/api/cron/refresh-xero-tokens')
     expect(opts.status).toBe('failed')
     expect(opts.errorMessage).toMatch(/supabase down/)
@@ -298,5 +308,74 @@ describe('phase-69 heartbeat — cron writes one cron_heartbeats row per invocat
     const res = await GET(makeRequest()) // no Authorization header
     expect(res.status).toBe(401)
     expect(recordHeartbeatMock).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * 19 Aug 2026 — the starvation outage. Each connection costs up to ~32s, so
+ * under maxDuration=300 the implicit fleet ceiling was ~9 connections; when
+ * the fleet reached 12 on 11 Aug, every run was killed mid-loop, the SAME
+ * tail rows never got a cron refresh, and no heartbeat recorded any of it
+ * for 8 days. These pin the two behaviours that end that failure mode.
+ */
+describe('time budget + stalest-first (19 Aug starvation fix)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('queries connections stalest-token-first', async () => {
+    const builder = mockConnectionsQuery([])
+    const { GET } = await import('@/app/api/cron/refresh-xero-tokens/route')
+    await GET(makeRequest({ Authorization: 'Bearer test-cron-secret' }))
+    expect(builder.order).toHaveBeenCalledWith('expires_at', { ascending: true })
+  })
+
+  it('stops STARTING refreshes past the budget and names the skipped tail', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-19T00:00:00Z'))
+
+    mockConnectionsQuery([
+      rowExpiringIn(-60_000, { id: 'conn-a', tenant_name: 'A' }),
+      rowExpiringIn(-30_000, { id: 'conn-b', tenant_name: 'B' }),
+      rowExpiringIn(0, { id: 'conn-c', tenant_name: 'C' }),
+      rowExpiringIn(30_000, { id: 'conn-d', tenant_name: 'D' }),
+    ])
+    // Each refresh "takes" 100 simulated seconds: after three, 300s have
+    // passed — over the 240s budget — so the fourth must not start.
+    getValidAccessTokenMock.mockImplementation(async () => {
+      vi.setSystemTime(new Date(Date.now() + 100_000))
+      return { success: true, accessToken: 'tok' }
+    })
+
+    const { GET } = await import('@/app/api/cron/refresh-xero-tokens/route')
+    const res = await GET(makeRequest({ Authorization: 'Bearer test-cron-secret' }))
+    const json = await res.json()
+
+    expect(getValidAccessTokenMock).toHaveBeenCalledTimes(3)
+    // No silent caps: the response names what was left undone.
+    expect(json.skipped).toEqual([{ connection_id: 'conn-d', tenant_name: 'D' }])
+    // And the completion heartbeat records it as a partial run — a budget
+    // cut-off must never read as a clean success.
+    const [opts] = recordHeartbeatMock.mock.calls[1]
+    expect(opts.status).toBe('partial')
+    expect(opts.metadata).toMatchObject({ skipped: 1 })
+  })
+
+  it('a full run within budget skips nothing and stays a clean success', async () => {
+    mockConnectionsQuery([
+      rowExpiringIn(-60_000, { id: 'conn-a' }),
+      rowExpiringIn(-30_000, { id: 'conn-b' }),
+    ])
+    getValidAccessTokenMock.mockResolvedValue({ success: true, accessToken: 'tok' })
+
+    const { GET } = await import('@/app/api/cron/refresh-xero-tokens/route')
+    const res = await GET(makeRequest({ Authorization: 'Bearer test-cron-secret' }))
+    const json = await res.json()
+
+    expect(getValidAccessTokenMock).toHaveBeenCalledTimes(2)
+    expect(json.skipped).toBeUndefined()
+    const [opts] = recordHeartbeatMock.mock.calls[1]
+    expect(opts.status).toBe('success')
+    expect(opts.metadata).toMatchObject({ skipped: 0 })
   })
 })
