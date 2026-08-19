@@ -131,3 +131,36 @@ export function evaluateCronHealth(
   }
   return alerts
 }
+
+/** Start-marker heartbeats are stamped BEFORE a run's work so a killed run
+ *  leaves evidence; they are never completions and must be excluded when
+ *  finding a cron's latest real outcome. */
+export const START_MARKER = 'run started — not yet completed'
+
+/**
+ * Latest COMPLETED heartbeat per monitored cron. Shared by the 2-hourly
+ * watchdog and the daily health report so the two can never disagree about
+ * what "stale" means. 10 rows is ample: markers and completions interleave,
+ * and a cron whose last 10 rows are ALL start-markers is being killed on
+ * every run — for which "no completed heartbeat" (→ missing/stale) is the
+ * right read.
+ */
+export async function loadLatestHeartbeats(
+  supabase: { from: (t: string) => any },
+): Promise<Record<string, HeartbeatSnapshot>> {
+  const latest: Record<string, HeartbeatSnapshot> = {}
+  await Promise.all(
+    MONITORED_CRONS.map(async (m) => {
+      const { data } = await supabase
+        .from('cron_heartbeats')
+        .select('ran_at, status, error_message')
+        .eq('cron_path', m.path)
+        .order('ran_at', { ascending: false })
+        .limit(10)
+      const row = ((data ?? []) as Array<{ ran_at: string; status: string; error_message: string | null }>)
+        .find((r) => r.error_message !== START_MARKER)
+      latest[m.path] = { ranAtMs: row ? Date.parse(row.ran_at) : null, status: row?.status ?? null }
+    }),
+  )
+  return latest
+}

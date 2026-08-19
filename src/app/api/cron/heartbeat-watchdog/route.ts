@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { recordHeartbeat } from '@/lib/cron/heartbeat'
 import { withQuerySchema } from '@/lib/api/with-schema'
-import { MONITORED_CRONS, evaluateCronHealth, type HeartbeatSnapshot } from '@/lib/cron/watchdog'
+import { MONITORED_CRONS, evaluateCronHealth, loadLatestHeartbeats } from '@/lib/cron/watchdog'
 
 /**
  * Heartbeat watchdog — the monitor nobody had.
@@ -32,7 +32,6 @@ export const maxDuration = 60
 
 const CRON_PATH = '/api/cron/heartbeat-watchdog'
 
-const START_MARKER = 'run started — not yet completed'
 
 async function getHandler(req: NextRequest) {
   // Fail-closed: reject when CRON_SECRET is unset so a missing secret can never
@@ -52,20 +51,7 @@ async function getHandler(req: NextRequest) {
     // badly. 10 rows is ample: markers and completions interleave, and a cron
     // whose last 10 rows are ALL start-markers is being killed on every run —
     // for which "no completed heartbeat" (→ missing/stale) is the right read.
-    const latest: Record<string, HeartbeatSnapshot> = {}
-    await Promise.all(
-      MONITORED_CRONS.map(async (m) => {
-        const { data } = await supabase
-          .from('cron_heartbeats')
-          .select('ran_at, status, error_message')
-          .eq('cron_path', m.path)
-          .order('ran_at', { ascending: false })
-          .limit(10)
-        const row = ((data ?? []) as Array<{ ran_at: string; status: string; error_message: string | null }>)
-          .find((r) => r.error_message !== START_MARKER)
-        latest[m.path] = { ranAtMs: row ? Date.parse(row.ran_at) : null, status: row?.status ?? null }
-      }),
-    )
+    const latest = await loadLatestHeartbeats(supabase)
 
     const alerts = evaluateCronHealth(MONITORED_CRONS, latest, Date.now())
 

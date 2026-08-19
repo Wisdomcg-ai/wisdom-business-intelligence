@@ -81,7 +81,10 @@ function makeRequest(headers: Record<string, string> = {}) {
 function mockConnectionsQuery(rows: any[] | null, error: any = null) {
   const builder = {
     select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockResolvedValue({ data: rows, error }),
+    eq: vi.fn().mockReturnThis(),
+    // The route orders stalest-token-first (the starvation fix of 19 Aug 2026);
+    // the chain now resolves at .order().
+    order: vi.fn().mockResolvedValue({ data: rows, error }),
   }
   supabaseFromMock.mockReturnValue(builder)
   return builder
