@@ -340,10 +340,10 @@ describe('time budget + stalest-first (19 Aug starvation fix)', () => {
       rowExpiringIn(0, { id: 'conn-c', tenant_name: 'C' }),
       rowExpiringIn(30_000, { id: 'conn-d', tenant_name: 'D' }),
     ])
-    // Each refresh "takes" 100 simulated seconds: after three, 300s have
-    // passed — over the 240s budget — so the fourth must not start.
+    // Each refresh "takes" 300 simulated seconds: after three, 900s have
+    // passed — over the 720s budget — so the fourth must not start.
     getValidAccessTokenMock.mockImplementation(async () => {
-      vi.setSystemTime(new Date(Date.now() + 100_000))
+      vi.setSystemTime(new Date(Date.now() + 300_000))
       return { success: true, accessToken: 'tok' }
     })
 

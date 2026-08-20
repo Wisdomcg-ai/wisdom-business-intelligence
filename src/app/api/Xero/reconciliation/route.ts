@@ -187,7 +187,9 @@ async function getHandler(request: NextRequest) {
             metric_date: nowIso.slice(0, 10),
             unreconciled_count: unreconciledCount,
             last_bank_rec_date: isClean ? nowIso : null,
-            updated_at: nowIso,
+            // financial_metrics has no updated_at column — writing one failed
+            // the whole upsert (WISDOM-BI-1F), which is the exact silent-write
+            // failure the comment above says this block exists to prevent.
           },
           { onConflict: 'business_id,metric_date' }
         )

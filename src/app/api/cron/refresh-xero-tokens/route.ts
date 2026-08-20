@@ -98,7 +98,11 @@ const CRON_PATH = '/api/cron/refresh-xero-tokens'
  * invariant — and lets 53-05 expand them.
  */
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300 // 5 minutes; matches sync-all-xero/route.ts
+export const maxDuration = 800 // Fluid-compute ceiling. At ~33s per connection
+// (lock-waits + Xero retries + rotation-safe saves) 300s capped the fleet at
+// ~9 — crossed on 11 Aug 2026, silently killing every run. 800s covers ~21
+// connections in one pass; the stalest-first budget below keeps the overflow
+// honest beyond that.
 
 interface PerConnectionResult {
   connection_id: string
@@ -198,13 +202,12 @@ async function getHandler(req: NextRequest) {
     let deactivated = 0
     const results: PerConnectionResult[] = []
 
-    // Stop STARTING new refreshes past this point. Each connection costs up
-    // to ~32s (lock-waits + Xero retries + rotation-safe saves), so the old
-    // implicit ceiling under maxDuration=300 was ~9 connections — crossed on
-    // 11 Aug 2026 when the fleet reached 12, after which every run was killed
-    // mid-loop. The headroom lets the in-flight refresh finish and the
-    // completion heartbeat write instead of dying at the wall.
-    const TIME_BUDGET_MS = 240_000
+    // Stop STARTING new refreshes past this point — headroom for the
+    // in-flight refresh to finish and the completion heartbeat to write
+    // instead of dying at the wall. At ~33s per connection this covers ~21
+    // connections per pass; beyond that the stalest-first order guarantees
+    // rotation rather than starvation.
+    const TIME_BUDGET_MS = 720_000
     const skipped: { connection_id: string; tenant_name: string | null }[] = []
 
     // Sequential per-connection loop. Each iteration is wrapped in its own
