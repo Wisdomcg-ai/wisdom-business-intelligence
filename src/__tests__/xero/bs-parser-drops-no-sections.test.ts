@@ -33,10 +33,22 @@ const total = (m: Map<string, { value: number }>, names: string[]) =>
   names.reduce((s, n) => s + (m.get(n)?.value ?? 0), 0)
 
 describe('the section-title mapper cannot see these — which is why it is a fallback', () => {
-  it.each(['Bank', 'Credit Cards', 'Net ATO Balance', 'Provision for Income Tax', "Director's Loan"])(
-    '%s maps to null',
+  it.each(['Net ATO Balance', 'Provision for Income Tax', "Director's Loan"])(
+    '%s maps to null — genuinely ambiguous, the class decides',
     section => expect(mapBSSectionToType(section)).toBeNull(),
   )
+
+  // DELIBERATE change (21 Aug 2026, bs_equation cluster): Bank and Credit
+  // Cards sections carry a KNOWN sign convention, so they map — that is what
+  // lets the polarity override flip a card the catalog classes ASSET but the
+  // report prints as amount-owed under a liabilities-convention section.
+  it('Bank maps to asset (exact match — "Bank Loans" must not)', () => {
+    expect(mapBSSectionToType('Bank')).toBe('asset')
+    expect(mapBSSectionToType('Bank Loans')).toBeNull()
+  })
+  it('Credit Cards maps to liability', () => {
+    expect(mapBSSectionToType('Credit Cards')).toBe('liability')
+  })
 
   it('still resolves the sections it was designed for', () => {
     expect(mapBSSectionToType('Current Assets')).toBe('asset')
@@ -76,12 +88,13 @@ describe('real Xero payloads — the bank accounts survive', () => {
     expect(withIds.length).toBeGreaterThan(0)
   })
 
-  it('leaves Bank unclassified WITHOUT a catalog — visible, not silently dropped', () => {
+  it('classifies Bank as asset even WITHOUT a catalog — the section carries polarity', () => {
     const parsed = parseSingleMonthBSReport(fixture('jds-bs-2026-04-30.json'))
     const bank = [...parsed.entries()].find(([, v]) => v.section === 'Bank')
     expect(bank).toBeDefined()
-    // Title-based mapping cannot resolve 'Bank'; the row is still RETURNED.
-    expect(bank![1].account_type).toBeNull()
+    // Since the 21 Aug polarity change 'Bank' maps to asset directly — the
+    // row is classified rather than merely retained.
+    expect(bank![1].account_type).toBe('asset')
   })
 
   it('classifies Bank as an asset once the catalog is supplied', () => {
@@ -93,14 +106,42 @@ describe('real Xero payloads — the bank accounts survive', () => {
     expect(bank!.account_type).toBe('asset')
   })
 
-  it('catalog beats the section title, because titles are renameable', () => {
+  // DELIBERATE inversion of the earlier 'catalog beats the section title'
+  // test (21 Aug 2026, bs_equation cluster). Xero prints report values
+  // SECTION-RELATIVE: a credit card owing $69,015.86 sits under Current
+  // Liabilities as +69,015.86 while its catalog class stays ASSET. Booking
+  // that value by class overstated assets AND understated liabilities —
+  // an imbalance of exactly 2× every such row, proven to the cent on 7
+  // tenants (Urban Road: 138,001.67 = 2×(69,015.86 − 15.02)). When class
+  // and section polarity disagree, the SECTION wins, because the printed
+  // value carries the section's sign convention. The class still rules
+  // wherever the section maps to null — the actual point of #373.
+  it('section beats the catalog when their polarity disagrees — the value is printed in section convention', () => {
     const parsed = parseSingleMonthBSReport(
       fixture('jds-bs-2026-04-30.json'),
       () => 'liability', // catalog disagrees with the 'Current Assets' heading
     )
     const receivable = parsed.get('Accounts Receivable')
-    expect(receivable?.account_type).toBe('liability')
+    expect(receivable?.account_type).toBe('asset')
   })
+
+  it('the production case: an ASSET-class credit card under Current Liabilities books as a liability', () => {
+    // "Mastercard Aeris" sits under Current Liabilities in this real report,
+    // but Xero's account catalog classes BANK/CREDITCARD accounts as ASSET.
+    // Booking its printed (amount-owed) value as an asset was the bs_equation
+    // bug: imbalance = exactly 2× every such row across 7 tenants.
+    const mastercardId = 'df7e5fda-6c21-44e3-ba48-6ab077831a71'
+    const parsed = parseSingleMonthBSReport(
+      fixture('jds-bs-2026-04-30.json'),
+      id => (id === mastercardId ? 'asset' : null),
+    )
+    expect(parsed.get('Mastercard Aeris')?.account_type).toBe('liability')
+  })
+
+  // Where the section maps to null (ambiguous titles like "Director's Loan"),
+  // the catalog still decides — that contract is pinned by the mapper it.each
+  // above plus the with-catalog classification tests; no fixture here carries
+  // an ambiguous section, so there is no parser-level case to assert.
 })
 
 describe('rows that must NOT be swept in', () => {

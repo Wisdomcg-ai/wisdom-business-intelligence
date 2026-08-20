@@ -43,6 +43,16 @@ export function mapBSSectionToType(section: string): 'asset' | 'liability' | 'eq
   if (t.includes('asset')) return 'asset'
   if (t.includes('liabilit')) return 'liability'
   if (t.includes('equity') || t.includes('owner')) return 'equity'
+  // Sections whose PRINTED VALUES carry a known sign convention. Needed by the
+  // polarity override in parseSingleMonthBSReport: a card under Xero's
+  // dedicated "Credit Cards" section prints amount-OWED positive (liability
+  // convention) while its catalog class says ASSET — without a polarity here
+  // the class would win and misplace the row by 2× its value. "Bank" is exact
+  // (not a substring) so "Bank Loans" cannot mis-map to asset. Genuinely
+  // ambiguous sections ("Directors Loan", "Net ATO Balance") stay null so the
+  // class decides — the point of #373.
+  if (t === 'bank') return 'asset'
+  if (t.includes('credit card')) return 'liability'
   return null
 }
 
@@ -154,8 +164,26 @@ export function parseSingleMonthBSReport(
       // synthetic Current Year Earnings DOES carry an id (abababab-…), so it is
       // correctly kept.
       if (!accountId) continue
+
+      // Class first (structure), section second (presentation) — with ONE
+      // polarity exception, proven to the cent across 7 tenants (21 Aug 2026):
+      // Xero prints report values SECTION-RELATIVE. A credit card owing
+      // $69,015.86 appears under Current Liabilities as +69,015.86, but the
+      // catalog classes BANK/CREDITCARD accounts fixedly, so class-typing
+      // booked that +69k into ASSETS — overstating assets AND understating
+      // liabilities, an imbalance of exactly 2× every such row (Urban Road:
+      // 138,001.67 = 2×(69,015.86 − 15.02)). The same flip hits overdrawn
+      // bank accounts printed under liabilities. So: when BOTH the class and
+      // the section polarity are known and they disagree, the SECTION wins —
+      // the printed value carries the section's sign convention. Odd sections
+      // ('Directors Loan', 'Net ATO Balance') still map to null and fall
+      // through to the class, which is the whole point of #373.
+      const classType =
+        accountId && classifyByAccountId ? classifyByAccountId(accountId) : null
       const resolved =
-        (accountId && classifyByAccountId ? classifyByAccountId(accountId) : null) ?? sectionType
+        classType && sectionType && classType !== sectionType
+          ? sectionType
+          : classType ?? sectionType
 
       const existing = accounts.get(name)
       accounts.set(name, {
