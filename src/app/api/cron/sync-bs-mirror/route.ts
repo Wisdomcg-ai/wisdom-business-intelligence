@@ -24,13 +24,15 @@ import { syncBusinessBSMirror } from '@/lib/xero/bs-mirror-sync'
  * 500ms — negligible against the 60/min/tenant and 5000/day limits.
  */
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300
+export const maxDuration = 800 // ~38s per tenant (3 month-end reports + writes):
+// 300s covered only ~7 of 12 tenants per night (4 skipped every run since the
+// cron shipped). 800s covers ~19 tenants in one pass.
 
 const CRON_PATH = '/api/cron/sync-bs-mirror'
 
 /** Stop starting new businesses past this point — leave headroom under
  *  maxDuration for the in-flight tenant to finish and the heartbeat to write. */
-const TIME_BUDGET_MS = 240_000
+const TIME_BUDGET_MS = 720_000
 
 async function getHandler(req: NextRequest) {
   // Fail-closed: reject when CRON_SECRET is unset so a missing secret can never

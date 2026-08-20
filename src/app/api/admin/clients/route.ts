@@ -276,7 +276,12 @@ async function postHandler(request: Request) {
         user_id: newUserId,
         business_id: business.id,
         role: 'owner',
-        created_by: user.id
+        // user_roles audits via granted_by/granted_at — it has NO created_by.
+        // Writing created_by made EVERY role insert fail (PostgREST schema
+        // error), silently: the error was Sentry-logged and onboarding carried
+        // on, so new clients arrived with no owner role row (WISDOM-BI-18).
+        // system_roles below genuinely has created_by; the two differ.
+        granted_by: user.id
       })
 
     if (userRoleError) {
