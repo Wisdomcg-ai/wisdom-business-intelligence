@@ -1173,6 +1173,48 @@ export function useForecastWizard(
     }));
   }, []);
 
+  /**
+   * Merge saved OpEx lines over the Xero-seeded ones instead of replacing them.
+   *
+   * PROC-06 (21 Aug 2026 audit): the restore path called setOpExLines with the
+   * SAVED list, which buildAssumptions had already filtered (team-covered and
+   * subscription-covered lines removed) and stripped of account codes. After
+   * any reopen on a fresh browser, Step 5 no longer listed those accounts at
+   * all — so if the operator later cleared Step 4 or deactivated a vendor,
+   * there was no line left to un-exclude and the cost silently vanished from
+   * BOTH buckets. Codes were gone too, which disarmed the subscription
+   * double-count guard for the rest of the session.
+   *
+   * Merging keeps the full Xero-seeded set as the base and lets the saved
+   * values win per line, so the operator's work is restored without losing the
+   * accounts the export legitimately filtered out.
+   */
+  const mergeSavedOpExLines = useCallback((saved: OpExLine[]) => {
+    setState((prev) => {
+      if (prev.opexLines.length === 0) return { ...prev, opexLines: saved };
+      const savedByKey = new Map<string, OpExLine>();
+      for (const line of saved) {
+        savedByKey.set((line.accountId || line.id || line.name).toString(), line);
+        savedByKey.set(line.name.trim().toLowerCase(), line);
+      }
+      const merged = prev.opexLines.map((base) => {
+        const hit =
+          savedByKey.get((base.accountId || base.id || base.name).toString()) ??
+          savedByKey.get(base.name.trim().toLowerCase());
+        // Keep the base line's identity (id, accountCode) and take the saved
+        // planning values over it.
+        return hit ? { ...base, ...hit, id: base.id, accountCode: hit.accountCode ?? base.accountCode } : base;
+      });
+      // Saved lines with no seeded counterpart (manually added in the wizard)
+      // still need to appear.
+      const seenNames = new Set(merged.map(l => l.name.trim().toLowerCase()));
+      for (const line of saved) {
+        if (!seenNames.has(line.name.trim().toLowerCase())) merged.push(line);
+      }
+      return { ...prev, opexLines: merged };
+    });
+  }, []);
+
   // Phase 57 T11 (B4) — clear the legacy "Refresh from Xero" nudge banner once
   // the operator has triggered the refresh and opexLines have populated
   // accountCodes. The banner only shows when needsAccountCodeRefresh === true,
@@ -2323,6 +2365,9 @@ export function useForecastWizard(
       },
       opex: {
         lines: opexLineAssumptions,
+        // PROC-08: persist the wizard-level default so reopening a forecast
+        // doesn't silently reset Y2/Y3 growth to 3%.
+        defaultIncreasePct: state.defaultOpExIncreasePct,
       },
       capex: {
         items: capexItems,
@@ -2497,6 +2542,7 @@ export function useForecastWizard(
     setDefaultPayFrequency,
     setDefaultOpExIncreasePct,
     setOpExLines,
+    mergeSavedOpExLines,
     updateOpExLine,
     addOpExLine,
     removeOpExLine,
@@ -2525,7 +2571,7 @@ export function useForecastWizard(
     addTeamMember, removeTeamMember, addNewHire, updateNewHire, removeNewHire,
     addDeparture, removeDeparture, addBonus, updateBonus, removeBonus,
     addCommission, updateCommission, removeCommission, setDefaultPayFrequency,
-    setDefaultOpExIncreasePct, setOpExLines, updateOpExLine, addOpExLine,
+    setDefaultOpExIncreasePct, setOpExLines, mergeSavedOpExLines, updateOpExLine, addOpExLine,
     removeOpExLine, setNeedsAccountCodeRefresh, addCapExItem, updateCapExItem,
     removeCapExItem, addInvestment, updateInvestment, removeInvestment,
     addPlannedSpend, updatePlannedSpend, removePlannedSpend, setPlannedSpends,

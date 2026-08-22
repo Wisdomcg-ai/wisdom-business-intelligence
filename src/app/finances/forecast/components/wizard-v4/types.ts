@@ -573,11 +573,35 @@ export function getPlannedSpendPLBreakdown(
   return getBreakdownLegacy(item, yearNum);
 }
 
+/**
+ * How many months of a charge fall inside a forecast year's window, given the
+ * charge stops after `limitMonths`.
+ *
+ * 21 Aug 2026 audit (FML-07): the taxonomy math had no end. An operating lease
+ * charged 12 payments in EVERY forecast year — ignoring both the purchase
+ * month in Y1 and the lease TERM, so a 2-year vehicle lease inflated the
+ * 3-year cost by 50% — and depreciation never stopped at the end of useful
+ * life, so a short-life asset depreciated past its own base. Both the approved
+ * summary and the stored forecast were overstated for any business with leases
+ * or financed/short-life assets.
+ */
+function chargeableMonthsInYear(
+  startMonthOfFY: number,
+  yearNum: 1 | 2 | 3,
+  limitMonths: number,
+): number {
+  const monthsInY1 = Math.max(0, 13 - startMonthOfFY);
+  const startIdx = yearNum === 1 ? 0 : yearNum === 2 ? monthsInY1 : monthsInY1 + 12;
+  const windowMonths = yearNum === 1 ? monthsInY1 : 12;
+  if (limitMonths <= 0) return 0;
+  // Months of this window that are still before the charge ends.
+  return Math.max(0, Math.min(windowMonths, limitMonths - startIdx));
+}
+
 function getBreakdownWithTaxonomy(
   item: PlannedSpend,
   yearNum: 1 | 2 | 3,
 ): PlannedSpendPLBreakdown {
-  const monthsRemaining = yearNum === 1 ? Math.max(0, 13 - item.month) : 12;
   const depreciableBase = item.amount - (item.residual_value || 0);
   const usefulLifeMonths = item.useful_life_months || 0;
   const termMonths = item.term_months || 0;
@@ -588,14 +612,24 @@ function getBreakdownWithTaxonomy(
         return { depreciation: 0, expenses: 0, total: 0 };
       }
       const monthlyDep = depreciableBase / usefulLifeMonths;
-      const dep = Math.round(monthlyDep * monthsRemaining);
+      // FML-07: capped at useful life — an asset cannot depreciate past its
+      // depreciable base.
+      const months = chargeableMonthsInYear(item.month, yearNum, usefulLifeMonths);
+      const dep = Math.round(monthlyDep * months);
       return { depreciation: dep, expenses: 0, total: dep };
     }
     case 'operating_lease': {
       const monthlyPayment =
         item.leaseMonthlyPayment ??
         (termMonths > 0 ? item.amount / termMonths : 0);
-      const exp = Math.round(monthlyPayment * 12);
+      // FML-07: Y1 charges only from the lease's start month, and payments
+      // stop at the end of the term. An unknown term keeps the previous
+      // full-year behaviour rather than silently zeroing the cost.
+      const months =
+        termMonths > 0
+          ? chargeableMonthsInYear(item.month, yearNum, termMonths)
+          : (yearNum === 1 ? Math.max(0, 13 - item.month) : 12);
+      const exp = Math.round(monthlyPayment * months);
       return { depreciation: 0, expenses: exp, total: exp };
     }
     case 'finance_lease':
@@ -603,7 +637,8 @@ function getBreakdownWithTaxonomy(
       let dep = 0;
       if (usefulLifeMonths > 0) {
         const monthlyDep = depreciableBase / usefulLifeMonths;
-        dep = Math.round(monthlyDep * monthsRemaining);
+        const depMonths = chargeableMonthsInYear(item.month, yearNum, usefulLifeMonths);
+        dep = Math.round(monthlyDep * depMonths);
       }
       let interestExp = 0;
       if (termMonths > 0 && item.interest_rate !== undefined) {
@@ -977,6 +1012,8 @@ export interface WizardActions {
   // Step 5: OpEx
   setDefaultOpExIncreasePct: (pct: number) => void;
   setOpExLines: (lines: OpExLine[]) => void;
+  /** PROC-06: restore saved values OVER the Xero-seeded list instead of replacing it. */
+  mergeSavedOpExLines: (lines: OpExLine[]) => void;
   updateOpExLine: (lineId: string, updates: Partial<OpExLine>) => void;
   addOpExLine: (line: Omit<OpExLine, 'id'>) => void;
   removeOpExLine: (lineId: string) => void;

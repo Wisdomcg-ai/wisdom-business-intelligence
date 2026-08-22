@@ -375,7 +375,14 @@ function convertOpEx(
         if (actualMonths.length > 0) {
           const totalActual = Object.values(existingActuals).reduce((s, v) => s + v, 0)
           const growthPct = (opexLine.seasonalGrowthPct || 0) / 100
-          const targetAmount = opexLine.seasonalTargetAmount || totalActual * (1 + growthPct)
+          // FML-08 (21 Aug 2026 audit): the fallback used to be
+          // `totalActual * (1 + growthPct)`, applying a year of growth in
+          // YEAR 1 — and the per-year multiplier below then applied
+          // (1+g)^(yearNum-1) on top, so stored Y2 came out at
+          // totalActual × (1+g)². The summary treats Y1 as the baseline
+          // (prior-year total, growth from Y2 onwards), so Y1 is the baseline
+          // here too and the compounding below is the only growth applied.
+          const targetAmount = opexLine.seasonalTargetAmount || totalActual
 
           // Build a 12-month proportional pattern from actuals
           const pattern: Record<number, number> = {} // month (1-12) → proportion

@@ -229,3 +229,66 @@ describe('what the wizard shows equals what gets stored', () => {
     expect(parity.matches).toBe(true)
   })
 })
+
+/**
+ * 21 Aug 2026 forecast validity audit, finding FML-07.
+ *
+ * The taxonomy math had no end: an operating lease charged 12 payments in
+ * EVERY forecast year regardless of when it started or when the term expired,
+ * and depreciation never stopped at the end of useful life. Any business with
+ * leases or financed/short-life assets (trades with vehicle and equipment
+ * leases) overstated Y2/Y3 cost in both the approved summary and the stored
+ * forecast — a 2-year lease inflated the 3-year total by 50%.
+ */
+describe('FML-07 — lease terms and useful life actually end', () => {
+  const lease = (over: Record<string, unknown> = {}) => ({
+    id: 'spend-1',
+    description: 'Ute lease',
+    amount: 48_000,
+    month: 1, // July — full first year
+    spendType: 'asset',
+    lease_type: 'operating_lease',
+    leaseMonthlyPayment: 1_000,
+    term_months: 24,
+    ...over,
+  }) as never
+
+  it('stops charging an operating lease after its term expires', () => {
+    expect(getPlannedSpendPLBreakdown(lease(), 1).expenses).toBe(12_000)
+    expect(getPlannedSpendPLBreakdown(lease(), 2).expenses).toBe(12_000)
+    // Term is 24 months — year 3 must be nothing, not another $12,000.
+    expect(getPlannedSpendPLBreakdown(lease(), 3).expenses).toBe(0)
+  })
+
+  it('charges Y1 only from the month the lease starts', () => {
+    // Starting fiscal month 10 (April) leaves 3 months in Y1.
+    const r = getPlannedSpendPLBreakdown(lease({ month: 10 }), 1)
+    expect(r.expenses).toBe(3_000)
+  })
+
+  it('keeps the whole-year behaviour when the term is unknown', () => {
+    const r = getPlannedSpendPLBreakdown(lease({ term_months: 0 }), 2)
+    expect(r.expenses).toBe(12_000)
+  })
+
+  it('stops depreciating a purchase at the end of its useful life', () => {
+    const asset = (yearNum: 1 | 2 | 3) =>
+      getPlannedSpendPLBreakdown(
+        {
+          id: 'spend-2',
+          description: 'Laptop fleet',
+          amount: 24_000,
+          month: 1,
+          spendType: 'asset',
+          lease_type: 'outright_purchase',
+          useful_life_months: 24,
+        } as never,
+        yearNum,
+      )
+    expect(asset(1).depreciation).toBe(12_000)
+    expect(asset(2).depreciation).toBe(12_000)
+    // Fully depreciated — total charged must equal the base, not exceed it.
+    expect(asset(3).depreciation).toBe(0)
+    expect(asset(1).depreciation + asset(2).depreciation + asset(3).depreciation).toBe(24_000)
+  })
+})

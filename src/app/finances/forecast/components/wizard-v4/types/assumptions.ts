@@ -212,6 +212,13 @@ export interface OpExLineAssumption {
 
 export interface OpExAssumptions {
   lines: OpExLineAssumption[];
+  /**
+   * PROC-08 (21 Aug 2026 audit): the wizard-level default % change applied to
+   * Y2/Y3. It drives subscription growth, unclassified-line growth and the
+   * per-line default, but was never persisted — so a coach who set "hold costs
+   * flat" (0%) came back to a forecast quietly back at 3%.
+   */
+  defaultIncreasePct?: number;
 }
 
 // ============================================================
