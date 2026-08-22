@@ -8,11 +8,11 @@
 // numbering and ForecastWizardV4.tsx renderStep() for the switch.
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Plus, Trash2, HelpCircle, X, Info, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, HelpCircle, X, Info, AlertTriangle, Users } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, CostBehavior, OpExLine, SUPER_RATE, calculateNewSalary, InputMode } from '../types';
 import { classifyExpense, getSuggestedValue, isTeamCost } from '../utils/opex-classifier';
 import { getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
-import { shouldExcludeFromOpEx } from '../useForecastWizard';
+import { shouldExcludeFromOpEx, deriveTeamCoverage } from '../useForecastWizard';
 
 interface Step5OpExProps {
   state: ForecastWizardState;
@@ -722,10 +722,16 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
   // excluded ~$567k of contractor/wages lines that the summary, the export
   // and the stored forecast all INCLUDE — OpEx jumped between Step 6 and
   // Step 9 with no explanation.
-  const hasTeamData = state.teamMembers.length > 0 || state.newHires.length > 0;
+  // 21 Aug 2026 audit (XVAL-2): coverage is per-KIND, not a single flag —
+  // contractor accounts only leave OpEx when Step 4 holds contractor members,
+  // and directors fees / FBT / leave never leave at all.
+  const teamCoverage = useMemo(
+    () => deriveTeamCoverage(state.teamMembers, state.newHires),
+    [state.teamMembers, state.newHires],
+  );
   const isLineTeamCost = useCallback((line: OpExLine): boolean => {
-    return shouldExcludeFromOpEx(line, hasTeamData);
-  }, [hasTeamData]);
+    return shouldExcludeFromOpEx(line, teamCoverage);
+  }, [teamCoverage]);
 
   // Split lines once: active lines for calculations, all lines for rendering
   const { activeOpexLines, excludedTeamLines } = useMemo(() => {
@@ -1229,29 +1235,57 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
     setIsRefreshingFromXero(true);
     setRefreshError(null);
     try {
-      const res = await fetch(`/api/Xero/chart-of-accounts?business_id=${encodeURIComponent(businessId)}`);
+      // 21 Aug 2026 audit (COA-04): this whole repair used to be dead code.
+      // It read `a.code` / `a.name` while the route returns `accountCode` /
+      // `accountName`, and it omitted `filter`, so the route defaulted to
+      // filter='subscription' and returned only keyword-suggested accounts.
+      // It matched nothing, then cleared the banner anyway — so the legacy
+      // draft could never be repaired and the subscription double-count guard
+      // (which keys on accountCode) stayed silently disabled.
+      const res = await fetch(
+        `/api/Xero/chart-of-accounts?business_id=${encodeURIComponent(businessId)}&filter=all`,
+      );
       if (!res.ok) {
         throw new Error(`chart-of-accounts returned ${res.status}`);
       }
       const payload = await res.json();
-      const accounts: Array<{ code?: string; accountId?: string; name?: string }> = payload?.accounts || [];
+      const accounts: Array<{ accountCode?: string; accountId?: string; accountName?: string }> =
+        payload?.accounts || [];
 
       // Re-classify opexLines — for each line with no accountCode, find a
       // matching account by accountId or by display name and copy its code.
       // Lines that already have accountCode are left untouched.
+      let matched = 0;
       const updatedOpexLines = state.opexLines.map((line) => {
         if (line.accountCode) return line;
         const match = accounts.find((a) => {
           if (line.accountId && a.accountId && a.accountId === line.accountId) return true;
-          if (a.name && line.name && a.name.trim().toLowerCase() === line.name.trim().toLowerCase()) return true;
+          if (
+            a.accountName &&
+            line.name &&
+            a.accountName.trim().toLowerCase() === line.name.trim().toLowerCase()
+          ) {
+            return true;
+          }
           return false;
         });
-        if (match?.code) return { ...line, accountCode: match.code };
+        if (match?.accountCode) {
+          matched += 1;
+          return { ...line, accountCode: match.accountCode };
+        }
         return line;
       });
 
       actions.setOpExLines(updatedOpexLines);
-      actions.setNeedsAccountCodeRefresh(false);
+      // Only dismiss the banner when the repair actually repaired something.
+      // Clearing it unconditionally is what made the failure invisible.
+      if (matched > 0) {
+        actions.setNeedsAccountCodeRefresh(false);
+      } else {
+        setRefreshError(
+          'No matching Xero accounts found for these lines — their names may have changed in Xero. Subscription double-count protection stays off until they match.',
+        );
+      }
     } catch (err) {
       console.error('[Step5OpEx T11] Xero refresh failed', err);
       setRefreshError('Could not refresh from Xero. Please try again.');
@@ -1318,6 +1352,50 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
         </div>
       )}
 
+      {/* 21 Aug 2026 audit (XVAL-2) — "moved to Team Costs" is now shown with
+          its DOLLAR value and a one-click correction, because the silent
+          version of this decision removed $435,481/yr of bill-paid contractors
+          from Dragon Roofing's live forecast and nothing on screen said so.
+          The wizard no longer guesses that contractors are covered unless
+          Step 4 holds contractor members, but the operator still gets to see
+          and overrule every account that left the OpEx total. */}
+      {excludedTeamLines.length > 0 && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
+          <div className="flex items-start gap-3">
+            <Users className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-blue-900">
+                <span className="font-medium">
+                  {formatCurrency(opexClassifiedTeamCosts)}
+                </span>{' '}
+                of expenses moved to Team Costs — Step 4 plans these instead.
+              </p>
+              <p className="text-xs text-blue-700 mt-1">
+                Check each one is really covered by your team plan. Anything you
+                pay on a bill (not through payroll) belongs here in OpEx.
+              </p>
+              <ul className="mt-2 flex flex-wrap gap-2">
+                {excludedTeamLines.map(line => (
+                  <li key={line.id}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        actions.updateOpExLine(line.id, { isTeamCostOverride: false })
+                      }
+                      className="text-xs px-2 py-1 rounded-full border border-blue-300 bg-white text-blue-800 hover:bg-blue-100 transition-colors"
+                      title="Not covered by Step 4 — keep this in Operating Expenses"
+                    >
+                      {line.name} · {formatCurrency(calculateY1Amount(line))}
+                      <span className="ml-1 text-blue-500">keep in OpEx</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Year Tabs + Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {/* Header with tabs */}
@@ -1325,8 +1403,10 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
           <div className="flex items-center gap-4">
             <h3 className="text-lg font-semibold text-gray-900">Operating Expenses</h3>
             {excludedTeamLines.length > 0 && (
-              <span className="text-xs text-gray-400 font-medium">
-                {excludedTeamLines.length} line{excludedTeamLines.length > 1 ? 's' : ''} in Team Costs
+              <span className="text-xs text-gray-500 font-medium">
+                {excludedTeamLines.length} line{excludedTeamLines.length > 1 ? 's' : ''} moved to Team Costs
+                {' · '}
+                {formatCurrency(opexClassifiedTeamCosts)}
               </span>
             )}
 

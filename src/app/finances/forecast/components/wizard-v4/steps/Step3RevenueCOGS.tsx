@@ -9,6 +9,7 @@ import { DataIntegrityBanner } from '@/components/data-integrity/DataIntegrityBa
 import type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read-service';
 import { useEditableValue } from '../hooks/useEditableValue';
 import { getEffectiveSeasonality } from '../utils/line-distribution';
+import { classifyTeamCost } from '../utils/opex-classifier';
 import { CommitNumberInput } from '../components/CommitNumberInput';
 
 /**
@@ -247,6 +248,11 @@ interface Step3RevenueCOGSProps {
 
 export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOGSProps) {
   const { revenuePattern, revenueLines, cogsLines, activeYear, goals, priorYear, currentYTD, businessId, planPeriod } = state;
+  // COA-01: does Step 4 generate wages that could also be inside a COGS line?
+  const teamHasEmployees = useMemo(
+    () => [...state.teamMembers, ...state.newHires].some(m => m.type !== 'contractor'),
+    [state.teamMembers, state.newHires],
+  );
 
   // D-44.2-03 read-path quality gate; surfaces in DataIntegrityBanner.
   // Refetches on tab focus / visibility change so a sync triggered from the
@@ -1485,6 +1491,23 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   const totalRevenue = revenueLines.reduce((sum, line) => sum + getLineTotal(line), 0);
   const totalCOGS = cogsLines.reduce((sum, line) => sum + calculateCOGSAmount(line), 0);
   const grossProfit = totalRevenue - totalCOGS;
+
+  // 21 Aug 2026 audit (COA-01) — payroll sitting inside Cost of Sales.
+  //
+  // Trades, construction and manufacturing charts commonly book direct labour
+  // to a COGS account. Step 4 imports every Xero PAYROLL employee and the
+  // generator materialises their wages + super as Operating Expenses, so those
+  // same dollars would be planned twice: once inside this COGS line and again
+  // as generated team cost. Nothing detects it — the summary and the stored
+  // P&L agree with each other, so parity stays green while the bottom line is
+  // wrong by the entire direct-wage bill.
+  //
+  // The wizard does NOT auto-remove these: silently deleting a cost is the
+  // failure that lost Dragon Roofing $435k. It surfaces them instead.
+  const cogsPayrollOverlap = useMemo(() => {
+    if (!teamHasEmployees) return [];
+    return cogsLines.filter(line => classifyTeamCost(line.name) === 'payroll');
+  }, [cogsLines, teamHasEmployees]);
   const grossProfitPct = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
   // Current COGS line percentages (of total COGS).
@@ -2053,6 +2076,31 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
         perTenantQuality={perTenantQuality}
         lastSyncAt={perTenantQuality[0]?.last_sync_at ?? null}
       />
+
+      {/* COA-01 (21 Aug 2026 audit) — wages inside Cost of Sales.
+          Common in trades/construction/manufacturing charts. Step 4 plans the
+          same people's pay as Operating Expenses, so without this check the
+          labour is budgeted twice and the summary agrees with the stored P&L
+          the whole way — parity stays green while net profit is wrong by the
+          entire direct-wage bill. Surfaced, never auto-removed. */}
+      {cogsPayrollOverlap.length > 0 && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 flex items-start gap-3">
+          <Info className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-amber-900">
+              These Cost of Sales accounts look like wages:{' '}
+              <span className="font-medium">
+                {cogsPayrollOverlap.map(l => l.name).join(', ')}
+              </span>
+            </p>
+            <p className="text-xs text-amber-800 mt-1">
+              Step 4 already plans your team&apos;s pay separately. If these are the
+              same people, they are being counted twice — remove them here, or
+              leave Step 4 empty and plan all labour from this screen.
+            </p>
+          </div>
+        </div>
+      )}
       {/* Compact context bar */}
       {(activeYear === 1 && completedMonthsCount > 0 || hasImportedData) && (
         <div className="bg-gray-50 border border-gray-200 rounded-xl px-5 py-3 flex items-center justify-between text-sm">

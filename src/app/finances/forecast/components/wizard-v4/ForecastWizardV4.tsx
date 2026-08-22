@@ -1211,6 +1211,15 @@ export function ForecastWizardV4({
               }
 
               // Restore OpEx lines with saved settings (cost behavior, amounts, etc.)
+              // PROC-08: restore the wizard-level default % change before the
+              // lines, so any line without its own rate inherits the operator's
+              // setting rather than snapping back to 3%.
+              if (typeof savedAssumptions.opex?.defaultIncreasePct === 'number') {
+                actionsRef.current.setDefaultOpExIncreasePct(
+                  savedAssumptions.opex.defaultIncreasePct,
+                );
+              }
+
               if (savedAssumptions.opex?.lines?.length > 0) {
                 const restoredOpExLines = savedAssumptions.opex.lines.map((line: {
                   accountId: string;
@@ -1226,6 +1235,18 @@ export function ForecastWizardV4({
                   expectedMonths?: string[];
                   isSubscription?: boolean;
                   notes?: string;
+                  // 21 Aug 2026 audit — fields the export now carries.
+                  accountCode?: string;
+                  isTeamCostOverride?: boolean;
+                  y2Override?: number;
+                  y3Override?: number;
+                  y2PercentOverride?: number;
+                  y3PercentOverride?: number;
+                  y2SeasonalTargetAmount?: number;
+                  y3SeasonalTargetAmount?: number;
+                  isOneTime?: boolean;
+                  oneTimeYear?: number;
+                  startYear?: number;
                 }) => ({
                   id: line.accountId,
                   name: line.accountName,
@@ -1241,11 +1262,29 @@ export function ForecastWizardV4({
                   expectedMonths: line.expectedMonths,
                   isSubscription: line.isSubscription,
                   notes: line.notes,
+                  // PROC-06: the account code re-arms the subscription
+                  // double-count guard; the override preserves the operator's
+                  // explicit include/exclude decision. FML-01: the Y2/Y3
+                  // tuning and lifecycle flags now survive a reopen.
+                  accountCode: line.accountCode,
+                  isTeamCostOverride: line.isTeamCostOverride,
+                  y2Override: line.y2Override,
+                  y3Override: line.y3Override,
+                  y2PercentOverride: line.y2PercentOverride,
+                  y3PercentOverride: line.y3PercentOverride,
+                  y2SeasonalTargetAmount: line.y2SeasonalTargetAmount,
+                  y3SeasonalTargetAmount: line.y3SeasonalTargetAmount,
+                  isOneTime: line.isOneTime,
+                  oneTimeYear: line.oneTimeYear,
+                  startYear: line.startYear,
                 }));
 
                 if (restoredOpExLines.length > 0) {
                   console.log('[ForecastWizardV4] Restoring saved OpEx forecast:', restoredOpExLines.length, 'lines');
-                  actionsRef.current.setOpExLines(restoredOpExLines);
+                  // PROC-06: MERGE over the Xero-seeded list. Replacing it
+                  // dropped every team/subscription-covered account from Step 5
+                  // for the rest of the session.
+                  actionsRef.current.mergeSavedOpExLines(restoredOpExLines);
                 }
               }
 
@@ -1365,6 +1404,7 @@ export function ForecastWizardV4({
                 teamMemberId?: string;
                 revenueLineId: string;
                 percentOfRevenue: number;
+                timing?: 'monthly' | 'quarterly' | 'annual';
               }) => {
                 const memberId = commission.teamMemberId || commission.employeeId;
                 if (!memberId) return;
@@ -1376,7 +1416,13 @@ export function ForecastWizardV4({
                   teamMemberId: memberId,
                   revenueLineId: commission.revenueLineId,
                   percentOfRevenue: commission.percentOfRevenue,
-                  timing: 'monthly',
+                  // PROC-07 (21 Aug 2026 audit): timing was hardcoded here, so
+                  // a saved quarterly or annual commission silently became
+                  // monthly on the first reopen — and the next Generate stored
+                  // the wrong cash rhythm. The converter genuinely branches on
+                  // this (quarterly/annual accrue and pay in the period's last
+                  // month), and buildAssumptions round-trips it, so honour it.
+                  timing: commission.timing ?? 'monthly',
                 });
               });
             }

@@ -224,7 +224,55 @@ async function postHandler(request: Request) {
       // at the last Generate — the live row then described a forecast that had
       // never been published. Only a final Generate moves the headline and the
       // stored P&L together.
-      const updatePayload = applyDraftPublishGuard(forecastData, isDraft)
+      // 21 Aug 2026 audit (PROC-04): a FINAL generate now writes only the
+      // draft-safe subset here, and publishes the headline (wizard_state,
+      // goals, is_completed) after materialisation succeeds — see the
+      // publish step below. Previously the headline went first, so a failing
+      // materialise RPC returned 500 having already advanced the ACTIVE
+      // forecast's approved summary and goals while forecast_pl_lines stayed
+      // at the previous Generate: exactly the headline/lines divergence the
+      // draft-publish guard exists to prevent, reintroduced on the error path.
+      // PROC-09 (21 Aug 2026 audit): the row was matched on id ALONE, with a
+      // payload whose business_id came from the POSTED businessId. Nothing
+      // asserted the two agreed, so on a coach/admin session (RLS-permitted
+      // across clients) any client-side state bug pairing business A's id with
+      // business B's forecast id would silently rewrite B's forecast — and
+      // reassign it to A. Ownership is now verified before the write.
+      const { data: targetRow, error: targetError } = await supabase
+        .from('financial_forecasts')
+        .select('id, business_id')
+        .eq('id', forecastId)
+        .maybeSingle()
+
+      if (targetError) {
+        Sentry.captureException(targetError, {
+          tags: { route: 'forecast-wizard-v4/generate' },
+          extra: { context: '[wizard-v4/generate] Target forecast lookup failed', forecastId },
+        } as any)
+        return NextResponse.json(
+          { error: 'Failed to load forecast', details: targetError.message },
+          { status: 500 }
+        )
+      }
+      if (!targetRow) {
+        return NextResponse.json({ error: 'Forecast not found' }, { status: 404 })
+      }
+      if (targetRow.business_id !== profileId) {
+        Sentry.captureMessage('[wizard-v4/generate] forecastId does not belong to businessId', {
+          level: 'error' as any,
+          tags: {
+            route: 'forecast-wizard-v4/generate',
+            invariant: 'forecast_business_mismatch',
+          },
+          extra: { forecastId, postedBusinessId: businessId, resolvedProfileId: profileId },
+        } as any)
+        return NextResponse.json(
+          { error: 'Forecast does not belong to this business' },
+          { status: 403 }
+        )
+      }
+
+      const updatePayload = applyDraftPublishGuard(forecastData, true)
 
       const { data: updated, error: updateError } = await supabase
         .from('financial_forecasts')
@@ -354,24 +402,50 @@ async function postHandler(request: Request) {
       // a coach publishing a forecast that is probably fine — and until history
       // shows this is quiet, a hard failure here would be the more likely
       // client-facing incident. Promote to blocking only once it has proven itself.
+      //
+      // 21 Aug 2026 audit: the check now covers EVERY forecast year, not just
+      // Year 1. Y1-only scope is what let a whole class of Y2/Y3 defects run
+      // silently — operator overrides that never materialised, monthly grids
+      // flattened to quarter-averages, three different seasonal formulas — all
+      // invisible because the only thing watching looked at Year 1.
       try {
-        const parity = checkSummaryParity(
+        const yearSummaries: (typeof summary.year1)[] = [
           summary?.year1,
-          generatedLines,
-          generateFiscalMonthKeys(fiscalYear, DEFAULT_YEAR_START_MONTH),
-        )
-        if (!parity.matches) {
-          Sentry.captureMessage('[wizard-v4/generate] Approved summary does not match stored P&L', {
-            level: 'warning' as any,
-            tags: { route: 'forecast-wizard-v4/generate', invariant: 'summary-parity' },
-            extra: {
-              forecastId: resultForecastId,
-              businessId,
-              fiscalYear,
-              divergences: parity.divergences,
-              monthsCovered: parity.monthsCovered,
-            },
-          } as any)
+          summary?.year2,
+          summary?.year3,
+        ]
+        for (let yearNum = 1; yearNum <= Math.min(forecastDuration || 1, 3); yearNum++) {
+          const approvedYear = yearSummaries[yearNum - 1]
+          // A year the operator never filled in has no approved figures to
+          // compare against; skip rather than report a phantom divergence.
+          if (!approvedYear) continue
+
+          const parity = checkSummaryParity(
+            approvedYear,
+            generatedLines,
+            generateFiscalMonthKeys(fiscalYear + yearNum - 1, DEFAULT_YEAR_START_MONTH),
+          )
+          if (!parity.matches) {
+            Sentry.captureMessage(
+              `[wizard-v4/generate] Approved summary does not match stored P&L (year ${yearNum})`,
+              {
+                level: 'warning' as any,
+                tags: {
+                  route: 'forecast-wizard-v4/generate',
+                  invariant: 'summary-parity',
+                  forecastYear: String(yearNum),
+                },
+                extra: {
+                  forecastId: resultForecastId,
+                  businessId,
+                  fiscalYear,
+                  yearNum,
+                  divergences: parity.divergences,
+                  monthsCovered: parity.monthsCovered,
+                },
+              } as any,
+            )
+          }
         }
       } catch (parityErr) {
         // Never let the check itself break a publish.
@@ -379,6 +453,38 @@ async function postHandler(request: Request) {
           tags: { route: 'forecast-wizard-v4/generate', invariant: 'summary-parity' },
           extra: { context: 'parity check threw', forecastId: resultForecastId },
         } as any)
+      }
+    }
+
+    // PROC-04 (21 Aug 2026 audit) — publish the HEADLINE now that the lines
+    // are stored. On the update path the first write above deliberately held
+    // back wizard_state, the three goals and is_completed so that a failed
+    // materialise leaves the previously published forecast fully intact
+    // (old headline + old lines) rather than a new headline over old lines.
+    // The create path already writes the whole row inside its locked RPC and
+    // is not exposed to this: a failure there leaves a brand-new row nothing
+    // has read yet.
+    if (!isDraft && forecastId && !createNew) {
+      const { error: publishError } = await supabase
+        .from('financial_forecasts')
+        .update(forecastData)
+        .eq('id', resultForecastId)
+
+      if (publishError) {
+        Sentry.captureException(publishError, {
+          tags: {
+            route: 'forecast-wizard-v4/generate',
+            invariant: 'forecast_headline_publish_failed',
+          },
+          extra: {
+            context: '[wizard-v4/generate] Headline publish failed after materialize',
+            forecastId: resultForecastId,
+          },
+        } as any)
+        return NextResponse.json(
+          { error: 'Failed to publish forecast', details: publishError.message },
+          { status: 500 }
+        )
       }
     }
 
