@@ -1,5 +1,25 @@
 # Forecast Builder Validity Audit — 21 Aug 2026
 
+> **STATUS 23 Aug 2026: all four waves IMPLEMENTED in PR #390.**
+> Code fixes for every P0/P1 finding below have shipped, with regression tests
+> pinning the real client cases. TWO OPERATOR ACTIONS REMAIN, both requiring
+> Matt (they touch production data and neither can be done from a code deploy):
+>   1. **Apply the migration** `20260823060000_retire_null_code_zombie_forecast_lines.sql`
+>      to prod (MCP `apply_migration`, then reconcile the ledger version) —
+>      this is what actually removes Digital Bond's $274k of zombie lines.
+>      A direct prod write was attempted and correctly BLOCKED by the
+>      permission classifier, which is why it ships as a reviewable migration.
+>   2. **Regenerate Dragon's forecast** (restores the $435k contractor line
+>      through the fixed code path) and **retire IICT's abandoned $20k shell**
+>      (`financial_forecasts.id = 88199866-030d-4c01-8626-0ab1a4617cc1`,
+>      set `is_active = false`). Envisage FY2026 has a NULL-code wages line
+>      with NO SYS twin on a CLOSED year — deliberately left alone, since
+>      duplication is not proven there.
+>
+> Deferred by judgment (P2, needs a product decision rather than a fix):
+> COA-07 coverage-scaled seeding for <12-month ledgers, non-July FY support,
+> and the remaining P2 tail listed at the end of this document.
+
 Trigger: Matt — "one more deep dive into the forecast builder... my concerns are
 mainly that this is not adaptable across different businesses and different
 chart of accounts." Assessment only; NO fixes applied yet.
