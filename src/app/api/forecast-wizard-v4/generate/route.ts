@@ -232,6 +232,46 @@ async function postHandler(request: Request) {
       // forecast's approved summary and goals while forecast_pl_lines stayed
       // at the previous Generate: exactly the headline/lines divergence the
       // draft-publish guard exists to prevent, reintroduced on the error path.
+      // PROC-09 (21 Aug 2026 audit): the row was matched on id ALONE, with a
+      // payload whose business_id came from the POSTED businessId. Nothing
+      // asserted the two agreed, so on a coach/admin session (RLS-permitted
+      // across clients) any client-side state bug pairing business A's id with
+      // business B's forecast id would silently rewrite B's forecast — and
+      // reassign it to A. Ownership is now verified before the write.
+      const { data: targetRow, error: targetError } = await supabase
+        .from('financial_forecasts')
+        .select('id, business_id')
+        .eq('id', forecastId)
+        .maybeSingle()
+
+      if (targetError) {
+        Sentry.captureException(targetError, {
+          tags: { route: 'forecast-wizard-v4/generate' },
+          extra: { context: '[wizard-v4/generate] Target forecast lookup failed', forecastId },
+        } as any)
+        return NextResponse.json(
+          { error: 'Failed to load forecast', details: targetError.message },
+          { status: 500 }
+        )
+      }
+      if (!targetRow) {
+        return NextResponse.json({ error: 'Forecast not found' }, { status: 404 })
+      }
+      if (targetRow.business_id !== profileId) {
+        Sentry.captureMessage('[wizard-v4/generate] forecastId does not belong to businessId', {
+          level: 'error' as any,
+          tags: {
+            route: 'forecast-wizard-v4/generate',
+            invariant: 'forecast_business_mismatch',
+          },
+          extra: { forecastId, postedBusinessId: businessId, resolvedProfileId: profileId },
+        } as any)
+        return NextResponse.json(
+          { error: 'Forecast does not belong to this business' },
+          { status: 403 }
+        )
+      }
+
       const updatePayload = applyDraftPublishGuard(forecastData, true)
 
       const { data: updated, error: updateError } = await supabase
