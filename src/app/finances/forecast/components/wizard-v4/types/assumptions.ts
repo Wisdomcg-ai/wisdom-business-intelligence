@@ -71,6 +71,11 @@ export interface COGSLineAssumption {
   year3Monthly?: Record<string, number>; // Monthly data for Y3
   year2Quarterly?: { q1: number; q2: number; q3: number; q4: number }; // Legacy compat
   year3Quarterly?: { q1: number; q2: number; q3: number; q4: number }; // Legacy compat
+  // FML-06 (21 Aug 2026 audit): Step 3's Y2/Y3 margin trend selector. The
+  // summary has always applied ±2 percentage points for these; without the
+  // field on the wire the stored forecast ignored the operator's margin plan
+  // and the setting evaporated on reopen.
+  y2y3Trend?: 'improves' | 'increases' | 'same';
 }
 
 export interface COGSAssumptions {
@@ -178,6 +183,31 @@ export interface OpExLineAssumption {
   // Subscription flag
   isSubscription?: boolean;
   notes?: string;
+
+  // ── 21 Aug 2026 audit additions ──────────────────────────────────────────
+  // PROC-06: the Xero account code. Without it the restore round-trip returned
+  // code-less lines, which silently disarmed the subscription double-count
+  // guard (it keys on accountCode) for the rest of the session.
+  accountCode?: string;
+  // PROC-06: the operator's explicit include/exclude decision. Auto-detection
+  // re-runs on restore without this, so a deliberate "keep this in OpEx" was
+  // forgotten every time the wizard was reopened.
+  isTeamCostOverride?: boolean;
+
+  // FML-01 / PROC-01: per-year Y2/Y3 hand-tuning. The on-screen summary and
+  // Step 8 Review have always honored these, but they were never exported —
+  // so the STORED forecast kept the growth-formula value and the tuning
+  // vanished on the next reopen, with the Y1-only parity check blind to it.
+  y2Override?: number;          // explicit Y2 annual amount
+  y3Override?: number;          // explicit Y3 annual amount
+  y2PercentOverride?: number;   // explicit Y2 % of revenue (variable lines)
+  y3PercentOverride?: number;   // explicit Y3 % of revenue (variable lines)
+  y2SeasonalTargetAmount?: number;
+  y3SeasonalTargetAmount?: number;
+  // Lifecycle flags the summary honors; exported so the materializer agrees.
+  isOneTime?: boolean;
+  oneTimeYear?: number;
+  startYear?: number;
 }
 
 export interface OpExAssumptions {

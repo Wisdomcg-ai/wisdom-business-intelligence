@@ -236,23 +236,21 @@ export async function parsePLFile(file: File): Promise<ParseResult> {
 
       if (!accountName) continue;
 
-      // Check if this is a section header
       const lowerName = accountName.toLowerCase();
-      if (lowerName.includes('revenue') || lowerName.includes('income')) {
-        currentSection = 'revenue';
-        continue;
-      } else if (lowerName.includes('cost of') || lowerName.includes('direct cost')) {
-        currentSection = 'cogs';
-        continue;
-      } else if (lowerName.includes('operating') || lowerName.includes('expense')) {
-        currentSection = 'opex';
-        continue;
-      } else if (lowerName.includes('total') || lowerName.includes('gross profit') || lowerName.includes('net profit')) {
-        // Skip total/summary rows
-        continue;
-      }
 
-      // Get total for this row
+      // Get total for this row FIRST.
+      //
+      // 21 Aug 2026 audit (COA-05): section detection used to run before this
+      // and consumed any row whose NAME contained 'revenue', 'income',
+      // 'cost of', 'operating', 'expense' or 'total' — regardless of whether
+      // the row carried amounts. Australian charts are full of accounts named
+      // exactly that: "Interest Income", "Rental Income", "Motor Vehicle
+      // Expenses", "Entertainment Expenses". Every one of them was silently
+      // dropped from an imported P&L, understating totals with no warning, on
+      // the wizard's ONLY ingestion path for businesses not on Xero.
+      //
+      // A real section header carries no amounts; a real account does. So a
+      // row is only treated as a header when it has no value.
       let total = 0;
       if (totalCol !== -1) {
         total = parseNumber(row[totalCol]);
@@ -260,6 +258,32 @@ export async function parsePLFile(file: File): Promise<ParseResult> {
         // Sum all numeric columns
         for (let j = accountCol + 1; j < row.length; j++) {
           total += parseNumber(row[j]);
+        }
+      }
+      const carriesAmount = Math.abs(total) >= 0.01;
+
+      // Summary rows ("Total …", "Gross Profit", "Net Profit") ARE skipped
+      // whether or not they carry amounts — they restate other rows, so
+      // keeping them would double-count.
+      if (
+        lowerName.startsWith('total') ||
+        lowerName.includes('gross profit') ||
+        lowerName.includes('net profit')
+      ) {
+        continue;
+      }
+
+      // Section headers: name matches AND the row is empty.
+      if (!carriesAmount) {
+        if (lowerName.includes('revenue') || lowerName.includes('income')) {
+          currentSection = 'revenue';
+          continue;
+        } else if (lowerName.includes('cost of') || lowerName.includes('direct cost')) {
+          currentSection = 'cogs';
+          continue;
+        } else if (lowerName.includes('operating') || lowerName.includes('expense')) {
+          currentSection = 'opex';
+          continue;
         }
       }
 
@@ -296,10 +320,14 @@ export async function parsePLFile(file: File): Promise<ParseResult> {
           opexLines.push({ name: accountName, total: Math.abs(total), monthlyAvg: Math.abs(total) / 12 });
           break;
         default:
-          // Default to opex for unknown
-          if (total < 0 || lowerName.includes('expense')) {
-            opexLines.push({ name: accountName, total: Math.abs(total), monthlyAvg: Math.abs(total) / 12 });
-          }
+          // COA-05: this used to require `total < 0 || name includes
+          // 'expense'` — and any 'expense'-named row had already been eaten by
+          // the header check above, so a flat export with no section headers
+          // silently lost every positive-signed account the name-prefix
+          // classifier didn't recognise. An unclassified account is far more
+          // likely to be an operating expense than to be nothing at all;
+          // dropping it understates cost, which is the dangerous direction.
+          opexLines.push({ name: accountName, total: Math.abs(total), monthlyAvg: Math.abs(total) / 12 });
       }
     }
 

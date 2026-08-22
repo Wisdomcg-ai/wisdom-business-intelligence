@@ -37,7 +37,7 @@ import {
   getRevenueLineYearTotal,
 } from './types';
 import { toast } from 'sonner';
-import { isTeamCost } from './utils/opex-classifier';
+import { isCoveredByTeamStep, type TeamCoverage } from './utils/opex-classifier';
 import { getEffectiveSeasonality } from './utils/line-distribution';
 import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 import type { PLLineItem } from '@/app/finances/forecast/types';
@@ -80,13 +80,41 @@ const WIZARD_VERSION = 11;
 // An explicit operator override (Step 5 include/exclude toggle) always wins.
 // Exported so BudgetTracker/ExcelExport share the same rule instead of
 // drifting inline copies.
+// 21 Aug 2026 audit (XVAL-2): `hasTeamData` was too coarse. Step 4's Xero
+// payroll import produces EMPLOYEES only, so "any team data" wrongly licensed
+// the removal of contractor accounts paid through bills — Dragon Roofing's
+// live FY2027 forecast lost $435,481/yr of "Virtual Contractors" that way, and
+// directors fees / FBT / leave provisions were exposed to the same deletion.
+// Exclusion now asks what Step 4 ACTUALLY generates (see isCoveredByTeamStep).
+// Callers pass a TeamCoverage; a bare boolean is still accepted so older call
+// sites keep compiling, and it means "employees only" — the conservative read.
 export function shouldExcludeFromOpEx(
   line: { name: string; isTeamCostOverride?: boolean },
-  hasTeamData: boolean,
+  coverage: TeamCoverage | boolean,
 ): boolean {
   if (line.isTeamCostOverride !== undefined) return line.isTeamCostOverride;
-  if (!hasTeamData) return false;
-  return isTeamCost(line.name);
+  const resolved: TeamCoverage =
+    typeof coverage === 'boolean'
+      ? { employees: coverage, contractors: false }
+      : coverage;
+  if (!resolved.employees && !resolved.contractors) return false;
+  return isCoveredByTeamStep(line.name, resolved);
+}
+
+/**
+ * What Step 4 currently generates, derived from the live member lists.
+ * `type` is the EmploymentType on TeamMember/NewHire; a member with no type
+ * counts as an employee, which is what the Xero payroll import produces.
+ */
+export function deriveTeamCoverage(
+  teamMembers: { type?: string }[],
+  newHires: { type?: string }[],
+): TeamCoverage {
+  const all = [...teamMembers, ...newHires];
+  return {
+    employees: all.some(m => m.type !== 'contractor'),
+    contractors: all.some(m => m.type === 'contractor'),
+  };
 }
 
 // Remap month keys from prior year to forecast year by CALENDAR MONTH (not
@@ -200,6 +228,14 @@ const getStorageKey = (businessId: string, fiscalYear: number) =>
 // Exported for testing — Phase 57 (T03, B3) added a non-trivial v10 → v11
 // soft-migration block that warrants direct unit-test coverage. The hook
 // itself remains the production entry point.
+/**
+ * How long a localStorage draft may outlive its last save before the server
+ * copy is preferred instead. 24h keeps the cache doing its real job (page
+ * refreshes, navigating away and back, finishing a session tomorrow morning)
+ * while ending the "week-old draft on another machine wins" failure.
+ */
+export const MAX_LOCAL_DRAFT_AGE_MS = 24 * 60 * 60 * 1000;
+
 export const loadStateFromStorage = (
   businessId: string,
   fiscalYear: number,
@@ -235,6 +271,36 @@ export const loadStateFromStorage = (
           ')',
         );
         return null;
+      }
+
+      // PROC-03 (21 Aug 2026 audit) — draft FRESHNESS guard.
+      //
+      // The local draft used to win over server state unconditionally, with no
+      // way to tell how old it was. Opening a forecast on a second device whose
+      // browser still held last week's draft restored the week-old numbers and
+      // then wrote them back over the newer server draft on the first edit —
+      // silent work loss behind a green "Draft saved".
+      //
+      // A local draft older than MAX_LOCAL_DRAFT_AGE_MS is discarded so the
+      // server copy (which every autosave also writes) rehydrates instead.
+      // Nothing durable is lost: the full init reloads the saved assumptions.
+      // Same-session and same-day work — the reason this cache exists — is
+      // untouched.
+      // An UNSTAMPED draft predates this guard. Those are allowed through:
+      // discarding them would throw away every in-flight draft on the deploy
+      // that ships this, and they re-stamp themselves on the next save. Only a
+      // draft that carries a stamp AND has gone stale is discarded.
+      const draftSavedAt: unknown = parsed?.draftSavedAt;
+      if (typeof draftSavedAt === 'string') {
+        const draftAgeMs = Date.now() - Date.parse(draftSavedAt);
+        if (!Number.isFinite(draftAgeMs) || draftAgeMs > MAX_LOCAL_DRAFT_AGE_MS) {
+          console.warn(
+            '[ForecastWizard] Discarding stale local draft (savedAt=',
+            draftSavedAt,
+            ') — reloading the server copy, which is authoritative.',
+          );
+          return null;
+        }
       }
 
       // Validate it has the expected structure and matching version
@@ -416,7 +482,14 @@ const saveStateToStorage = (state: ForecastWizardState) => {
   if (typeof window === 'undefined') return;
   try {
     const key = getStorageKey(state.businessId, state.fiscalYearStart);
-    localStorage.setItem(key, JSON.stringify({ ...state, wizardVersion: WIZARD_VERSION }));
+    // PROC-03 (21 Aug 2026 audit): stamp every local draft. Without a
+    // timestamp there was no way to tell a fresh draft from a week-old one, so
+    // a stale copy on a second device silently shadowed newer server work and
+    // then overwrote it on the first edit — under a green "Draft saved".
+    localStorage.setItem(
+      key,
+      JSON.stringify({ ...state, wizardVersion: WIZARD_VERSION, draftSavedAt: new Date().toISOString() }),
+    );
   } catch (err) {
     // H13: a quota error here silently stopped ALL local draft persistence —
     // every later mount restored an increasingly stale draft with nothing on
@@ -1712,7 +1785,15 @@ export function useForecastWizard(
         if (departure && departure.endMonth < bonusKey) return sum;
         return sum + b.amount;
       }, 0);
-      teamCosts += bonusTotal;
+      // FML-04 (21 Aug 2026 audit): bonuses attract superannuation. The
+      // materializer has always charged it (convertTeam pools bonuses into the
+      // employee wage base before applying superPct) while this summary did
+      // not — so the approved on-screen number was cheaper than the forecast
+      // that got stored, and "summary ≡ stored P&L" failed on every business
+      // using bonuses. The materializer is the ATO-correct side: bonuses are
+      // ordinary time earnings. Charging it here raises the displayed cost to
+      // the truthful figure instead of storing an untruthful one.
+      teamCosts += bonusTotal * (1 + SUPER_RATE);
 
       // Commissions - based on percentage of linked revenue line
       // P0-13: when per-line Y2/Y3 monthly is empty but the year revenue total
@@ -1733,11 +1814,17 @@ export function useForecastWizard(
         // The dual-unit guard from #126 (P56 P1a Team-Commission-001)
         // misclassified them as 0-1 decimals and inflated 100×. Trust the
         // input format — all wizard inputs are stored as 0-100 percentages.
-        teamCosts += lineRevenue * ((commission.percentOfRevenue || 0) / 100);
+        // FML-04: commissions are ordinary time earnings too, and the
+        // materializer charges super on them — see the bonus note above.
+        teamCosts += lineRevenue * ((commission.percentOfRevenue || 0) / 100) * (1 + SUPER_RATE);
       }
 
-      // OpEx - handle all cost behaviors including seasonal
-      const defaultIncrease = state.defaultOpExIncreasePct || 3;
+      // OpEx - handle all cost behaviors including seasonal.
+      // FML-05 (21 Aug 2026 audit): `|| 3` silently rewrote a deliberate 0%
+      // ("hold costs flat") to 3%, while Step 5's display and the materializer
+      // both honored the 0 — three different Y2/Y3 answers for the same plan.
+      // Nullish coalescing keeps 0 meaning zero.
+      const defaultIncrease = state.defaultOpExIncreasePct ?? 3;
 
       // Phase 57 T07 (B2) — Subscriptions feed the rollup.
       //
@@ -1785,13 +1872,13 @@ export function useForecastWizard(
         }
       }
 
-      const hasTeamData = state.teamMembers.length > 0 || state.newHires.length > 0;
+      const teamCoverage = deriveTeamCoverage(state.teamMembers, state.newHires);
       const opex = state.opexLines.reduce((sum, line) => {
         // Skip one-time expenses that don't belong to this year
         if (line.isOneTime && line.oneTimeYear && line.oneTimeYear !== yearNum) return sum;
         // Skip expenses that haven't started yet
         if (line.startYear && line.startYear > yearNum) return sum;
-        if (shouldExcludeFromOpEx(line, hasTeamData)) return sum;
+        if (shouldExcludeFromOpEx(line, teamCoverage)) return sum;
 
         // Phase 57 T07: skip lines covered by Step 5 Subscriptions to prevent
         // double-counting the same Xero account in both buckets. ONLY
@@ -1817,7 +1904,8 @@ export function useForecastWizard(
           case 'fixed': {
             // Monthly amount × 12, with annual increase applied
             const baseAmount = (line.monthlyAmount || 0) * 12;
-            const increaseFactor = 1 + (line.annualIncreasePct || defaultIncrease) / 100;
+            // FML-05: `??` so a line explicitly set to 0% stays at 0%.
+            const increaseFactor = 1 + (line.annualIncreasePct ?? defaultIncrease) / 100;
             lineAmount = baseAmount * Math.pow(increaseFactor, yearNum - 1);
             break;
           }
@@ -2029,6 +2117,8 @@ export function useForecastWizard(
         year3Monthly: hasY3 ? line.year3Monthly : undefined,
         year2Quarterly: hasY2 ? monthlyToQuarterly(line.year2Monthly) : undefined,
         year3Quarterly: hasY3 ? monthlyToQuarterly(line.year3Monthly) : undefined,
+        // FML-06: the Y2/Y3 margin trend the summary already applies.
+        y2y3Trend: line.y2y3Trend,
         notes: line.notes,
       };
     });
@@ -2070,7 +2160,7 @@ export function useForecastWizard(
     // PR-A (M6): lines covered by an active subscription vendor are excluded
     // here too — the converter emits the vendor-budget subscriptions line
     // instead, mirroring the summary's coveredAccountCodes skip.
-    const exportHasTeamData = state.teamMembers.length > 0 || state.newHires.length > 0;
+    const exportTeamCoverage = deriveTeamCoverage(state.teamMembers, state.newHires);
     const exportCoveredCodes = new Set<string>();
     for (const v of state.subscriptions.filter(s => s.isActive)) {
       for (const code of v.accountCodes ?? []) {
@@ -2078,7 +2168,7 @@ export function useForecastWizard(
       }
     }
     const opexLineAssumptions: OpExLineAssumption[] = state.opexLines
-      .filter(line => !shouldExcludeFromOpEx(line, exportHasTeamData))
+      .filter(line => !shouldExcludeFromOpEx(line, exportTeamCoverage))
       .filter(line => !(line.accountCode && exportCoveredCodes.has(line.accountCode)))
       .map(line => ({
       accountId: line.accountId || line.id,
@@ -2094,6 +2184,21 @@ export function useForecastWizard(
       expectedMonths: line.costBehavior === 'adhoc' ? line.expectedMonths : undefined,
       isSubscription: line.isSubscription,
       notes: line.notes,
+      // 21 Aug 2026 audit — everything below used to be dropped on export,
+      // so the stored forecast and the reopened wizard both lost it.
+      // PROC-06: identity + the operator's explicit include/exclude decision.
+      accountCode: line.accountCode,
+      isTeamCostOverride: line.isTeamCostOverride,
+      // FML-01/PROC-01: Y2/Y3 hand-tuning the summary already honors.
+      y2Override: line.y2Override,
+      y3Override: line.y3Override,
+      y2PercentOverride: line.y2PercentOverride,
+      y3PercentOverride: line.y3PercentOverride,
+      y2SeasonalTargetAmount: line.y2SeasonalTargetAmount,
+      y3SeasonalTargetAmount: line.y3SeasonalTargetAmount,
+      isOneTime: line.isOneTime,
+      oneTimeYear: line.oneTimeYear,
+      startYear: line.startYear,
     }));
 
     // Build CapEx assumptions

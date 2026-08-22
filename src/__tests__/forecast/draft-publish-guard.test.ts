@@ -75,8 +75,30 @@ describe('the generate route applies the guard', () => {
       'src/app/api/forecast-wizard-v4/generate/route.ts',
       'utf8',
     )
-    expect(src).toContain('applyDraftPublishGuard(forecastData, isDraft)')
+    // 21 Aug 2026 audit (PROC-04): the first UPDATE is now ALWAYS the
+    // draft-safe subset — stronger than the previous `isDraft` argument,
+    // which let a final Generate advance the headline before the lines were
+    // stored. The headline is published separately, after materialisation.
+    expect(src).toContain('applyDraftPublishGuard(forecastData, true)')
     // …and that the guarded payload — not the raw one — is what gets written.
     expect(src).toMatch(/\.update\(updatePayload\)/)
+  })
+
+  it('publishes the headline only AFTER materialisation, never before', async () => {
+    const fs = await import('node:fs/promises')
+    const src = await fs.readFile(
+      'src/app/api/forecast-wizard-v4/generate/route.ts',
+      'utf8',
+    )
+    const materialiseAt = src.indexOf("save_assumptions_and_materialize")
+    const publishAt = src.indexOf('forecast_headline_publish_failed')
+    const guardedUpdateAt = src.indexOf('applyDraftPublishGuard(forecastData, true)')
+
+    expect(materialiseAt).toBeGreaterThan(-1)
+    expect(publishAt).toBeGreaterThan(-1)
+    // Order in the file mirrors order of execution in this linear handler:
+    // guarded work-only update → materialise → publish headline.
+    expect(guardedUpdateAt).toBeLessThan(materialiseAt)
+    expect(publishAt).toBeGreaterThan(materialiseAt)
   })
 })

@@ -148,16 +148,32 @@ export function quarterlyToMonthly(
 }
 
 // Convert monthly data to quarterly (for legacy compatibility)
-export function monthlyToQuarterly(monthly?: MonthlyData): QuarterlyData {
-  if (!monthly) return { q1: 0, q2: 0, q3: 0, q4: 0 };
-  const values = Object.values(monthly);
-  if (values.length < 12) return { q1: 0, q2: 0, q3: 0, q4: 0 };
-  return {
-    q1: (values[0] || 0) + (values[1] || 0) + (values[2] || 0),
-    q2: (values[3] || 0) + (values[4] || 0) + (values[5] || 0),
-    q3: (values[6] || 0) + (values[7] || 0) + (values[8] || 0),
-    q4: (values[9] || 0) + (values[10] || 0) + (values[11] || 0),
-  };
+/**
+ * Sum a monthly map into fiscal quarters.
+ *
+ * 21 Aug 2026 audit (FML-02): this used to read Object.values POSITIONALLY and
+ * return {0,0,0,0} for any map with fewer than 12 entries. Both were unsafe —
+ * a partially filled Y2/Y3 grid exported four zeros (the stored year became $0
+ * while the screen showed the typed months), and filling a grid out of
+ * chronological order scrambled months into the wrong quarters. Quarters are
+ * now derived from each key's CALENDAR MONTH against the fiscal year start, so
+ * partial and out-of-order maps both land correctly.
+ */
+export function monthlyToQuarterly(
+  monthly?: MonthlyData,
+  yearStartMonth: number = 7,
+): QuarterlyData {
+  const out: QuarterlyData = { q1: 0, q2: 0, q3: 0, q4: 0 };
+  if (!monthly) return out;
+  for (const [key, value] of Object.entries(monthly)) {
+    const month = Number(key.split('-')[1]);
+    if (!Number.isFinite(month) || month < 1 || month > 12) continue;
+    const fiscalIndex = (month - yearStartMonth + 12) % 12;
+    const quarter = Math.floor(fiscalIndex / 3);
+    const bucket = (['q1', 'q2', 'q3', 'q4'] as const)[quarter];
+    out[bucket] += value || 0;
+  }
+  return out;
 }
 
 // Get total from a RevenueLine for a given year (handles both monthly and legacy quarterly)

@@ -181,24 +181,35 @@ function convertRevenue(
       }
     }
 
-    // Year 2 — expand quarterly
-    if (forecastDuration >= 2 && revLine.year2Quarterly) {
-      const y2Start = fyStartYearForYear(fiscalYear, 2)
-      const expanded = expandQuarterlyToMonthly(revLine.year2Quarterly, y2Start)
-      for (const [mk, val] of Object.entries(expanded)) {
-        if (forecastMonthKeys.includes(mk)) {
-          newForecastMonths[mk] = round2(val)
+    // Years 2 and 3 — 21 Aug 2026 audit (FML-02 / FML-03 / PROC-02).
+    //
+    // These used to read ONLY the quarterly maps, which caused two defects:
+    //   FML-02 a PARTIALLY filled monthly grid exported a quarterly map of all
+    //          zeros (monthlyToQuarterly bailed below 12 keys), so the stored
+    //          year was $0 while the screen counted the typed months;
+    //   FML-03 even a COMPLETE grid was collapsed to 4 quarter totals and
+    //          re-expanded as quarter÷3, flattening every seasonal business's
+    //          Y2/Y3 budget — the monthly report then varied actuals against
+    //          months nobody planned.
+    // The monthly grid is now authoritative per key, with the quarterly map
+    // used only to fill months the operator never typed (and for legacy
+    // payloads that carry no monthly grid at all).
+    for (const yearNum of [2, 3] as const) {
+      if (forecastDuration < yearNum) continue
+      const monthly = yearNum === 2 ? revLine.year2Monthly : revLine.year3Monthly
+      const quarterly = yearNum === 2 ? revLine.year2Quarterly : revLine.year3Quarterly
+      const yearStart = fyStartYearForYear(fiscalYear, yearNum)
+
+      if (quarterly) {
+        const expanded = expandQuarterlyToMonthly(quarterly, yearStart)
+        for (const [mk, val] of Object.entries(expanded)) {
+          if (forecastMonthKeys.includes(mk)) newForecastMonths[mk] = round2(val)
         }
       }
-    }
-
-    // Year 3 — expand quarterly
-    if (forecastDuration >= 3 && revLine.year3Quarterly) {
-      const y3Start = fyStartYearForYear(fiscalYear, 3)
-      const expanded = expandQuarterlyToMonthly(revLine.year3Quarterly, y3Start)
-      for (const [mk, val] of Object.entries(expanded)) {
-        if (forecastMonthKeys.includes(mk)) {
-          newForecastMonths[mk] = round2(val)
+      // Explicit months win over the quarterly fill.
+      if (monthly) {
+        for (const [mk, val] of Object.entries(monthly)) {
+          if (forecastMonthKeys.includes(mk)) newForecastMonths[mk] = round2(val)
         }
       }
     }
@@ -254,29 +265,47 @@ function convertCOGS(
         explicitMonths[mk] = round2(val)
       }
     }
-    if (forecastDuration >= 2 && cogsLine.year2Quarterly) {
-      const expanded = expandQuarterlyToMonthly(
-        cogsLine.year2Quarterly,
-        fyStartYearForYear(fiscalYear, 2),
-      )
-      for (const [mk, val] of Object.entries(expanded)) explicitMonths[mk] = round2(val)
-    }
-    if (forecastDuration >= 3 && cogsLine.year3Quarterly) {
-      const expanded = expandQuarterlyToMonthly(
-        cogsLine.year3Quarterly,
-        fyStartYearForYear(fiscalYear, 3),
-      )
-      for (const [mk, val] of Object.entries(expanded)) explicitMonths[mk] = round2(val)
+    // 21 Aug 2026 audit (FML-03): the monthly grid is authoritative for Y2/Y3
+    // too — the quarterly map only fills months the operator never typed.
+    // Reading quarterly alone flattened every seasonal COGS line to
+    // quarter÷3, the same defect #379 fixed for Y1.
+    for (const yearNum of [2, 3] as const) {
+      if (forecastDuration < yearNum) continue
+      const quarterly = yearNum === 2 ? cogsLine.year2Quarterly : cogsLine.year3Quarterly
+      const monthly = yearNum === 2 ? cogsLine.year2Monthly : cogsLine.year3Monthly
+      if (quarterly) {
+        const expanded = expandQuarterlyToMonthly(
+          quarterly,
+          fyStartYearForYear(fiscalYear, yearNum),
+        )
+        for (const [mk, val] of Object.entries(expanded)) explicitMonths[mk] = round2(val)
+      }
+      if (monthly) {
+        for (const [mk, val] of Object.entries(monthly)) explicitMonths[mk] = round2(val)
+      }
     }
 
     for (const mk of forecastMonthKeys) {
+      // FML-06: Step 3's per-line Y2/Y3 margin trend ("improves"/"increases",
+      // ±2 percentage points) moved the summary's COGS but was never exported
+      // or materialized — the designed way to model "GP improves 2pp next
+      // year" simply did not reach the stored forecast. The summary applies it
+      // to BOTH the explicit-grid and the formula path, so this does too.
+      const yearNum = getFYYear(mk, fiscalYear)
+      const trendAdj =
+        yearNum === 1 ? 0
+        : cogsLine.y2y3Trend === 'improves' ? -2
+        : cogsLine.y2y3Trend === 'increases' ? 2
+        : 0
+
       if (explicitMonths[mk] !== undefined) {
-        newForecastMonths[mk] = explicitMonths[mk]
+        newForecastMonths[mk] = round2(explicitMonths[mk] * (1 + trendAdj / 100))
       } else if (cogsLine.costBehavior === 'variable' && cogsLine.percentOfRevenue) {
         const rev = revenueByMonth[mk] || 0
-        newForecastMonths[mk] = round2(rev * (cogsLine.percentOfRevenue / 100))
+        const pct = (cogsLine.percentOfRevenue + trendAdj) / 100
+        newForecastMonths[mk] = round2(rev * pct)
       } else if (cogsLine.costBehavior === 'fixed' && cogsLine.monthlyAmount) {
-        newForecastMonths[mk] = round2(cogsLine.monthlyAmount)
+        newForecastMonths[mk] = round2(cogsLine.monthlyAmount * (1 + trendAdj / 100))
       }
     }
 
@@ -421,10 +450,24 @@ function convertOpEx(
       }
     }
 
+    // 21 Aug 2026 audit (FML-01 / PROC-01): the operator's per-year Y2/Y3
+    // tuning and lifecycle flags are applied LAST, over whatever the cost
+    // behavior produced — exactly as the wizard summary does.
+    applyOpExYearOverrides(
+      opexLine,
+      newForecastMonths,
+      forecastMonthKeys,
+      fiscalYear,
+      revenueByMonth,
+    )
+
     lines.push({
       ...(existing ? { id: existing.id } : {}),
       account_name: existing?.account_name || opexLine.accountName,
-      account_code: existing?.account_code || opexLine.accountId,
+      // PROC-06: prefer the real Xero account code when the wizard sends one.
+      // accountId is a synthetic 'opex-N' index id, which is why stored lines
+      // used to carry codes that no budget-vs-actual join could match.
+      account_code: existing?.account_code || opexLine.accountCode || opexLine.accountId,
       category: 'Operating Expenses',
       subcategory: existing?.subcategory,
       sort_order: existing?.sort_order,
@@ -436,6 +479,107 @@ function convertOpEx(
   }
 
   return lines
+}
+
+/**
+ * Apply the operator's explicit per-year decisions on top of the formula
+ * result, mirroring `calculateYearSummary` in useForecastWizard.
+ *
+ * Precedence per year, highest first (same order as the summary):
+ *   1. lifecycle — a one-time expense charged in a different year, or a line
+ *      that hasn't started yet, contributes ZERO to this year;
+ *   2. an explicit annual override (y2Override / y3Override);
+ *   3. a variable line's per-year % of revenue override;
+ *   4. a seasonal line's per-year target amount.
+ *
+ * Annual overrides are applied by SCALING the year's months to the target so
+ * the operator's seasonal shape survives; a year whose formula produced
+ * nothing is spread evenly instead (nothing to preserve).
+ *
+ * Mutates `months` in place.
+ */
+function applyOpExYearOverrides(
+  opexLine: OpExLineAssumption,
+  months: Record<string, number>,
+  forecastMonthKeys: string[],
+  fiscalYear: number,
+  revenueByMonth: Record<string, number>,
+): void {
+  const monthsByYear = new Map<number, string[]>()
+  for (const mk of forecastMonthKeys) {
+    const y = getFYYear(mk, fiscalYear)
+    const arr = monthsByYear.get(y) ?? []
+    arr.push(mk)
+    monthsByYear.set(y, arr)
+  }
+
+  const scaleYearTo = (yearMonths: string[], target: number) => {
+    const current = yearMonths.reduce((s, mk) => s + (months[mk] || 0), 0)
+    if (current !== 0) {
+      const factor = target / current
+      for (const mk of yearMonths) months[mk] = round2((months[mk] || 0) * factor)
+    } else {
+      const perMonth = round2(target / yearMonths.length)
+      for (const mk of yearMonths) months[mk] = perMonth
+    }
+    // Absorb per-month rounding residue in the final month so the year sums to
+    // the operator's number EXACTLY — same discipline the revenue path uses.
+    // Without it, twelve round2 calls leave cents adrift from the approved
+    // annual figure and the parity check drifts with them.
+    const achieved = yearMonths.reduce((s, mk) => s + (months[mk] || 0), 0)
+    const residue = round2(target - achieved)
+    if (residue !== 0) {
+      const last = yearMonths[yearMonths.length - 1]
+      months[last] = round2((months[last] || 0) + residue)
+    }
+  }
+
+  for (const [yearNum, yearMonths] of monthsByYear) {
+    if (yearMonths.length === 0) continue
+
+    // 1. lifecycle flags — the summary skips the whole line for these years.
+    if (opexLine.isOneTime && opexLine.oneTimeYear && opexLine.oneTimeYear !== yearNum) {
+      for (const mk of yearMonths) months[mk] = 0
+      continue
+    }
+    if (opexLine.startYear && opexLine.startYear > yearNum) {
+      for (const mk of yearMonths) months[mk] = 0
+      continue
+    }
+    if (yearNum < 2) continue
+
+    // 2. explicit annual override.
+    const annualOverride =
+      yearNum === 2 ? opexLine.y2Override
+      : yearNum === 3 ? opexLine.y3Override
+      : undefined
+    if (typeof annualOverride === 'number') {
+      scaleYearTo(yearMonths, annualOverride)
+      continue
+    }
+
+    // 3. variable % of revenue override — recompute from revenue, since the
+    //    percentage is a rate, not a total.
+    const pctOverride =
+      yearNum === 2 ? opexLine.y2PercentOverride
+      : yearNum === 3 ? opexLine.y3PercentOverride
+      : undefined
+    if (opexLine.costBehavior === 'variable' && typeof pctOverride === 'number') {
+      for (const mk of yearMonths) {
+        months[mk] = round2((revenueByMonth[mk] || 0) * (pctOverride / 100))
+      }
+      continue
+    }
+
+    // 4. seasonal per-year target.
+    const seasonalTarget =
+      yearNum === 2 ? opexLine.y2SeasonalTargetAmount
+      : yearNum === 3 ? opexLine.y3SeasonalTargetAmount
+      : undefined
+    if (opexLine.costBehavior === 'seasonal' && typeof seasonalTarget === 'number') {
+      scaleYearTo(yearMonths, seasonalTarget)
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -979,8 +1123,29 @@ export function convertAssumptionsToPLLines(ctx: ConvertContext): PLLine[] {
       .map(c => String(c).trim())
       .filter(Boolean),
   )
+  // 21 Aug 2026 audit (XVAL-1) — code-less twins of generated lines.
+  //
+  // Before PR #350 the converter emitted team/depreciation lines with a NULL
+  // account_code. NULLs never match in the (forecast_id, account_code) upsert
+  // key, so those rows could not be updated OR replaced by the SYS-coded lines
+  // that superseded them: they simply sat alongside forever. Digital Bond's
+  // live FY2027 forecast carried $244,999.92 of wages + $29,400 of super that
+  // the wizard never planned, on top of the $175,735 it did — every consumer
+  // summing forecast_pl_lines read the doubled figure.
+  //
+  // A non-manual, code-less line whose category+name the current payload also
+  // generates is by definition superseded, so it is retired here.
+  const generatedKeys = new Set(
+    generatedLines.map(
+      gl => `${(gl.category || '').toLowerCase()}|${gl.account_name.trim().toLowerCase()}`,
+    ),
+  )
   const isRetired = (line: PLLine): boolean => {
     if (line.is_manual) return false
+    if (!line.account_code) {
+      const key = `${(line.category || '').toLowerCase()}|${line.account_name.trim().toLowerCase()}`
+      if (generatedKeys.has(key)) return true
+    }
     // Retired-name matching applies ONLY to rows this converter itself
     // generated — historically with a NULL account_code, now with a SYS-*
     // code. Real Xero accounts genuinely named "Payroll Tax" / "WorkCover

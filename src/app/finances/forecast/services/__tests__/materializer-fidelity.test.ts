@@ -409,3 +409,220 @@ describe('composition-audit follow-ups', () => {
     expect(new Set(codes).size).toBe(codes.length)
   })
 })
+
+// ---------------------------------------------------------------------------
+// 21 Aug 2026 forecast validity audit — FML-01 / PROC-01
+//
+// The operator can hand-tune Y2/Y3 per OpEx line (an explicit annual amount, a
+// per-year % of revenue, a seasonal target) and mark lifecycle years. Every one
+// of those was honored by the on-screen summary and Step 8 Review but was never
+// exported and never materialized, so the STORED forecast — the thing the
+// monthly report varies against — kept the growth-formula value. The Y1-only
+// parity check could not see the divergence.
+// ---------------------------------------------------------------------------
+
+const yearTotal = (
+  line: ReturnType<typeof convertAssumptionsToPLLines>[number],
+  startYear: number,
+) => {
+  let sum = 0
+  for (const [mk, v] of Object.entries(line.forecast_months)) {
+    const [y, m] = mk.split('-').map(Number)
+    const fyStart = m >= 7 ? y : y - 1
+    if (fyStart === startYear) sum += v
+  }
+  return Math.round(sum * 100) / 100
+}
+
+describe('FML-01 — Y2/Y3 operator overrides reach the stored forecast', () => {
+  const fixedLine = (extra: Record<string, unknown>) =>
+    baseAssumptions({
+      opex: {
+        lines: [{
+          accountId: 'opex-0',
+          accountName: 'Rent',
+          priorYearTotal: 120_000,
+          costBehavior: 'fixed',
+          monthlyAmount: 10_000,
+          annualIncreasePct: 3,
+          ...extra,
+        }],
+      },
+    } as never)
+
+  it('an explicit Y2 annual override replaces the growth formula', () => {
+    // Formula would give 120,000 × 1.03 = 123,600 in Y2.
+    const out = convertAssumptionsToPLLines(ctx(fixedLine({ y2Override: 180_000 }), 3))
+    const rent = lineByName(out, 'Rent')!
+    expect(yearTotal(rent, 2026)).toBe(120_000)   // Y1 untouched
+    expect(yearTotal(rent, 2027)).toBe(180_000)   // Y2 = the operator's number
+    expect(yearTotal(rent, 2028)).toBeCloseTo(127_308, 0) // Y3 still formula
+  })
+
+  it('an explicit Y3 override applies to Y3 only', () => {
+    const out = convertAssumptionsToPLLines(ctx(fixedLine({ y3Override: 200_000 }), 3))
+    const rent = lineByName(out, 'Rent')!
+    expect(yearTotal(rent, 2027)).toBeCloseTo(123_600, 0)
+    expect(yearTotal(rent, 2028)).toBe(200_000)
+  })
+
+  it('scaling preserves the within-year shape rather than flattening it', () => {
+    // A seasonal-ish fixed line: give Y2 an override and confirm the ratio
+    // between two months is unchanged after scaling.
+    const out = convertAssumptionsToPLLines(ctx(fixedLine({ y2Override: 240_000 }), 3))
+    const rent = lineByName(out, 'Rent')!
+    // Flat input stays flat, and the months sum to the override exactly.
+    expect(rent.forecast_months['2027-07']).toBe(20_000)
+    expect(yearTotal(rent, 2027)).toBe(240_000)
+  })
+
+  it('a variable line honors the per-year % of revenue override', () => {
+    const a = baseAssumptions({
+      revenue: {
+        lines: [{
+          accountId: 'revenue-0',
+          accountName: 'Sales',
+          priorYearTotal: 1_200_000,
+          growthType: 'percentage',
+          year1Monthly: flatMonthly(1_200_000),
+          // Y2 revenue must exist for a % override to have anything to bite on.
+          year2Quarterly: { q1: 450_000, q2: 450_000, q3: 450_000, q4: 450_000 },
+        }],
+        seasonalityPattern: Array(12).fill(100 / 12),
+        seasonalitySource: 'manual',
+      },
+      opex: {
+        lines: [{
+          accountId: 'opex-1',
+          accountName: 'Marketing',
+          priorYearTotal: 60_000,
+          costBehavior: 'variable',
+          percentOfRevenue: 5,
+          y2PercentOverride: 8,
+        }],
+      },
+    } as never)
+    const out = convertAssumptionsToPLLines(ctx(a, 3))
+    const mkt = lineByName(out, 'Marketing')!
+    // Y1 revenue is 1.2M flat (100k/mo) → 5% = 5,000/mo.
+    expect(mkt.forecast_months['2026-07']).toBe(5_000)
+    // Y2 revenue is 1.8M (450k/quarter → 150k/mo) → the 8% override = 12,000.
+    expect(mkt.forecast_months['2027-07']).toBe(12_000)
+    // Y3 has no override and no Y3 revenue defined → falls back to the base %.
+    expect(yearTotal(mkt, 2027)).toBe(144_000)
+  })
+
+  it('a one-time expense is charged in its year and zeroed in the others', () => {
+    const out = convertAssumptionsToPLLines(
+      ctx(fixedLine({ isOneTime: true, oneTimeYear: 2 }), 3),
+    )
+    const rent = lineByName(out, 'Rent')!
+    expect(yearTotal(rent, 2026)).toBe(0)
+    expect(yearTotal(rent, 2027)).toBeCloseTo(123_600, 0)
+    expect(yearTotal(rent, 2028)).toBe(0)
+  })
+
+  it('a line that starts in Y2 contributes nothing to Y1', () => {
+    const out = convertAssumptionsToPLLines(ctx(fixedLine({ startYear: 2 }), 3))
+    const rent = lineByName(out, 'Rent')!
+    expect(yearTotal(rent, 2026)).toBe(0)
+    expect(yearTotal(rent, 2027)).toBeCloseTo(123_600, 0)
+  })
+
+  it('PROC-06: the real Xero account code is stored, not the synthetic opex-N id', () => {
+    const out = convertAssumptionsToPLLines(ctx(fixedLine({ accountCode: '6200' }), 1))
+    expect(lineByName(out, 'Rent')!.account_code).toBe('6200')
+  })
+})
+
+describe('XVAL-1 — code-less twins of generated lines are retired, not carried forward', () => {
+  const teamOnly = () => baseAssumptions({
+    team: {
+      existingTeam: [{
+        employeeId: 'emp-1',
+        name: 'Alice',
+        role: 'Manager',
+        employmentType: 'full-time',
+        currentSalary: 100_000,
+        year1Salary: 100_000,
+        salaryIncreasePct: 0,
+        includeInForecast: true,
+        isFromXero: false,
+      }],
+      plannedHires: [],
+      superannuationPct: 12,
+      workCoverPct: 1.5,
+      payrollTaxPct: 4.85,
+    },
+  } as never)
+
+  it('THE DIGITAL BOND CASE: a NULL-code wages row does not survive alongside SYS-TEAM-WAGES', () => {
+    // The pre-#350 shape: a code-less generated line already stored.
+    const zombie = {
+      id: 'zombie-1',
+      account_name: 'Wages & Salaries',
+      account_code: null,
+      category: 'Operating Expenses',
+      actual_months: {},
+      forecast_months: Object.fromEntries(monthKeys().map(mk => [mk, 20_416.66])),
+      is_from_xero: false,
+      is_manual: false,
+    } as never
+
+    const out = convertAssumptionsToPLLines({
+      ...ctx(teamOnly(), 1),
+      existingLines: [zombie],
+    })
+
+    const wageLines = out.filter(l => l.account_name === 'Wages & Salaries')
+    expect(wageLines).toHaveLength(1)
+    expect(wageLines[0].account_code).toBe(SYS_CODES.wages)
+    // The planned figure only — not planned + zombie.
+    const total = Object.values(wageLines[0].forecast_months).reduce((a, b) => a + b, 0)
+    expect(Math.round(total)).toBe(100_000)
+  })
+
+  // NOTE on manual lines: the retirement rule deliberately never targets
+  // is_manual rows. A manual row that shares its category+name with a
+  // GENERATED line is still collapsed by the long-standing name dedupe below
+  // it (keeping both would double-count the same wages) — that behaviour is
+  // pre-existing and unchanged here. What this test pins is that the new
+  // code-less retirement rule does not reach manual rows.
+  it('a MANUAL code-less line is preserved — the retirement rule never targets it', () => {
+    const manual = {
+      id: 'manual-1',
+      account_name: 'Owner Drawings (manual)',
+      account_code: null,
+      category: 'Operating Expenses',
+      actual_months: {},
+      forecast_months: { '2026-07': 5_000 },
+      is_from_xero: false,
+      is_manual: true,
+    } as never
+
+    const out = convertAssumptionsToPLLines({
+      ...ctx(teamOnly(), 1),
+      existingLines: [manual],
+    })
+    expect(out.some(l => l.account_name === 'Owner Drawings (manual)' && l.is_manual)).toBe(true)
+  })
+
+  it('an unrelated code-less line is untouched — only twins of generated lines retire', () => {
+    const other = {
+      id: 'other-1',
+      account_name: 'Some Legacy Account',
+      account_code: null,
+      category: 'Operating Expenses',
+      actual_months: {},
+      forecast_months: { '2026-07': 1_234 },
+      is_from_xero: false,
+      is_manual: false,
+    } as never
+
+    const out = convertAssumptionsToPLLines({
+      ...ctx(teamOnly(), 1),
+      existingLines: [other],
+    })
+    expect(out.some(l => l.account_name === 'Some Legacy Account')).toBe(true)
+  })
+})
