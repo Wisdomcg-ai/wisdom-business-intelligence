@@ -141,7 +141,7 @@ export interface MonthlyComposite {
   coverage: CoverageRecord
   /** Earliest computed_at across forecast_pl_lines rows (oldest derivation). */
   computed_at: string | null
-  /** financial_forecasts.updated_at — the assumptions freshness timestamp. */
+  /** financial_forecasts.assumptions_published_at (legacy fallback: updated_at) — when the assumptions behind the stored lines were published. */
   assumptions_updated_at: string | null
   /**
    * D-44.2-03 — read-path quality gate. Worst-of-tenants rollup across
@@ -205,7 +205,7 @@ export class ForecastReadService {
     //    partial index guarantees active-forecast uniqueness at write time).
     const { data: forecast, error: fError } = await this.supabase
       .from('financial_forecasts')
-      .select('id, business_id, fiscal_year, is_active, is_completed, updated_at')
+      .select('id, business_id, fiscal_year, is_active, is_completed, updated_at, assumptions_published_at')
       .eq('id', forecastId)
       .maybeSingle()
 
@@ -253,7 +253,16 @@ export class ForecastReadService {
         : this.fetchAllXeroRows(ids.all).then((raw) => this.aggregateXeroRows(raw)),
     ])
 
-    const assumptionsUpdatedAt: string | null = (forecast.updated_at as string) ?? null
+    // D-18 freshness is about when the ASSUMPTIONS BEHIND THE LINES were
+    // published — not when the row was last touched. updated_at moves on every
+    // draft autosave and every cashflow save, so keying the invariant to it made
+    // it fire on perfectly healthy forecasts (prod 23 Aug: Envisage 30.6h
+    // "stale", Armstrong 7 days, both with byte-identical assumptions) and told
+    // the operator to run recompute — which re-materialises from that same
+    // column and was the destructive path. Fall back to updated_at only for
+    // legacy rows materialised before assumptions_published_at existed.
+    const assumptionsUpdatedAt: string | null =
+      (forecast.assumptions_published_at as string) ?? (forecast.updated_at as string) ?? null
 
     const forecastRowsRaw: RawForecastRow[] = (plLinesRes.data ?? []) as RawForecastRow[]
 

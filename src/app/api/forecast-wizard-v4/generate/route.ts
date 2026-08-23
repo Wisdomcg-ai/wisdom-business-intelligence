@@ -189,9 +189,14 @@ async function postHandler(request: Request) {
     // isDraft suppresses line derivation — an active, zero-line forecast
     // that bypasses the EMPTY_FORECAST gate. Drafts never activate.
     if (isDraft && (!forecastId || createNew)) {
+      // The INSERT path was unguarded: a brand-new draft row carried a
+      // populated `assumptions`, i.e. a published-looking record for a forecast
+      // nobody has generated. Route it through the same guard as the UPDATE so
+      // the work lands in draft_assumptions (23 Aug 2026).
+      const draftInsertPayload = applyDraftPublishGuard(forecastData, true)
       const { data: draftRow, error: draftError } = await supabase
         .from('financial_forecasts')
-        .insert({ ...forecastData, forecast_type: 'forecast', is_active: false })
+        .insert({ ...draftInsertPayload, forecast_type: 'forecast', is_active: false })
         .select('id')
         .single()
 
@@ -467,7 +472,10 @@ async function postHandler(request: Request) {
     if (!isDraft && forecastId && !createNew) {
       const { error: publishError } = await supabase
         .from('financial_forecasts')
-        .update(forecastData)
+        // draft_assumptions is cleared on publish: the work it held is now the
+        // published record, so leaving it would make the wizard reopen on a
+        // stale copy of what was just generated.
+        .update({ ...forecastData, draft_assumptions: null })
         .eq('id', resultForecastId)
 
       if (publishError) {
