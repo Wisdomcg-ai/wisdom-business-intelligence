@@ -39,6 +39,20 @@ interface ForecastWizardV4Props {
   onClose: () => void;
 }
 
+/**
+ * Which assumptions object should the wizard OPEN on?
+ *
+ * `assumptions` is now publish-only (what produced the stored P&L) and
+ * `draft_assumptions` holds work in progress, so an operator who was mid-edit
+ * must get their draft back — otherwise separating the two columns would look
+ * like losing their work. NULL draft (the normal case, and always so right
+ * after a Generate) falls through to the published record.
+ */
+function pickWizardAssumptions(forecast: { assumptions?: unknown; draft_assumptions?: unknown } | null | undefined) {
+  if (!forecast) return null
+  return (forecast.draft_assumptions ?? forecast.assumptions ?? null) as any
+}
+
 export function ForecastWizardV4({
   businessId,
   businessName,
@@ -287,7 +301,7 @@ export function ForecastWizardV4({
             // Fallback: restore from saved forecast assumptions
             if (!teamLoaded && forecastRes?.ok) {
               const forecastData = await forecastRes.json();
-              const savedAssumptions = forecastData?.forecast?.assumptions;
+              const savedAssumptions = pickWizardAssumptions(forecastData?.forecast);
               if (savedAssumptions?.team?.existingTeam?.length > 0) {
                 console.log('[ForecastWizardV4] Refreshing team from saved assumptions:', savedAssumptions.team.existingTeam.length, 'members');
                 for (const emp of savedAssumptions.team.existingTeam) {
@@ -473,7 +487,7 @@ export function ForecastWizardV4({
             const forecastRes = await bootFetch(`/api/forecast/${resolvedId}`);
             if (forecastRes.ok) {
               const forecastData = await forecastRes.json();
-              const savedAssumptions = forecastData?.forecast?.assumptions || null;
+              const savedAssumptions = pickWizardAssumptions(forecastData?.forecast);
               if (savedAssumptions) {
                 // ─── PRIOR-YEAR MONTHLY RESTORE (fix/step2-byMonth-priorYear-restore) ──
                 // Hotfix: read category-level priorYear monthly figures from the
@@ -749,7 +763,7 @@ export function ForecastWizardV4({
         const [goalsData, plData, teamData, profileData, existingForecastData] = await Promise.all(dataPromises);
 
         // Extract saved assumptions from existing forecast
-        const savedAssumptions = existingForecastData?.forecast?.assumptions || existingForecastData?.assumptions || null;
+        const savedAssumptions = pickWizardAssumptions(existingForecastData?.forecast) ?? (existingForecastData?.draft_assumptions ?? existingForecastData?.assumptions ?? null);
 
         // Check lock status — prevent edits on locked forecasts
         const loadedForecast = existingForecastData?.forecast || existingForecastData || null;

@@ -38,8 +38,14 @@ describe('draft saves', () => {
     }
   })
 
-  it('still saves the operator\'s work', () => {
-    expect(guarded.assumptions).toEqual({ revenue: { lines: [] } })
+  it('still saves the operator\'s work — now in draft_assumptions', () => {
+    // 23 Aug 2026: the work is still persisted, but it no longer lands on the
+    // PUBLISHED `assumptions` column. That column is the record of what produced
+    // forecast_pl_lines, and recompute / seed-from-prior / the next Generate all
+    // rebuild the stored P&L from it — so a draft writing there could quietly
+    // replace an approved plan with half-finished state.
+    expect(guarded.draft_assumptions).toEqual({ revenue: { lines: [] } })
+    expect(guarded.assumptions).toBeUndefined()
     expect(guarded.name).toBe('FY2027 Forecast')
     expect(guarded.forecast_duration).toBe(1)
     expect(guarded.updated_at).toBe('2026-08-14T00:00:00Z')
