@@ -2,7 +2,10 @@ name: Supabase Preview Branch
 
 # Sanity-check PRs before Supabase auto-creates a preview branch.
 # Each job below is a separate required status check on `main`:
-#   - migration-check: migration filenames are well-formed
+#   - migration-check:    migration filenames are well-formed
+#   - migration-security: no new anon/PUBLIC grants, definer search_path,
+#                         RLS on new public tables (locks in the Aug-2026 DB
+#                         security work; scans only PR-changed migrations)
 #   - lint:            next lint passes (TEST-02)
 #   - typecheck:       tsc --noEmit passes (TEST-03)
 #   - vitest:          vitest run passes (TEST-04)
@@ -55,6 +58,24 @@ jobs:
             exit 1
           fi
           echo "All migration filenames are valid."
+
+  migration-security:
+    name: migration security
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the checker can diff PR-changed migrations against
+          # origin/main (append-only migrations => only new files are scanned).
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Ensure base ref is available
+        run: git fetch --quiet origin main
+      - name: Scan changed migrations for security anti-patterns
+        run: node scripts/ci/check-migration-security.mjs
 
   lint:
     name: lint

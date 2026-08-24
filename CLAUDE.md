@@ -61,7 +61,13 @@ deploy rules. Never operate on that directory from a session here.
 - All API routes use the Phase-47 `withSchema`/`withQuerySchema` Zod wrappers.
 - SECURITY DEFINER functions: revoke PUBLIC/anon/authenticated, grant only
   what's needed — and re-issue revokes after every DROP+CREATE (DROP discards
-  the ACL).
+  the ACL). A SECURITY DEFINER function that bypasses RLS to write must guard
+  internally (`auth_can_manage_business`, with a `service_role` bypass keyed on
+  `auth.role()` since `auth.uid()` is null under service_role).
+- CI gate `scripts/ci/check-migration-security.mjs` (job "migration security")
+  scans PR-changed migrations: no new anon/PUBLIC grants, SECURITY DEFINER must
+  `SET search_path`, new public tables must enable RLS. Escape via
+  `-- security-allow: anon-grant|no-rls <reason>`. See scripts/ci/README.md.
 - Every swallowed failure on a WRITE gets a Sentry capture with an
   `invariant:` tag — no silent `.catch(() => {})` on writes.
 - Secrets never pass through Claude's context: tokens go into Vercel/Supabase
