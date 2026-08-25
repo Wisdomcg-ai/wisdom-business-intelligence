@@ -95,6 +95,29 @@ async function postHandler(request: Request) {
       }
     }
 
+    // AUTHZ-SR-01 (24 Aug 2026): `profileId` is a client-supplied WRITE KEY —
+    // every financial/strategic write below keys business_id on it via the
+    // service-role client (RLS bypassed). The auth gate above only proved
+    // access to `businessId`, NOT to an arbitrary `profileId`. Without this
+    // check, a logged-in client could pass their own businessId (to pass the
+    // gate) plus a VICTIM's business_profiles.id and overwrite the victim's
+    // goals + strategic plan. So: a client-supplied profileId is honoured only
+    // when it demonstrably belongs to the authorized business; otherwise reject.
+    if (profileId && profileId !== businessId) {
+      const { data: ownedProfile } = await admin
+        .from('business_profiles')
+        .select('id')
+        .eq('id', profileId)
+        .eq('business_id', businessId)
+        .maybeSingle()
+      if (!ownedProfile) {
+        return NextResponse.json(
+          { error: 'Access denied: profileId does not belong to the authorized business' },
+          { status: 403 },
+        )
+      }
+    }
+
     // Determine the correct IDs — ownership ALWAYS resolves to the client
     // who owns the business, never the caller. If the business has no owner_id
     // we refuse the write instead of silently attributing to the coach.
