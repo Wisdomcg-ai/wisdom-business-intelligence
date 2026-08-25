@@ -74,11 +74,19 @@ async function postHandler(request: Request) {
       return NextResponse.json({ error: 'Permission denied' }, { status: 403 })
     }
 
-    // Get the member's user_id before deleting
+    // Get the member's user_id before deleting.
+    // AUTHZ-SR-02 (24 Aug 2026): scope the lookup to the AUTHORIZED business.
+    // canRemove above only proved access to `businessId`; `memberId` is a
+    // standalone business_users PK unrelated to it. Without `.eq('business_id',
+    // businessId)` a logged-in owner/admin of their own business could pass a
+    // memberId from ANOTHER tenant and evict that member — and with
+    // deleteCompletely, destroy their entire account. Scoping makes a
+    // cross-tenant memberId resolve to "not found" (fails closed).
     const { data: member } = await adminSupabase
       .from('business_users')
       .select('user_id')
       .eq('id', memberId)
+      .eq('business_id', businessId)
       .single()
 
     if (!member) {
@@ -92,11 +100,12 @@ async function postHandler(request: Request) {
       return NextResponse.json({ error: 'Cannot remove the business owner' }, { status: 400 })
     }
 
-    // Remove from business_users
+    // Remove from business_users (scoped to the authorized business — see AUTHZ-SR-02 above)
     const { error: removeError } = await adminSupabase
       .from('business_users')
       .delete()
       .eq('id', memberId)
+      .eq('business_id', businessId)
 
     if (removeError) {
       Sentry.captureException(removeError, { tags: { route: 'team/remove-member' }, extra: { context: "[Remove Member] Error removing from business_users" } } as any)
