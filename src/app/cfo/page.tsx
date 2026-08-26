@@ -21,8 +21,12 @@ interface ClientSummary {
   gross_profit_pct: number | null
   net_profit: number
   net_profit_budget: number
-  cash_balance: number
-  unreconciled_count: number
+  /** FLEET-02: null = unknown (no bank rows). NOT $0. */
+  cash_balance: number | null
+  /** null = no reconciliation check on record. NOT "0 unreconciled". */
+  unreconciled_count: number | null
+  cash_as_at?: string | null
+  cash_missing_fx?: { currency_pair: string; period: string }[]
   report_status: ReportStatus
   badge: StatusBadge
   manual_status_override: string | null
@@ -475,11 +479,14 @@ function ClientRow({
             <Metric label="Rev" value={fmtPct(client.revenue_vs_budget_pct)} />
             <Metric label="GP" value={fmtPct(client.gross_profit_pct)} />
             <Metric label="Net" value={fmtCurrency(client.net_profit)} emphasise={client.net_profit < 0} />
-            <Metric label="Cash" value={fmtCurrency(client.cash_balance)} />
+            <Metric
+              label="Cash"
+              value={client.cash_balance === null ? '—' : fmtCurrency(client.cash_balance)}
+            />
           </div>
         )}
 
-        {client.unreconciled_count > 0 && (
+        {(client.unreconciled_count ?? 0) > 0 && (
           <span className="text-xs text-amber-700 whitespace-nowrap">
             ⚠ {client.unreconciled_count}
           </span>
@@ -521,7 +528,30 @@ function ClientRow({
               sub={`Budget: ${fmtCurrency(client.net_profit_budget, false)}`}
               emphasise={client.net_profit < 0}
             />
-            <Detail label="Cash" value={fmtCurrency(client.cash_balance, false)} sub={client.unreconciled_count > 0 ? `${client.unreconciled_count} unreconciled` : 'Reconciled'} />
+            <Detail
+              label="Cash"
+              value={client.cash_balance === null ? '—' : fmtCurrency(client.cash_balance, false)}
+              sub={
+                client.cash_balance === null
+                  ? 'No bank data synced'
+                  : (client.cash_missing_fx?.length ?? 0) > 0
+                    ? `Partial — ${client.cash_missing_fx![0].currency_pair} rate missing`
+                    : client.cash_as_at
+                      ? `As at ${client.cash_as_at}`
+                      : undefined
+              }
+            />
+            <Detail
+              label="Reconciliation"
+              value={
+                client.unreconciled_count === null
+                  ? '—'
+                  : client.unreconciled_count > 0
+                    ? `${client.unreconciled_count} unreconciled`
+                    : 'Reconciled'
+              }
+              sub={client.unreconciled_count === null ? 'Not checked' : undefined}
+            />
           </div>
 
           <Link
