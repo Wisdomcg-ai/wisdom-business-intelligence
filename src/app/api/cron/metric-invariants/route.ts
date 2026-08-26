@@ -22,6 +22,8 @@ import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/f
  *   bs_equation        assets − liabilities − equity at the latest month (identity)
  *   bs_uncategorized   Σ|latest-month value| of section-less BS rows (identity)
  *   mirror_freshness   months since the newest P&L month in the mirror (freshness)
+ *   mirror_write_freshness  hours since the mirror was last WRITTEN (freshness) —
+ *                      the label-based check above cannot detect a dead pipe
  *
  * EVERY check starts at 'watch' severity: recorded, shown in the daily email,
  * never paging. Promotion to warn/critical happens only after the observed
@@ -43,6 +45,22 @@ const BS_UNCATEGORIZED_TOLERANCE = 0.01
 /** Months of P&L content lag tolerated before the mirror reads as stale.
  *  2 = the current (incomplete) month plus one full missed month. */
 const FRESHNESS_MAX_MONTHS_BEHIND = 2
+/**
+ * Hours since the mirror was last WRITTEN before a tenant is considered stale.
+ *
+ * REL-02 (26 Aug 2026). `mirror_freshness` below measures the newest period
+ * LABEL, which is a property of the calendar, not of the pipeline: Armstrong &
+ * Co's Xero grant was revoked and every sync 403'd for 15 days, yet its newest
+ * label stayed "2026-08" so the check PASSED throughout — and would have kept
+ * passing for ~60 more days. The one check whose stated job is "is the mirror
+ * serving current numbers" could not see a dead pipe.
+ *
+ * Chosen from live data, not guessed: every healthy active tenant last wrote
+ * 5.6h ago (the 6-hourly sync bumps updated_at on every run), while Armstrong
+ * sat at 371.6h. 18h = three sync cadences, so a single skipped or slow run
+ * cannot trip it, and a genuinely dead pipe trips it within a day.
+ */
+const MIRROR_WRITE_STALE_HOURS = 18
 /** Dollars of difference tolerated between an approved summary and its stored P&L.
  *  The materialiser rounds each line to cents, so a many-line forecast accumulates
  *  sub-dollar drift that is arithmetic, not error. $1 is comfortably above it and
@@ -140,6 +158,39 @@ async function getHandler(req: NextRequest) {
       .select('tenant_id, account_name, account_type, section, monthly_values')
       .eq('basis', 'accruals')
     if (plError) throw new Error(`P&L query failed: ${plError.message}`)
+
+    // REL-02: the compat view has no updated_at, so read WRITE times from the
+    // underlying long table. This is the liveness signal — a tenant whose Xero
+    // grant is revoked stops being written to, while its period LABELS stay put.
+    const writeAtByTenant = new Map<string, string>()
+    try {
+      const { data: writeRows } = await supabase
+        .from('xero_pl_lines')
+        .select('tenant_id, updated_at')
+        .is('deleted_at', null)
+      for (const r of writeRows ?? []) {
+        if (!r.tenant_id || !r.updated_at) continue
+        const prev = writeAtByTenant.get(r.tenant_id)
+        if (!prev || r.updated_at > prev) writeAtByTenant.set(r.tenant_id, r.updated_at)
+      }
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { route: 'cron/metric-invariants', invariant: 'mirror_write_freshness' },
+      } as any)
+    }
+
+    // Only ACTIVE connections are expected to be written to; an intentionally
+    // disconnected tenant is not "stale", it is retired.
+    const activeTenantIds = new Set<string>()
+    try {
+      const { data: activeConns } = await supabase
+        .from('xero_connections')
+        .select('tenant_id')
+        .eq('is_active', true)
+      for (const c of activeConns ?? []) if (c.tenant_id) activeTenantIds.add(c.tenant_id)
+    } catch {
+      // If this fails, the check below simply skips — never invents a failure.
+    }
 
     const bsByTenant = new Map<string, MirrorLine[]>()
     for (const row of (bsData ?? []) as MirrorLine[]) {
@@ -255,6 +306,33 @@ async function getHandler(req: NextRequest) {
         passed: monthsBehind !== null && monthsBehind <= FRESHNESS_MAX_MONTHS_BEHIND,
         detail: plMonth ? `newest P&L month in mirror: ${plMonth}` : 'no P&L rows in the mirror for this tenant',
       })
+
+      // ── mirror_write_freshness: hours since the mirror was last WRITTEN ──
+      //
+      // The check above asks "how old is the newest month LABEL", which a dead
+      // pipeline does not change. This asks "when did data last actually
+      // arrive", which it does. Armstrong & Co: label 2026-08 (passing) while
+      // the last write was 15.5 days earlier (failing) — served as current the
+      // whole time.
+      if (activeTenantIds.has(tenantId)) {
+        const lastWrite = writeAtByTenant.get(tenantId)
+        const hours = lastWrite
+          ? Math.round(((now.getTime() - new Date(lastWrite).getTime()) / 3_600_000) * 10) / 10
+          : null
+        rows.push({
+          run_at: runAt,
+          check_name: 'mirror_write_freshness',
+          family: 'freshness',
+          severity: 'watch',
+          subject: tenantName,
+          observed: hours,
+          threshold: MIRROR_WRITE_STALE_HOURS,
+          passed: hours !== null && hours <= MIRROR_WRITE_STALE_HOURS,
+          detail: lastWrite
+            ? `last mirror write ${lastWrite} (${hours}h ago); healthy tenants write every ~6h`
+            : 'active connection but the mirror has never been written for this tenant',
+        })
+      }
     }
 
     // ── fx_rate_coverage ────────────────────────────────────────────────────
