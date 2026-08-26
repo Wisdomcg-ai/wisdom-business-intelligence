@@ -53,6 +53,16 @@ interface ClientSummary {
   report_overdue: boolean
   badge: StatusBadge
   manual_status_override: string | null
+  /**
+   * FX-01 (26 Aug 2026): months whose non-AUD member had NO fx_rates row, so
+   * its native-currency values were summed into the AUD figures UNTRANSLATED.
+   * fx.ts deliberately never fabricates a 1.0 rate (that would silently
+   * mis-state the numbers) — it preserves the raw value and reports the gap
+   * here. This route used to compute that gap and then DROP it, so /cfo showed
+   * a ~5x overstated figure as fact. Non-empty => the money fields on this row
+   * are NOT trustworthy and the UI must say so.
+   */
+  fx_missing_rates: { currency_pair: string; period: string }[]
 }
 
 interface StatsCards {
@@ -220,6 +230,10 @@ async function getHandler(request: Request) {
     )
     const fxMonths = generateFiscalMonthKeys(fxYear, DEFAULT_YEAR_START_MONTH)
     const fxLinesByBiz = new Map<string, { account_type: string; monthly_values: Record<string, number> }[]>()
+    // FX-01: the consolidation engine reports months it could NOT translate.
+    // Capture it per business so the response can warn instead of presenting
+    // untranslated foreign-currency values as AUD fact.
+    const fxMissingByBiz = new Map<string, { currency_pair: string; period: string }[]>()
     await Promise.all(
       businesses.map(async (biz) => {
         try {
@@ -257,6 +271,22 @@ async function getHandler(request: Request) {
               monthly_values: l.monthly_values,
             })),
           )
+          if (report.fx_context?.missing_rates?.length) {
+            fxMissingByBiz.set(biz.id, report.fx_context.missing_rates)
+            // A missing rate means this client's headline numbers are wrong by
+            // the FX factor (IICT: ~5.3x). That is an invariant breach worth
+            // alerting on, not just rendering — it can persist for months
+            // because rates are entered manually by design.
+            Sentry.captureMessage('fx:missing-rate-on-cfo-summary', {
+              level: 'warning',
+              tags: { route: 'cfo/summaries', invariant: 'fx_missing_rate' },
+              extra: {
+                business_id: biz.id,
+                month: monthKey,
+                missing_rates: report.fx_context.missing_rates,
+              },
+            } as any)
+          }
         } catch (err) {
           // Log and fall back to bulk-query path for this business so a single
           // FX failure doesn't black-hole the whole coach dashboard.
@@ -446,6 +476,7 @@ async function getHandler(request: Request) {
         report_overdue: reportOverdue,
         badge,
         manual_status_override: manualOverride,
+        fx_missing_rates: fxMissingByBiz.get(biz.id) ?? [],
       })
     }
 

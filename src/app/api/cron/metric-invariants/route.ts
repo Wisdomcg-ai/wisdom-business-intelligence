@@ -257,6 +257,74 @@ async function getHandler(req: NextRequest) {
       })
     }
 
+    // ── fx_rate_coverage ────────────────────────────────────────────────────
+    //
+    // FX-01 (26 Aug 2026). FX rates are entered MANUALLY by design (fx.ts
+    // module doc, decision of 2026-04-18: no cron, no scraper). That design
+    // has one failure mode: nobody remembers. Rates stopped on 2026-05-25 and
+    // for three months IICT Group's HKD entity was summed into AUD at 1:1 —
+    // ~5.3x overstated revenue on the /cfo dashboard, with nothing anywhere
+    // saying so. fx.ts correctly refuses to fabricate a rate and reports the
+    // gap; every consumer simply dropped the report.
+    //
+    // This check is the backstop the manual-entry design always needed: for
+    // every ACTIVE non-AUD tenant that has P&L data in a month, assert an
+    // fx_rates monthly_average row exists for that month. Anything > 0 means a
+    // client's consolidated numbers are currently wrong by the FX factor.
+    try {
+      const { data: fxTenants } = await supabase
+        .from('xero_connections')
+        .select('tenant_id, tenant_name, functional_currency')
+        .eq('is_active', true)
+        .not('functional_currency', 'is', null)
+        .neq('functional_currency', 'AUD')
+
+      for (const t of fxTenants ?? []) {
+        const pair = `${t.functional_currency}/AUD`
+
+        // Months this tenant actually has P&L data for (last 12 months).
+        const { data: plMonths } = await supabase
+          .from('xero_pl_lines')
+          .select('period_month')
+          .eq('tenant_id', t.tenant_id)
+          .is('deleted_at', null)
+          .gte('period_month', new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10))
+
+        const monthsWithData = Array.from(
+          new Set((plMonths ?? []).map((r) => String(r.period_month).slice(0, 7))),
+        ).sort()
+
+        const { data: fxRows } = await supabase
+          .from('fx_rates')
+          .select('period')
+          .eq('currency_pair', pair)
+          .eq('rate_type', 'monthly_average')
+
+        const monthsWithRate = new Set(
+          (fxRows ?? []).map((r) => String(r.period).slice(0, 7)),
+        )
+        const uncovered = monthsWithData.filter((m) => !monthsWithRate.has(m))
+
+        rows.push({
+          run_at: runAt,
+          check_name: 'fx_rate_coverage',
+          family: 'identity',
+          severity: 'watch',
+          subject: `${t.tenant_name ?? t.tenant_id} (${pair})`,
+          observed: uncovered.length,
+          threshold: 0,
+          passed: uncovered.length === 0,
+          detail: uncovered.length
+            ? `months with P&L but NO ${pair} monthly_average rate: ${uncovered.join(', ')} — these values are summed UNTRANSLATED`
+            : `all ${monthsWithData.length} months with P&L have a ${pair} rate`,
+        })
+      }
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { route: 'cron/metric-invariants', invariant: 'fx_rate_coverage' },
+      } as any)
+    }
+
     // ── forecast_summary_parity ─────────────────────────────────────────────
     //
     // Does each live forecast's STORED P&L still equal the summary the coach
