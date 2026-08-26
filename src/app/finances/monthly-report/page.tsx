@@ -722,7 +722,14 @@ export default function MonthlyReportPage() {
   }, [businessId, balanceSheet])
 
   const handleGenerateReport = useCallback(async (forceDraft?: boolean) => {
-    const isDraft = forceDraft || (reconciliation ? !reconciliation.is_clean : false)
+    // FLEET-04: a report may only finalise on a reconciliation check that
+    // actually COMPLETED. `is_clean` is already forced false when check_failed,
+    // but state it explicitly — this is the gate that let a Dragon July report
+    // get FINAL-stamped on an unconditional "all reconciled" for a business
+    // whose orgs were never checked.
+    const isDraft =
+      forceDraft ||
+      (reconciliation ? !reconciliation.is_clean || reconciliation.check_failed === true : false)
     const result = await generateReport(selectedMonth, fiscalYear, isDraft)
 
     if (result && 'needsMappings' in result && result.needsMappings) {
