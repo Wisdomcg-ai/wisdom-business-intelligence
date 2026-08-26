@@ -106,7 +106,31 @@ export function ConfidenceRealignmentStep({
   // quarters view is deterministic and does not flip when the calendar crosses 1 July.
   const currentQuarter = review.quarter;
   const currentYear = review.year;
-  const remainingQuarters = 4 - currentQuarter;
+
+  // NFM-06 (27 Aug 2026). `review.quarter` is the quarter being PLANNED — it is
+  // set from getPlanningQuarter() and every other site agrees (page.tsx:35
+  // "the quarter being PLANNED (the review is named after it)";
+  // workshop/page.tsx:347 "keyed by the PLANNING quarter"). The planning quarter
+  // has NOT happened yet, so it is itself one of the remaining quarters.
+  //
+  // This was `4 - currentQuarter`, which counts only the quarters AFTER the one
+  // being planned and so understated the remainder by exactly one, every time:
+  //   planning Q1 -> said 3, truth 4 (Q1-Q4)
+  //   planning Q2 -> said 2, truth 3
+  //   planning Q3 -> said 1, truth 2
+  //   planning Q4 -> said 0, truth 1  (masked: the `> 0 ? : 1` guard below
+  //                                    happened to land on the right divisor)
+  //
+  // The divisor is what spreads the remaining annual gap across the quarters
+  // left, so understating it OVERSTATES every per-quarter requirement — by 33%
+  // at Q1, 50% at Q2 and 100% at Q3. Those numbers are shown to the client as
+  // "run rate needed per quarter" and are persisted into annual_plan_snapshot,
+  // where they prefill the next quarter's targets.
+  //
+  // The invariant that keeps this honest: completed + remaining === 4, where
+  // completed = currentQuarter - 1 (the basis getRunRateProjection already uses
+  // for YTD averaging, which was correct all along).
+  const remainingQuarters = 4 - currentQuarter + 1;
 
   // ═══════════════════════════════════════════════════════════════
   // Data Fetching
@@ -614,10 +638,10 @@ export function ConfidenceRealignmentStep({
         <div className="flex items-center gap-3">
           <Info className="w-5 h-5 text-brand-orange flex-shrink-0" />
           <p className="font-semibold text-brand-orange-800">
-            You are in Q{currentQuarter} of {yearType}{currentYear} &mdash;{' '}
-            {remainingQuarters > 0
-              ? `${remainingQuarters} quarter${remainingQuarters !== 1 ? 's' : ''} remaining`
-              : 'Final quarter'}
+            You are planning Q{currentQuarter} of {yearType}{currentYear} &mdash;{' '}
+            {remainingQuarters === 1
+              ? 'final quarter of the year'
+              : `${remainingQuarters} quarters remaining (including this one)`}
           </p>
         </div>
       </div>
