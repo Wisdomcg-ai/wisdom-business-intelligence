@@ -240,7 +240,15 @@ async function triggerInitialSync(businessId: string, accessToken: string, tenan
       .upsert({
         business_id: businessId,
         metric_date: new Date().toISOString().split('T')[0],
-        total_cash: totalCash,
+        // FLEET-02 (26 Aug 2026): this value is ALWAYS 0. The fetch above calls
+        // api.xro/2.0/BankSummary, but Xero's BankSummary is a REPORT
+        // (/api.xro/2.0/Reports/BankSummary) returning { Reports: [{ Rows }] },
+        // so `bankData.BankSummary` never exists and totalCash keeps its
+        // initialiser. Writing 0 asserted "this client holds no cash" — /cfo
+        // rendered it as fact for every client. Cash is now derived from the
+        // xero_bs_lines mirror (lib/xero/derive-cash-from-bs-mirror.ts); store
+        // null here so the column says "unknown" instead of a false zero.
+        total_cash: null,
       });
 
     await supabaseAdmin

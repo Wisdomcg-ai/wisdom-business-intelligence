@@ -7,6 +7,7 @@ import * as Sentry from '@sentry/nextjs'
 // FX engine so HKD tenant rows are translated to AUD before summing. Single-
 // tenant and all-AUD businesses keep the bulk-query fast path.
 import { needsFxConsolidation } from '@/lib/utils/needs-fx-consolidation'
+import { deriveCashFromBSMirror } from '@/lib/xero/derive-cash-from-bs-mirror'
 import { buildConsolidation } from '@/lib/consolidation/engine'
 import { loadFxRates, translatePLAtMonthlyAverage } from '@/lib/consolidation/fx'
 import {
@@ -46,8 +47,14 @@ interface ClientSummary {
   gross_profit_pct: number | null
   net_profit: number
   net_profit_budget: number
-  cash_balance: number
-  unreconciled_count: number
+  /** FLEET-02: null = unknown (no bank rows in the mirror). NOT the same as $0. */
+  cash_balance: number | null
+  /** null = no reconciliation check on record. NOT the same as "0 unreconciled". */
+  unreconciled_count: number | null
+  /** Cash figure's as-at date from the BS mirror, so the UI can show staleness. */
+  cash_as_at?: string | null
+  /** Tenants excluded from cash for want of a closing-spot rate — total is partial. */
+  cash_missing_fx?: { currency_pair: string; period: string }[]
   report_status: ReportStatus
   /** Phase D: true when the requested month is closed and the report is still none/draft. */
   report_overdue: boolean
@@ -370,6 +377,21 @@ async function getHandler(request: Request) {
       }
     }
 
+    // FLEET-02: cash comes from the balance-sheet MIRROR, not financial_metrics.
+    // Every financial_metrics.total_cash row is 0.00 fleet-wide because all
+    // three writers call api.xro/2.0/BankSummary (the real endpoint is
+    // .../Reports/BankSummary) and parse a shape that endpoint never returns —
+    // so the column can only ever hold its initialiser, and /cfo rendered
+    // "Cash $0" for every client as fact. The mirror is synced 6-hourly, is
+    // multi-org, and handles the HKD tenant correctly (excluded + flagged when
+    // no closing-spot rate exists, never summed at 1:1).
+    const cashIdsByBiz = new Map<string, string[]>()
+    for (const biz of businesses) {
+      const pid = profileIdByBiz.get(biz.id)
+      cashIdsByBiz.set(biz.id, pid ? [biz.id, pid] : [biz.id])
+    }
+    const cashByBiz = await deriveCashFromBSMirror(supabase, cashIdsByBiz)
+
     // CFO report status for this period
     const { data: statuses } = await supabase
       .from('cfo_report_status')
@@ -444,8 +466,13 @@ async function getHandler(request: Request) {
       const netProfitBudget = revenueBudget - cogsBudget - opexBudget
 
       const metric = metricsByBiz.get(biz.id)
-      const cashBalance = metric?.total_cash ?? 0
-      const unreconciledCount = metric?.unreconciled_count ?? 0
+      const derivedCash = cashByBiz.get(biz.id)
+      // null = genuinely unknown (no bank rows). The UI renders "—" rather than
+      // "$0", which previously read as a fact about the client's bank balance.
+      const cashBalance = derivedCash?.amount ?? null
+      // Same distinction for reconciliation: no metric row is UNKNOWN, not
+      // "Reconciled". 4 of 6 CFO clients have no row at all.
+      const unreconciledCount = metric ? (metric.unreconciled_count ?? 0) : null
 
       const statusRow = statusByBiz.get(biz.id)
       const reportStatus: ReportStatus = statusRow?.status ?? 'none'
@@ -453,7 +480,7 @@ async function getHandler(request: Request) {
       const reportOverdue =
         monthClosed && (reportStatus === 'none' || reportStatus === 'draft')
 
-      const computedBadge = computeBadge(netProfit, netProfitBudget, unreconciledCount, reportOverdue)
+      const computedBadge = computeBadge(netProfit, netProfitBudget, unreconciledCount ?? 0, reportOverdue)
       const badge: StatusBadge =
         manualOverride === 'on_track' || manualOverride === 'watch' || manualOverride === 'alert'
           ? manualOverride
@@ -470,8 +497,10 @@ async function getHandler(request: Request) {
         gross_profit_pct: revenue > 0 ? Math.round((grossProfit / revenue) * 1000) / 10 : null,
         net_profit: Math.round(netProfit),
         net_profit_budget: Math.round(netProfitBudget),
-        cash_balance: Math.round(cashBalance),
+        cash_balance: cashBalance === null ? null : Math.round(cashBalance),
         unreconciled_count: unreconciledCount,
+        cash_as_at: derivedCash?.as_at ?? null,
+        cash_missing_fx: derivedCash?.missing_fx ?? [],
         report_status: reportStatus,
         report_overdue: reportOverdue,
         badge,

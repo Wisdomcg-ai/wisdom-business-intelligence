@@ -168,7 +168,15 @@ async function syncXeroData(business_id: string) {
       .upsert({
         business_id: business_id,
         metric_date: new Date().toISOString().split('T')[0],
-        total_cash: totalCash,
+        // FLEET-02 (26 Aug 2026): this value is ALWAYS 0. The fetch above calls
+        // api.xro/2.0/BankSummary, but Xero's BankSummary is a REPORT
+        // (/api.xro/2.0/Reports/BankSummary) returning { Reports: [{ Rows }] },
+        // so `bankData.BankSummary` never exists and totalCash keeps its
+        // initialiser. Writing 0 asserted "this client holds no cash" — /cfo
+        // rendered it as fact for every client. Cash is now derived from the
+        // xero_bs_lines mirror (lib/xero/derive-cash-from-bs-mirror.ts); store
+        // null here so the column says "unknown" instead of a false zero.
+        total_cash: null,
         revenue_month: monthlyMetrics.revenue_month,
         cogs_month: monthlyMetrics.cogs_month,
         expenses_month: monthlyMetrics.expenses_month,
@@ -180,7 +188,7 @@ async function syncXeroData(business_id: string) {
         net_margin_percent: monthlyMetrics.revenue_month > 0 
           ? (monthlyMetrics.net_profit_month / monthlyMetrics.revenue_month) * 100 
           : 0
-      });
+      }, { onConflict: 'business_id,metric_date' });
 
     // Update last sync time
     await supabaseAdmin
