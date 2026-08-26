@@ -26,6 +26,9 @@ interface ClientSummary {
   report_status: ReportStatus
   badge: StatusBadge
   manual_status_override: string | null
+  /** FX-01: months a non-AUD member could not be translated for. Non-empty =>
+   *  this row's money figures include UNTRANSLATED foreign currency. */
+  fx_missing_rates?: { currency_pair: string; period: string }[]
 }
 
 interface StatsCards {
@@ -432,6 +435,8 @@ function ClientRow({
   isExpanded: boolean
   onToggle: () => void
 }) {
+  const fxMissing = client.fx_missing_rates ?? []
+  const hasFxGap = fxMissing.length > 0
   return (
     <div>
       {/* Compact row */}
@@ -456,12 +461,23 @@ function ClientRow({
           )}
         </div>
 
-        <div className="hidden sm:flex items-center gap-4 text-xs tabular-nums shrink-0">
-          <Metric label="Rev" value={fmtPct(client.revenue_vs_budget_pct)} />
-          <Metric label="GP" value={fmtPct(client.gross_profit_pct)} />
-          <Metric label="Net" value={fmtCurrency(client.net_profit)} emphasise={client.net_profit < 0} />
-          <Metric label="Cash" value={fmtCurrency(client.cash_balance)} />
-        </div>
+        {/* FX-01: when a member currency could not be translated, these figures
+            include raw foreign-currency amounts (IICT: ~5.3x overstated). Showing
+            them as clean numbers is worse than showing nothing — suppress and say why. */}
+        {hasFxGap ? (
+          <div className="hidden sm:flex items-center shrink-0">
+            <span className="px-2 py-1 rounded text-xs font-semibold bg-amber-100 text-amber-900 whitespace-nowrap">
+              ⚠ FX rate missing — figures unreliable
+            </span>
+          </div>
+        ) : (
+          <div className="hidden sm:flex items-center gap-4 text-xs tabular-nums shrink-0">
+            <Metric label="Rev" value={fmtPct(client.revenue_vs_budget_pct)} />
+            <Metric label="GP" value={fmtPct(client.gross_profit_pct)} />
+            <Metric label="Net" value={fmtCurrency(client.net_profit)} emphasise={client.net_profit < 0} />
+            <Metric label="Cash" value={fmtCurrency(client.cash_balance)} />
+          </div>
+        )}
 
         {client.unreconciled_count > 0 && (
           <span className="text-xs text-amber-700 whitespace-nowrap">
@@ -477,6 +493,25 @@ function ClientRow({
       {/* Expanded detail */}
       {isExpanded && (
         <div className="px-10 py-3 bg-gray-50 border-t border-gray-100 space-y-3">
+          {hasFxGap && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-sm font-semibold text-amber-900">
+                FX rate missing — these figures are not reliable
+              </p>
+              <p className="mt-1 text-sm text-amber-800">
+                {Array.from(new Set(fxMissing.map((r) => r.currency_pair))).join(', ')} has no rate for{' '}
+                {Array.from(new Set(fxMissing.map((r) => r.period))).sort().join(', ')}. Foreign-currency
+                amounts are included <strong>untranslated</strong>, so revenue, profit and cash are
+                overstated. Enter the missing rate to correct them.
+              </p>
+              <Link
+                href="/admin/consolidation"
+                className="mt-2 inline-flex items-center text-sm font-medium text-amber-900 underline hover:text-amber-950"
+              >
+                Enter FX rate →
+              </Link>
+            </div>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
             <Detail label="Revenue" value={fmtCurrency(client.revenue, false)} sub={`Budget: ${fmtCurrency(client.revenue_budget, false)}`} />
             <Detail label="Gross Profit" value={fmtCurrency(client.gross_profit, false)} sub={fmtPct(client.gross_profit_pct)} />
