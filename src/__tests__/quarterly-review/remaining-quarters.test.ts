@@ -93,3 +93,73 @@ describe('the size of the error in the per-quarter requirement', () => {
     expect(newDivisor(4)).toBe(1) // genuinely 1
   })
 })
+
+/**
+ * Second wave (27 Aug 2026): #406 fixed the WRITER, but the live consumer
+ * (QuarterlyPlanStep, workshop step 4.2) reads the PERSISTED
+ * annual_plan_snapshot.remainingQuarters and never recomputes it. The snapshot
+ * is only rewritten by mounting step 4.1, and workshop/page.tsx renders exactly
+ * one step at a time — so any path that skips 4.1 consumed the pre-#406 value
+ * forever. 7 live prod rows carry it.
+ *
+ * The fix derives the count from `review.quarter` at the point of use, via the
+ * shared helpers below, so a stale stored copy cannot rescale client targets.
+ */
+import {
+  remainingQuartersFor,
+  completedQuartersFor,
+  runRateForRemaining,
+} from '@/app/quarterly-review/types'
+
+describe('the shared helpers are the single definition', () => {
+  it.each([1, 2, 3, 4])('completed + remaining === 4 when planning Q%i', (q) => {
+    expect(completedQuartersFor(q) + remainingQuartersFor(q)).toBe(4)
+  })
+
+  it.each([
+    [1, 4],
+    [2, 3],
+    [3, 2],
+    [4, 1],
+  ])('remainingQuartersFor(%i) === %i', (q, expected) => {
+    expect(remainingQuartersFor(q)).toBe(expected)
+  })
+
+  it('never returns 0, so the `|| 1` masking that hid the Q4 case is unreachable', () => {
+    for (const q of [1, 2, 3, 4]) expect(remainingQuartersFor(q)).toBeGreaterThan(0)
+  })
+})
+
+describe('run rate is recomputed from the gap, not the stored quotient', () => {
+  // Real prod rows. `stored` is what the pre-#406 build persisted.
+  it.each([
+    // [business, planningQ, remainingGap, storedRunRate, correctRunRate]
+    ['Just Digital Signage', 3, 10_800_000, 10_800_000, 5_400_000],
+    ['Sydney Pressed Metal', 3, 2_500_000, 2_500_000, 1_250_000],
+    ['Efficient Living', 3, 2_150_000, 2_150_000, 1_075_000],
+    ['Envisage FY26 Q3', 3, 1_200_000, 1_200_000, 600_000],
+    ['Digital Bond FY27 Q1', 1, 1_500_000, 500_000, 375_000],
+    ['Precision Electrical FY27 Q1', 1, 1_080_000, 360_000, 270_000],
+  ])('%s: stored %i is rebuilt as %i', (_name, q, gap, stored, correct) => {
+    expect(runRateForRemaining(gap, q as number)).toBe(correct)
+    expect(runRateForRemaining(gap, q as number)).not.toBe(stored)
+  })
+
+  it('Envisage FY26 Q4 was right by accident and stays right', () => {
+    expect(runRateForRemaining(900_000, 4)).toBe(900_000)
+  })
+})
+
+describe('the projection identity survives the fix', () => {
+  // ytd + runRate * remaining === annualTarget, for any quarter. This identity
+  // held under the OLD code too (the R cancels), which is exactly why it could
+  // never have caught the bug — pinned here so nobody "simplifies" back to the
+  // stored quotient believing the identity is the safeguard.
+  it.each([1, 2, 3, 4])('holds when planning Q%i', (q) => {
+    const annual = 4_000_000
+    const ytd = 900_000
+    const rr = runRateForRemaining(annual - ytd, q)
+    const projected = ytd + rr * remainingQuartersFor(q)
+    expect(Math.abs(projected - annual)).toBeLessThanOrEqual(remainingQuartersFor(q))
+  })
+})

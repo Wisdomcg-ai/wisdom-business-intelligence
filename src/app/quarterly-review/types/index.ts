@@ -703,7 +703,11 @@ export const getDefaultAnnualPlanSnapshot = (): AnnualPlanSnapshot => ({
   yearType: 'CY',
   planYear: new Date().getFullYear(),
   currentQuarter: 1,
-  remainingQuarters: 3,
+  // Q1 planning leaves all four quarters (the planned one included).
+  // This said 3 — a fossil of the pre-#406 `4 - currentQuarter` formula, which
+  // violates completed + remaining === 4. Dead code today (no call sites), kept
+  // consistent so it cannot seed the off-by-one back in.
+  remainingQuarters: 4,
   annualTargets: { revenue: 0, grossProfit: 0, netProfit: 0 },
   ytdActuals: { revenue: 0, grossProfit: 0, netProfit: 0 },
   remaining: { revenue: 0, grossProfit: 0, netProfit: 0 },
@@ -846,6 +850,37 @@ export const getPlanningQuarter = (yearType: YearType = 'CY'): { quarter: Quarte
   const monthInQuarter = monthsIntoYear % 3; // 0,1,2
   return monthInQuarter === 2 ? getNextQuarter(yearType) : getCurrentQuarter(yearType);
 };
+
+/**
+ * Quarter arithmetic — the SINGLE definition. `planningQuarter` is always the
+ * quarter being PLANNED (what `review.quarter` holds, what getPlanningQuarter
+ * returns). Everything else is derived from it here so the two halves cannot
+ * drift apart again.
+ *
+ * The quarter being planned has NOT happened yet, so it is itself remaining.
+ * YTD actuals therefore cover the quarters BEFORE it.
+ *
+ *   completedQuartersFor(q) + remainingQuartersFor(q) === 4, always.
+ *
+ * PR #406 fixed an off-by-one where remaining excluded the planned quarter,
+ * which overstated every per-quarter client target by up to 100%. These helpers
+ * exist so no caller re-derives it inline.
+ */
+export const remainingQuartersFor = (planningQuarter: number): number =>
+  4 - planningQuarter + 1;
+
+/** Quarters already elapsed — the divisor for averaging YTD actuals. */
+export const completedQuartersFor = (planningQuarter: number): number =>
+  planningQuarter - 1;
+
+/**
+ * Per-quarter run rate needed to close a remaining annual gap.
+ * Derived from the PLANNING QUARTER, never from a persisted count — a stored
+ * `remainingQuarters` can be stale (written by an older build) and silently
+ * scales every target that divides by it.
+ */
+export const runRateForRemaining = (remainingGap: number, planningQuarter: number): number =>
+  Math.round(remainingGap / remainingQuartersFor(planningQuarter));
 
 // Helper to get default Rock (aligned with Goals Wizard QuarterlyRock)
 export const getDefaultRock = (): Rock => ({

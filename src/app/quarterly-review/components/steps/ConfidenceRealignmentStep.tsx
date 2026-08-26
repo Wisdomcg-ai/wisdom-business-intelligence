@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, AnnualPlanSnapshot, RealignmentData, QuarterlyTargets } from '../../types';
-import { getDefaultRealignmentData, getDefaultAnnualPlanSnapshot } from '../../types';
+import { getDefaultRealignmentData, getDefaultAnnualPlanSnapshot, remainingQuartersFor } from '../../types';
 import {
   Target,
   DollarSign,
@@ -130,7 +130,7 @@ export function ConfidenceRealignmentStep({
   // The invariant that keeps this honest: completed + remaining === 4, where
   // completed = currentQuarter - 1 (the basis getRunRateProjection already uses
   // for YTD averaging, which was correct all along).
-  const remainingQuarters = 4 - currentQuarter + 1;
+  const remainingQuarters = remainingQuartersFor(currentQuarter);
 
   // ═══════════════════════════════════════════════════════════════
   // Data Fetching
