@@ -4,6 +4,7 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -67,97 +68,127 @@ async function getHandler(request: NextRequest) {
     )
     if (_sectionBlocked) return _sectionBlocked
 
-    // Get Xero connection — try all ID formats
-    let connection: any = null;
-    const { data: c1 } = await supabase.from('xero_connections').select('*').eq('business_id', businessId).eq('is_active', true).maybeSingle();
-    if (c1) connection = c1;
-    if (!connection) {
-      const { data: p } = await supabase.from('business_profiles').select('id').eq('business_id', businessId).maybeSingle();
-      if (p?.id) { const { data: c2 } = await supabase.from('xero_connections').select('*').eq('business_id', p.id).eq('is_active', true).maybeSingle(); if (c2) connection = c2; }
-    }
-    if (!connection) {
-      const { data: bp } = await supabase.from('business_profiles').select('business_id').eq('id', businessId).maybeSingle();
-      if (bp?.business_id) { const { data: c3 } = await supabase.from('xero_connections').select('*').eq('business_id', bp.business_id).eq('is_active', true).maybeSingle(); if (c3) connection = c3; }
-    }
+    // Get EVERY active Xero connection for this business.
+    //
+    // FLEET-04 (26 Aug 2026): this used `.maybeSingle()` three times, which
+    // returns NULL when a business has more than one connection (PGRST116).
+    // Dragon Roofing has 2 orgs and IICT Group has 3 — the two largest CFO
+    // clients — so `connection` was always null for them, the route fell into
+    // the no-connection branch below, and that branch returned
+    // `is_clean: true`. Both businesses were told "All transactions reconciled"
+    // unconditionally, and the monthly report was allowed to finalise on it.
+    // A FINAL-stamped Dragon July report already exists carrying that tick.
+    const { connections } = await resolveXeroConnections(supabase, businessId)
 
-    if (!connection) {
+    if (connections.length === 0) {
+      // No connection is NOT "clean" — it is UNKNOWN. Returning is_clean:true
+      // here is what let a missing connection read as a green tick.
       return NextResponse.json({
         unreconciled_count: 0,
         unreconciled_total: 0,
         has_more: false,
         bank_accounts: [],
-        is_clean: true,
+        is_clean: false,
+        check_failed: true,
         no_connection: true,
+        failure_reason: 'No active Xero connection for this business.',
       })
     }
-
-    // Get valid access token
-    const tokenResult = await getValidAccessToken(connection, supabase)
-    if (!tokenResult.success) {
-      Sentry.captureException(tokenResult.error, { tags: { route: 'Xero/reconciliation' }, extra: { context: "[Reconciliation] Token refresh failed" } } as any)
-      return NextResponse.json({ error: 'Xero connection expired' }, { status: 401 })
-    }
-
-    const accessToken = tokenResult.accessToken!
-    const tenantId = connection.tenant_id
 
     // Build where clause for unreconciled bank transactions
     let whereClause = 'IsReconciled==false'
     if (month) {
       const [y, m] = month.split('-').map(Number)
-      const startDate = `${y}-${String(m).padStart(2, '0')}-01`
       const lastDay = new Date(y, m, 0).getDate()
-      const endDate = `${y}-${String(m).padStart(2, '0')}-${lastDay}`
       whereClause += `&&Date>= DateTime(${y},${m},1)&&Date<=DateTime(${y},${m},${lastDay})`
     }
-
-    // Fetch unreconciled bank transactions (page 1 only for performance)
-    const txnUrl = `https://api.xero.com/api.xro/2.0/BankTransactions?where=${encodeURIComponent(whereClause)}&page=1`
-    const txnResponse = await fetch(txnUrl, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'xero-tenant-id': tenantId,
-        'Accept': 'application/json',
-      },
-    })
 
     let unreconciledCount = 0
     let unreconciledTotal = 0
     let hasMore = false
+    // Any org we could not check makes the whole answer indeterminate. We must
+    // never present a partial count as a clean bill of health.
+    const failedTenants: string[] = []
+    const okTenants: string[] = []
 
-    if (txnResponse.ok) {
-      const txnData = await txnResponse.json()
-      const transactions = txnData.BankTransactions || []
-      unreconciledCount = transactions.length
-      unreconciledTotal = transactions.reduce((sum: number, t: any) => sum + Math.abs(parseFloat(t.Total || '0')), 0)
-      // Xero returns up to 100 per page; if exactly 100, there are likely more
-      hasMore = transactions.length >= 100
-      if (hasMore) unreconciledCount = 100 // Show "100+" in the UI
-    } else {
-      Sentry.captureException(txnResponse.status, { tags: { route: 'Xero/reconciliation' }, extra: { context: "[Reconciliation] BankTransactions fetch failed" } } as any)
-    }
+    for (const connection of connections) {
+      const tenantLabel = connection.tenant_name || connection.tenant_id
 
-    // Fetch bank accounts for context
-    const bankAccounts: { name: string; count: number; balance: number }[] = []
-    try {
-      const acctUrl = 'https://api.xero.com/api.xro/2.0/Accounts?where=Type=="BANK"'
-      const acctResponse = await fetch(acctUrl, {
+      const tokenResult = await getValidAccessToken(connection, supabase)
+      if (!tokenResult.success) {
+        Sentry.captureException(tokenResult.error, {
+          tags: { route: 'Xero/reconciliation', invariant: 'reconciliation_check_failed' },
+          extra: { context: '[Reconciliation] Token refresh failed', tenant: tenantLabel },
+        } as any)
+        failedTenants.push(tenantLabel)
+        continue
+      }
+
+      const txnUrl = `https://api.xero.com/api.xro/2.0/BankTransactions?where=${encodeURIComponent(whereClause)}&page=1`
+      const txnResponse = await fetch(txnUrl, {
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'xero-tenant-id': tenantId,
+          'Authorization': `Bearer ${tokenResult.accessToken!}`,
+          'xero-tenant-id': connection.tenant_id,
           'Accept': 'application/json',
         },
       })
 
-      if (acctResponse.ok) {
-        const acctData = await acctResponse.json()
-        for (const acc of (acctData.Accounts || [])) {
-          if (acc.Status === 'ACTIVE') {
-            bankAccounts.push({
-              name: acc.Name,
-              count: 0,
-              balance: parseFloat(acc.BankAccountType === 'CREDITCARD' ? acc.CurrencyCode : '0'),
-            })
+      if (!txnResponse.ok) {
+        // Previously this left the count at 0 and therefore reported CLEAN —
+        // a Xero outage or a revoked grant rendered as "all reconciled".
+        Sentry.captureException(new Error(`BankTransactions ${txnResponse.status}`), {
+          tags: { route: 'Xero/reconciliation', invariant: 'reconciliation_check_failed' },
+          extra: { context: '[Reconciliation] BankTransactions fetch failed', tenant: tenantLabel, status: txnResponse.status },
+        } as any)
+        failedTenants.push(tenantLabel)
+        continue
+      }
+
+      const txnData = await txnResponse.json()
+      const transactions = txnData.BankTransactions || []
+      unreconciledCount += transactions.length
+      unreconciledTotal += transactions.reduce(
+        (sum: number, t: any) => sum + Math.abs(parseFloat(t.Total || '0')),
+        0,
+      )
+      // Xero returns up to 100 per page; exactly 100 means there are likely more.
+      if (transactions.length >= 100) hasMore = true
+      okTenants.push(tenantLabel)
+    }
+
+    const checkFailed = failedTenants.length > 0
+    if (hasMore) unreconciledCount = Math.max(unreconciledCount, 100)
+
+    // Fetch bank accounts for context, across every org we could reach.
+    // (Previously bound to the single resolved connection's token/tenant.)
+    const bankAccounts: { name: string; count: number; balance: number }[] = []
+    try {
+      for (const connection of connections) {
+        const tk = await getValidAccessToken(connection, supabase)
+        if (!tk.success) continue
+        const acctUrl = 'https://api.xero.com/api.xro/2.0/Accounts?where=Type=="BANK"'
+        const acctResponse = await fetch(acctUrl, {
+          headers: {
+            'Authorization': `Bearer ${tk.accessToken!}`,
+            'xero-tenant-id': connection.tenant_id,
+            'Accept': 'application/json',
+          },
+        })
+
+        if (acctResponse.ok) {
+          const acctData = await acctResponse.json()
+          for (const acc of (acctData.Accounts || [])) {
+            if (acc.Status === 'ACTIVE') {
+              bankAccounts.push({
+                // Multi-org: prefix the org so two "Business Cheque" accounts
+                // from different entities are distinguishable in the UI.
+                name: connections.length > 1
+                  ? `${connection.tenant_name ?? 'Org'} — ${acc.Name}`
+                  : acc.Name,
+                count: 0,
+                balance: parseFloat(acc.BankAccountType === 'CREDITCARD' ? acc.CurrencyCode : '0'),
+              })
+            }
           }
         }
       }
@@ -165,7 +196,9 @@ async function getHandler(request: NextRequest) {
       Sentry.captureException(err, { tags: { route: 'Xero/reconciliation' }, extra: { context: "[Reconciliation] Error fetching bank accounts" } } as any)
     }
 
-    const isClean = unreconciledCount === 0
+    // FAIL CLOSED: "clean" now requires that every org was actually checked.
+    // A partial answer is not a clean bill of health.
+    const isClean = unreconciledCount === 0 && !checkFailed
 
     // Update financial_metrics with reconciliation data.
     //
@@ -211,6 +244,14 @@ async function getHandler(request: NextRequest) {
       has_more: hasMore,
       bank_accounts: bankAccounts,
       is_clean: isClean,
+      // Multi-org transparency: how many orgs were checked, and which (if any)
+      // could not be. The UI must not show a green tick when this is set.
+      check_failed: checkFailed,
+      orgs_checked: okTenants.length,
+      orgs_total: connections.length,
+      failure_reason: checkFailed
+        ? `Could not check ${failedTenants.length} of ${connections.length} connected Xero ${connections.length === 1 ? 'organisation' : 'organisations'}: ${failedTenants.join(', ')}.`
+        : undefined,
     })
 
   } catch (error) {

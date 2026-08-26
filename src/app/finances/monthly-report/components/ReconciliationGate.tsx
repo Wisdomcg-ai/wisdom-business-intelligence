@@ -31,6 +31,38 @@ export default function ReconciliationGate({
     year: 'numeric',
   })
 
+  // FLEET-04: the check did not complete — never show a green tick for an
+  // answer we do not have. This is what let Dragon and IICT (multi-org) finalise
+  // reports on an unconditional "All transactions reconciled".
+  if (reconciliation.check_failed) {
+    return (
+      <div className="mb-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-amber-900">
+              Could not verify reconciliation for {monthLabel}
+            </p>
+            <p className="mt-1 text-sm text-amber-800">
+              {reconciliation.failure_reason ??
+                'One or more connected Xero organisations could not be checked.'}{' '}
+              {typeof reconciliation.orgs_checked === 'number' &&
+                typeof reconciliation.orgs_total === 'number' &&
+                `Checked ${reconciliation.orgs_checked} of ${reconciliation.orgs_total}. `}
+              Any count shown is incomplete — reconnect Xero and re-check before finalising.
+            </p>
+            <button
+              onClick={onProceedDraft}
+              className="mt-3 inline-flex items-center text-sm font-medium text-amber-900 underline hover:text-amber-950"
+            >
+              Continue as draft anyway →
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // Green: All reconciled
   if (reconciliation.is_clean) {
     return (

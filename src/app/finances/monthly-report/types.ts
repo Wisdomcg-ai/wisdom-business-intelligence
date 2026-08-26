@@ -231,6 +231,19 @@ export interface ReconciliationStatus {
   has_more: boolean
   bank_accounts: { name: string; count: number; balance: number }[]
   is_clean: boolean
+  /**
+   * FLEET-04 (26 Aug 2026): true when one or more connected Xero orgs could not
+   * be checked (no connection, expired token, or a failed BankTransactions
+   * call). The count is then INCOMPLETE and `is_clean` is forced false — a
+   * check that did not run is not a clean bill of health. Multi-org businesses
+   * (Dragon, IICT) previously always hit this path silently and were shown a
+   * green "All transactions reconciled" tick.
+   */
+  check_failed?: boolean
+  orgs_checked?: number
+  orgs_total?: number
+  failure_reason?: string
+  no_connection?: boolean
 }
 
 // ============================================
