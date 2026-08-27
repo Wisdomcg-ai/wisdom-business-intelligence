@@ -332,6 +332,10 @@ export function useMonthlyReport(businessId: string) {
   // Consolidated path doesn't surface data_quality yet (no top-level wrapper);
   // single-business reports always populate via 44.2-08 propagation.
   const [dataQuality, setDataQuality] = useState<import('@/lib/services/forecast-read-service').DataQuality>('verified')
+  // PRES-07 — `dataQuality` seeds to 'verified' and the banner renders nothing
+  // for 'verified', so any path that never sets it shows a clean bill of health.
+  // Start unverified and let a real verdict clear it.
+  const [qualityCheckFailed, setQualityCheckFailed] = useState(true)
   const [perTenantQuality, setPerTenantQuality] = useState<import('@/lib/services/forecast-read-service').PerTenantQuality[]>([])
 
   // MLTE-05: detect consolidation mode = business has 2+ active,
@@ -404,6 +408,17 @@ export function useMonthlyReport(businessId: string) {
           return null
         }
 
+        // D-44.2-03 — surface read-path quality. PRES-07: this used to sit AFTER
+        // the isGroup early return, so consolidation parents (Dragon Roofing,
+        // IICT Group) never got a quality verdict and their banner stayed on the
+        // optimistic 'verified' seed. Applied to BOTH branches now — the
+        // consolidated route returns the same two fields as of this change.
+        if (data.data_quality) {
+          setDataQuality(data.data_quality)
+          setPerTenantQuality(Array.isArray(data.per_tenant_quality) ? data.per_tenant_quality : [])
+          setQualityCheckFailed(false)
+        }
+
         if (isGroup) {
           // Adapt ConsolidatedReport → GeneratedReport so the Actual-vs-Budget
           // tab renders using the same template system (MLTE-05).
@@ -418,9 +433,6 @@ export function useMonthlyReport(businessId: string) {
         }
 
         setReport(data.report)
-        // D-44.2-03 — surface read-path quality (single-business path only).
-        if (data.data_quality) setDataQuality(data.data_quality)
-        if (Array.isArray(data.per_tenant_quality)) setPerTenantQuality(data.per_tenant_quality)
         return data.report
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to generate report')
@@ -528,5 +540,6 @@ export function useMonthlyReport(businessId: string) {
     loadSnapshot,
     dataQuality,
     perTenantQuality,
+    qualityCheckFailed,
   }
 }
