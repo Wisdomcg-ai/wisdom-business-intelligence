@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Loader2, Lock, Unlock, Settings, TrendingUp } from 'lucide-react'
+import { Loader2, Lock, Unlock, Settings, TrendingUp, AlertTriangle } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
 import ManageMetricsModal from './components/ManageMetricsModal'
 import QuarterProgressCard from './components/QuarterProgressCard'
@@ -19,6 +19,7 @@ export default function BusinessDashboardPage() {
   const {
     mounted,
     isLoading,
+    loadError,
     businessId,
     userId,
     weekPreference,
@@ -99,6 +100,36 @@ export default function BusinessDashboardPage() {
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-sm sm:text-base text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // PRES-05 — a failed load used to fall straight through to the dashboard with
+  // every target at 0, which the old getTrendStatus() rendered as a full board of
+  // green "On Track" badges. There is no honest partial view here: without
+  // targets and snapshots every number on the page is wrong, so we stop and say
+  // so rather than showing a reassuring board built on nothing.
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-center min-h-screen p-4">
+        <div className="max-w-md w-full rounded-lg border border-red-300 bg-red-50 p-6 text-center">
+          <AlertTriangle className="w-10 h-10 text-red-600 mx-auto mb-3" />
+          <h2 className="text-lg font-semibold text-red-800 mb-1">
+            Couldn&apos;t load your dashboard
+          </h2>
+          <p className="text-sm text-red-700 mb-4">
+            Your targets and weekly numbers didn&apos;t load, so nothing on this page
+            would be accurate. Nothing has been changed or lost.
+          </p>
+          <p className="text-xs text-red-600/80 mb-4 font-mono break-words">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded bg-red-600 text-white text-sm font-medium hover:bg-red-700"
+          >
+            Try again
+          </button>
         </div>
       </div>
     )

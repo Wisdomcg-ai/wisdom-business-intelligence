@@ -1,13 +1,13 @@
 'use client'
 
-import { TrendingUp, TrendingDown, Minus, DollarSign, PiggyBank, Wallet } from 'lucide-react'
-import type { QuarterInfo } from '../hooks/useBusinessDashboard'
+import { TrendingUp, TrendingDown, Minus, HelpCircle, DollarSign, PiggyBank, Wallet } from 'lucide-react'
+import type { QuarterInfo, TrendStatus } from '../hooks/useBusinessDashboard'
 
 interface MetricCardProps {
   label: string
   target: number
   actual: number
-  trend: 'ahead' | 'on-track' | 'behind'
+  trend: TrendStatus
   formatCurrency: (value: number | undefined | null) => string
   icon: React.ReactNode
   progressPercent: number
@@ -15,12 +15,23 @@ interface MetricCardProps {
 
 function MetricCard({ label, target, actual, trend, formatCurrency, icon, progressPercent }: MetricCardProps) {
   const getTrendIcon = () => {
+    if (trend === 'unknown') return <HelpCircle className="w-4 h-4" />
     if (trend === 'ahead') return <TrendingUp className="w-4 h-4" />
     if (trend === 'behind') return <TrendingDown className="w-4 h-4" />
     return <Minus className="w-4 h-4" />
   }
 
   const getTrendColors = () => {
+    // PRES-06: an unjudgeable metric gets a neutral slate treatment. It must not
+    // borrow the amber "On Track" styling that used to swallow these cases.
+    if (trend === 'unknown') return {
+      bg: 'bg-slate-50',
+      border: 'border-slate-200',
+      text: 'text-slate-600',
+      badge: 'bg-slate-100 text-slate-600',
+      progress: 'bg-slate-300',
+      icon: 'bg-slate-100 text-slate-500'
+    }
     if (trend === 'ahead') return {
       bg: 'bg-emerald-50',
       border: 'border-emerald-200',
@@ -48,6 +59,7 @@ function MetricCard({ label, target, actual, trend, formatCurrency, icon, progre
   }
 
   const getTrendLabel = () => {
+    if (trend === 'unknown') return 'No data'
     if (trend === 'ahead') return 'Ahead'
     if (trend === 'behind') return 'Behind'
     return 'On Track'
@@ -109,27 +121,38 @@ interface QuarterProgressCardProps {
   revenueTarget: number
   grossProfitTarget: number
   netProfitTarget: number
-  revenueTrend: 'ahead' | 'on-track' | 'behind'
-  grossProfitTrend: 'ahead' | 'on-track' | 'behind'
-  netProfitTrend: 'ahead' | 'on-track' | 'behind'
+  revenueTrend: TrendStatus
+  grossProfitTrend: TrendStatus
+  netProfitTrend: TrendStatus
   formatCurrency: (value: number | undefined | null) => string
 }
 
 // Calculate business health score based on trends
 function calculateHealthScore(
-  revenueTrend: string,
-  grossProfitTrend: string,
-  netProfitTrend: string,
+  revenueTrend: TrendStatus,
+  grossProfitTrend: TrendStatus,
+  netProfitTrend: TrendStatus,
   progressPercent: number,
   revenuePercent: number,
   grossProfitPercent: number,
   netProfitPercent: number
-): { score: number; label: string; color: string } {
+): { score: number | null; label: string; color: string } {
+  // PRES-06: if any input metric is unjudgeable the composite is meaningless.
+  // Scoring 'unknown' as if it were 'behind' (the old `return 15` fallthrough)
+  // would invent a bad number; scoring it as good would invent a reassuring one.
+  // Neither is honest — so the score itself reports that it cannot be computed.
+  if (
+    revenueTrend === 'unknown' ||
+    grossProfitTrend === 'unknown' ||
+    netProfitTrend === 'unknown'
+  ) {
+    return { score: null, label: 'Not enough data', color: 'text-slate-500' }
+  }
   // Weight: Revenue 40%, Gross Profit 30%, Net Profit 30%
   let score = 0
 
   // Trend scoring (max 50 points)
-  const trendScore = (trend: string) => {
+  const trendScore = (trend: TrendStatus) => {
     if (trend === 'ahead') return 50
     if (trend === 'on-track') return 35
     return 15
@@ -226,8 +249,18 @@ export default function QuarterProgressCard({
           {/* Business Health Score */}
           <div className="bg-white/10 backdrop-blur rounded-xl px-5 py-3 text-center">
             <p className="text-white/70 text-xs uppercase tracking-wide mb-1">Business Health</p>
-            <p className={`text-3xl font-bold text-white`}>{health.score}</p>
-            <p className={`text-sm font-medium ${health.score >= 60 ? 'text-emerald-300' : health.score >= 40 ? 'text-amber-300' : 'text-red-300'}`}>
+            <p className={`text-3xl font-bold text-white`}>{health.score ?? '\u2014'}</p>
+            <p
+              className={`text-sm font-medium ${
+                health.score === null
+                  ? 'text-white/60'
+                  : health.score >= 60
+                    ? 'text-emerald-300'
+                    : health.score >= 40
+                      ? 'text-amber-300'
+                      : 'text-red-300'
+              }`}
+            >
               {health.label}
             </p>
           </div>
