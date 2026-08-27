@@ -1,6 +1,16 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+
+/**
+ * Pace verdict for a metric against its target.
+ *
+ * 'unknown' is load-bearing, not a nicety: it is what the dashboard shows when a
+ * metric cannot be judged (no target, period not started, data failed to load).
+ * Before PRES-06 those cases all collapsed into a green badge. Consumers MUST
+ * render it as a neutral, non-committal state — never green, never red.
+ */
+export type TrendStatus = 'ahead' | 'on-track' | 'behind' | 'unknown'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/contexts/BusinessContext'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
@@ -40,6 +50,11 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
   const { activeBusiness, currentUser, businessProfileId: cachedProfileId, isLoading: isContextLoading } = useBusinessContext()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  // PRES-05: the dashboard had NO error state. A failed load left every target
+  // at its initial 0, and getTrendStatus() maps a 0 target to a green badge —
+  // so a total load failure rendered as a full board of "On Track". Surfacing
+  // the failure is the only honest option: we cannot know the numbers.
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const [businessId, setBusinessId] = useState('')
   const [userId, setUserId] = useState('')
@@ -156,13 +171,27 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
       }
 
       setBusinessId(bizId)
+      setLoadError(null)
 
       // Load targets
+      // PRES-05: FinancialService.loadFinancialGoals NEVER THROWS — it swallows
+      // its own failures and reports them in an `error` field (financial-service.ts:289-300),
+      // returning financialData: null alongside it. The hook used to discard that
+      // field, so an RLS denial or a PostgREST 5xx was indistinguishable from
+      // "this business has not set targets yet": both produced null targets,
+      // which the badge classifier then rendered as a full board of green.
+      // A try/catch around this call would NOT have caught it.
       const {
         financialData: loadedFinancial,
         coreMetrics: loadedCore,
-        yearType: loadedYearType
+        yearType: loadedYearType,
+        error: targetsError
       } = await FinancialService.loadFinancialGoals(bizId)
+      if (targetsError) {
+        setLoadError(targetsError)
+        setIsLoading(false)
+        return
+      }
       const loadedKPIs = await KPIService.getUserKPIs(bizId)
 
       setFinancialData(loadedFinancial)
@@ -198,6 +227,7 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
       setIsLoading(false)
     } catch (err) {
       console.error('Error loading data:', err)
+      setLoadError(err instanceof Error ? err.message : 'Failed to load dashboard data')
       setIsLoading(false)
     }
   }
@@ -313,14 +343,37 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
     return { currentWeek: completedWeeks, totalWeeks, percentComplete }
   }, [weekPreference])
 
-  // Get trend status
-  const getTrendStatus = useCallback((actual: number, target: number, percentComplete: number): 'ahead' | 'on-track' | 'behind' => {
-    if (target === 0) return 'on-track'
+  /**
+   * Pace verdict for a metric. PRES-06 — this had three separate fail-open paths,
+   * every one of which resolved to a reassuring badge:
+   *
+   *  1. `target === 0` returned 'on-track'. No target set is not "on track" — it
+   *     is unjudgeable. Combined with PRES-05 (a failed load leaves targets at 0)
+   *     this is what turned a total load failure into a full board of green.
+   *  2. `percentComplete === 0` (quarter not started, or getQuarterProgress fell
+   *     back to zeros because quarterInfo was null) made expectedAtThisPoint 0, so
+   *     `actual / 0` was Infinity -> 'ahead' for any activity at all, and NaN ->
+   *     'behind' for none. A missing quarter produced a confident verdict either way.
+   *  3. 'ahead' was awarded from 95% of expected pace — i.e. a business 5% BEHIND
+   *     plan was shown a green "Ahead" badge with an up arrow.
+   *
+   * Now: you are 'ahead' only at or above the pace you are meant to be at, and an
+   * unjudgeable metric says so instead of guessing. The 85% 'on-track' floor is
+   * unchanged — that band is a coaching judgement, not a defect, so it is left
+   * exactly as it was.
+   */
+  const getTrendStatus = useCallback((actual: number, target: number, percentComplete: number): TrendStatus => {
+    // No target, or a period that has not started — nothing to measure against.
+    if (target <= 0) return 'unknown'
+    if (percentComplete <= 0) return 'unknown'
 
     const expectedAtThisPoint = (target * percentComplete) / 100
-    const percentOfExpected = (actual / expectedAtThisPoint) * 100
+    if (expectedAtThisPoint <= 0) return 'unknown'
 
-    if (percentOfExpected >= 95) return 'ahead'
+    const percentOfExpected = (actual / expectedAtThisPoint) * 100
+    if (!Number.isFinite(percentOfExpected)) return 'unknown'
+
+    if (percentOfExpected >= 100) return 'ahead'
     if (percentOfExpected >= 85) return 'on-track'
     return 'behind'
   }, [])
@@ -488,6 +541,8 @@ export function useBusinessDashboard(overrideBusinessId?: string) {
     toggleQuarter,
     savePreferences,
     handleKpiCreated,
+
+    loadError,
 
     // Utilities
     isWeekEditable,
