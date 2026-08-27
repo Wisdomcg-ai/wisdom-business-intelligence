@@ -48,6 +48,7 @@ import {
   translatePLAtMonthlyAverage,
 } from '@/lib/consolidation/fx'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 
@@ -192,7 +193,35 @@ async function postHandler(request: Request) {
       },
     })
 
-    return NextResponse.json({ success: true, report })
+    // PRES-07 — this route never computed read-path quality, so the monthly
+    // report's DataIntegrityBanner had nothing to render for a consolidation
+    // parent and its state stayed at the optimistic 'verified' seed. The result
+    // was that the only two multi-org businesses on the platform — Dragon
+    // Roofing (2 orgs) and IICT Group (3, one of them HKD) — were the ONLY
+    // businesses that could never show a stale/failed-sync warning, despite
+    // being the ones most exposed to a partial sync.
+    //
+    // computeDataQuality already walks every active xero_connection for the
+    // given ids and rolls up worst-of severity, so a consolidation parent needs
+    // no special aggregation — just the call nobody was making.
+    let data_quality: Awaited<ReturnType<ReturnType<typeof createForecastReadService>['getDataQualityForBusiness']>> | null = null
+    try {
+      data_quality = await createForecastReadService(
+        supabase as unknown as Parameters<typeof createForecastReadService>[0],
+      ).getDataQualityForBusiness(ids.all)
+    } catch (qualityErr) {
+      // Never fail the report over the quality probe — but never claim
+      // "verified" either. A null here makes the client show the amber
+      // "couldn't verify" banner rather than a silent clean bill of health.
+      Sentry.captureException(qualityErr, { tags: { invariant: 'consolidated_quality_probe_failed' } })
+    }
+
+    return NextResponse.json({
+      success: true,
+      report,
+      data_quality: data_quality?.data_quality ?? null,
+      per_tenant_quality: data_quality?.per_tenant_quality ?? [],
+    })
   } catch (err) {
     Sentry.captureException(err, { tags: { route: 'monthly-report/consolidated' }, extra: { context: 'unhandled error', stage } } as any)
     return NextResponse.json(

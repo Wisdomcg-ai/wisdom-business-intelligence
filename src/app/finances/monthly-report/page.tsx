@@ -210,6 +210,7 @@ export default function MonthlyReportPage() {
     loadSnapshot,
     dataQuality,
     perTenantQuality,
+    qualityCheckFailed,
   } = useMonthlyReport(businessId)
 
   // Phase 34: consolidated-specific payload (per-entity columns + FX context).
@@ -1155,6 +1156,7 @@ export default function MonthlyReportPage() {
           quality={dataQuality}
           perTenantQuality={perTenantQuality}
           lastSyncAt={perTenantQuality[0]?.last_sync_at ?? null}
+          checkFailed={qualityCheckFailed}
         />
       </div>
       {/* Page Header */}

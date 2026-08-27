@@ -27,6 +27,11 @@ export default function CashflowForecastPage() {
   const [error, setError] = useState<string | null>(null)
   // D-44.2-03 read-path quality gate from /api/forecast/cashflow/xero-actuals.
   const [dataQuality, setDataQuality] = useState<DataQuality>('verified')
+  // PRES-08 — `dataQuality` above is seeded optimistically to 'verified', and the
+  // banner renders nothing for 'verified'. So every failure of the quality check
+  // produced a page pixel-identical to one where every tenant had just reconciled
+  // cleanly. Start as "not checked yet" and only clear it on a successful read.
+  const [qualityCheckFailed, setQualityCheckFailed] = useState(true)
   const [perTenantQuality, setPerTenantQuality] = useState<PerTenantQuality[]>([])
 
   // Keep Xero tokens fresh
@@ -98,11 +103,19 @@ export default function CashflowForecastPage() {
         const qualityRes = await fetch(`/api/forecast/cashflow/xero-actuals?${params.toString()}`)
         if (qualityRes.ok) {
           const qualityData = await qualityRes.json()
-          if (qualityData.data_quality) setDataQuality(qualityData.data_quality)
-          if (Array.isArray(qualityData.per_tenant_quality)) setPerTenantQuality(qualityData.per_tenant_quality)
+          if (qualityData.data_quality) {
+            setDataQuality(qualityData.data_quality)
+            setPerTenantQuality(Array.isArray(qualityData.per_tenant_quality) ? qualityData.per_tenant_quality : [])
+            // The ONLY path that earns a clean bill of health: a 2xx that
+            // actually carried a verdict.
+            setQualityCheckFailed(false)
+          }
+          // A 200 with no data_quality field means the route answered without
+          // reaching a verdict — still unverified, so leave the flag set.
         }
+        // Non-2xx likewise leaves it set. Failing closed is the point.
       } catch {
-        // Non-blocking — banner stays as 'verified' (silent) on fetch failure.
+        // Network/parse failure — the check did not run. Stays unverified.
       }
 
       setIsLoading(false)
@@ -179,6 +192,7 @@ export default function CashflowForecastPage() {
           quality={dataQuality}
           perTenantQuality={perTenantQuality}
           lastSyncAt={perTenantQuality[0]?.last_sync_at ?? null}
+          checkFailed={qualityCheckFailed}
         />
       </div>
 
