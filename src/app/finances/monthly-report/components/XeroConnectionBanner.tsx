@@ -15,6 +15,13 @@ interface XeroConnectionData {
 interface XeroConnectionBannerProps {
   xeroConnection: XeroConnectionData | null
   isExpired: boolean
+  /**
+   * PRES-09 — the connection status could not be determined (the status route
+   * errored, returned non-2xx, or the request never completed). Distinct from
+   * "not connected", which is a positive claim we have no evidence for. Takes
+   * precedence over the disconnected state.
+   */
+  checkFailed?: boolean
   isLoading: boolean
   isSyncing: boolean
   onConnect: () => void
@@ -25,6 +32,7 @@ interface XeroConnectionBannerProps {
 export default function XeroConnectionBanner({
   xeroConnection,
   isExpired,
+  checkFailed = false,
   isLoading,
   isSyncing,
   onConnect,
@@ -117,6 +125,26 @@ export default function XeroConnectionBanner({
               )}
             </button>
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  // PRES-09 — checked before the disconnected state. A failed status check used
+  // to render "Not connected to Xero" with a Connect button, sitting directly
+  // above a fully populated P&L rendered from Xero data already in the database.
+  // For a user who is "not a numbers person" that contradiction is unresolvable:
+  // is the report real or not? It also hid the "Sync P&L Data" button, removing
+  // the one action that might have helped.
+  if (checkFailed) {
+    return (
+      <div className="mb-4 px-4 py-3 bg-amber-50 rounded-lg border border-amber-200">
+        <div className="flex items-center space-x-3">
+          <div className="w-3 h-3 bg-amber-400 rounded-full flex-shrink-0"></div>
+          <p className="text-sm text-amber-800">
+            Couldn&apos;t check the Xero connection just now — the figures below are
+            from the last successful sync.
+          </p>
         </div>
       </div>
     )

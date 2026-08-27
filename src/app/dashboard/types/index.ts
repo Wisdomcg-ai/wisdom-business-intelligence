@@ -46,6 +46,12 @@ export interface SuggestedAction {
 
 export interface DashboardData {
   annualGoals: FinancialGoals | null
+  /**
+   * PRES-11 — the annual-goals query FAILED, as opposed to returning no row.
+   * Without this the two are indistinguishable and the card tells a client who
+   * has set targets that they have not.
+   */
+  annualGoalsFailed: boolean
   quarterlyGoals: FinancialGoals | null
   currentQuarter: 'q1' | 'q2' | 'q3' | 'q4'
   rocks: Rock[]
