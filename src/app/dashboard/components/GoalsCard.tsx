@@ -11,6 +11,12 @@ interface GoalsCardProps {
   goals: FinancialGoals | null
   icon: LucideIcon
   emptyStateText: string
+  /**
+   * PRES-11 — the goals QUERY failed. Distinct from "no goals set", which tells
+   * the client something false about their own data and points them at a wizard
+   * to re-enter targets they have already set.
+   */
+  loadFailed?: boolean
   emptyStateCta: string
   emptyStateHref: string
   subtitle?: string
@@ -24,6 +30,7 @@ export default function GoalsCard({
   goals,
   icon: Icon,
   emptyStateText,
+  loadFailed = false,
   emptyStateCta,
   emptyStateHref,
   subtitle,
@@ -92,6 +99,16 @@ export default function GoalsCard({
                 </div>
               </div>
             </div>
+          </div>
+        ) : loadFailed ? (
+          <div className="text-center py-6">
+            <div className="w-12 h-12 mx-auto mb-3 bg-amber-100 rounded-lg flex items-center justify-center">
+              <Icon className="h-6 w-6 text-amber-600" />
+            </div>
+            <p className="text-gray-700 font-medium mb-1">Couldn&apos;t load your goals</p>
+            <p className="text-sm text-gray-500 mb-4">
+              This is a temporary problem on our side — your targets are safe.
+            </p>
           </div>
         ) : (
           <div className="text-center py-6">

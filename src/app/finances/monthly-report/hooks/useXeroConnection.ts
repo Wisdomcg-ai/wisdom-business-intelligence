@@ -23,7 +23,13 @@ export function useXeroConnection(businessId: string) {
   const pathname = usePathname()
   const [xeroConnection, setXeroConnection] = useState<XeroConnectionData | null>(null)
   const [isExpired, setIsExpired] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  // PRES-09 — started as `false`, so between mount and the first response the
+  // banner rendered its "Not connected to Xero" state as a settled answer. The
+  // unknown must not render as an answer: start loading.
+  const [isLoading, setIsLoading] = useState(true)
+  // Distinct from `error`: this specifically means we could not determine the
+  // connection state, so the banner must not claim "not connected".
+  const [checkFailed, setCheckFailed] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -37,7 +43,18 @@ export function useXeroConnection(businessId: string) {
 
       try {
         const res = await fetch(`/api/Xero/status?business_id=${businessId}`)
+        if (!res.ok) {
+          // A 5xx here is not evidence of anything about the client's Xero.
+          // Previously the body was parsed anyway, `data.connected` came back
+          // undefined, and the else-branch below reported "not connected".
+          setCheckFailed(true)
+          setXeroConnection(null)
+          setIsExpired(false)
+          setError('Could not check the Xero connection')
+          return
+        }
         const data: XeroStatusResponse = await res.json()
+        setCheckFailed(false)
 
         if (data.connected && data.connection) {
           setXeroConnection(data.connection)
@@ -51,6 +68,11 @@ export function useXeroConnection(businessId: string) {
         }
       } catch (err) {
         console.error('[useXeroConnection] Status fetch error:', err)
+        // Same reasoning as the !res.ok branch: a network or parse failure tells
+        // us nothing about whether Xero is connected. Leaving xeroConnection at
+        // null made the banner assert "Not connected to Xero" above a fully
+        // populated report rendered from Xero data already in the database.
+        setCheckFailed(true)
         setError('Failed to check Xero connection')
       } finally {
         setIsLoading(false)
@@ -120,6 +142,7 @@ export function useXeroConnection(businessId: string) {
     isLoading,
     isSyncing,
     error,
+    checkFailed,
     handleConnect,
     handleSync,
     handleManage,

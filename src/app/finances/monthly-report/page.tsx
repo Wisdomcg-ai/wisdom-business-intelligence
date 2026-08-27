@@ -108,6 +108,12 @@ export default function MonthlyReportPage() {
   // Cashflow forecast state (shared between cashflow tab, charts tab, and PDF export)
   const [cashflowForecast, setCashflowForecast] = useState<CashflowForecastData | null>(null)
   const [cashflowLoading, setCashflowLoading] = useState(false)
+  // PRES-10 — every failure exit in loadCashflowForecast returned null, which
+  // renders the "Set up a financial forecast with P&L lines" empty state. That is
+  // a confident, actionable instruction that is FALSE for a business which
+  // already has a forecast: it sends them to rebuild something that exists.
+  // CashflowTab already renders an `error` prop; nothing ever set it.
+  const [cashflowError, setCashflowError] = useState<string | null>(null)
 
   // Viewer role. Hoisted ABOVE the tab effects below because they reference it
   // in their dependency arrays — leaving it at its old position (further down)
@@ -307,6 +313,7 @@ export default function MonthlyReportPage() {
   const {
     xeroConnection,
     isExpired: xeroExpired,
+    checkFailed: xeroCheckFailed,
     isLoading: xeroLoading,
     isSyncing: xeroSyncing,
     handleConnect: xeroConnect,
@@ -352,9 +359,15 @@ export default function MonthlyReportPage() {
   const loadCashflowForecast = useCallback(async () => {
     if (!businessId || !userId || cashflowLoading) return
     setCashflowLoading(true)
+    setCashflowError(null)
     try {
       const forecastFY = getForecastFiscalYear()
-      const { forecast } = await ForecastService.getOrCreateForecast(businessId, userId, forecastFY)
+      const { forecast, error: forecastErr } = await ForecastService.getOrCreateForecast(businessId, userId, forecastFY)
+      if (forecastErr) {
+        // A lookup failure is not "no forecast exists".
+        setCashflowError('Could not load your cashflow forecast. This is a system error, not a missing forecast — your data is unchanged.')
+        return null
+      }
       if (forecast?.id) {
         const plLines = await ForecastService.loadPLLines(forecast.id)
         if (plLines.length > 0) {
@@ -378,6 +391,7 @@ export default function MonthlyReportPage() {
       }
     } catch (err) {
       console.error('[MonthlyReport] Failed to load cashflow forecast:', err)
+      setCashflowError('Could not load your cashflow forecast. This is a system error, not a missing forecast — your data is unchanged.')
     } finally {
       setCashflowLoading(false)
     }
@@ -1252,6 +1266,7 @@ export default function MonthlyReportPage() {
         <XeroConnectionBanner
           xeroConnection={xeroConnection}
           isExpired={xeroExpired}
+          checkFailed={xeroCheckFailed}
           isLoading={xeroLoading}
           isSyncing={xeroSyncing}
           onConnect={xeroConnect}
@@ -1422,6 +1437,7 @@ export default function MonthlyReportPage() {
           <CashflowTab
             data={cashflowForecast}
             isLoading={cashflowLoading}
+            error={cashflowError}
           />
         )}
 
