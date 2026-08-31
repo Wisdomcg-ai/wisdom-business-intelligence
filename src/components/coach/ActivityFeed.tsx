@@ -14,6 +14,8 @@ import {
   ChevronRight
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 export interface ActivityItem {
   id: string
   type: 'action_completed' | 'message_received' | 'session_completed' | 'goal_achieved' | 'document_uploaded' | 'assessment_completed' | 'client_added' | 'action_overdue'
@@ -69,7 +71,7 @@ export function ActivityFeed({ activities, maxItems = 10 }: ActivityFeedProps) {
     if (diffDays === 1) return 'Yesterday'
     if (diffDays < 7) return `${diffDays}d ago`
 
-    return date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
+    return formatDate(date, { month: 'short', day: 'numeric' })
   }
 
   return (

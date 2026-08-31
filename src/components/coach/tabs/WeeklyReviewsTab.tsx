@@ -24,6 +24,8 @@ import WeeklyReviewService, {
   TeamMemberReviewStatus
 } from '@/app/reviews/services/weekly-review-service'
 
+import { formatDate } from '@/lib/timezone'
+
 interface WeeklyReviewsTabProps {
   businessId: string
   businessName: string
@@ -89,7 +91,7 @@ export function WeeklyReviewsTab({ businessId, businessName }: WeeklyReviewsTabP
     const end = new Date(start)
     end.setDate(start.getDate() + 6)
     const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
-    return `${start.toLocaleDateString('en-US', options)} - ${end.toLocaleDateString('en-US', options)}`
+    return `${formatDate(start, options)} - ${formatDate(end, options)}`
   }
 
   const isCurrentWeek = currentWeekStart === WeeklyReviewService.getWeekStart()

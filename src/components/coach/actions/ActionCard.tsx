@@ -16,6 +16,8 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 
+import { formatDate } from '@/lib/timezone'
+
 export interface ActionItem {
   id: string
   title: string
@@ -93,7 +95,7 @@ export function ActionCard({
     } else if (date.toDateString() === tomorrow.toDateString()) {
       return 'Tomorrow'
     } else {
-      return date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
+      return formatDate(date, { month: 'short', day: 'numeric' })
     }
   }
 
