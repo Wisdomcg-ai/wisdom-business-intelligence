@@ -77,6 +77,19 @@ function chain(result: { data: any; error: any }) {
   return q
 }
 
+/**
+ * Route ONLY the snapshots table to the test's recorder. The POST handler
+ * also stamps cfo_report_status (the board's "Generated" stage, #429) with
+ * its own upsert+update AFTER the snapshot save — on a shared single-recorder
+ * mock that second upsert overwrites q.calls.upsert and the assertions read
+ * the wrong table's payload. Other tables get a fresh permissive sink.
+ */
+function routeTables(q: any) {
+  mockAdminFrom.mockImplementation((table: string) =>
+    table === 'monthly_report_snapshots' ? q : chain({ data: null, error: null }),
+  )
+}
+
 beforeEach(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.local'
   mockGetUser.mockReset()
@@ -91,7 +104,7 @@ const BASE = { business_id: 'biz-1', report_month: '2026-07' }
 describe('WD.8 — PATCH set_memo', () => {
   it('writes coach_notes via a targeted UPDATE and reports updated:true', async () => {
     const q = chain({ data: [{ id: 'snap-1' }], error: null })
-    mockAdminFrom.mockReturnValue(q)
+    routeTables(q)
     const res = await PATCH(patchReq({ ...BASE, action: 'set_memo', memo: 'Insurance jumped because…' }))
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -103,14 +116,14 @@ describe('WD.8 — PATCH set_memo', () => {
 
   it('an empty/whitespace memo stores NULL, not an empty string', async () => {
     const q = chain({ data: [{ id: 'snap-1' }], error: null })
-    mockAdminFrom.mockReturnValue(q)
+    routeTables(q)
     await PATCH(patchReq({ ...BASE, action: 'set_memo', memo: '   ' }))
     expect(q.calls.update[0].coach_notes).toBeNull()
   })
 
   it('no snapshot row → updated:false (the caller must surface this, not drop the memo)', async () => {
     const q = chain({ data: [], error: null })
-    mockAdminFrom.mockReturnValue(q)
+    routeTables(q)
     const res = await PATCH(patchReq({ ...BASE, action: 'set_memo', memo: 'x' }))
     const body = await res.json()
     expect(body.updated).toBe(false)
@@ -132,7 +145,7 @@ describe('WD.8 — POST wipe-guard on coach_notes', () => {
 
   it('a save WITHOUT coach_notes omits the key from the upsert — regenerate cannot wipe a memo', async () => {
     const q = chain({ data: { id: 'snap-1' }, error: null })
-    mockAdminFrom.mockReturnValue(q)
+    routeTables(q)
     const res = await POST(postReq(fullBody))
     expect(res.status).toBe(200)
     expect('coach_notes' in q.calls.upsert[0]).toBe(false)
@@ -140,12 +153,12 @@ describe('WD.8 — POST wipe-guard on coach_notes', () => {
 
   it('an explicit coach_notes still writes (and empty clears to null)', async () => {
     const q = chain({ data: { id: 'snap-1' }, error: null })
-    mockAdminFrom.mockReturnValue(q)
+    routeTables(q)
     await POST(postReq({ ...fullBody, coach_notes: 'keep this' }))
     expect(q.calls.upsert[0].coach_notes).toBe('keep this')
 
     const q2 = chain({ data: { id: 'snap-1' }, error: null })
-    mockAdminFrom.mockReturnValue(q2)
+    routeTables(q2)
     await POST(postReq({ ...fullBody, coach_notes: '' }))
     expect(q2.calls.upsert[0].coach_notes).toBeNull()
   })
