@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Clock, FileText, Download, CheckCircle } from 'lucide-react'
+import { Clock, FileText, Download, CheckCircle } from 'lucide-react' // Download: WA.6 pdf stamp
 import type { ReportSnapshot, ReportSummary } from '../types'
 
 interface ReportHistoryProps {
@@ -99,6 +99,13 @@ export default function ReportHistory({ businessId, onLoadSnapshot }: ReportHist
                     </span>
                     {generatedDate && (
                       <span className="text-xs text-gray-500">{generatedDate}</span>
+                    )}
+                    {/* WA.6 — pdf_exported_at is finally written; show it. */}
+                    {snapshot.pdf_exported_at && (
+                      <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+                        <Download className="w-3 h-3" />
+                        PDF {new Date(snapshot.pdf_exported_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                      </span>
                     )}
                   </div>
                 </div>
