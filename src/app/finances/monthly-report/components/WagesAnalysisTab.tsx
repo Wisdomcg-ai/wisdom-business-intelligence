@@ -18,7 +18,10 @@ function fmt(value: number): string {
 }
 
 function varianceColor(variance: number): string {
-  if (variance === 0) return ''
+  // WB.4 — $1 tolerance: cent-level rounding between payslip gross and whole-
+  // dollar budgets must not light a row red (DD's Daniel flagged exactly this:
+  // "without tolerance, Head Office lights up red for a few cents").
+  if (Math.abs(variance) <= 1) return ''
   return variance > 0 ? 'text-green-700' : 'text-red-600'
 }
 
@@ -74,6 +77,15 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
   // Collect unique pay run dates across all employees
   const payRunDates = data.pay_run_dates || []
 
+  // WB.4 — hide employees with nothing this month AND no budget (the sheets
+  // hide them rather than delete them: the roster stays stable month to
+  // month). An unpaid employee WITH a budget stays visible — a missing person
+  // is a real variance, not noise.
+  const visibleEmployees = data.employees.filter(
+    (e) => e.actual_total !== 0 || e.budget_total !== 0,
+  )
+  const hiddenCount = data.employees.length - visibleEmployees.length
+
   // Calculate column totals
   const colTotals: Record<string, number> = {}
   for (const d of payRunDates) colTotals[d] = 0
@@ -127,7 +139,7 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
       </div>
 
       {/* Employee Pay Run Table */}
-      {data.employees.length > 0 && (
+      {visibleEmployees.length > 0 && (
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -145,7 +157,7 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
                 </tr>
               </thead>
               <tbody>
-                {data.employees.map((emp, idx) => {
+                {visibleEmployees.map((emp, idx) => {
                   // Build a map of date → gross for this employee
                   const payByDate: Record<string, number> = {}
                   for (const pr of emp.pay_runs) {
@@ -238,6 +250,49 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
             </table>
           </div>
         </div>
+      )}
+
+      {/* WB.5 — PAY-TIES (warning-only). Value / tie / could-not-check:
+          nothing renders when the comparison would be circular or empty. */}
+      {data.ties?.comparable && data.ties.within_tolerance && (
+        <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+          <p className="text-xs text-green-800">
+            Payroll ties to the P&amp;L: {fmt(data.ties.payroll_side)} of payslip
+            {data.ties.includes_super_account ? ' gross + super' : ' gross'} matches the
+            configured wage accounts ({fmt(data.ties.accounts_actual)}) within $1.
+          </p>
+        </div>
+      )}
+      {data.ties?.comparable && !data.ties.within_tolerance && (
+        <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
+          <p className="text-xs text-amber-800">
+            Payroll does not tie to the P&amp;L: payslip
+            {data.ties.includes_super_account ? ' gross + super' : ' gross'} is {fmt(data.ties.payroll_side)}
+            {' '}vs {fmt(data.ties.accounts_actual)} across the configured wage accounts —
+            difference {fmt(data.ties.delta)}. Common causes: period-end accrual journals,
+            wages posted to an account not in the Wages settings list, or a pay run paid in
+            an adjacent month.
+          </p>
+        </div>
+      )}
+
+      {/* WB.4 — five-Friday phasing note */}
+      {data.phasing?.extra_run && (
+        <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+          <p className="text-xs text-blue-800">
+            {data.phasing.pay_runs_in_month} pay runs fell in this month (typically{' '}
+            {data.phasing.typical_runs} for a {data.phasing.calendar_type.toLowerCase()} cycle).
+            The extra run inflates wages against a {data.phasing.typical_runs}-run budget —
+            a phasing effect, not an overspend.
+          </p>
+        </div>
+      )}
+
+      {hiddenCount > 0 && (
+        <p className="text-xs text-gray-400 px-1">
+          {hiddenCount} employee{hiddenCount === 1 ? '' : 's'} with no pay and no budget this
+          month hidden.
+        </p>
       )}
 
       {/* Info note */}

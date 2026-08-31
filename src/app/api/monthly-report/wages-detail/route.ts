@@ -16,6 +16,8 @@ import {
   payRunLookbackCutoff,
   shouldFetchNextPayRunPage,
   oldestPeriodEnd,
+  computePayrollPhasing,
+  computePayrollTies,
 } from './_helpers'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
@@ -753,6 +755,31 @@ async function postHandler(request: Request) {
       console.log(`[WagesDetail] ${employeePayMap.size} Xero employees, ${forecastEmployees.length} forecast employees, ${employees.length} combined, ${payRunDates.length} pay runs`)
     }
 
+    // WB.5 — PAY-TIES inputs, captured BEFORE the backfill below makes the
+    // comparison circular (accounts[0].actual would just echo the payroll
+    // total). Warning-only: payment-date pay runs vs period-end accruals can
+    // legitimately disagree; the banner names the delta, it never blocks.
+    const payrollSuperTotal = Array.from(employeePayMap.values()).reduce(
+      (s, e) => s + e.payslips.reduce((x, ps) => x + ps.superAmt, 0),
+      0,
+    )
+    const ties = computePayrollTies({
+      payrollGross: empActualTotal,
+      payrollSuper: payrollSuperTotal,
+      accountsActual: grandActual,
+      wagesAccountNames: wages_account_names,
+    })
+
+    // WB.4 — five-Friday detection: an extra weekly run inflates the month
+    // ~25% against a 4-week budget; without the note it reads as an overspend.
+    const phasing = computePayrollPhasing({
+      payRunDates,
+      calendarTypes: Array.from(employeePayMap.values())
+        .filter((e) => e.payslips.length > 0)
+        .map((e) => e.calendarType),
+      typicalRunsFor: estimatePayRunsInMonth,
+    })
+
     // If account-level P&L has no actuals but we have PayRun employee data,
     // use employee totals as the grand total (Xero Payroll doesn't always
     // create P&L line items that appear in the standard P&L report)
@@ -788,6 +815,8 @@ async function postHandler(request: Request) {
         },
         payroll_available: payrollAvailable,
         pay_run_dates: payRunDates,
+        phasing,
+        ties,
       },
     })
   } catch (error) {

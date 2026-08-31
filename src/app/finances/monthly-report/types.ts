@@ -479,6 +479,27 @@ export interface WagesDetailData {
   grand_total: { actual: number; budget: number; variance: number }
   payroll_available: boolean
   pay_run_dates: string[]
+  /** WB.4 — five-Friday detection: more pay runs than the calendar's typical
+   *  month is a budget-phasing note, not an overspend. Optional: older cached
+   *  responses lack it. */
+  phasing?: {
+    pay_runs_in_month: number
+    typical_runs: number
+    calendar_type: string
+    extra_run: boolean
+  } | null
+  /** WB.5 — PAY-TIES (warning-only): Σ payslip gross(+super when the account
+   *  list includes a super account) vs the configured P&L wage accounts. */
+  ties?: {
+    payroll_gross: number
+    payroll_super: number
+    payroll_side: number
+    accounts_actual: number
+    includes_super_account: boolean
+    delta: number
+    within_tolerance: boolean
+    comparable: boolean
+  } | null
 }
 
 // ============================================
