@@ -34,6 +34,13 @@ const SCOPES = [
   'accounting.settings.read',
   'accounting.contacts.read',
   // 'finance.statements.read',  // Finance API — cashflow (needs app config in Xero portal)
+  // Finance API — bank-reconciliation sweep for the CFO production board.
+  // BOTH require the Finance API to be enabled on the app in the Xero
+  // developer portal, and each already-connected org must re-consent (a
+  // reconnect) before its tokens carry these scopes. Until then the sweep
+  // 403s on Finance endpoints and falls back to account-transaction counts.
+  'finance.bankstatementsplus.read', // statement lines w/ per-line isReconciled
+  'finance.cashvalidation.read',     // per-account unreconciled totals
   'payroll.employees',        // Payroll employee access (AU)
   'payroll.employees.read',   // Read payroll employees
   'payroll.payruns.read',     // Read pay runs and payslips
