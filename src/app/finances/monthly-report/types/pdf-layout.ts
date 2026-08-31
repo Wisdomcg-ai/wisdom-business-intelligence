@@ -49,6 +49,16 @@ export interface LayoutWidget {
   row: number      // 0-based row
   colSpan: number  // 1-3
   rowSpan: number  // 1-3
+  /**
+   * WC.1 — per-placement configuration. This is what lets ONE widget type be
+   * placed several times with different meanings (an analysis table
+   * parameterised by section, an external-metric page by series, a payroll
+   * page by grouping) instead of minting near-identical widget types. Renderers
+   * receive it as their second argument; existing renderers ignore it.
+   */
+  config?: Record<string, unknown>
+  /** Optional page-title override, e.g. "COGS Analysis" on a shared renderer. */
+  titleOverride?: string
 }
 
 // Widget definition metadata for the registry
@@ -59,6 +69,17 @@ export interface WidgetDefinition {
   label: string
   category: WidgetCategory
   icon: string           // Lucide icon name
+  /**
+   * WC.2 — tables and charts render through renderWithSkipPage, which honours
+   * only box.x/y as a MARGIN (all twelve autoTable calls pass
+   * margin:{left:box.x,right:box.x}) — box.w is used by nothing but the KPI
+   * cards. A table dropped in column 2 of a portrait page therefore gets a
+   * 107mm margin on BOTH sides of a 210mm page. Until renderers honour real
+   * bounding boxes, full-row widgets are pinned to col 0 × full grid width;
+   * the placement helpers clamp and the PDF normalises defensively so layouts
+   * saved before this rule still render correctly.
+   */
+  fullRow?: boolean
   defaultColSpan: number
   defaultRowSpan: number
   minColSpan: number

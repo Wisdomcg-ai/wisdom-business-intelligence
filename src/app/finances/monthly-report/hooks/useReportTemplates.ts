@@ -52,6 +52,10 @@ export function useReportTemplates(businessId: string) {
           budget_forecast_id: settings.budget_forecast_id || null,
           subscription_account_codes: settings.subscription_account_codes || [],
           wages_account_names: settings.wages_account_names || [],
+          // WC.3 — capture the current PDF layout so a layout built for one
+          // client becomes reusable. null when the business has no custom
+          // layout: the template then deliberately does not manage layout.
+          pdf_layout: settings.pdf_layout ?? null,
         }),
       })
       const data = await res.json()
@@ -138,6 +142,10 @@ export function useReportTemplates(businessId: string) {
       budget_forecast_id: template.budget_forecast_id ?? null,
       subscription_account_codes: template.subscription_account_codes ?? [],
       wages_account_names: template.wages_account_names ?? [],
+      // WC.3 — only templates that CARRY a layout overwrite the business's
+      // layout; a null/absent pdf_layout leaves the existing one untouched
+      // (pre-WC.3 templates keep exactly their old behaviour).
+      ...(template.pdf_layout ? { pdf_layout: template.pdf_layout } : {}),
     }
   }, [])
 

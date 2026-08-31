@@ -17,7 +17,7 @@ import { transformSubscriptionCreepData } from '../components/charts/Subscriptio
 import { CHART_COLORS, getHeatmapColor } from '../components/charts/chart-colors'
 import type { PDFLayout, WidgetType, WidgetBoundingBox } from '../types/pdf-layout'
 import { GRID_CONFIG } from '../types/pdf-layout'
-import { calculateBoundingBox } from '../utils/grid-helpers'
+import { calculateBoundingBox, normalizeLayoutPlacements } from '../utils/grid-helpers'
 import { WIDGET_METHOD_MAP } from './widget-renderer'
 
 interface PDFOptions {
@@ -2180,7 +2180,12 @@ export class MonthlyReportPDFService {
    * For single-widget-per-page, the widget fills the full page (matching legacy behavior).
    * For multi-widget pages, each widget is rendered within its bounding box.
    */
-  private generateFromLayout(layout: PDFLayout): jsPDF {
+  private generateFromLayout(rawLayout: PDFLayout): jsPDF {
+    // WC.2 — defensive render-time normalisation: layouts saved before the
+    // full-row rule can hold a table in column 2, which renders with a
+    // page-wide margin (box.x is used as a symmetric margin by every autoTable
+    // call). Snap those in place rather than printing them broken.
+    const layout = normalizeLayoutPlacements(rawLayout)
     let isFirstPage = true
 
     for (const page of layout.pages) {
@@ -2222,7 +2227,7 @@ export class MonthlyReportPDFService {
         }
 
         const box = calculateBoundingBox(widget, page.orientation)
-        this.renderWidget(widget.type, box)
+        this.renderWidget(widget, box)
       }
     }
 
@@ -2234,7 +2239,8 @@ export class MonthlyReportPDFService {
    * Dispatch rendering for a widget type within a bounding box.
    * Falls back to a placeholder if the widget can't be rendered.
    */
-  private renderWidget(type: WidgetType, box: WidgetBoundingBox): void {
+  private renderWidget(widget: import('../types/pdf-layout').LayoutWidget, box: WidgetBoundingBox): void {
+    const type = widget.type
     const methodName = WIDGET_METHOD_MAP[type]
     if (!methodName) {
       this.renderPlaceholder(type, box)
@@ -2250,7 +2256,11 @@ export class MonthlyReportPDFService {
     try {
       const method = (this as any)[methodName]
       if (typeof method === 'function') {
-        method.call(this, box)
+        // WC.1 — renderers receive the placed widget as their second argument
+        // so a parameterised widget (section-scoped analysis table, external
+        // metric series, title override) can read widget.config. Existing
+        // renderers take only (box) and ignore it.
+        method.call(this, box, widget)
       } else {
         this.renderPlaceholder(type, box)
       }
