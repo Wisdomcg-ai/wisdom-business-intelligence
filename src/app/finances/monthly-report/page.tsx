@@ -925,6 +925,7 @@ export default function MonthlyReportPage() {
     cashflowForecast?: CashflowForecastData
     externalMetrics?: import('./types').ExternalMetricSeriesData[]
     memo?: string
+    moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
   }> => {
     let fyReport = fullYearReport
     if (!fyReport && businessId) {
@@ -1002,6 +1003,29 @@ export default function MonthlyReportPage() {
       }
     }
 
+    // WD.4 — the funds-flow page, derived server-side from the stored BS
+    // mirror. Same fail-open posture: a load failure omits the page and is
+    // captured, never swallowed.
+    let moneyFlow: import('@/lib/monthly-report/money-flow').MoneyFlow | undefined
+    if (businessId) {
+      try {
+        const res = await fetch(
+          `/api/monthly-report/money-flow?business_id=${encodeURIComponent(businessId)}&period_month=${encodeURIComponent(selectedMonth)}`
+        )
+        if (res.ok) {
+          const data = await res.json()
+          moneyFlow = data.flow ?? undefined
+        } else {
+          Sentry.captureMessage(
+            `[PDF] money-flow load failed (${res.status}) — PDF will omit the page`,
+            'warning' as any
+          )
+        }
+      } catch (err) {
+        Sentry.captureException(err, { tags: { invariant: 'pdf-money-flow-load' } } as any)
+      }
+    }
+
     return {
       fullYearReport: fyReport || undefined,
       subscriptionDetail: subDetail || undefined,
@@ -1009,6 +1033,7 @@ export default function MonthlyReportPage() {
       cashflowForecast: cfData,
       externalMetrics: extMetrics,
       memo: memoText,
+      moneyFlow,
     }
   }
 
@@ -1025,6 +1050,7 @@ export default function MonthlyReportPage() {
       cashflowForecast?: CashflowForecastData
       externalMetrics?: import('./types').ExternalMetricSeriesData[]
       memo?: string
+      moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
       businessName?: string
       sections?: import('./types').ReportSections
       pdfLayout?: import('./types/pdf-layout').PDFLayout | null

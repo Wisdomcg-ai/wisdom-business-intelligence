@@ -31,6 +31,8 @@ export const WIDGET_METHOD_MAP: Record<WidgetType, string | null> = {
   cover_page: 'renderCoverPage',
   // WD.8 — the month's written memo
   memo: 'renderMemo',
+  // WD.4 — funds flow between two BS dates
+  money_flow: 'renderMoneyFlow',
   // P&L Charts — the three analysis types share one renderer; it reads the
   // section from the widget type, with config.section as a WC.1 override.
   analysis_chart_income: 'renderAnalysisChart',
