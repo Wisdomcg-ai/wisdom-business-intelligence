@@ -68,6 +68,21 @@ function lineXeroName(line: ReportLine): string {
   return line.xero_account_name || line.account_name
 }
 
+// WD.3 — FX excluded from commentary (house rule). Currency gains/losses are
+// accounting noise to a non-numbers owner, swing past $500 constantly on
+// multi-currency clients (IICT), and nobody can "manage" them month to month.
+const FX_KEYWORDS = [
+  'currency gain', 'currency loss', 'exchange gain', 'exchange loss',
+  'realised gain', 'realised loss', 'unrealised gain', 'unrealised loss',
+  'realized gain', 'realized loss', 'unrealized gain', 'unrealized loss',
+  'fx gain', 'fx loss', 'foreign exchange', 'foreign currency',
+]
+
+export function isFxAccount(accountName: string): boolean {
+  const lower = accountName.toLowerCase()
+  return FX_KEYWORDS.some(kw => lower.includes(kw))
+}
+
 function toTriggerLine(line: ReportLine, reason: TriggerReason): TriggerLine {
   return {
     account_name: line.account_name,
@@ -93,6 +108,8 @@ export function collectCommentaryTriggers(
     if (EXPENSE_CATEGORIES.has(category)) {
       for (const line of section.lines) {
         if (line.is_budget_only) continue
+        // WD.3 house rule: FX never fires commentary.
+        if (isFxAccount(line.account_name)) continue
 
         // (1) Expense over-budget — existing trigger, unchanged
         if (line.variance_amount <= -EXPENSE_OVER_DOLLAR) {
@@ -113,6 +130,9 @@ export function collectCommentaryTriggers(
     } else if (REVENUE_CATEGORIES.has(category)) {
       for (const line of section.lines) {
         if (line.is_budget_only) continue
+        // WD.3 house rule: FX never fires commentary (FX gains sit in Other
+        // Income on multi-currency clients).
+        if (isFxAccount(line.account_name)) continue
 
         // (2) Revenue under-budget — shortfall ≥ $500 OR ≥ 10% of budget
         // Convention: variance_amount = budget - actual. POSITIVE variance on

@@ -200,6 +200,11 @@ export default function ReportSettingsPanel({
           budget_forecast_id: localSettings.budget_forecast_id,
           subscription_account_codes: localSettings.subscription_account_codes,
           wages_account_names: localSettings.wages_account_names,
+          // WD.3 — standing "refer to …" commentary lines (empty rows dropped).
+          standing_commentary:
+            (localSettings.standing_commentary ?? []).filter(l => l.label.trim() !== '') .length > 0
+              ? (localSettings.standing_commentary ?? []).filter(l => l.label.trim() !== '')
+              : null,
           // Phase 35 D-16: enables auto-revert when this save lands on an approved/sent report.
           report_month: reportMonth,
         }),
@@ -401,6 +406,71 @@ export default function ReportSettingsPanel({
               </div>
             </div>
           ))}
+
+          {/* WD.3 — Standing commentary lines */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">Standing Commentary</h3>
+            <p className="text-xs text-gray-500 mb-2">
+              &ldquo;Refer to …&rdquo; lines that appear under the Budget vs Actual statement every
+              month. A line pointing at a page not in the pack is flagged in the PDF, never dropped.
+            </p>
+            <div className="space-y-2">
+              {(localSettings.standing_commentary ?? []).map((line, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={line.label}
+                    onChange={(e) =>
+                      setLocalSettings(prev => ({
+                        ...prev,
+                        standing_commentary: (prev.standing_commentary ?? []).map((l, j) =>
+                          j === i ? { ...l, label: e.target.value } : l),
+                      }))
+                    }
+                    placeholder="e.g. Wages"
+                    className="w-36 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-orange"
+                  />
+                  <span className="text-xs text-gray-400 whitespace-nowrap">refer to</span>
+                  <input
+                    type="text"
+                    value={line.refer_to}
+                    onChange={(e) =>
+                      setLocalSettings(prev => ({
+                        ...prev,
+                        standing_commentary: (prev.standing_commentary ?? []).map((l, j) =>
+                          j === i ? { ...l, refer_to: e.target.value } : l),
+                      }))
+                    }
+                    placeholder="e.g. Wages Analysis"
+                    className="flex-1 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-orange"
+                  />
+                  <button
+                    onClick={() =>
+                      setLocalSettings(prev => ({
+                        ...prev,
+                        standing_commentary: (prev.standing_commentary ?? []).filter((_, j) => j !== i),
+                      }))
+                    }
+                    className="text-gray-400 hover:text-red-500 text-sm px-1"
+                    title="Remove line"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() =>
+                  setLocalSettings(prev => ({
+                    ...prev,
+                    standing_commentary: [...(prev.standing_commentary ?? []), { label: '', refer_to: '' }],
+                  }))
+                }
+                className="text-sm text-brand-orange hover:underline"
+              >
+                + Add standing line
+              </button>
+            </div>
+          </div>
 
           {/* Column Visibility */}
           <div>

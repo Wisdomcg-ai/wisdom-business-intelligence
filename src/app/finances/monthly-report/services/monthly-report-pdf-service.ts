@@ -10,6 +10,7 @@ import { transformVarianceHeatmapData } from '../components/charts/VarianceHeatm
 import { transformBurnRateData } from '../components/charts/BudgetBurnRateChart'
 import { transformAnalysisChartData, type AnalysisChartSection } from '../components/charts/analysis-chart-data'
 import { resolveSectionFilter, sectionTableTitle } from './section-table-config'
+import { annotateStandingLines } from '../utils/standing-commentary'
 import { transformCashRunwayData } from '../components/charts/CashRunwayChart'
 import { transformCumulativeNetCashData } from '../components/charts/CumulativeNetCashChart'
 import { transformWorkingCapitalData } from '../components/charts/WorkingCapitalGapChart'
@@ -828,25 +829,24 @@ export class MonthlyReportPDFService {
       tableData.push(subtotalRow)
       currentBodyIdx++
 
-      // Commentary
+      // Commentary — WD.3 house bullet format: bold Account | then suppliers
+      // largest-first (the route pre-sorts vendor_summary desc), then the
+      // coach's prose. One row per line so the account name can actually be
+      // bold (autoTable styles are per-cell, not per-substring).
       if (this.options.commentary && ['Cost of Sales', 'Operating Expenses', 'Other Expenses'].includes(section.category)) {
-        const sectionCommentary = section.lines
-          .filter(l => this.options.commentary![l.account_name])
-          .map(l => {
-            const entry = this.options.commentary![l.account_name]
-            const vendors = (entry.vendor_summary || [])
-              .map(v => `${v.vendor} ($${v.amount.toLocaleString()})`)
-              .join(', ')
-            const note = entry.coach_note ? ` — ${entry.coach_note}` : ''
-            return `${l.account_name}${vendors ? ' | ' + vendors : ''}${note}`
-          })
-        if (sectionCommentary.length > 0) {
+        const commentaryLines = section.lines.filter(l => this.options.commentary![l.account_name])
+        const amber = { fillColor: [255, 251, 235] as number[], textColor: [120, 53, 15] as number[], fontSize: 6.5, cellPadding: 2 }
+        for (const l of commentaryLines) {
+          const entry = this.options.commentary![l.account_name]
+          const vendors = (entry.vendor_summary || [])
+            .map(v => `${v.vendor} ($${v.amount.toLocaleString()})`)
+            .join(', ')
+          const note = entry.coach_note ? `${vendors ? ' — ' : ''}${entry.coach_note}` : ''
           specialRowIndices.add(currentBodyIdx)
-          tableData.push([{
-            content: sectionCommentary.join('\n'),
-            colSpan: headers.length,
-            styles: { fillColor: [255, 251, 235], textColor: [120, 53, 15], fontSize: 6, cellPadding: 3 },
-          }])
+          tableData.push([
+            { content: l.account_name, styles: { ...amber, fontStyle: 'bold' } },
+            { content: `${vendors}${note}` || '—', colSpan: headers.length - 1, styles: amber },
+          ])
           currentBodyIdx++
         }
       }
@@ -894,6 +894,38 @@ export class MonthlyReportPDFService {
         }
       },
     })
+
+    // WD.3 — standing "refer to …" lines, statement view only. A line whose
+    // target page is not in this pack renders WITH a warning marker (visible,
+    // never silent).
+    if (!filter) {
+      const standing = annotateStandingLines(
+        this.report.settings.standing_commentary ?? [],
+        this.packPageLabels(),
+      )
+      if (standing.length > 0) {
+        let y = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 6
+        this.doc.setFontSize(8)
+        for (const line of standing) {
+          if (y > this.pageHeight - this.margin - 6) {
+            this.addPage('landscape')
+            y = this.yPosition
+          }
+          this.doc.setFont('helvetica', 'bold')
+          this.doc.setTextColor(120, 53, 15)
+          this.doc.text(line.label, this.margin, y)
+          const labelWidth = this.doc.getTextWidth(line.label)
+          this.doc.setFont('helvetica', 'normal')
+          const suffix = line.in_pack
+            ? ` — refer to the ${line.refer_to} page`
+            : ` — refer to ${line.refer_to} (page not in this pack)`
+          if (!line.in_pack) this.doc.setTextColor(185, 28, 28)
+          this.doc.text(suffix, this.margin + labelWidth, y)
+          y += 4.5
+        }
+        this.doc.setTextColor(0, 0, 0)
+      }
+    }
   }
 
   // =====================================================================
@@ -974,6 +1006,30 @@ export class MonthlyReportPDFService {
         }
       },
     })
+
+  }
+
+  /**
+   * WD.3 — the page labels actually in this pack, for the standing-line gate.
+   * Derived from what the default flow / data would render, not from wishes.
+   */
+  private packPageLabels(): string[] {
+    const sec = this.options.sections
+    const labels = ['Cover', 'Executive Summary', 'Budget vs Actual', 'Actual vs Budget']
+    if (this.report.settings.show_ytd) labels.push('YTD Summary')
+    if ((this.options.memo ?? '').trim() !== '') labels.push('Memo')
+    if (this.options.subscriptionDetail) labels.push('Subscription Analysis', 'Subscriptions')
+    if (this.options.wagesDetail) labels.push('Wages Analysis', 'Wages', 'Payroll Analysis', 'Payroll')
+    if (this.options.cashflowForecast) labels.push('Cashflow Forecast', 'Cashflow')
+    if (this.options.fullYearReport) labels.push('Full Year Projection', 'Full Year')
+    if (this.options.moneyFlow?.comparable) labels.push('Where Did Our Money Go', 'Money Flow')
+    if ((sec?.trend_charts ?? true) && this.options.fullYearReport) {
+      labels.push('Income Analysis', 'COGS Analysis', 'Expense Analysis', 'Trends')
+    }
+    for (const s of this.options.externalMetrics ?? []) {
+      if (s.values.length > 0) labels.push(s.display_name)
+    }
+    return labels
   }
 
   // =====================================================================

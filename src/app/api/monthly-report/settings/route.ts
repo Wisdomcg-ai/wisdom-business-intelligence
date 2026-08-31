@@ -29,6 +29,7 @@ const SettingsPostSchema = z.object({
   subscription_account_codes: z.array(z.string()).optional(),
   wages_account_names: z.array(z.string()).optional(),
   pdf_layout: z.any().optional(),
+  standing_commentary: z.any().optional(),
   report_month: z.string().optional(),
 })
 
@@ -182,6 +183,7 @@ async function postHandler(request: Request) {
       subscription_account_codes,
       wages_account_names,
       pdf_layout,
+      standing_commentary,
       // Optional: month being edited (YYYY-MM). When provided, an approved/sent report
       // for that month silently reverts to draft per Phase 35 D-16. Settings are business-
       // level so without a month we cannot scope the revert; callers that have a current
@@ -240,6 +242,11 @@ async function postHandler(request: Request) {
     // Only include pdf_layout when explicitly provided
     if (pdf_layout !== undefined) {
       baseData.pdf_layout = pdf_layout
+    }
+    // WD.3 — same omit-unless-provided semantics: a settings save that doesn't
+    // carry standing_commentary must not clear it.
+    if (standing_commentary !== undefined) {
+      baseData.standing_commentary = standing_commentary
     }
 
     let { data: settings, error } = await supabase
