@@ -11,6 +11,7 @@ import { Loader2, BarChart3, Settings, Download, Save, LayoutGrid } from 'lucide
 import { useAutoSaveReport } from './hooks/useAutoSaveReport'
 import SaveIndicator from './components/SaveIndicator'
 import { toast } from 'sonner'
+import * as Sentry from '@sentry/nextjs'
 import { DataIntegrityBanner } from '@/components/data-integrity/DataIntegrityBanner'
 import PageHeader from '@/components/ui/PageHeader'
 import MonthlyReportTabs from './components/MonthlyReportTabs'
@@ -773,14 +774,15 @@ export default function MonthlyReportPage() {
       setLoadedSnapshotStatus((snapshot?.status as 'draft' | 'final' | undefined) ?? 'draft')
       fetchCommentary(result, persistedCommentary)
 
-      // Phase 71 Plan 03 (B3: Proceed-as-Draft persistence) — when the coach
-      // clicks "Generate Draft Report" we immediately POST a snapshot at
-      // status='draft' so closing the tab doesn't lose the report. Auto-save
-      // can't rescue this case because it watches commentary, which is empty
-      // on a fresh draft. Idempotent via the route's upsert on
-      // (business_id, report_month). Reconciled-then-finalise happy path
-      // (forceDraft=false on a clean month) is untouched.
-      if (forceDraft) {
+      // WA.6 — a generated report is persisted, full stop. This used to run
+      // only on the unreconciled "Generate Draft Report" path (Phase 71 B3),
+      // so the clean happy path saved NOTHING: auto-save watches commentary
+      // (empty on a fresh report), Report History stayed empty while its
+      // empty-state promised "generated reports will appear here", and closing
+      // the tab lost the report. One guard: never silently downgrade a month a
+      // coach has finalised — regenerating a final month stays view-only under
+      // the existing D-06 lock until they explicitly unfinalise.
+      if ((snapshot?.status as string | undefined) !== 'final') {
         try {
           await saveSnapshot(result, {
             status: 'draft',
@@ -788,10 +790,10 @@ export default function MonthlyReportPage() {
             commentary: persistedCommentary,
           })
           setLoadedSnapshotStatus('draft')
-          toast.success('Saved as draft')
+          if (forceDraft) toast.success('Saved as draft')
         } catch (err) {
-          console.error('[MonthlyReport] B3 draft persistence failed', err)
-          toast.error('Draft generated but not saved — refresh to retry')
+          console.error('[MonthlyReport] generate persistence failed', err)
+          toast.error('Report generated but not saved — refresh to retry')
         }
       }
     }
@@ -1040,6 +1042,32 @@ export default function MonthlyReportPage() {
     await reportStatus.refresh()
   }
 
+  // WA.6 — stamp pdf_exported_at whenever a PDF of this month is actually
+  // produced (browser export, or the PDF built for Approve & Send / Resend).
+  // The column existed since the baseline schema and was read in three places
+  // but written in none. Fire-and-forget: the stamp must never fail the export
+  // itself, but a swallowed write failure still gets a Sentry capture
+  // (house rule — no silent .catch on writes).
+  const markPdfExported = (reportMonth: string) => {
+    if (!businessId) return
+    fetch('/api/monthly-report/snapshot', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        business_id: businessId,
+        report_month: reportMonth,
+        action: 'mark_pdf_exported',
+      }),
+    }).then((res) => {
+      if (!res.ok) throw new Error(`mark_pdf_exported ${res.status}`)
+    }).catch((err) => {
+      Sentry.captureException(err, {
+        tags: { invariant: 'pdf-exported-stamp' },
+        extra: { businessId, reportMonth },
+      } as any)
+    })
+  }
+
   const handleApproveAndSend = async () => {
     const params = await buildApproveParams()
     if (!params) {
@@ -1053,6 +1081,7 @@ export default function MonthlyReportPage() {
     }
     const res = await approveAndSend(params)
     if (!res.ok) throw res
+    if (report) markPdfExported(report.report_month)
     await reportStatus.refresh()
   }
 
@@ -1066,6 +1095,7 @@ export default function MonthlyReportPage() {
     }
     const res = await resendReport(params)
     if (!res.ok) throw res
+    if (report) markPdfExported(report.report_month)
     await reportStatus.refresh()
   }
 
@@ -1128,6 +1158,7 @@ export default function MonthlyReportPage() {
         .toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })
         .replace(' ', '-')
       doc.save(`Monthly-Report-${monthLabel}.pdf`)
+      markPdfExported(report.report_month)
       toast.success('PDF exported')
     } catch (err) {
       console.error('[MonthlyReport] PDF export error:', err)
