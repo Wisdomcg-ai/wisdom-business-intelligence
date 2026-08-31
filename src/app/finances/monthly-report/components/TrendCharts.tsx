@@ -39,20 +39,27 @@ function deriveTrendData(report: FullYearReport): ChartDataPoint[] {
   const months = report.gross_profit.months
 
   return months.map((gpMonth, i) => {
-    const revActual = (revSection?.subtotal.months[i].actual || 0) + (otherIncSection?.subtotal.months[i].actual || 0)
-    const revBudget = (revSection?.subtotal.months[i].budget || 0) + (otherIncSection?.subtotal.months[i].budget || 0)
-    const revPriorYear = (revSection?.subtotal.months[i].prior_year || 0) + (otherIncSection?.subtotal.months[i].prior_year || 0)
+    // WA.1 — trading figures only in the revenue/expense bars: Gross Profit
+    // excludes Other Income, opex excludes Other Expenses. Both still enter
+    // Net Profit (once) so the NP% line remains true net profit.
+    const revActual = revSection?.subtotal.months[i].actual || 0
+    const revBudget = revSection?.subtotal.months[i].budget || 0
+    const revPriorYear = revSection?.subtotal.months[i].prior_year || 0
     const cogsActual = cogsSection?.subtotal.months[i].actual || 0
     const cogsBudget = cogsSection?.subtotal.months[i].budget || 0
     const cogsPriorYear = cogsSection?.subtotal.months[i].prior_year || 0
-    const opexActual = (opexSection?.subtotal.months[i].actual || 0) + (otherExpSection?.subtotal.months[i].actual || 0)
-    const opexBudget = (opexSection?.subtotal.months[i].budget || 0) + (otherExpSection?.subtotal.months[i].budget || 0)
-    const opexPriorYear = (opexSection?.subtotal.months[i].prior_year || 0) + (otherExpSection?.subtotal.months[i].prior_year || 0)
+    const opexActual = opexSection?.subtotal.months[i].actual || 0
+    const opexBudget = opexSection?.subtotal.months[i].budget || 0
+    const opexPriorYear = opexSection?.subtotal.months[i].prior_year || 0
+    const oiActual = otherIncSection?.subtotal.months[i].actual || 0
+    const oiBudget = otherIncSection?.subtotal.months[i].budget || 0
+    const oeActual = otherExpSection?.subtotal.months[i].actual || 0
+    const oeBudget = otherExpSection?.subtotal.months[i].budget || 0
 
     const gpActual = revActual - cogsActual
     const gpBudget = revBudget - cogsBudget
-    const npActual = gpActual - opexActual
-    const npBudget = gpBudget - opexBudget
+    const npActual = gpActual - opexActual + oiActual - oeActual
+    const npBudget = gpBudget - opexBudget + oiBudget - oeBudget
 
     const gpPct = revActual !== 0 ? (gpActual / revActual) * 100 : 0
     const npPct = revActual !== 0 ? (npActual / revActual) * 100 : 0

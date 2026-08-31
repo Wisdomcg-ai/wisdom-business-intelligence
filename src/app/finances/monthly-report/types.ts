@@ -173,6 +173,12 @@ export interface ReportSummary {
   gross_profit: { actual: number; budget: number; variance: number; gp_percent: number }
   opex: { actual: number; budget: number; variance: number; variance_percent: number }
   net_profit: { actual: number; budget: number; variance: number; np_percent: number }
+  // WA.1 — Other Income/Expenses removed from GP and opex; Operating Profit is
+  // a real line. Optional because snapshots saved before the restructure lack
+  // them — consumers must render conditionally.
+  operating_profit?: { actual: number; budget: number; variance: number; op_percent: number }
+  other_income?: { actual: number; budget: number; variance: number; variance_percent: number }
+  other_expenses?: { actual: number; budget: number; variance: number; variance_percent: number }
 }
 
 export interface GeneratedReport {
@@ -183,6 +189,8 @@ export interface GeneratedReport {
   sections: ReportSection[]
   summary: ReportSummary
   gross_profit_row: ReportLine
+  /** WA.1 — GP − Operating Expenses. Optional: pre-restructure snapshots lack it. */
+  operating_profit_row?: ReportLine
   net_profit_row: ReportLine
   is_draft: boolean
   unreconciled_count: number

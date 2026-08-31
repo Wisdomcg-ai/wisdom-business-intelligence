@@ -18,6 +18,16 @@ const SnapshotGetQuerySchema = z.object({
   report_month: z.string().optional(),
 })
 
+// WA.6: PATCH stamps pdf_exported_at on an existing snapshot. The column has
+// existed since the baseline schema and was read in three places (this route's
+// list SELECT, the types, the phase-70 audit script) but written in none —
+// permanently null on every row.
+const SnapshotPatchSchema = z.object({
+  business_id: z.string(),
+  report_month: z.string(),
+  action: z.literal('mark_pdf_exported'),
+})
+
 const SnapshotPostSchema = z.object({
   business_id: z.string(),
   report_month: z.string(),
@@ -232,5 +242,76 @@ async function postHandler(request: Request) {
   }
 }
 
+/**
+ * PATCH /api/monthly-report/snapshot
+ * { business_id, report_month, action: 'mark_pdf_exported' }
+ *
+ * Stamps pdf_exported_at = now on the month's snapshot. Deliberately narrow —
+ * it never touches report_data/status, so exporting a PDF of a FINAL month
+ * cannot downgrade or rewrite it (unlike routing this through the POST upsert).
+ * A missing row returns updated:false rather than an error: a PDF can be
+ * exported from in-memory state that was never persisted (pre-WA.6 reports).
+ */
+async function patchHandler(request: Request) {
+  try {
+    const authClient = await createRouteHandlerClient()
+    const { data: { user }, error: authError } = await authClient.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { business_id, report_month, action } = await request.json()
+
+    // withSchema is observe-mode (VALID-05a) — it logs mismatches but does not
+    // block, so the handler enforces its own contract.
+    if (action !== 'mark_pdf_exported' || !business_id || !report_month) {
+      return NextResponse.json(
+        { error: "business_id, report_month and action 'mark_pdf_exported' are required" },
+        { status: 400 },
+      )
+    }
+
+    const _sectionVerdict = await requireSectionPermission(
+      authClient,          // auth-bound client; NEVER pass a service-role client here
+      user.id,
+      business_id,
+      'finances',
+    )
+    const _sectionBlocked = enforceSectionPermission(
+      _sectionVerdict,
+      'finances',
+      'api/monthly-report/snapshot',
+      user.id,
+      business_id,
+    )
+    if (_sectionBlocked) return _sectionBlocked
+
+    // R29-pattern hard gate — the module-level client is service-role.
+    const _hasAccess = await verifyBusinessAccess(user.id, business_id)
+    if (!_hasAccess) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const now = new Date().toISOString()
+    const { data, error } = await supabase
+      .from('monthly_report_snapshots')
+      .update({ pdf_exported_at: now, updated_at: now })
+      .eq('business_id', business_id)
+      .eq('report_month', report_month)
+      .select('id')
+
+    if (error) {
+      Sentry.captureException(error, { tags: { route: 'monthly-report/snapshot', invariant: 'pdf-exported-stamp' }, extra: { business_id, report_month } } as any)
+      return NextResponse.json({ error: 'Failed to record PDF export' }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, updated: (data?.length ?? 0) > 0, pdf_exported_at: now })
+  } catch (error) {
+    Sentry.captureException(error, { tags: { route: 'monthly-report/snapshot' }, extra: { context: '[Snapshot] PATCH error' } } as any)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 export const GET = withQuerySchema('monthly-report/snapshot', SnapshotGetQuerySchema, getHandler)
 export const POST = withSchema('monthly-report/snapshot', SnapshotPostSchema, postHandler)
+export const PATCH = withSchema('monthly-report/snapshot', SnapshotPatchSchema, patchHandler)
