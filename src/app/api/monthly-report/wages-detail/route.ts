@@ -318,14 +318,84 @@ async function postHandler(request: Request) {
     let payrollAvailable = false
     const payRunDatesSet = new Set<string>()
 
+    // WB.2 — stored-first. The payroll sync writes xero_payslip_lines on the
+    // 6-hourly cycle; reading them here replaces a live N+1 fetch chain
+    // (unpaged run list + one detail call per run + one Employees/{id} per
+    // matched employee) that ran on EVERY page view against a 60-req/min
+    // tenant cap. Two functional wins over the live path:
+    //   - multi-org businesses get ALL tenants' payslips (the live path took
+    //     `.limit(1)` on connections, silently dropping Dragon's and IICT's
+    //     other orgs);
+    //   - jobTitle/annualSalary per-employee detail calls are gone (annualSalary
+    //     was assigned and never read; position falls back to the forecast row).
+    // The live path below survives ONLY as a fallback for a business whose
+    // backfill hasn't run yet; it disappears once fleet backfill converges.
+    const [monthYear, monthNum] = report_month.split('-').map(Number)
+    const monthStart = `${report_month}-01`
+    const monthEnd = `${monthYear}-${String(monthNum).padStart(2, '0')}-${String(new Date(monthYear, monthNum, 0).getDate()).padStart(2, '0')}`
+
+    const { data: storedSlips, error: storedErr } = await supabase
+      .from('xero_payslip_lines')
+      .select('employee_id, employee_name, payment_date, period_start, period_end, calendar_type, wages, tax, super_amount, net_pay')
+      .in('business_id', ids.all)
+      .gte('payment_date', monthStart)
+      .lte('payment_date', monthEnd)
+
+    if (storedErr) {
+      Sentry.captureException(storedErr, { tags: { route: 'monthly-report/wages-detail', invariant: 'payroll-stored-read' }, extra: { business_id, report_month } } as any)
+    }
+
+    if (storedSlips && storedSlips.length > 0) {
+      payrollAvailable = true
+      for (const slip of storedSlips) {
+        payRunDatesSet.add(slip.payment_date)
+        let entry = employeePayMap.get(slip.employee_id)
+        if (!entry) {
+          entry = {
+            name: slip.employee_name,
+            employeeId: slip.employee_id,
+            jobTitle: undefined,
+            calendarType: slip.calendar_type || 'UNKNOWN',
+            payslips: [],
+          }
+          employeePayMap.set(slip.employee_id, entry)
+        }
+        entry.payslips.push({
+          date: slip.payment_date,
+          periodStart: slip.period_start ?? '',
+          periodEnd: slip.period_end ?? '',
+          gross: Number(slip.wages ?? 0),
+          tax: Number(slip.tax ?? 0),
+          superAmt: Number(slip.super_amount ?? 0),
+          net: Number(slip.net_pay ?? 0),
+        })
+      }
+    }
+
     try {
-      const { data: connection } = await supabase
-        .from('xero_connections')
-        .select('*')
-        .in('business_id', ids.all)
-        .eq('is_active', true)
-        .limit(1)
-        .maybeSingle()
+      // Fallback: nothing stored for this month AND nothing stored for the
+      // business at all → backfill hasn't reached it; use the live path. A
+      // business WITH stored history but zero slips this month is a real
+      // "no pay runs this month", not a reason to hammer the API.
+      let useLiveFallback = false
+      if (!payrollAvailable) {
+        const { count } = await supabase
+          .from('xero_pay_runs')
+          .select('id', { count: 'exact', head: true })
+          .in('business_id', ids.all)
+        useLiveFallback = (count ?? 0) === 0
+        payrollAvailable = !useLiveFallback ? true : payrollAvailable
+      }
+
+      const { data: connection } = useLiveFallback
+        ? await supabase
+            .from('xero_connections')
+            .select('*')
+            .in('business_id', ids.all)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle()
+        : { data: null as any }
 
       if (connection) {
         const tokenResult = await getValidAccessToken(connection, supabase)
