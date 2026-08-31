@@ -9,7 +9,14 @@ import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfile
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
-import { matchEmployeeName, tokenSortKey } from './_helpers'
+import {
+  matchEmployeeName,
+  tokenSortKey,
+  PAY_RUNS_ORDER,
+  payRunLookbackCutoff,
+  shouldFetchNextPayRunPage,
+  oldestPeriodEnd,
+} from './_helpers'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 
@@ -329,11 +336,55 @@ async function postHandler(request: Request) {
             'Accept': 'application/json',
           }
 
-          // Fetch PayCalendars and PayRuns in parallel
-          const [calResp, runsResp] = await Promise.all([
+          // W0.2 — PayRuns is paginated at 100 per page. Fetching it unordered
+          // and unpaged (as this route used to) means only ever seeing whichever
+          // 100 runs Xero returned first: a weekly-payroll client passes 100 runs
+          // in about two years, after which the report month goes missing and the
+          // page renders an empty state rather than an error. Order newest-first
+          // and page until we're safely past the window. See _helpers.ts.
+          const payRunCutoff = payRunLookbackCutoff(report_month)
+          const allPayRuns: any[] = []
+          let payRunsOk = false
+          let payRunsStatus = 0
+
+          const fetchPayRunPage = async (page: number) =>
+            fetch(
+              `https://api.xero.com/payroll.xro/1.0/PayRuns?page=${page}&order=${encodeURIComponent(PAY_RUNS_ORDER)}`,
+              { headers: xeroHeaders },
+            )
+
+          // Page 1 runs alongside PayCalendars; later pages are rare (one page
+          // covers ~2 years of weekly payroll) and only fetched when needed.
+          const [calResp, firstRunsResp] = await Promise.all([
             fetch('https://api.xero.com/payroll.xro/1.0/PayCalendars', { headers: xeroHeaders }),
-            fetch('https://api.xero.com/payroll.xro/1.0/PayRuns', { headers: xeroHeaders }),
+            fetchPayRunPage(1),
           ])
+
+          let runsResp = firstRunsResp
+          let pageNumber = 1
+          while (true) {
+            payRunsStatus = runsResp.status
+            if (!runsResp.ok) break
+            payRunsOk = true
+
+            const pageData = await runsResp.json()
+            const pageRuns: any[] = pageData?.PayRuns || []
+            allPayRuns.push(...pageRuns)
+
+            if (
+              !shouldFetchNextPayRunPage({
+                pageCount: pageRuns.length,
+                pageNumber,
+                oldestPeriodEnd: oldestPeriodEnd(pageRuns, parseXeroDate),
+                cutoff: payRunCutoff,
+              })
+            ) {
+              break
+            }
+
+            pageNumber += 1
+            runsResp = await fetchPayRunPage(pageNumber)
+          }
 
           // Build calendar type lookup
           const calendarMap = new Map<string, string>()
@@ -354,13 +405,12 @@ async function postHandler(request: Request) {
             }
           }
 
-          if (runsResp.ok) {
-            const runsData = await runsResp.json()
+          if (payRunsOk) {
             payrollAvailable = true
 
             // Filter to POSTED pay runs where PaymentDate falls in report month
             const [reportYear, reportMonthNum] = report_month.split('-').map(Number)
-            const monthPayRuns = (runsData?.PayRuns || []).filter((pr: any) => {
+            const monthPayRuns = allPayRuns.filter((pr: any) => {
               if (pr.PayRunStatus !== 'POSTED') return false
               const payDate = parseXeroDate(pr.PaymentDate)
               if (!payDate) return false
@@ -368,7 +418,7 @@ async function postHandler(request: Request) {
             })
 
             if (process.env.NODE_ENV !== 'production') {
-              console.log(`[WagesDetail] Found ${monthPayRuns.length} POSTED pay runs in ${report_month} (of ${runsData?.PayRuns?.length || 0} total)`)
+              console.log(`[WagesDetail] Found ${monthPayRuns.length} POSTED pay runs in ${report_month} (of ${allPayRuns.length} fetched across ${pageNumber} page(s))`)
             }
 
             // Fetch detail for each pay run to get payslip amounts
@@ -461,7 +511,7 @@ async function postHandler(request: Request) {
             }
           } else {
             if (process.env.NODE_ENV !== 'production') {
-              console.log(`[WagesDetail] PayRuns fetch failed: ${runsResp.status} - need to reconnect Xero with payroll.payruns.read scope`)
+              console.log(`[WagesDetail] PayRuns fetch failed: ${payRunsStatus} - need to reconnect Xero with payroll.payruns.read scope`)
             }
             // Don't create fake actuals — just mark payroll as unavailable
             // Budget-only data from forecast_employees will still show
