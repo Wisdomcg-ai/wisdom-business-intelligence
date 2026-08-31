@@ -85,6 +85,10 @@ export interface ReportTemplate {
   budget_forecast_id?: string | null
   subscription_account_codes?: string[]
   wages_account_names?: string[]
+  /** WC.3 — optional saved PDF page layout. null/undefined = this template
+   *  does not manage the layout; applying it leaves the business's layout
+   *  untouched. */
+  pdf_layout?: import('./types/pdf-layout').PDFLayout | null
   created_at?: string
   updated_at?: string
 }
@@ -173,6 +177,12 @@ export interface ReportSummary {
   gross_profit: { actual: number; budget: number; variance: number; gp_percent: number }
   opex: { actual: number; budget: number; variance: number; variance_percent: number }
   net_profit: { actual: number; budget: number; variance: number; np_percent: number }
+  // WA.1 — Other Income/Expenses removed from GP and opex; Operating Profit is
+  // a real line. Optional because snapshots saved before the restructure lack
+  // them — consumers must render conditionally.
+  operating_profit?: { actual: number; budget: number; variance: number; op_percent: number }
+  other_income?: { actual: number; budget: number; variance: number; variance_percent: number }
+  other_expenses?: { actual: number; budget: number; variance: number; variance_percent: number }
 }
 
 export interface GeneratedReport {
@@ -183,6 +193,8 @@ export interface GeneratedReport {
   sections: ReportSection[]
   summary: ReportSummary
   gross_profit_row: ReportLine
+  /** WA.1 — GP − Operating Expenses. Optional: pre-restructure snapshots lack it. */
+  operating_profit_row?: ReportLine
   net_profit_row: ReportLine
   is_draft: boolean
   unreconciled_count: number

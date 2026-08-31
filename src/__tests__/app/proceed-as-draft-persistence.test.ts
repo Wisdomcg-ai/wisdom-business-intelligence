@@ -260,25 +260,36 @@ describe('B3 — Proceed-as-Draft persistence (snapshot POST handler)', () => {
     expect(row.status).toBe('final');
   });
 
-  it('Test 4 (B3 client wiring): page.tsx Proceed-as-Draft path calls saveSnapshot with status="draft" immediately', () => {
-    // Source-level invariant — guards against any future refactor that
-    // drops the immediate save. Mirrors the 71-01/71-09 source-grep pattern.
+  it('Test 4 (client wiring): page.tsx persists every generated report immediately', () => {
+    // Source-level invariant — guards against any future refactor that drops
+    // the immediate save. Mirrors the 71-01/71-09 source-grep pattern.
+    //
+    // History: Phase 71 B3 persisted only the Proceed-as-Draft (forceDraft)
+    // path. WA.6 widened it — EVERY generate persists a draft snapshot, with
+    // one guard: a month a coach finalised is never silently downgraded. The
+    // B3 behaviour is a strict subset of the new one, so this test now pins
+    // the wider invariant.
     const pagePath = resolve(
       process.cwd(),
       'src/app/finances/monthly-report/page.tsx',
     );
     const source = readFileSync(pagePath, 'utf-8');
 
-    // The B3 marker comment must be present (matches plan done-criteria grep).
-    expect(source).toMatch(/B3: Proceed-as-Draft/);
+    // The WA.6 marker comment must be present.
+    expect(source).toMatch(/WA\.6 — a generated report is persisted, full stop/);
 
-    // The 'Saved as draft' toast literal must be present.
+    // The 'Saved as draft' toast literal must be present (forceDraft UX kept).
     expect(source).toMatch(/Saved as draft/);
 
-    // The forceDraft branch must invoke saveSnapshot with status: 'draft'.
-    // Single regex covers either single- or double-quote style for the value.
+    // The generate flow must invoke saveSnapshot with status: 'draft', gated
+    // ONLY by the never-downgrade-a-final guard — not by forceDraft.
     expect(source).toMatch(
-      /forceDraft[\s\S]{0,400}saveSnapshot[\s\S]{0,300}status:\s*['"]draft['"]/,
+      /!==\s*['"]final['"][\s\S]{0,400}saveSnapshot[\s\S]{0,300}status:\s*['"]draft['"]/,
+    );
+    // And the old narrow gate must NOT come back: no `if (forceDraft)` wrapping
+    // the saveSnapshot call inside the generate handler.
+    expect(source).not.toMatch(
+      /if\s*\(forceDraft\)\s*\{[\s\S]{0,200}saveSnapshot/,
     );
   });
 });
