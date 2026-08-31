@@ -35,6 +35,8 @@ import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { assertBusinessProfileId } from '@/lib/utils/assert-profile-id'
+import { syncPayrollForBusiness } from './payroll-sync'
+import { autoMapIfUnmapped } from '@/lib/monthly-report/auto-map'
 import {
   computeCoverage,
   type CoverageRecord,
@@ -68,6 +70,21 @@ export type SyncResult = {
   coverage: CoverageRecord
   reconciliation: { status: 'ok' | 'mismatch'; discrepancy_count: number }
   error?: string
+  /**
+   * WB.2 — payroll sync summary for this business, when the run budget allowed
+   * it. Absent = not attempted this cycle (budget exhausted before its turn);
+   * skipped_some = attempted but stopped early (deadline or detail cap) —
+   * stalest-first rotation converges the remainder over subsequent cycles.
+   */
+  payroll?: {
+    tenants_synced: number
+    runs_upserted: number
+    payslips_upserted: number
+    employees_upserted: number
+    xero_requests: number
+    skipped_some: boolean
+    errors: string[]
+  }
 }
 
 export type SyncOptions = {
@@ -1242,6 +1259,24 @@ export async function syncBusinessXeroPL(
       } as any)
     }
 
+    // WA.5b — a business whose sync landed data but which has ZERO account
+    // mappings can never render a monthly report (generate/route.ts turns the
+    // empty set into a hard 400 NO_MAPPINGS). Auto-map used to run only on the
+    // Xero OAuth return leg, so anyone connected before that wiring stayed
+    // stuck. Fill the gap here, where every sync path converges. Non-fatal and
+    // strictly zero-mappings-only: autoMapIfUnmapped never touches a business
+    // that has any rows, and never throws (failures are Sentry-tagged inside).
+    if (finalStatus !== 'error' && rowsInserted + rowsUpdated > 0) {
+      const autoMap = await autoMapIfUnmapped(supabase, businessId)
+      if (autoMap.triggered) {
+        Sentry.captureMessage('[Sync] Auto-mapped previously unmapped business', {
+          level: 'info' as any,
+          tags: { invariant: 'auto-map-on-sync', business_id: profileId },
+          extra: { created: autoMap.created, sync_job_id: syncJobId },
+        } as any)
+      }
+    }
+
     return {
       business_id: businessId,
       status: finalStatus,
@@ -1386,7 +1421,39 @@ export async function runSyncForAllBusinesses(): Promise<SyncResult[]> {
     }
 
     try {
-      results.push(await syncBusinessXeroPL(businessId))
+      const syncResult = await syncBusinessXeroPL(businessId)
+
+      // WB.2 — payroll piggybacks each business's slot, inside the SAME
+      // wall-clock budget (order + budget + skipped-list, per the house rule
+      // for per-item crons). It never changes the PL sync's status: payroll
+      // is additive telemetry on the result, and its own failures are
+      // captured inside syncPayrollForBusiness.
+      if (syncResult.status !== 'error') {
+        const remaining = RUN_ALL_BUDGET_MS - (Date.now() - startedAt)
+        if (remaining > PER_BUSINESS_RESERVE_MS) {
+          try {
+            const payroll = await syncPayrollForBusiness(supabase, businessId, {
+              deadlineMs: Date.now() + Math.min(remaining - PER_BUSINESS_RESERVE_MS / 2, 120_000),
+              maxDetailFetches: 40,
+            })
+            syncResult.payroll = {
+              tenants_synced: payroll.tenants_synced,
+              runs_upserted: payroll.runs_upserted,
+              payslips_upserted: payroll.payslips_upserted,
+              employees_upserted: payroll.employees_upserted,
+              xero_requests: payroll.xero_requests,
+              skipped_some: payroll.skipped_some,
+              errors: payroll.errors,
+            }
+          } catch (payrollErr) {
+            Sentry.captureException(payrollErr, {
+              tags: { invariant: 'payroll-sync', business_id: businessId },
+            } as any)
+          }
+        }
+      }
+
+      results.push(syncResult)
     } catch (err: any) {
       results.push({
         business_id: businessId,

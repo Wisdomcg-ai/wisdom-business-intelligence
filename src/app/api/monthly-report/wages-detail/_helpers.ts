@@ -142,3 +142,125 @@ export function matchEmployeeName(
 
   return { matched: null, via: 'no_match' };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// W0.2 pay-run pagination helpers — moved to @/lib/xero/payrun-paging in WB.1
+// so the payroll sync (lib) and this route share one implementation.
+// Re-exported here so existing imports and tests keep working.
+// ─────────────────────────────────────────────────────────────────────────────
+export {
+  PAY_RUNS_PAGE_SIZE,
+  PAY_RUNS_MAX_PAGES,
+  PAY_RUNS_ORDER,
+  payRunLookbackCutoff,
+  shouldFetchNextPayRunPage,
+  oldestPeriodEnd,
+} from '@/lib/xero/payrun-paging';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WB.4 / WB.5 — payroll month analysis: phasing + P&L tie-out.
+//
+// Pure functions; the route feeds them what it already computed. Both encode
+// rules lifted from the client skills that produce the Calxa packs by hand:
+//
+//   Phasing — "some months have five Fridays, not four; that's a real
+//   budget-phasing variance worth noting" (DD skill). An extra weekly pay run
+//   inflates the month ~25% against a 4-week budget; without the note it reads
+//   as an overspend.
+//
+//   Tie-out — every skill's sign-off checklist starts with "payroll grand
+//   total ties to the P&L wages figure". PAY-TIES ships as a WARNING (per the
+//   invariant-promotion convention): payment-date-keyed pay runs vs period-end
+//   accruals and manual journals can legitimately move wages between months.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PayrollPhasing {
+  /** Distinct payment dates in the month. */
+  pay_runs_in_month: number;
+  /** Typical run count for the dominant calendar (4 for WEEKLY, 2 for FORTNIGHTLY…). */
+  typical_runs: number;
+  /** Dominant calendar type among employees actually paid this month. */
+  calendar_type: string;
+  /** True when the month carries more runs than typical — the five-Friday case. */
+  extra_run: boolean;
+}
+
+/**
+ * Detect budget-phasing months. `calendarTypes` is one entry per PAID employee
+ * (dominant type wins ties by first-seen); `typicalRunsFor` is the existing
+ * estimatePayRunsInMonth mapping, injected so route and tests share it.
+ */
+export function computePayrollPhasing(args: {
+  payRunDates: ReadonlyArray<string>;
+  calendarTypes: ReadonlyArray<string>;
+  typicalRunsFor: (frequency: string) => number;
+}): PayrollPhasing | null {
+  const { payRunDates, calendarTypes, typicalRunsFor } = args;
+  if (payRunDates.length === 0 || calendarTypes.length === 0) return null;
+
+  const counts = new Map<string, number>();
+  let dominant = calendarTypes[0];
+  for (const t of calendarTypes) {
+    const n = (counts.get(t) ?? 0) + 1;
+    counts.set(t, n);
+    if (n > (counts.get(dominant) ?? 0)) dominant = t;
+  }
+
+  const typical = typicalRunsFor(dominant);
+  return {
+    pay_runs_in_month: payRunDates.length,
+    typical_runs: typical,
+    calendar_type: dominant,
+    extra_run: typical > 0 && payRunDates.length > typical,
+  };
+}
+
+export interface PayrollTies {
+  /** Σ payslip gross across the month. */
+  payroll_gross: number;
+  /** Σ payslip super across the month. */
+  payroll_super: number;
+  /** Which payroll side was compared: gross, or gross+super. */
+  payroll_side: number;
+  /** Σ actuals of the CONFIGURED wages accounts from the P&L. */
+  accounts_actual: number;
+  /** Whether the configured account list appears to include a super account. */
+  includes_super_account: boolean;
+  delta: number;
+  within_tolerance: boolean;
+  /**
+   * False when there is nothing real to compare: no P&L actuals existed for
+   * the configured accounts (the route backfills accounts[0] from the payroll
+   * total in that case, which would make the tie circular), or no payroll.
+   */
+  comparable: boolean;
+}
+
+/** DD's Daniel-flagged rule: cent-level rounding must not read as a break. */
+export const PAY_TIES_TOLERANCE = 1;
+
+export function computePayrollTies(args: {
+  payrollGross: number;
+  payrollSuper: number;
+  /** P&L actual across configured wage accounts, BEFORE any backfill. */
+  accountsActual: number;
+  wagesAccountNames: ReadonlyArray<string>;
+}): PayrollTies {
+  const { payrollGross, payrollSuper, accountsActual, wagesAccountNames } = args;
+  const includesSuper = wagesAccountNames.some((n) => /super/i.test(n));
+  // Compare like with like: payslip gross excludes super, so super joins the
+  // payroll side only when the account list carries a super account.
+  const payrollSide = payrollGross + (includesSuper ? payrollSuper : 0);
+  const delta = Math.round((accountsActual - payrollSide) * 100) / 100;
+  const comparable = accountsActual !== 0 && payrollGross !== 0;
+  return {
+    payroll_gross: Math.round(payrollGross * 100) / 100,
+    payroll_super: Math.round(payrollSuper * 100) / 100,
+    payroll_side: Math.round(payrollSide * 100) / 100,
+    accounts_actual: Math.round(accountsActual * 100) / 100,
+    includes_super_account: includesSuper,
+    delta,
+    within_tolerance: Math.abs(delta) <= PAY_TIES_TOLERANCE,
+    comparable,
+  };
+}

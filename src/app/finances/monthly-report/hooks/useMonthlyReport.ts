@@ -32,7 +32,7 @@ import type {
   ReportSummary,
   MonthlyReportSettings,
 } from '../types'
-import { mapTypeToCategory, buildSubtotal, calcVariance, getNextMonth } from '@/lib/monthly-report/shared'
+import { mapTypeToCategory, buildSubtotal, calcVariance, getNextMonth, deriveProfitRows } from '@/lib/monthly-report/shared'
 import {
   serializeReportSections,
   deserializeReportSections,
@@ -163,113 +163,29 @@ export function adaptConsolidatedToGeneratedReport(
     return { category, lines, subtotal }
   }).filter((s) => s.lines.length > 0)
 
-  // Summary + profit rows — same aggregate formulas as the single-entity
-  // route: revenue folds in Other Income, opex folds in Other Expenses.
+  // Summary + profit rows — WA.1: same canonical derivation as the
+  // single-entity route (Gross Profit is trading only; Other Income/Expenses
+  // enter once, at Net Profit). Both entity types MUST agree on this shape or
+  // a consolidation parent and its children would report different GP% for the
+  // same underlying numbers.
   const revenueSection = sections.find((s) => s.category === 'Revenue')
   const cogsSection = sections.find((s) => s.category === 'Cost of Sales')
   const opexSection = sections.find((s) => s.category === 'Operating Expenses')
   const otherIncSection = sections.find((s) => s.category === 'Other Income')
   const otherExpSection = sections.find((s) => s.category === 'Other Expenses')
 
-  const revActual = (revenueSection?.subtotal.actual || 0) + (otherIncSection?.subtotal.actual || 0)
-  const revBudget = (revenueSection?.subtotal.budget || 0) + (otherIncSection?.subtotal.budget || 0)
-  const cogsActual = cogsSection?.subtotal.actual || 0
-  const cogsBudget = cogsSection?.subtotal.budget || 0
-  const opexActual = (opexSection?.subtotal.actual || 0) + (otherExpSection?.subtotal.actual || 0)
-  const opexBudget = (opexSection?.subtotal.budget || 0) + (otherExpSection?.subtotal.budget || 0)
-
-  const gpActual = revActual - cogsActual
-  const gpBudget = revBudget - cogsBudget
-  const npActual = gpActual - opexActual
-  const npBudget = gpBudget - opexBudget
-
-  const revYtdActual = (revenueSection?.subtotal.ytd_actual || 0) + (otherIncSection?.subtotal.ytd_actual || 0)
-  const revYtdBudget = (revenueSection?.subtotal.ytd_budget || 0) + (otherIncSection?.subtotal.ytd_budget || 0)
-  const cogsYtdActual = cogsSection?.subtotal.ytd_actual || 0
-  const cogsYtdBudget = cogsSection?.subtotal.ytd_budget || 0
-  const opexYtdActual = (opexSection?.subtotal.ytd_actual || 0) + (otherExpSection?.subtotal.ytd_actual || 0)
-  const opexYtdBudget = (opexSection?.subtotal.ytd_budget || 0) + (otherExpSection?.subtotal.ytd_budget || 0)
-
-  const gpYtdActual = revYtdActual - cogsYtdActual
-  const gpYtdBudget = revYtdBudget - cogsYtdBudget
-  const npYtdActual = gpYtdActual - opexYtdActual
-  const npYtdBudget = gpYtdBudget - opexYtdBudget
-
-  const revAnnual = (revenueSection?.subtotal.budget_annual_total || 0) + (otherIncSection?.subtotal.budget_annual_total || 0)
-  const cogsAnnual = cogsSection?.subtotal.budget_annual_total || 0
-  const opexAnnual = (opexSection?.subtotal.budget_annual_total || 0) + (otherExpSection?.subtotal.budget_annual_total || 0)
-
-  const grossProfitRow: ReportLine = {
-    account_name: 'Gross Profit',
-    xero_account_name: null,
-    is_budget_only: false,
-    actual: gpActual,
-    budget: gpBudget,
-    variance_amount: gpActual - gpBudget,
-    variance_percent: gpBudget !== 0 ? ((gpActual - gpBudget) / Math.abs(gpBudget)) * 100 : 0,
-    ytd_actual: gpYtdActual,
-    ytd_budget: gpYtdBudget,
-    ytd_variance_amount: gpYtdActual - gpYtdBudget,
-    ytd_variance_percent: gpYtdBudget !== 0 ? ((gpYtdActual - gpYtdBudget) / Math.abs(gpYtdBudget)) * 100 : 0,
-    unspent_budget: hasBudget ? (revAnnual - cogsAnnual) - gpYtdActual : 0,
-    budget_next_month: (revenueSection?.subtotal.budget_next_month || 0) - (cogsSection?.subtotal.budget_next_month || 0),
-    budget_annual_total: revAnnual - cogsAnnual,
-    prior_year: null,
-  }
-
-  const netProfitRow: ReportLine = {
-    account_name: 'Net Profit',
-    xero_account_name: null,
-    is_budget_only: false,
-    actual: npActual,
-    budget: npBudget,
-    variance_amount: npActual - npBudget,
-    variance_percent: npBudget !== 0 ? ((npActual - npBudget) / Math.abs(npBudget)) * 100 : 0,
-    ytd_actual: npYtdActual,
-    ytd_budget: npYtdBudget,
-    ytd_variance_amount: npYtdActual - npYtdBudget,
-    ytd_variance_percent: npYtdBudget !== 0 ? ((npYtdActual - npYtdBudget) / Math.abs(npYtdBudget)) * 100 : 0,
-    unspent_budget: hasBudget ? (revAnnual - cogsAnnual - opexAnnual) - npYtdActual : 0,
-    budget_next_month:
-      (revenueSection?.subtotal.budget_next_month || 0) -
-      (cogsSection?.subtotal.budget_next_month || 0) -
-      (opexSection?.subtotal.budget_next_month || 0),
-    budget_annual_total: revAnnual - cogsAnnual - opexAnnual,
-    prior_year: null,
-  }
-
-  const summary: ReportSummary = {
-    revenue: {
-      actual: revActual,
-      budget: revBudget,
-      variance: revActual - revBudget,
-      variance_percent: revBudget !== 0 ? ((revActual - revBudget) / Math.abs(revBudget)) * 100 : 0,
-    },
-    cogs: {
-      actual: cogsActual,
-      budget: cogsBudget,
-      variance: cogsBudget - cogsActual,
-      variance_percent: cogsBudget !== 0 ? ((cogsBudget - cogsActual) / Math.abs(cogsBudget)) * 100 : 0,
-    },
-    gross_profit: {
-      actual: gpActual,
-      budget: gpBudget,
-      variance: gpActual - gpBudget,
-      gp_percent: revActual !== 0 ? (gpActual / revActual) * 100 : 0,
-    },
-    opex: {
-      actual: opexActual,
-      budget: opexBudget,
-      variance: opexBudget - opexActual,
-      variance_percent: opexBudget !== 0 ? ((opexBudget - opexActual) / Math.abs(opexBudget)) * 100 : 0,
-    },
-    net_profit: {
-      actual: npActual,
-      budget: npBudget,
-      variance: npActual - npBudget,
-      np_percent: revActual !== 0 ? (npActual / revActual) * 100 : 0,
-    },
-  }
+  const derived = deriveProfitRows({
+    revenue: revenueSection?.subtotal,
+    cogs: cogsSection?.subtotal,
+    opex: opexSection?.subtotal,
+    otherIncome: otherIncSection?.subtotal,
+    otherExpenses: otherExpSection?.subtotal,
+    hasBudget,
+  })
+  const summary: ReportSummary = derived.summary
+  const grossProfitRow = derived.gross_profit_row
+  const operatingProfitRow = derived.operating_profit_row
+  const netProfitRow = derived.net_profit_row
 
   // Minimal settings stub — the page keeps the real settings state and
   // passes them to BudgetVsActualDashboard; this field exists on GeneratedReport
@@ -313,6 +229,7 @@ export function adaptConsolidatedToGeneratedReport(
     sections,
     summary,
     gross_profit_row: grossProfitRow,
+    operating_profit_row: operatingProfitRow,
     net_profit_row: netProfitRow,
     is_draft: false,
     unreconciled_count: 0,

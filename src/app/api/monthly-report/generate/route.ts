@@ -17,6 +17,7 @@ import {
   getMonthRange,
   getNextMonth,
   getPriorYearMonth,
+  deriveProfitRows,
   type ReportLine,
 } from '@/lib/monthly-report/shared'
 import { z } from 'zod'
@@ -532,119 +533,30 @@ async function postHandler(request: Request) {
         return { category: cat, lines, subtotal }
       })
 
-    // 9. Compute Gross Profit and Net Profit rows
+    // 9/10. Profit rows + summary — WA.1: single canonical derivation.
+    // Gross Profit = Revenue − COGS (trading only); Operating Profit = GP −
+    // OpEx; Other Income and Other Expenses enter once, at Net Profit. The old
+    // inline math folded Other Income into revenue and Other Expenses into
+    // opex, inflating GP/GP% on every report whose chart had those sections.
+    // See deriveProfitRows in @/lib/monthly-report/shared for the full account.
     const revSection = sections.find(s => s.category === 'Revenue')
     const cogsSection = sections.find(s => s.category === 'Cost of Sales')
     const opexSection = sections.find(s => s.category === 'Operating Expenses')
     const otherIncSection = sections.find(s => s.category === 'Other Income')
     const otherExpSection = sections.find(s => s.category === 'Other Expenses')
 
-    const revActual = (revSection?.subtotal.actual || 0) + (otherIncSection?.subtotal.actual || 0)
-    const revBudget = (revSection?.subtotal.budget || 0) + (otherIncSection?.subtotal.budget || 0)
-    const cogsActual = cogsSection?.subtotal.actual || 0
-    const cogsBudget = cogsSection?.subtotal.budget || 0
-    const opexActual = (opexSection?.subtotal.actual || 0) + (otherExpSection?.subtotal.actual || 0)
-    const opexBudget = (opexSection?.subtotal.budget || 0) + (otherExpSection?.subtotal.budget || 0)
-
-    const gpActual = revActual - cogsActual
-    const gpBudget = revBudget - cogsBudget
-    const npActual = gpActual - opexActual
-    const npBudget = gpBudget - opexBudget
-
-    // YTD versions
-    const revYtdActual = (revSection?.subtotal.ytd_actual || 0) + (otherIncSection?.subtotal.ytd_actual || 0)
-    const revYtdBudget = (revSection?.subtotal.ytd_budget || 0) + (otherIncSection?.subtotal.ytd_budget || 0)
-    const cogsYtdActual = cogsSection?.subtotal.ytd_actual || 0
-    const cogsYtdBudget = cogsSection?.subtotal.ytd_budget || 0
-    const opexYtdActual = (opexSection?.subtotal.ytd_actual || 0) + (otherExpSection?.subtotal.ytd_actual || 0)
-    const opexYtdBudget = (opexSection?.subtotal.ytd_budget || 0) + (otherExpSection?.subtotal.ytd_budget || 0)
-
-    const gpYtdActual = revYtdActual - cogsYtdActual
-    const gpYtdBudget = revYtdBudget - cogsYtdBudget
-    const npYtdActual = gpYtdActual - opexYtdActual
-    const npYtdBudget = gpYtdBudget - opexYtdBudget
-
-    // Annual totals
-    const revAnnual = (revSection?.subtotal.budget_annual_total || 0) + (otherIncSection?.subtotal.budget_annual_total || 0)
-    const cogsAnnual = cogsSection?.subtotal.budget_annual_total || 0
-    const opexAnnual = (opexSection?.subtotal.budget_annual_total || 0) + (otherExpSection?.subtotal.budget_annual_total || 0)
-
-    // Prior year for profit rows
-    const revPriorYear = (revSection?.subtotal.prior_year ?? 0) + (otherIncSection?.subtotal.prior_year ?? 0)
-    const cogsPriorYear = cogsSection?.subtotal.prior_year ?? 0
-    const opexPriorYear = (opexSection?.subtotal.prior_year ?? 0) + (otherExpSection?.subtotal.prior_year ?? 0)
-    const hasPriorYearData = [revSection, cogsSection, opexSection, otherIncSection, otherExpSection]
-      .some(s => s?.subtotal.prior_year !== null && s?.subtotal.prior_year !== undefined)
-    const gpPriorYear = hasPriorYearData ? revPriorYear - cogsPriorYear : null
-    const npPriorYear = hasPriorYearData ? revPriorYear - cogsPriorYear - opexPriorYear : null
-
-    const gpRow: ReportLine = {
-      account_name: 'Gross Profit',
-      is_budget_only: false,
-      actual: gpActual,
-      budget: gpBudget,
-      variance_amount: gpActual - gpBudget,
-      variance_percent: gpBudget !== 0 ? ((gpActual - gpBudget) / Math.abs(gpBudget)) * 100 : 0,
-      ytd_actual: gpYtdActual,
-      ytd_budget: gpYtdBudget,
-      ytd_variance_amount: gpYtdActual - gpYtdBudget,
-      ytd_variance_percent: gpYtdBudget !== 0 ? ((gpYtdActual - gpYtdBudget) / Math.abs(gpYtdBudget)) * 100 : 0,
-      unspent_budget: (revAnnual - cogsAnnual) - gpYtdActual,
-      budget_next_month: (revSection?.subtotal.budget_next_month || 0) - (cogsSection?.subtotal.budget_next_month || 0),
-      budget_annual_total: revAnnual - cogsAnnual,
-      prior_year: gpPriorYear,
-    }
-
-    const npRow: ReportLine = {
-      account_name: 'Net Profit',
-      is_budget_only: false,
-      actual: npActual,
-      budget: npBudget,
-      variance_amount: npActual - npBudget,
-      variance_percent: npBudget !== 0 ? ((npActual - npBudget) / Math.abs(npBudget)) * 100 : 0,
-      ytd_actual: npYtdActual,
-      ytd_budget: npYtdBudget,
-      ytd_variance_amount: npYtdActual - npYtdBudget,
-      ytd_variance_percent: npYtdBudget !== 0 ? ((npYtdActual - npYtdBudget) / Math.abs(npYtdBudget)) * 100 : 0,
-      unspent_budget: (revAnnual - cogsAnnual - opexAnnual) - npYtdActual,
-      budget_next_month: (revSection?.subtotal.budget_next_month || 0) - (cogsSection?.subtotal.budget_next_month || 0) - (opexSection?.subtotal.budget_next_month || 0),
-      budget_annual_total: revAnnual - cogsAnnual - opexAnnual,
-      prior_year: npPriorYear,
-    }
-
-    // 10. Build summary
-    const summary = {
-      revenue: {
-        actual: revActual,
-        budget: revBudget,
-        variance: revActual - revBudget,
-        variance_percent: revBudget !== 0 ? ((revActual - revBudget) / Math.abs(revBudget)) * 100 : 0,
-      },
-      cogs: {
-        actual: cogsActual,
-        budget: cogsBudget,
-        variance: cogsBudget - cogsActual,
-        variance_percent: cogsBudget !== 0 ? ((cogsBudget - cogsActual) / Math.abs(cogsBudget)) * 100 : 0,
-      },
-      gross_profit: {
-        actual: gpActual,
-        budget: gpBudget,
-        variance: gpActual - gpBudget,
-        gp_percent: revActual !== 0 ? (gpActual / revActual) * 100 : 0,
-      },
-      opex: {
-        actual: opexActual,
-        budget: opexBudget,
-        variance: opexBudget - opexActual,
-        variance_percent: opexBudget !== 0 ? ((opexBudget - opexActual) / Math.abs(opexBudget)) * 100 : 0,
-      },
-      net_profit: {
-        actual: npActual,
-        budget: npBudget,
-        variance: npActual - npBudget,
-        np_percent: revActual !== 0 ? (npActual / revActual) * 100 : 0,
-      },
-    }
+    const derived = deriveProfitRows({
+      revenue: revSection?.subtotal,
+      cogs: cogsSection?.subtotal,
+      opex: opexSection?.subtotal,
+      otherIncome: otherIncSection?.subtotal,
+      otherExpenses: otherExpSection?.subtotal,
+      hasBudget,
+    })
+    const { summary } = derived
+    const gpRow = derived.gross_profit_row
+    const opRow = derived.operating_profit_row
+    const npRow = derived.net_profit_row
 
     // Debug: log match results
     const matched = matchLog.filter(m => m.method !== 'none')
@@ -682,6 +594,7 @@ async function postHandler(request: Request) {
       sections,
       summary,
       gross_profit_row: gpRow,
+      operating_profit_row: opRow,
       net_profit_row: npRow,
       is_draft: force_draft || false,
       unreconciled_count: 0,

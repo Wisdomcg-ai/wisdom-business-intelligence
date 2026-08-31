@@ -38,5 +38,13 @@ export function useFullYearReport(businessId: string) {
     }
   }, [businessId])
 
-  return { fullYearReport, isLoading, error, loadFullYear }
+  // WA.4 — the page lazy-loads with a `!fullYearReport` guard, so a fiscal-year
+  // switch must clear the cache or the Full Year/Trends/Charts tabs keep
+  // showing the previous FY.
+  const clearFullYear = useCallback(() => {
+    setFullYearReport(null)
+    setError(null)
+  }, [])
+
+  return { fullYearReport, isLoading, error, loadFullYear, clearFullYear }
 }
