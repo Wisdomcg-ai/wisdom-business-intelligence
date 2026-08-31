@@ -8,6 +8,7 @@ import { transformBreakEvenData } from '../components/charts/BreakEvenChart'
 import { transformRevenueVsExpensesData } from '../components/charts/RevenueVsExpensesTrendChart'
 import { transformVarianceHeatmapData } from '../components/charts/VarianceHeatmapChart'
 import { transformBurnRateData } from '../components/charts/BudgetBurnRateChart'
+import { transformAnalysisChartData, type AnalysisChartSection } from '../components/charts/analysis-chart-data'
 import { transformCashRunwayData } from '../components/charts/CashRunwayChart'
 import { transformCumulativeNetCashData } from '../components/charts/CumulativeNetCashChart'
 import { transformWorkingCapitalData } from '../components/charts/WorkingCapitalGapChart'
@@ -138,6 +139,15 @@ export class MonthlyReportPDFService {
     }
     if (this.options.fullYearReport) {
       this.addFullYearProjection()
+    }
+
+    // WD.1 — the Calxa Actual/Budget/Last-Year analysis charts (Income, COGS,
+    // Expenses). The web Trends tab has computed this shape since Phase 27;
+    // the PDF never carried it. Rides the trend_charts flag like the tab does.
+    if ((sec?.trend_charts ?? true) && this.options.fullYearReport) {
+      this.addAnalysisChartPage('income')
+      this.addAnalysisChartPage('cogs')
+      this.addAnalysisChartPage('expense')
     }
 
     // Chart pages — gated by sections flags AND data availability
@@ -2272,6 +2282,9 @@ export class MonthlyReportPDFService {
 
   private hasDataForWidget(type: WidgetType): boolean {
     switch (type) {
+      case 'analysis_chart_income':
+      case 'analysis_chart_cogs':
+      case 'analysis_chart_expense':
       case 'full_year_projection':
       case 'chart_break_even':
       case 'chart_revenue_vs_expenses':
@@ -2418,6 +2431,118 @@ export class MonthlyReportPDFService {
 
   renderSubscriptionCreepChart(box: WidgetBoundingBox): void {
     this.renderWithSkipPage(this.addSubscriptionCreepChartPage, box)
+  }
+
+  /**
+   * WD.1 — layout-mode dispatch for the analysis chart. Section comes from the
+   * widget TYPE, with widget.config.section as the WC.1 override; titleOverride
+   * flows through addAnalysisChartPage.
+   */
+  renderAnalysisChart(box: WidgetBoundingBox, widget?: import('../types/pdf-layout').LayoutWidget): void {
+    const fromConfig = widget?.config?.section
+    const fromType: AnalysisChartSection =
+      widget?.type === 'analysis_chart_cogs' ? 'cogs'
+      : widget?.type === 'analysis_chart_expense' ? 'expense'
+      : 'income'
+    const section: AnalysisChartSection =
+      fromConfig === 'income' || fromConfig === 'cogs' || fromConfig === 'expense'
+        ? fromConfig
+        : fromType
+    this.renderWithSkipPage(() => this.addAnalysisChartPage(section, widget?.titleOverride), box)
+  }
+
+  /**
+   * WD.1 — one landscape page of 12 monthly bar groups: Actual, Budget,
+   * Last-Year Actual. Actual bars stop at the last completed month (null
+   * months draw no bar, not a zero bar); budget and prior-year run all 12 —
+   * matching the Calxa chart this replaces.
+   */
+  private addAnalysisChartPage(section: AnalysisChartSection, titleOverride?: string): void {
+    const fy = this.options.fullYearReport
+    if (!fy) return
+    const data = transformAnalysisChartData(fy, section)
+    if (!data) return
+    this.addPage('landscape')
+
+    this.doc.setFontSize(14)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.text(`${titleOverride ?? data.title} | FY${fy.fiscal_year}`, this.margin, this.yPosition)
+    this.yPosition += 5
+    this.doc.setFontSize(9)
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setTextColor(107, 114, 128)
+    this.doc.text('Actuals vs Budget vs Last Year', this.margin, this.yPosition)
+    this.yPosition += 8
+
+    // Legend
+    const SERIES: Array<{ label: string; rgb: [number, number, number] }> = [
+      { label: 'Actuals', rgb: [34, 197, 94] },
+      { label: 'Budget', rgb: [251, 191, 36] },
+      { label: 'Last Year', rgb: [59, 130, 246] },
+    ]
+    let legendX = this.margin
+    for (const sSeries of SERIES) {
+      this.doc.setFillColor(...sSeries.rgb)
+      this.doc.rect(legendX, this.yPosition - 2.5, 3.5, 3.5, 'F')
+      this.doc.setFontSize(7)
+      this.doc.setTextColor(55, 65, 81)
+      this.doc.text(sSeries.label, legendX + 5, this.yPosition + 0.5)
+      legendX += 5 + this.doc.getTextWidth(sSeries.label) + 8
+    }
+    this.yPosition += 6
+
+    const chartLeft = this.margin + 16
+    const chartRight = this.pageWidth - this.margin - 2
+    const chartTop = this.yPosition
+    const chartHeight = Math.min(112, this.pageHeight - chartTop - this.margin - 12)
+    const chartBottom = chartTop + chartHeight
+    const chartWidth = chartRight - chartLeft
+
+    // Negative months (rebate-heavy COGS, contra revenue) get a floor.
+    const minRaw = Math.min(0, ...data.months.flatMap((m) => [m.actual ?? 0, m.budget, m.priorYear]))
+    const maxVal = data.maxValue * 1.08
+    const minVal = minRaw * 1.08
+    const range = maxVal - minVal || 1
+    const yFor = (v: number) => chartTop + ((maxVal - v) / range) * chartHeight
+
+    // Grid + axis labels (~5 ticks on rounded steps)
+    const rawStep = range / 5
+    const mag = Math.pow(10, Math.floor(Math.log10(rawStep)))
+    const step = Math.ceil(rawStep / mag) * mag
+    this.doc.setLineWidth(0.15)
+    this.doc.setFontSize(6)
+    for (let tick = Math.ceil(minVal / step) * step; tick <= maxVal; tick += step) {
+      const y = yFor(tick)
+      this.doc.setDrawColor(tick === 0 ? 209 : 240, tick === 0 ? 213 : 240, tick === 0 ? 219 : 240)
+      this.doc.line(chartLeft, y, chartRight, y)
+      this.doc.setTextColor(107, 114, 128)
+      this.doc.text(this.fmtCurrency(tick), chartLeft - 2, y + 1.5, { align: 'right' })
+    }
+
+    // Bars: 12 groups × 3 series
+    const groupWidth = chartWidth / data.months.length
+    const barWidth = Math.min(6, (groupWidth * 0.72) / SERIES.length)
+    const zeroY = yFor(0)
+    data.months.forEach((m, i) => {
+      const groupLeft = chartLeft + i * groupWidth + (groupWidth - barWidth * SERIES.length) / 2
+      const values: Array<number | null> = [m.actual, m.budget, m.priorYear]
+      values.forEach((v, si) => {
+        if (v === null || v === 0) return
+        const x = groupLeft + si * barWidth
+        const yTop = v >= 0 ? yFor(v) : zeroY
+        const h = Math.abs(yFor(v) - zeroY)
+        if (h < 0.1) return
+        this.doc.setFillColor(...SERIES[si].rgb)
+        this.doc.rect(x, yTop, barWidth - 0.7, h, 'F')
+      })
+      this.doc.setFontSize(6)
+      this.doc.setTextColor(107, 114, 128)
+      this.doc.text(m.label, chartLeft + (i + 0.5) * groupWidth, chartBottom + 4.5, { align: 'center' })
+    })
+
+    this.doc.setTextColor(0, 0, 0)
+    this.yPosition = chartBottom + 10
   }
 
   // ── KPI Card Renderers ──

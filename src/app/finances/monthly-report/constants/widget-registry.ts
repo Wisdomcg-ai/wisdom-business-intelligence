@@ -74,6 +74,37 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
   },
 
   // ─── P&L Charts ─────────────────────────────────────────────────
+  // WD.1 — the Calxa Actual/Budget/Last-Year analysis charts, one per section.
+  analysis_chart_income: {
+    type: 'analysis_chart_income',
+    label: 'Income Analysis (A/B/PY)',
+    category: 'pl_charts',
+    fullRow: true,
+    icon: 'BarChart3',
+    defaultColSpan: 3, defaultRowSpan: 2,
+    minColSpan: 3, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+    dataDependency: 'fullYear',
+  },
+  analysis_chart_cogs: {
+    type: 'analysis_chart_cogs',
+    label: 'COGS Analysis (A/B/PY)',
+    category: 'pl_charts',
+    fullRow: true,
+    icon: 'BarChart3',
+    defaultColSpan: 3, defaultRowSpan: 2,
+    minColSpan: 3, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+    dataDependency: 'fullYear',
+  },
+  analysis_chart_expense: {
+    type: 'analysis_chart_expense',
+    label: 'Expenses Analysis (A/B/PY)',
+    category: 'pl_charts',
+    fullRow: true,
+    icon: 'BarChart3',
+    defaultColSpan: 3, defaultRowSpan: 2,
+    minColSpan: 3, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+    dataDependency: 'fullYear',
+  },
   chart_revenue_breakdown: {
     type: 'chart_revenue_breakdown',
     label: 'Revenue Breakdown',
