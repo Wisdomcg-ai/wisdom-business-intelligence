@@ -211,3 +211,47 @@ describe('WD.3 — standing commentary lines render with the gate', () => {
     expect(text).not.toContain('refer to')
   })
 })
+
+describe('WD.6 — consolidated per-entity page', () => {
+  const consolidatedVM: any = {
+    business: { id: 'biz', name: 'Dragon Group', presentation_currency: 'AUD' },
+    byTenant: [
+      {
+        connection_id: 'c1', tenant_id: 't1', display_name: 'Dragon Roofing',
+        display_order: 0, functional_currency: 'AUD',
+        lines: [{ account_type: 'revenue', account_name: 'Sales', monthly_values: { '2026-07': 100000 } }],
+        budgetLines: [{ account_type: 'revenue', account_name: 'Sales', monthly_values: { '2026-07': 90000 } }],
+      },
+      {
+        connection_id: 'c2', tenant_id: 't2', display_name: 'IICT HK',
+        display_order: 1, functional_currency: 'HKD',
+        lines: [{ account_type: 'revenue', account_name: 'Sales', monthly_values: { '2026-07': 40000 } }],
+      },
+    ],
+    eliminations: [],
+    consolidated: {
+      lines: [{ account_type: 'revenue', account_name: 'Sales', monthly_values: { '2026-07': 140000 } }],
+      budgetLines: [],
+    },
+    fx_context: { rates_used: {}, missing_rates: [] },
+    diagnostics: {
+      tenants_loaded: 2, total_lines_processed: 2, eliminations_applied_count: 0,
+      eliminations_total_amount: 0, processing_ms: 1, tenants_with_budget: 1,
+      tenants_without_budget: [], budget_mode: 'per_tenant',
+    },
+  }
+
+  it('renders entity columns + the FX translation disclosure', () => {
+    const svc = new MonthlyReportPDFService(fixtureReport(), { consolidated: consolidatedVM })
+    const text = docText(svc.generate() as any)
+    expect(text).toContain('DRAGON GROUP')
+    expect(text).toContain('Dragon Roofing')
+    expect(text).toContain('IICT HK')
+    expect(text).toContain('translated from HKD')
+  })
+
+  it('no consolidated report -> no page', () => {
+    const svc = new MonthlyReportPDFService(fixtureReport(), {})
+    expect(docText(svc.generate() as any)).not.toContain('CONSOLIDATION')
+  })
+})

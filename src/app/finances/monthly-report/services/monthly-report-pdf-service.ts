@@ -11,6 +11,7 @@ import { transformBurnRateData } from '../components/charts/BudgetBurnRateChart'
 import { transformAnalysisChartData, type AnalysisChartSection } from '../components/charts/analysis-chart-data'
 import { resolveSectionFilter, sectionTableTitle } from './section-table-config'
 import { annotateStandingLines } from '../utils/standing-commentary'
+import { buildConsolidatedRows } from '../utils/consolidated-rows'
 import { transformCashRunwayData } from '../components/charts/CashRunwayChart'
 import { transformCumulativeNetCashData } from '../components/charts/CumulativeNetCashChart'
 import { transformWorkingCapitalData } from '../components/charts/WorkingCapitalGapChart'
@@ -37,6 +38,8 @@ interface PDFOptions {
   memo?: string
   /** WD.4 — the month's funds flow (Where Did Our Money Go). */
   moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
+  /** WD.6 — the consolidated report (per-entity columns) for consolidation parents. */
+  consolidated?: import('../utils/consolidated-rows').ConsolidatedReportVM
   sections?: ReportSections
   pdfLayout?: import('../types/pdf-layout').PDFLayout | null
 }
@@ -161,6 +164,10 @@ export class MonthlyReportPDFService {
     // proved itself; an explicitly-placed widget shows the honest reason card.
     if (this.options.moneyFlow?.comparable) {
       this.addMoneyFlowPage()
+    }
+    // WD.6 — per-entity consolidated P&L for consolidation parents.
+    if (this.options.consolidated && this.options.consolidated.byTenant.length > 0) {
+      this.addConsolidatedPLPage()
     }
     if (this.options.cashflowForecast && this.options.cashflowForecast.months.length > 0) {
       this.addCashflowForecastPage()
@@ -446,6 +453,97 @@ export class MonthlyReportPDFService {
 
   renderMoneyFlow(box: WidgetBoundingBox): void {
     this.renderWithSkipPage(this.addMoneyFlowPage, box)
+  }
+
+  // =====================================================================
+  // Consolidated per-entity P&L (WD.6, LANDSCAPE)
+  // =====================================================================
+  // Mirrors the web ConsolidatedPLTab exactly — both read
+  // buildConsolidatedRows, so the PDF can never drift from the tab.
+  private addConsolidatedPLPage(): void {
+    const vm = this.options.consolidated!
+    this.addPage('landscape')
+
+    this.doc.setFontSize(14)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.text(
+      `Actual vs Budget — ${(vm.business.name || 'Consolidation').toUpperCase()} — ${this.formatMonth(this.report.report_month)}`,
+      this.margin, this.yPosition,
+    )
+    this.yPosition += 8
+
+    const { rows, isSingleMode } = buildConsolidatedRows(vm, this.report.report_month)
+    const tenants = vm.byTenant
+    const hasElims = rows.some(r => r.elim !== 0)
+
+    // Header: Account | per tenant (Actual [Budget, Var]) | [Elim] | Group A/B/Var$/Var%
+    const head1: any[] = [{ content: 'Account', rowSpan: 2, styles: { valign: 'bottom' } }]
+    const head2: any[] = []
+    for (const t of tenants) {
+      head1.push({ content: t.display_name, colSpan: isSingleMode ? 1 : 3, styles: { halign: 'center' } })
+      head2.push('Actual')
+      if (!isSingleMode) head2.push('Budget', 'Var $')
+    }
+    if (hasElims) {
+      head1.push({ content: 'Elim', rowSpan: 2, styles: { valign: 'bottom', halign: 'right' } })
+    }
+    head1.push({ content: 'Consolidated', colSpan: 4, styles: { halign: 'center' } })
+    head2.push('Actual', 'Budget', 'Var $', 'Var %')
+
+    const fmtOrDash = (v: number) => (v === 0 ? '—' : this.fmtCurrency(v))
+    const body = rows.map(r => {
+      const cells: any[] = [r.accountName]
+      for (const cell of r.tenantCells) {
+        cells.push(fmtOrDash(cell.actual))
+        if (!isSingleMode) {
+          cells.push(cell.hasBudget ? fmtOrDash(cell.budget) : '—')
+          cells.push(cell.hasBudget ? this.fmtVariance(cell.variance) : '—')
+        }
+      }
+      if (hasElims) cells.push(fmtOrDash(r.elim))
+      cells.push(
+        fmtOrDash(r.consolidatedActual),
+        fmtOrDash(r.consolidatedBudget),
+        this.fmtVariance(r.consolidatedVariance),
+        r.consolidatedVariancePct === null ? '—' : `${r.consolidatedVariancePct >= 0 ? '+' : ''}${r.consolidatedVariancePct.toFixed(1)}%`,
+      )
+      return cells
+    })
+
+    autoTable(this.doc, {
+      startY: this.yPosition,
+      head: [head1, head2],
+      body,
+      theme: 'grid',
+      headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold', fontSize: 6.5 },
+      bodyStyles: { fontSize: 6.5 },
+      columnStyles: { 0: { cellWidth: 42 } },
+      margin: { left: this.margin, right: this.margin },
+      didParseCell: (data) => {
+        if (data.column.index > 0 && data.section !== 'head') {
+          data.cell.styles.halign = 'right'
+        }
+      },
+    })
+
+    // FX disclosure — a translated entity's columns are in the presentation
+    // currency; say so instead of leaving HKD figures to be misread.
+    const translated = tenants.filter(t => t.functional_currency && t.functional_currency !== vm.business.presentation_currency)
+    if (translated.length > 0) {
+      const y = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 5
+      this.doc.setFontSize(7.5)
+      this.doc.setFont('helvetica', 'normal')
+      this.doc.setTextColor(90, 90, 90)
+      this.doc.text(
+        `${translated.map(t => `${t.display_name} translated from ${t.functional_currency}`).join(' · ')} — all figures in ${vm.business.presentation_currency} at monthly-average rates.`,
+        this.margin, y,
+      )
+      this.doc.setTextColor(0, 0, 0)
+    }
+  }
+
+  renderConsolidatedPL(box: WidgetBoundingBox): void {
+    this.renderWithSkipPage(this.addConsolidatedPLPage, box)
   }
 
   // =====================================================================
@@ -2736,6 +2834,8 @@ export class MonthlyReportPDFService {
         return (this.options.externalMetrics ?? []).some(s => s.values.length > 0)
       case 'memo':
         return (this.options.memo ?? '').trim() !== ''
+      case 'consolidated_pl':
+        return !!this.options.consolidated && this.options.consolidated.byTenant.length > 0
       case 'money_flow':
         // Present even when not comparable — the renderer draws the honest
         // "couldn't check" card with the reason instead of a blank page.
