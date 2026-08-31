@@ -50,12 +50,26 @@ function LineRow({
   line,
   isRevenue,
   settings,
+  hasBudget,
 }: {
   line: ReportLine
   isRevenue: boolean
   settings: MonthlyReportSettings
+  hasBudget: boolean
 }) {
   const isBudgetOnly = line.is_budget_only
+
+  // WA.3 — three states: value / empty / could-not-compare. With no budget at
+  // all, every budget-derived cell used to render $0 and a variance equal to
+  // the full actual with "0.0%" — Envisage Mar-26 was stored showing revenue
+  // "+$62,035, 0.0%" against a budget that didn't exist. Those cells are now
+  // "—". Within a budgeted report, a single $0-budget line keeps its dollar
+  // variance (an unbudgeted expense IS a real variance — the Calxa packs show
+  // it) but drops the meaningless divide-by-zero "0.0%".
+  const dash = <span className="text-gray-400">—</span>
+  const budgetCell = (v: number) => (hasBudget ? fmt(v) : dash)
+  const pctCell = (v: number, base: number) => (hasBudget && base !== 0 ? fmtPct(v) : dash)
+  const varCell = (v: number) => (hasBudget ? fmt(v) : dash)
 
   return (
     <tr className={`border-b border-gray-100 hover:bg-gray-50 ${isBudgetOnly ? 'opacity-60 italic' : ''}`}>
@@ -64,36 +78,36 @@ function LineRow({
         {isBudgetOnly && <span className="ml-1 text-xs text-gray-400">(budget only)</span>}
       </td>
       {/* Month group */}
-      <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap border-l-2 border-gray-200">{fmt(line.budget)}</td>
+      <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap border-l-2 border-gray-200">{budgetCell(line.budget)}</td>
       <td className="px-3 py-2 text-sm text-right font-medium text-gray-900 whitespace-nowrap">{fmt(line.actual)}</td>
-      <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${varianceColor(line.variance_amount, isRevenue)}`}>
-        {fmt(line.variance_amount)}
+      <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${hasBudget ? varianceColor(line.variance_amount, isRevenue) : ''}`}>
+        {varCell(line.variance_amount)}
       </td>
-      <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${varianceColor(line.variance_amount, isRevenue)}`}>
-        {fmtPct(line.variance_percent)}
+      <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${hasBudget ? varianceColor(line.variance_amount, isRevenue) : ''}`}>
+        {pctCell(line.variance_percent, line.budget)}
       </td>
       {/* YTD group */}
       {settings.show_ytd && (
         <>
-          <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap border-l-2 border-gray-200">{fmt(line.ytd_budget)}</td>
+          <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap border-l-2 border-gray-200">{budgetCell(line.ytd_budget)}</td>
           <td className="px-3 py-2 text-sm text-right font-medium text-gray-900 whitespace-nowrap">{fmt(line.ytd_actual)}</td>
-          <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${varianceColor(line.ytd_variance_amount, isRevenue)}`}>
-            {fmt(line.ytd_variance_amount)}
+          <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${hasBudget ? varianceColor(line.ytd_variance_amount, isRevenue) : ''}`}>
+            {varCell(line.ytd_variance_amount)}
           </td>
-          <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${varianceColor(line.ytd_variance_amount, isRevenue)}`}>
-            {fmtPct(line.ytd_variance_percent)}
+          <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${hasBudget ? varianceColor(line.ytd_variance_amount, isRevenue) : ''}`}>
+            {pctCell(line.ytd_variance_percent, line.ytd_budget)}
           </td>
         </>
       )}
       {/* Extras group */}
       {settings.show_unspent_budget && (
-        <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap border-l-2 border-gray-200">{fmt(line.unspent_budget)}</td>
+        <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap border-l-2 border-gray-200">{budgetCell(line.unspent_budget)}</td>
       )}
       {settings.show_budget_next_month && (
-        <td className={`px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap ${!settings.show_unspent_budget ? 'border-l-2 border-gray-200' : ''}`}>{fmt(line.budget_next_month)}</td>
+        <td className={`px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap ${!settings.show_unspent_budget ? 'border-l-2 border-gray-200' : ''}`}>{budgetCell(line.budget_next_month)}</td>
       )}
       {settings.show_budget_annual_total && (
-        <td className={`px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap ${!settings.show_unspent_budget && !settings.show_budget_next_month ? 'border-l-2 border-gray-200' : ''}`}>{fmt(line.budget_annual_total)}</td>
+        <td className={`px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap ${!settings.show_unspent_budget && !settings.show_budget_next_month ? 'border-l-2 border-gray-200' : ''}`}>{budgetCell(line.budget_annual_total)}</td>
       )}
       {settings.show_prior_year && (
         <td className={`px-3 py-2 text-sm text-right text-gray-500 whitespace-nowrap ${!settings.show_unspent_budget && !settings.show_budget_next_month && !settings.show_budget_annual_total ? 'border-l-2 border-gray-200' : ''}`}>{fmt(line.prior_year, true)}</td>
@@ -109,6 +123,7 @@ function SubtotalRow({
   textClass,
   settings,
   isRevenue,
+  hasBudget,
 }: {
   line: ReportLine
   label: string
@@ -116,36 +131,44 @@ function SubtotalRow({
   textClass: string
   settings: MonthlyReportSettings
   isRevenue: boolean
+  hasBudget: boolean
 }) {
   const isDark = bgClass.includes('brand-navy') || bgClass.includes('gray-800')
   const borderColor = isDark ? 'border-white/20' : 'border-gray-300'
+  void isRevenue
+
+  // WA.3 — same three-state rule as LineRow: no budget → budget-derived cells
+  // are "—", and a $0 base never renders a divide-by-zero "0.0%".
+  const dash = <span className={isDark ? 'text-white/50' : 'text-gray-400'}>—</span>
+  const budgetCell = (v: number) => (hasBudget ? fmt(v) : dash)
+  const pctCell = (v: number, base: number) => (hasBudget && base !== 0 ? fmtPct(v) : dash)
 
   return (
     <tr className={`${bgClass} font-semibold`}>
       <td className={`px-3 py-2 text-sm ${textClass}`}>{label}</td>
       {/* Month group */}
-      <td className={`px-3 py-2 text-sm text-right ${textClass} border-l-2 ${borderColor}`}>{fmt(line.budget)}</td>
+      <td className={`px-3 py-2 text-sm text-right ${textClass} border-l-2 ${borderColor}`}>{budgetCell(line.budget)}</td>
       <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{fmt(line.actual)}</td>
-      <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{fmt(line.variance_amount)}</td>
-      <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{fmtPct(line.variance_percent)}</td>
+      <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{budgetCell(line.variance_amount)}</td>
+      <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{pctCell(line.variance_percent, line.budget)}</td>
       {/* YTD group */}
       {settings.show_ytd && (
         <>
-          <td className={`px-3 py-2 text-sm text-right ${textClass} border-l-2 ${borderColor}`}>{fmt(line.ytd_budget)}</td>
+          <td className={`px-3 py-2 text-sm text-right ${textClass} border-l-2 ${borderColor}`}>{budgetCell(line.ytd_budget)}</td>
           <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{fmt(line.ytd_actual)}</td>
-          <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{fmt(line.ytd_variance_amount)}</td>
-          <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{fmtPct(line.ytd_variance_percent)}</td>
+          <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{budgetCell(line.ytd_variance_amount)}</td>
+          <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{pctCell(line.ytd_variance_percent, line.ytd_budget)}</td>
         </>
       )}
       {/* Extras group */}
       {settings.show_unspent_budget && (
-        <td className={`px-3 py-2 text-sm text-right ${textClass} border-l-2 ${borderColor}`}>{fmt(line.unspent_budget)}</td>
+        <td className={`px-3 py-2 text-sm text-right ${textClass} border-l-2 ${borderColor}`}>{budgetCell(line.unspent_budget)}</td>
       )}
       {settings.show_budget_next_month && (
-        <td className={`px-3 py-2 text-sm text-right ${textClass} ${!settings.show_unspent_budget ? `border-l-2 ${borderColor}` : ''}`}>{fmt(line.budget_next_month)}</td>
+        <td className={`px-3 py-2 text-sm text-right ${textClass} ${!settings.show_unspent_budget ? `border-l-2 ${borderColor}` : ''}`}>{budgetCell(line.budget_next_month)}</td>
       )}
       {settings.show_budget_annual_total && (
-        <td className={`px-3 py-2 text-sm text-right ${textClass} ${!settings.show_unspent_budget && !settings.show_budget_next_month ? `border-l-2 ${borderColor}` : ''}`}>{fmt(line.budget_annual_total)}</td>
+        <td className={`px-3 py-2 text-sm text-right ${textClass} ${!settings.show_unspent_budget && !settings.show_budget_next_month ? `border-l-2 ${borderColor}` : ''}`}>{budgetCell(line.budget_annual_total)}</td>
       )}
       {settings.show_prior_year && (
         <td className={`px-3 py-2 text-sm text-right ${textClass} ${!settings.show_unspent_budget && !settings.show_budget_next_month && !settings.show_budget_annual_total ? `border-l-2 ${borderColor}` : ''}`}>{fmt(line.prior_year, true)}</td>
@@ -347,6 +370,17 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
 
   return (
     <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      {/* WA.3 — the no-budget explanation leads the table instead of trailing
+          ~50 rows below it. Without a budget every Budget/Variance cell is "—",
+          and the reader should know why before they scan the columns. */}
+      {!report.has_budget && (
+        <div className="p-4 bg-amber-50 border-b border-amber-200">
+          <p className="text-sm text-amber-800">
+            No budget forecast found — Budget and Variance columns are shown as
+            &ldquo;—&rdquo;. Set up a financial forecast to enable budget comparison.
+          </p>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[900px]">
           <thead>
@@ -402,6 +436,7 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                       line={line}
                       isRevenue={isRevenue}
                       settings={settings}
+                      hasBudget={report.has_budget}
                     />
                   ))}
                   {/* Subtotal */}
@@ -412,6 +447,7 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                     textClass={style.subtotalText}
                     settings={settings}
                     isRevenue={isRevenue}
+                    hasBudget={report.has_budget}
                   />
 
                   {/* Gross Profit row after Cost of Sales */}
@@ -423,6 +459,7 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                       textClass="text-blue-900"
                       settings={settings}
                       isRevenue={true}
+                      hasBudget={report.has_budget}
                     />
                   )}
 
@@ -437,6 +474,7 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                       textClass="text-sky-900"
                       settings={settings}
                       isRevenue={true}
+                      hasBudget={report.has_budget}
                     />
                   )}
                 </React.Fragment>
@@ -451,18 +489,11 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
               textClass="text-white"
               settings={settings}
               isRevenue={true}
+              hasBudget={report.has_budget}
             />
           </tbody>
         </table>
       </div>
-
-      {!report.has_budget && (
-        <div className="p-4 bg-amber-50 border-t border-amber-200">
-          <p className="text-sm text-amber-800">
-            No budget forecast found. Set up a financial forecast to enable budget comparison.
-          </p>
-        </div>
-      )}
 
       {/* Commentary section — expenses over budget, vendor breakdown */}
       {commentaryLoading && (
