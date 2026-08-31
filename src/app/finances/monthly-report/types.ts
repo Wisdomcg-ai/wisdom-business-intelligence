@@ -50,6 +50,13 @@ export interface ReportSections {
   chart_subscription_creep: boolean
 }
 
+// WD.3 — a standing "refer to …" commentary bullet rendered under the
+// Budget-vs-Actual statement every month, regardless of variance triggers.
+export interface StandingCommentaryLine {
+  label: string
+  refer_to: string
+}
+
 export interface MonthlyReportSettings {
   id?: string
   business_id: string
@@ -63,6 +70,8 @@ export interface MonthlyReportSettings {
   subscription_account_codes?: string[]
   wages_account_names?: string[]
   pdf_layout?: import('./types/pdf-layout').PDFLayout | null
+  /** WD.3 — standing commentary bullets; null/undefined = none. */
+  standing_commentary?: StandingCommentaryLine[] | null
   created_at?: string
   updated_at?: string
 }

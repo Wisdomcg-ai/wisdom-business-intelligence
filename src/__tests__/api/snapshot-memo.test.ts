@@ -36,6 +36,12 @@ vi.mock('@supabase/supabase-js', () => ({
 vi.mock('@/lib/reports/revert-report', () => ({
   revertReportIfApproved: vi.fn(async () => ({ reverted: false })),
 }))
+// #429 (CFO production board) stamps the cycle's Generated stage inside the
+// snapshot POST — isolate it so this suite pins only the snapshot upsert.
+vi.mock('@/lib/reports/cycle-stages', () => ({
+  periodMonthFromReportMonth: vi.fn(() => null),
+  stampGeneratedFirst: vi.fn(async () => null),
+}))
 vi.mock('@sentry/nextjs', () => ({
   captureException: vi.fn(),
   captureMessage: vi.fn(),
