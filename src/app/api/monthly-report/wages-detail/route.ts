@@ -9,7 +9,16 @@ import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfile
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
-import { matchEmployeeName, tokenSortKey } from './_helpers'
+import {
+  matchEmployeeName,
+  tokenSortKey,
+  PAY_RUNS_ORDER,
+  payRunLookbackCutoff,
+  shouldFetchNextPayRunPage,
+  oldestPeriodEnd,
+  computePayrollPhasing,
+  computePayrollTies,
+} from './_helpers'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 
@@ -311,14 +320,84 @@ async function postHandler(request: Request) {
     let payrollAvailable = false
     const payRunDatesSet = new Set<string>()
 
+    // WB.2 — stored-first. The payroll sync writes xero_payslip_lines on the
+    // 6-hourly cycle; reading them here replaces a live N+1 fetch chain
+    // (unpaged run list + one detail call per run + one Employees/{id} per
+    // matched employee) that ran on EVERY page view against a 60-req/min
+    // tenant cap. Two functional wins over the live path:
+    //   - multi-org businesses get ALL tenants' payslips (the live path took
+    //     `.limit(1)` on connections, silently dropping Dragon's and IICT's
+    //     other orgs);
+    //   - jobTitle/annualSalary per-employee detail calls are gone (annualSalary
+    //     was assigned and never read; position falls back to the forecast row).
+    // The live path below survives ONLY as a fallback for a business whose
+    // backfill hasn't run yet; it disappears once fleet backfill converges.
+    const [monthYear, monthNum] = report_month.split('-').map(Number)
+    const monthStart = `${report_month}-01`
+    const monthEnd = `${monthYear}-${String(monthNum).padStart(2, '0')}-${String(new Date(monthYear, monthNum, 0).getDate()).padStart(2, '0')}`
+
+    const { data: storedSlips, error: storedErr } = await supabase
+      .from('xero_payslip_lines')
+      .select('employee_id, employee_name, payment_date, period_start, period_end, calendar_type, wages, tax, super_amount, net_pay')
+      .in('business_id', ids.all)
+      .gte('payment_date', monthStart)
+      .lte('payment_date', monthEnd)
+
+    if (storedErr) {
+      Sentry.captureException(storedErr, { tags: { route: 'monthly-report/wages-detail', invariant: 'payroll-stored-read' }, extra: { business_id, report_month } } as any)
+    }
+
+    if (storedSlips && storedSlips.length > 0) {
+      payrollAvailable = true
+      for (const slip of storedSlips) {
+        payRunDatesSet.add(slip.payment_date)
+        let entry = employeePayMap.get(slip.employee_id)
+        if (!entry) {
+          entry = {
+            name: slip.employee_name,
+            employeeId: slip.employee_id,
+            jobTitle: undefined,
+            calendarType: slip.calendar_type || 'UNKNOWN',
+            payslips: [],
+          }
+          employeePayMap.set(slip.employee_id, entry)
+        }
+        entry.payslips.push({
+          date: slip.payment_date,
+          periodStart: slip.period_start ?? '',
+          periodEnd: slip.period_end ?? '',
+          gross: Number(slip.wages ?? 0),
+          tax: Number(slip.tax ?? 0),
+          superAmt: Number(slip.super_amount ?? 0),
+          net: Number(slip.net_pay ?? 0),
+        })
+      }
+    }
+
     try {
-      const { data: connection } = await supabase
-        .from('xero_connections')
-        .select('*')
-        .in('business_id', ids.all)
-        .eq('is_active', true)
-        .limit(1)
-        .maybeSingle()
+      // Fallback: nothing stored for this month AND nothing stored for the
+      // business at all → backfill hasn't reached it; use the live path. A
+      // business WITH stored history but zero slips this month is a real
+      // "no pay runs this month", not a reason to hammer the API.
+      let useLiveFallback = false
+      if (!payrollAvailable) {
+        const { count } = await supabase
+          .from('xero_pay_runs')
+          .select('id', { count: 'exact', head: true })
+          .in('business_id', ids.all)
+        useLiveFallback = (count ?? 0) === 0
+        payrollAvailable = !useLiveFallback ? true : payrollAvailable
+      }
+
+      const { data: connection } = useLiveFallback
+        ? await supabase
+            .from('xero_connections')
+            .select('*')
+            .in('business_id', ids.all)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle()
+        : { data: null as any }
 
       if (connection) {
         const tokenResult = await getValidAccessToken(connection, supabase)
@@ -329,11 +408,55 @@ async function postHandler(request: Request) {
             'Accept': 'application/json',
           }
 
-          // Fetch PayCalendars and PayRuns in parallel
-          const [calResp, runsResp] = await Promise.all([
+          // W0.2 — PayRuns is paginated at 100 per page. Fetching it unordered
+          // and unpaged (as this route used to) means only ever seeing whichever
+          // 100 runs Xero returned first: a weekly-payroll client passes 100 runs
+          // in about two years, after which the report month goes missing and the
+          // page renders an empty state rather than an error. Order newest-first
+          // and page until we're safely past the window. See _helpers.ts.
+          const payRunCutoff = payRunLookbackCutoff(report_month)
+          const allPayRuns: any[] = []
+          let payRunsOk = false
+          let payRunsStatus = 0
+
+          const fetchPayRunPage = async (page: number) =>
+            fetch(
+              `https://api.xero.com/payroll.xro/1.0/PayRuns?page=${page}&order=${encodeURIComponent(PAY_RUNS_ORDER)}`,
+              { headers: xeroHeaders },
+            )
+
+          // Page 1 runs alongside PayCalendars; later pages are rare (one page
+          // covers ~2 years of weekly payroll) and only fetched when needed.
+          const [calResp, firstRunsResp] = await Promise.all([
             fetch('https://api.xero.com/payroll.xro/1.0/PayCalendars', { headers: xeroHeaders }),
-            fetch('https://api.xero.com/payroll.xro/1.0/PayRuns', { headers: xeroHeaders }),
+            fetchPayRunPage(1),
           ])
+
+          let runsResp = firstRunsResp
+          let pageNumber = 1
+          while (true) {
+            payRunsStatus = runsResp.status
+            if (!runsResp.ok) break
+            payRunsOk = true
+
+            const pageData = await runsResp.json()
+            const pageRuns: any[] = pageData?.PayRuns || []
+            allPayRuns.push(...pageRuns)
+
+            if (
+              !shouldFetchNextPayRunPage({
+                pageCount: pageRuns.length,
+                pageNumber,
+                oldestPeriodEnd: oldestPeriodEnd(pageRuns, parseXeroDate),
+                cutoff: payRunCutoff,
+              })
+            ) {
+              break
+            }
+
+            pageNumber += 1
+            runsResp = await fetchPayRunPage(pageNumber)
+          }
 
           // Build calendar type lookup
           const calendarMap = new Map<string, string>()
@@ -354,13 +477,12 @@ async function postHandler(request: Request) {
             }
           }
 
-          if (runsResp.ok) {
-            const runsData = await runsResp.json()
+          if (payRunsOk) {
             payrollAvailable = true
 
             // Filter to POSTED pay runs where PaymentDate falls in report month
             const [reportYear, reportMonthNum] = report_month.split('-').map(Number)
-            const monthPayRuns = (runsData?.PayRuns || []).filter((pr: any) => {
+            const monthPayRuns = allPayRuns.filter((pr: any) => {
               if (pr.PayRunStatus !== 'POSTED') return false
               const payDate = parseXeroDate(pr.PaymentDate)
               if (!payDate) return false
@@ -368,7 +490,7 @@ async function postHandler(request: Request) {
             })
 
             if (process.env.NODE_ENV !== 'production') {
-              console.log(`[WagesDetail] Found ${monthPayRuns.length} POSTED pay runs in ${report_month} (of ${runsData?.PayRuns?.length || 0} total)`)
+              console.log(`[WagesDetail] Found ${monthPayRuns.length} POSTED pay runs in ${report_month} (of ${allPayRuns.length} fetched across ${pageNumber} page(s))`)
             }
 
             // Fetch detail for each pay run to get payslip amounts
@@ -461,7 +583,7 @@ async function postHandler(request: Request) {
             }
           } else {
             if (process.env.NODE_ENV !== 'production') {
-              console.log(`[WagesDetail] PayRuns fetch failed: ${runsResp.status} - need to reconnect Xero with payroll.payruns.read scope`)
+              console.log(`[WagesDetail] PayRuns fetch failed: ${payRunsStatus} - need to reconnect Xero with payroll.payruns.read scope`)
             }
             // Don't create fake actuals — just mark payroll as unavailable
             // Budget-only data from forecast_employees will still show
@@ -633,6 +755,31 @@ async function postHandler(request: Request) {
       console.log(`[WagesDetail] ${employeePayMap.size} Xero employees, ${forecastEmployees.length} forecast employees, ${employees.length} combined, ${payRunDates.length} pay runs`)
     }
 
+    // WB.5 — PAY-TIES inputs, captured BEFORE the backfill below makes the
+    // comparison circular (accounts[0].actual would just echo the payroll
+    // total). Warning-only: payment-date pay runs vs period-end accruals can
+    // legitimately disagree; the banner names the delta, it never blocks.
+    const payrollSuperTotal = Array.from(employeePayMap.values()).reduce(
+      (s, e) => s + e.payslips.reduce((x, ps) => x + ps.superAmt, 0),
+      0,
+    )
+    const ties = computePayrollTies({
+      payrollGross: empActualTotal,
+      payrollSuper: payrollSuperTotal,
+      accountsActual: grandActual,
+      wagesAccountNames: wages_account_names,
+    })
+
+    // WB.4 — five-Friday detection: an extra weekly run inflates the month
+    // ~25% against a 4-week budget; without the note it reads as an overspend.
+    const phasing = computePayrollPhasing({
+      payRunDates,
+      calendarTypes: Array.from(employeePayMap.values())
+        .filter((e) => e.payslips.length > 0)
+        .map((e) => e.calendarType),
+      typicalRunsFor: estimatePayRunsInMonth,
+    })
+
     // If account-level P&L has no actuals but we have PayRun employee data,
     // use employee totals as the grand total (Xero Payroll doesn't always
     // create P&L line items that appear in the standard P&L report)
@@ -668,6 +815,8 @@ async function postHandler(request: Request) {
         },
         payroll_available: payrollAvailable,
         pay_run_dates: payRunDates,
+        phasing,
+        ties,
       },
     })
   } catch (error) {
