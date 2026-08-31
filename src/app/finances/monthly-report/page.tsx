@@ -28,6 +28,7 @@ import SubscriptionAnalysisTab from './components/SubscriptionAnalysisTab'
 import WagesAnalysisTab from './components/WagesAnalysisTab'
 import ChartsTab from './components/ChartsTab'
 import CashflowTab from './components/CashflowTab'
+import ExternalDataTab from './components/ExternalDataTab'
 import ForecastService from '@/app/finances/forecast/services/forecast-service'
 // Phase 71 Plan 09 (S6) — one-time per-session toast on multi-currency redirect.
 import {
@@ -136,7 +137,7 @@ export default function MonthlyReportPage() {
   const [activeTab, setActiveTab] = useState<ReportTab>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('monthly-report-active-tab')
-      if (saved && ['report', 'full-year', 'trends', 'charts', 'subscriptions', 'wages', 'cashflow', 'balance-sheet', 'balance-sheet-consolidated', 'cashflow-consolidated', 'mapping', 'history', 'consolidated'].includes(saved)) {
+      if (saved && ['report', 'full-year', 'trends', 'charts', 'subscriptions', 'wages', 'cashflow', 'balance-sheet', 'balance-sheet-consolidated', 'cashflow-consolidated', 'external-data', 'mapping', 'history', 'consolidated'].includes(saved)) {
         return saved as ReportTab
       }
     }
@@ -1391,6 +1392,7 @@ export default function MonthlyReportPage() {
           showConsolidated={canSeeConsolidated}
           showConsolidatedBS={canSeeConsolidated}
           showConsolidatedCashflow={canSeeConsolidated}
+          showExternalData={userRole !== 'client'}
         />
 
         {/* Tab Content */}
@@ -1562,6 +1564,14 @@ export default function MonthlyReportPage() {
               error={consolidatedCashflowError}
             />
           </>
+        )}
+
+        {activeTab === 'external-data' && businessId && (
+          <ExternalDataTab
+            businessId={businessId}
+            periodMonth={selectedMonth}
+            canManage={userRole !== 'client'}
+          />
         )}
 
         {activeTab === 'mapping' && (

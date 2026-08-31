@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { BarChart3, Link2, Clock, Calendar, TrendingUp, CreditCard, Users, DollarSign, PieChart, Scale, Layers } from 'lucide-react'
+import { BarChart3, Link2, Clock, Calendar, TrendingUp, CreditCard, Users, DollarSign, PieChart, Scale, Layers, Database } from 'lucide-react'
 import type { ReportTab } from '../types'
 
 interface MonthlyReportTabsProps {
@@ -19,6 +19,8 @@ interface MonthlyReportTabsProps {
   showConsolidatedBS?: boolean
   /** Phase 34 Iteration 34.2: true when consolidation parent + cashflow section enabled. */
   showConsolidatedCashflow?: boolean
+  /** WE.1b: coach/admin-only entry UI for the external-metrics series. */
+  showExternalData?: boolean
 }
 
 type TabDef = { id: ReportTab; label: string; icon: typeof BarChart3 }
@@ -34,7 +36,7 @@ const endTabs: TabDef[] = [
   { id: 'history', label: 'Report History', icon: Clock },
 ]
 
-export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped, showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet, showConsolidated, showConsolidatedBS, showConsolidatedCashflow }: MonthlyReportTabsProps) {
+export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped, showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet, showConsolidated, showConsolidatedBS, showConsolidatedCashflow, showExternalData }: MonthlyReportTabsProps) {
   const tabs = useMemo(() => {
     const result = [...baseTabs]
     // Consolidated P&L — only for consolidation parents. Insert near the top
@@ -68,9 +70,14 @@ export default function MonthlyReportTabs({ activeTab, onTabChange, hasUnmapped,
     if (showConsolidatedCashflow) {
       result.push({ id: 'cashflow-consolidated', label: 'Consolidated Cashflow', icon: DollarSign })
     }
+    // WE.1b: External Data — the entry UI over external_metric_series (the
+    // Google-Sheets replacement). Coach/admin tooling, so gated by role.
+    if (showExternalData) {
+      result.push({ id: 'external-data', label: 'External Data', icon: Database })
+    }
     result.push(...endTabs)
     return result
-  }, [showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet, showConsolidated, showConsolidatedBS, showConsolidatedCashflow])
+  }, [showSubscriptions, showWages, showCashflow, showCharts, showBalanceSheet, showConsolidated, showConsolidatedBS, showConsolidatedCashflow, showExternalData])
 
   return (
     <div className="bg-white rounded-lg shadow-sm mb-6">
