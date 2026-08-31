@@ -32,6 +32,10 @@ export interface ReportSections {
   balance_sheet: boolean
   cashflow: boolean
   trend_charts: boolean
+  /** WD.7 — opt-in: sync also mirrors the cash-basis P&L (paymentsOnly=true).
+   *  Doubles the per-month Xero P&L requests for this business, so off by
+   *  default; the Cash-vs-Accruals page needs it on plus one sync cycle. */
+  cash_basis?: boolean
   // Chart toggles
   chart_cash_runway: boolean
   chart_cumulative_net_cash: boolean
@@ -102,6 +106,7 @@ export const DEFAULT_SECTIONS: ReportSections = {
   balance_sheet: false,
   cashflow: false,
   trend_charts: true,
+  cash_basis: false,
   // P&L charts ON by default
   chart_revenue_vs_expenses: true,
   chart_revenue_breakdown: true,
