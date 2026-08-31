@@ -922,6 +922,7 @@ export default function MonthlyReportPage() {
     subscriptionDetail?: import('./types').SubscriptionDetailData
     wagesDetail?: import('./types').WagesDetailData
     cashflowForecast?: CashflowForecastData
+    externalMetrics?: import('./types').ExternalMetricSeriesData[]
   }> => {
     let fyReport = fullYearReport
     if (!fyReport && businessId) {
@@ -949,11 +950,37 @@ export default function MonthlyReportPage() {
       cfData = (await loadCashflowForecast()) || undefined
     }
 
+    // WE.1b — the entered external-data inserts. A fetch failure must not
+    // block the PDF, but silently dropping pages from an emailed report is
+    // the exact D-07 bug class — so the failure is captured, never swallowed.
+    let extMetrics: import('./types').ExternalMetricSeriesData[] | undefined
+    if (businessId) {
+      try {
+        const res = await fetch(
+          `/api/monthly-report/external-metrics?business_id=${encodeURIComponent(businessId)}&period_month=${encodeURIComponent(selectedMonth)}`
+        )
+        if (res.ok) {
+          const data = await res.json()
+          extMetrics = (data.series || []).filter(
+            (s: import('./types').ExternalMetricSeriesData) => (s.values || []).length > 0
+          )
+        } else {
+          Sentry.captureMessage(
+            `[PDF] external-metrics load failed (${res.status}) — PDF will omit external-data pages`,
+            'warning' as any
+          )
+        }
+      } catch (err) {
+        Sentry.captureException(err, { tags: { invariant: 'pdf-external-metrics-load' } } as any)
+      }
+    }
+
     return {
       fullYearReport: fyReport || undefined,
       subscriptionDetail: subDetail || undefined,
       wagesDetail: wDetail || undefined,
       cashflowForecast: cfData,
+      externalMetrics: extMetrics,
     }
   }
 
@@ -968,6 +995,7 @@ export default function MonthlyReportPage() {
       subscriptionDetail?: import('./types').SubscriptionDetailData
       wagesDetail?: import('./types').WagesDetailData
       cashflowForecast?: CashflowForecastData
+      externalMetrics?: import('./types').ExternalMetricSeriesData[]
       sections?: import('./types').ReportSections
       pdfLayout?: import('./types/pdf-layout').PDFLayout | null
     }
@@ -1115,42 +1143,15 @@ export default function MonthlyReportPage() {
     toast.info('Preparing PDF...')
 
     try {
-      // Eagerly load full year data if not yet loaded
-      let fyReport = fullYearReport
-      if (!fyReport && businessId) {
-        fyReport = await loadFullYear(fiscalYear)
-      }
-
-      // Eagerly load subscription detail if configured but not yet loaded
-      let subDetail = subscriptionDetail
-      if (!subDetail && settings?.sections.subscription_detail && businessId) {
-        const codes = settings.subscription_account_codes || []
-        if (codes.length > 0) {
-          subDetail = await loadSubscriptionDetail(selectedMonth, codes)
-        }
-      }
-
-      // Eagerly load wages detail if configured but not yet loaded
-      let wDetail = wagesDetail
-      if (!wDetail && settings?.sections.payroll_detail && businessId) {
-        const names = settings.wages_account_names || []
-        if (names.length > 0) {
-          wDetail = await loadWagesDetail(selectedMonth, fiscalYear, names, settings.budget_forecast_id)
-        }
-      }
-
-      // Load cashflow forecast data for PDF (reuse cached if available)
-      let cfData: CashflowForecastData | undefined = cashflowForecast || undefined
-      if (!cfData && businessId) {
-        cfData = (await loadCashflowForecast()) || undefined
-      }
+      // WE.1b — load through the SAME eager loader as the Approve & Send path
+      // (Phase C introduced it; this handler still carried a pre-Phase-C copy,
+      // which is exactly the D-07 drift the shared loader exists to prevent —
+      // it would have silently omitted the external-data pages here).
+      const eager = await loadPdfSections()
 
       const pdf = new MonthlyReportPDFService(report, {
         commentary,
-        fullYearReport: fyReport || undefined,
-        subscriptionDetail: subDetail || undefined,
-        wagesDetail: wDetail || undefined,
-        cashflowForecast: cfData || undefined,
+        ...eager,
         sections: settings?.sections,
         pdfLayout: settings?.pdf_layout ?? null,
       })

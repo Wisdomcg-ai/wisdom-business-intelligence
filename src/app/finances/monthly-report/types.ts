@@ -472,6 +472,28 @@ export interface WagesEmployeeLine {
   source: 'xero' | 'forecast' | 'both'
 }
 
+// WE.1b — one external-metrics series as the GET route returns it, threaded
+// into the PDF so the entered inserts (Lumary clinic income, Hubstaff hours…)
+// render as report pages. Shape mirrors /api/monthly-report/external-metrics.
+export interface ExternalMetricSeriesData {
+  id: string
+  series_key: string
+  display_name: string
+  dimension_label: string
+  measures: { key: string; label: string; format?: string }[]
+  reconciles_to_account_name?: string | null
+  reconcile_measure_key?: string | null
+  values: { dimension_value: string; measure_key: string; scenario: 'actual' | 'budget'; value: number }[]
+  tie?: {
+    series_total: number
+    account_actual: number
+    account_name: string
+    delta: number
+    within_tolerance: boolean
+    comparable: boolean
+  } | null
+}
+
 export interface WagesDetailData {
   accounts: WagesAccountLine[]
   employees: WagesEmployeeLine[]

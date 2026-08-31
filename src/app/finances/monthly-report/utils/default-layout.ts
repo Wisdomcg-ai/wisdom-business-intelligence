@@ -151,6 +151,11 @@ export function syncLayoutWithSettings(
   sections: ReportSections
 ): { layout: PDFLayout; added: WidgetType[]; removed: WidgetType[] } {
   const enabledTypes = new Set(getEnabledWidgets(sections))
+  // WE.1b — sync only manages the types that SECTION_WIDGET_MAP gates.
+  // Manually-placed widgets with no section toggle (external_metric) must
+  // survive a settings save; without this guard the sync would silently
+  // delete them as "no longer enabled".
+  const managedTypes = new Set(SECTION_WIDGET_MAP.map(e => e.type))
 
   // Find all widget types currently in the layout
   const placedTypes = new Set<WidgetType>()
@@ -163,8 +168,8 @@ export function syncLayoutWithSettings(
   // Types to add (enabled but not placed)
   const toAdd = [...enabledTypes].filter(t => !placedTypes.has(t))
 
-  // Types to remove (placed but no longer enabled)
-  const toRemove = [...placedTypes].filter(t => !enabledTypes.has(t))
+  // Types to remove (placed, managed by a section toggle, and no longer enabled)
+  const toRemove = [...placedTypes].filter(t => managedTypes.has(t) && !enabledTypes.has(t))
 
   if (toAdd.length === 0 && toRemove.length === 0) {
     return { layout, added: [], removed: [] }
