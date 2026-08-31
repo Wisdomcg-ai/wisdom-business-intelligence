@@ -191,3 +191,23 @@ describe('WD.4 — Where Did Our Money Go page', () => {
     expect(text).not.toContain('explain the bank movement exactly')
   })
 })
+
+describe('WD.3 — standing commentary lines render with the gate', () => {
+  it('an in-pack line reads normally; a dangling one carries the warning', () => {
+    const report = fixtureReport()
+    report.settings.standing_commentary = [
+      { label: 'Overview', refer_to: 'Executive Summary' },
+      { label: 'Subscriptions', refer_to: 'Subscription Analysis' }, // not in this pack
+    ]
+    const svc = new MonthlyReportPDFService(report, {})
+    const text = docText(svc.generate() as any)
+    expect(text).toContain('refer to the Executive Summary page')
+    expect(text).toContain('page not in this pack') // jsPDF escapes literal parens in streams
+  })
+
+  it('no standing lines -> nothing rendered', () => {
+    const svc = new MonthlyReportPDFService(fixtureReport(), {})
+    const text = docText(svc.generate() as any)
+    expect(text).not.toContain('refer to')
+  })
+})
