@@ -82,6 +82,17 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     minColSpan: 2, maxColSpan: 3, minRowSpan: 3, maxRowSpan: 3,
     // Always renderable — it draws from the report itself.
   },
+  memo: {
+    type: 'memo',
+    label: 'Memo',
+    category: 'tables',
+    fullRow: true,
+    icon: 'StickyNote',
+    defaultColSpan: 2, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+    // No dataDependency — availability is per-month (a memo either exists for
+    // the month or the page is skipped at render).
+  },
   external_metric: {
     type: 'external_metric',
     label: 'External Data',

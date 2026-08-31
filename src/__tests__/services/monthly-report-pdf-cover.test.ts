@@ -123,3 +123,26 @@ describe('WC.5 — cover page + provisional stamping', () => {
     expect(page1).toContain('7 unreconciled transactions')
   })
 })
+
+describe('WD.8 — memo page', () => {
+  it('a saved memo renders as its own page, paragraphs intact', () => {
+    const svc = new MonthlyReportPDFService(fixtureReport(), {
+      businessName: 'IICT',
+      memo: 'Insurance jumped this month because the annual premium landed in July.\n\nWe agreed to spread it across the year from FY28.',
+    })
+    const doc: any = svc.generate()
+    const text = docText(doc)
+    expect(text).toContain('Memo')
+    expect(text).toContain('annual premium landed in July')
+    expect(text).toContain('spread it across the year')
+  })
+
+  it('no memo → no memo page (and one fewer page than with)', () => {
+    const withMemo = new MonthlyReportPDFService(fixtureReport(), { memo: 'x'.repeat(40) })
+    const without = new MonthlyReportPDFService(fixtureReport(), {})
+    const nWith = (withMemo.generate() as any).internal.getNumberOfPages()
+    const nWithout = (without.generate() as any).internal.getNumberOfPages()
+    expect(nWith).toBe(nWithout + 1)
+    expect(docText(without.generate() as any)).not.toContain('Memo —')
+  })
+})

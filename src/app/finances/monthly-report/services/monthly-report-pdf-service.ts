@@ -32,6 +32,8 @@ interface PDFOptions {
   externalMetrics?: import('../types').ExternalMetricSeriesData[]
   /** WC.5 — entity name on the cover page. */
   businessName?: string
+  /** WD.8 — the month's written memo (snapshot coach_notes). */
+  memo?: string
   sections?: ReportSections
   pdfLayout?: import('../types/pdf-layout').PDFLayout | null
 }
@@ -132,6 +134,11 @@ export class MonthlyReportPDFService {
     this.addCoverPage()
     this.addPage('portrait')
     this.addExecutiveSummary()
+    // WD.8 — the memo sits right behind the executive summary, where the
+    // Calxa packs put the written page.
+    if ((this.options.memo ?? '').trim() !== '') {
+      this.addMemoPage()
+    }
     this.addBudgetVsActualDetail()
     if (this.report.settings.show_ytd) {
       this.addYTDSummary()
@@ -289,6 +296,49 @@ export class MonthlyReportPDFService {
   renderCoverPage(): void {
     // Layout path — the widget's page already exists; draw directly.
     this.addCoverPage()
+  }
+
+  // =====================================================================
+  // Memo (WD.8) — the month's written page
+  // =====================================================================
+  private addMemoPage(): void {
+    const memo = (this.options.memo ?? '').trim()
+    this.addPage('portrait')
+
+    this.doc.setFontSize(14)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.text(`Memo — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
+    this.yPosition += 4
+    this.doc.setDrawColor(200, 200, 200)
+    this.doc.line(this.margin, this.yPosition, this.pageWidth - this.margin, this.yPosition)
+    this.yPosition += 8
+
+    // Paragraph-preserving flow with page breaks. splitTextToSize wraps each
+    // paragraph to the text column; a blank source line becomes paragraph
+    // spacing rather than an empty rendered line.
+    this.doc.setFontSize(10.5)
+    this.doc.setFont('helvetica', 'normal')
+    const maxWidth = this.pageWidth - this.margin * 2
+    const lineHeight = 5.5
+    for (const para of memo.split(/\n/)) {
+      if (para.trim() === '') {
+        this.yPosition += lineHeight * 0.6
+        continue
+      }
+      const lines: string[] = this.doc.splitTextToSize(para, maxWidth)
+      for (const l of lines) {
+        if (this.yPosition > this.pageHeight - this.margin - 10) {
+          this.addPage('portrait')
+        }
+        this.doc.text(l, this.margin, this.yPosition)
+        this.yPosition += lineHeight
+      }
+      this.yPosition += lineHeight * 0.4
+    }
+  }
+
+  renderMemo(box: WidgetBoundingBox): void {
+    this.renderWithSkipPage(this.addMemoPage, box)
   }
 
   // =====================================================================
@@ -2522,6 +2572,8 @@ export class MonthlyReportPDFService {
         return !!this.options.wagesDetail
       case 'external_metric':
         return (this.options.externalMetrics ?? []).some(s => s.values.length > 0)
+      case 'memo':
+        return (this.options.memo ?? '').trim() !== ''
       default:
         return true
     }

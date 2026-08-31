@@ -25,7 +25,10 @@ const SnapshotGetQuerySchema = z.object({
 const SnapshotPatchSchema = z.object({
   business_id: z.string(),
   report_month: z.string(),
-  action: z.literal('mark_pdf_exported'),
+  // WD.8: 'set_memo' writes the month's memo (coach_notes) — targeted UPDATE,
+  // same narrowness rationale as mark_pdf_exported.
+  action: z.enum(['mark_pdf_exported', 'set_memo']),
+  memo: z.string().nullable().optional(),
 })
 
 const SnapshotPostSchema = z.object({
@@ -192,29 +195,35 @@ async function postHandler(request: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // WD.8 — coach_notes now carries the month's memo, and the routine
+    // regenerate path never sends it. Including `coach_notes: null` in the
+    // upsert would WIPE a saved memo on every regenerate (PostgREST upsert
+    // updates every column present in the payload). Omit the key entirely
+    // unless the caller explicitly provided it — an absent key preserves,
+    // an explicit null clears.
+    const row: Record<string, unknown> = {
+      business_id,
+      report_month,
+      fiscal_year,
+      status: status || (is_draft ? 'draft' : 'final'),
+      is_draft: is_draft ?? true,
+      unreconciled_count: unreconciled_count || 0,
+      report_data,
+      summary,
+      commentary: commentary || null,
+      generated_by: generated_by || null,
+      generated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    if (coach_notes !== undefined) {
+      row.coach_notes = coach_notes || null
+    }
     const { data: snapshot, error } = await supabase
       .from('monthly_report_snapshots')
-      .upsert(
-        {
-          business_id,
-          report_month,
-          fiscal_year,
-          status: status || (is_draft ? 'draft' : 'final'),
-          is_draft: is_draft ?? true,
-          unreconciled_count: unreconciled_count || 0,
-          report_data,
-          summary,
-          coach_notes: coach_notes || null,
-          commentary: commentary || null,
-          generated_by: generated_by || null,
-          generated_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'business_id,report_month',
-          ignoreDuplicates: false,
-        }
-      )
+      .upsert(row, {
+        onConflict: 'business_id,report_month',
+        ignoreDuplicates: false,
+      })
       .select()
       .single()
 
@@ -260,15 +269,18 @@ async function patchHandler(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { business_id, report_month, action } = await request.json()
+    const { business_id, report_month, action, memo } = await request.json()
 
     // withSchema is observe-mode (VALID-05a) — it logs mismatches but does not
     // block, so the handler enforces its own contract.
-    if (action !== 'mark_pdf_exported' || !business_id || !report_month) {
+    if ((action !== 'mark_pdf_exported' && action !== 'set_memo') || !business_id || !report_month) {
       return NextResponse.json(
-        { error: "business_id, report_month and action 'mark_pdf_exported' are required" },
+        { error: "business_id, report_month and action 'mark_pdf_exported' | 'set_memo' are required" },
         { status: 400 },
       )
+    }
+    if (action === 'set_memo' && memo !== null && typeof memo !== 'string') {
+      return NextResponse.json({ error: 'memo must be a string or null' }, { status: 400 })
     }
 
     const _sectionVerdict = await requireSectionPermission(
@@ -293,18 +305,27 @@ async function patchHandler(request: Request) {
     }
 
     const now = new Date().toISOString()
+    const patch =
+      action === 'set_memo'
+        ? { coach_notes: (typeof memo === 'string' && memo.trim() !== '' ? memo : null), updated_at: now }
+        : { pdf_exported_at: now, updated_at: now }
     const { data, error } = await supabase
       .from('monthly_report_snapshots')
-      .update({ pdf_exported_at: now, updated_at: now })
+      .update(patch)
       .eq('business_id', business_id)
       .eq('report_month', report_month)
       .select('id')
 
     if (error) {
-      Sentry.captureException(error, { tags: { route: 'monthly-report/snapshot', invariant: 'pdf-exported-stamp' }, extra: { business_id, report_month } } as any)
-      return NextResponse.json({ error: 'Failed to record PDF export' }, { status: 500 })
+      Sentry.captureException(error, { tags: { route: 'monthly-report/snapshot', invariant: action === 'set_memo' ? 'memo-save' : 'pdf-exported-stamp' }, extra: { business_id, report_month } } as any)
+      return NextResponse.json({ error: action === 'set_memo' ? 'Failed to save memo' : 'Failed to record PDF export' }, { status: 500 })
     }
 
+    if (action === 'set_memo') {
+      // updated:false = no snapshot row yet — the caller tells the coach to
+      // generate the report first rather than silently losing the memo.
+      return NextResponse.json({ success: true, updated: (data?.length ?? 0) > 0 })
+    }
     return NextResponse.json({ success: true, updated: (data?.length ?? 0) > 0, pdf_exported_at: now })
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'monthly-report/snapshot' }, extra: { context: '[Snapshot] PATCH error' } } as any)
