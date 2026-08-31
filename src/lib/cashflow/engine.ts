@@ -559,6 +559,18 @@ export function generateCashflowForecast(
     const cashOutflows = round2(totalCOGS + totalExpenseCash)
 
     // ---- GST tracking ----
+    // WD.5 — a payment made THIS month settles the liability accrued up to
+    // LAST month-end. The old code added the current month's GST/PAYG/super to
+    // the accrual first and then paid the whole balance, so every October BAS
+    // (for the Jul–Sep quarter) also swept up October's own GST — one month of
+    // each quarter's tax was paid a quarter early. We snapshot the OPENING
+    // balances here; payments below consume the snapshots, and the current
+    // month's accruals are added after the payment decision.
+    const openingGST = accruedGST
+    const openingPAYGWH = accruedPAYGWH
+    const openingSuper = accruedSuper
+    const openingPAYGInstalment = accruedPAYGInstalment
+
     let monthGSTCollected = 0
     let monthGSTPaid = 0
 
@@ -577,21 +589,20 @@ export function generateCashflowForecast(
           }
         }
       }
-
-      accruedGST += (monthGSTCollected - monthGSTPaid)
+      // NOTE: asset/stock GST credits are added to monthGSTPaid in the assets
+      // block below — the accrual roll-forward happens AFTER that block, so
+      // those credits now reach the BAS (previously they were computed after
+      // the accrual update and silently dropped, overstating every BAS).
     }
 
-    // Accrue PAYG WH from payroll
-    if (payrollSummary) {
-      accruedPAYGWH += Math.abs(payrollSummary.payg_monthly?.[mk] || 0)
-      accruedSuper += Math.abs(payrollSummary.superannuation_monthly?.[mk] || 0)
-    }
-
-    // Accrue PAYG Instalment (quarterly)
-    if (assumptions.payg_instalment_frequency !== 'none' && assumptions.payg_instalment_amount > 0) {
-      // Accrue monthly (1/3 of quarterly amount)
-      accruedPAYGInstalment += assumptions.payg_instalment_amount / 3
-    }
+    // Current-month PAYG WH / super accruals (rolled into the balances after
+    // the payment decision below).
+    const monthPAYGWH = payrollSummary ? Math.abs(payrollSummary.payg_monthly?.[mk] || 0) : 0
+    const monthSuper = payrollSummary ? Math.abs(payrollSummary.superannuation_monthly?.[mk] || 0) : 0
+    const monthPAYGInstalment =
+      assumptions.payg_instalment_frequency !== 'none' && assumptions.payg_instalment_amount > 0
+        ? assumptions.payg_instalment_amount / 3
+        : 0
 
     // ---- Balance Sheet — Assets ----
     const assetLines: CashflowLine[] = []
@@ -627,60 +638,73 @@ export function generateCashflowForecast(
     // ---- Balance Sheet — Liabilities ----
     const liabilityLines: CashflowLine[] = []
 
+    // WD.5 — every ATO/super payment settles the OPENING balance (what was
+    // owed at last month-end), never the current month's own accrual. A
+    // quarterly October BAS covers Jul–Sep; October's GST belongs to the
+    // February BAS. Monthly reporters pay last month's net this month
+    // (the "21st of the following month" the old comment promised but the
+    // old code didn't do). Current-month accruals are rolled forward at the
+    // end of this block.
+
     // GST/BAS Payment
+    let gstPayment = 0
     if (assumptions.gst_registered) {
-      let gstPayment = 0
       if (assumptions.gst_reporting_frequency === 'quarterly' && isBASPaymentMonth(monthNum)) {
-        gstPayment = accruedGST
-        accruedGST = 0
+        gstPayment = openingGST
       } else if (assumptions.gst_reporting_frequency === 'monthly') {
-        // Monthly reporters pay 21st of following month — model as next month
-        // For simplicity, we pay the prior month's GST this month
-        if (i > 0) {
-          gstPayment = monthGSTCollected - monthGSTPaid
-          // Already tracked in accruedGST, reset
-        }
-        gstPayment = accruedGST
-        accruedGST = 0
+        gstPayment = openingGST
       }
       if (Math.abs(gstPayment) >= 0.01) {
         liabilityLines.push({ label: 'GST / BAS Payment', value: round2(-gstPayment) })
+      } else {
+        gstPayment = 0
       }
     }
 
     // PAYG Withholding
     let paygWHPayment = 0
     if (assumptions.payg_wh_reporting_frequency === 'quarterly' && isBASPaymentMonth(monthNum)) {
-      paygWHPayment = accruedPAYGWH
-      accruedPAYGWH = 0
+      paygWHPayment = openingPAYGWH
     } else if (assumptions.payg_wh_reporting_frequency === 'monthly') {
-      paygWHPayment = accruedPAYGWH
-      accruedPAYGWH = 0
+      paygWHPayment = openingPAYGWH
     }
     if (Math.abs(paygWHPayment) >= 0.01) {
       liabilityLines.push({ label: 'PAYG Withholding', value: round2(-paygWHPayment) })
+    } else {
+      paygWHPayment = 0
     }
 
     // PAYG Instalments
+    let paygInstalmentPayment = 0
     if (assumptions.payg_instalment_frequency === 'quarterly' && isBASPaymentMonth(monthNum)) {
-      if (Math.abs(accruedPAYGInstalment) >= 0.01) {
-        liabilityLines.push({ label: 'PAYG Instalments', value: round2(-accruedPAYGInstalment) })
-        accruedPAYGInstalment = 0
+      if (Math.abs(openingPAYGInstalment) >= 0.01) {
+        paygInstalmentPayment = openingPAYGInstalment
+        liabilityLines.push({ label: 'PAYG Instalments', value: round2(-paygInstalmentPayment) })
       }
     }
 
     // Superannuation
     let superPayment = 0
     if (assumptions.super_payment_frequency === 'quarterly' && isSuperPaymentMonth(monthNum)) {
-      superPayment = accruedSuper
-      accruedSuper = 0
+      superPayment = openingSuper
     } else if (assumptions.super_payment_frequency === 'monthly') {
-      superPayment = accruedSuper
-      accruedSuper = 0
+      superPayment = openingSuper
     }
     if (Math.abs(superPayment) >= 0.01) {
       liabilityLines.push({ label: 'Superannuation', value: round2(-superPayment) })
+    } else {
+      superPayment = 0
     }
+
+    // Roll the balances forward: opening − paid + this month's accrual.
+    // (monthGSTPaid now includes the asset/stock input credits added in the
+    // assets block above — previously dropped.)
+    accruedGST = assumptions.gst_registered && gstRate > 0
+      ? openingGST - gstPayment + (monthGSTCollected - monthGSTPaid)
+      : openingGST - gstPayment
+    accruedPAYGWH = openingPAYGWH - paygWHPayment + monthPAYGWH
+    accruedPAYGInstalment = openingPAYGInstalment - paygInstalmentPayment + monthPAYGInstalment
+    accruedSuper = openingSuper - superPayment + monthSuper
 
     // Phase 28.2: Company Tax (active only when explicit settings enabled + schedule has a payment this month)
     const companyTax = companyTaxByMonth[mk]
