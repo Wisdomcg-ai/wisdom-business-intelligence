@@ -4,6 +4,7 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
+import { periodMonthFromReportMonth, stampGeneratedFirst } from '@/lib/reports/cycle-stages'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -232,6 +233,21 @@ async function postHandler(request: Request) {
     } catch (revertErr) {
       // Do not fail the save if revert tracking fails — log and continue.
       Sentry.captureException(revertErr, { tags: { route: 'monthly-report/snapshot' }, extra: { context: "[monthly-report/snapshot] revertReportIfApproved failed" } } as any)
+    }
+
+    // CFO production board: the first snapshot save for a month sets the
+    // cycle's "Generated" stage on cfo_report_status; autosaves after the
+    // first leave it alone. Non-fatal for the save, but never silent.
+    const cyclePeriodMonth = periodMonthFromReportMonth(report_month)
+    if (cyclePeriodMonth) {
+      const stampError = await stampGeneratedFirst(supabase, business_id, cyclePeriodMonth)
+      if (stampError) {
+        Sentry.captureMessage(stampError, {
+          level: 'error',
+          tags: { route: 'monthly-report/snapshot', invariant: 'generated_stage_stamp_failed' },
+          extra: { context: '[Snapshot] generated_at stamp failed', business_id, report_month },
+        } as any)
+      }
     }
 
     return NextResponse.json({ success: true, snapshot })

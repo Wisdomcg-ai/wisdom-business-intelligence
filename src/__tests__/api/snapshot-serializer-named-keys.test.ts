@@ -239,9 +239,11 @@ let capturedUpsertPayload: any = null
 
 vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(() => ({
-    from: (_table: string) => ({
+    from: (table: string) => ({
       upsert: (payload: any) => {
-        capturedUpsertPayload = payload
+        // The route also stamps cfo_report_status (generated_at) after the
+        // save — only the snapshot upsert is under test here.
+        if (table === 'monthly_report_snapshots') capturedUpsertPayload = payload
         return {
           select: () => ({
             single: async () => ({ data: { id: 'snap-1', ...payload }, error: null }),

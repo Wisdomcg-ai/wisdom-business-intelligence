@@ -71,6 +71,7 @@ vi.mock('@/lib/reports/revert-report', () => ({
 // Sentry capture: silence + spy so we can assert nothing alarms.
 vi.mock('@sentry/nextjs', () => ({
   captureException: vi.fn(),
+  captureMessage: vi.fn(),
 }));
 
 // ─── Required env var (route reads at module load) ──────────────────────────
