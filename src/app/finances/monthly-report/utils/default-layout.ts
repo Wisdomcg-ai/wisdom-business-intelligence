@@ -79,6 +79,8 @@ export function generateDefaultLayout(sections?: ReportSections): PDFLayout {
   }
 
   // ── Core tables (always on, full page each) ──
+  // WC.5 — the pack opens with a cover.
+  addFullPage('cover_page', 'portrait')
   addFullPage('executive_summary', 'portrait')
   addFullPage('budget_vs_actual', 'landscape')
   addFullPage('ytd_summary', 'portrait')

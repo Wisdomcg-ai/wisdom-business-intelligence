@@ -30,6 +30,8 @@ interface PDFOptions {
   cashflowForecast?: CashflowForecastData
   /** WE.1b — external-metrics series with this month's values (entered data). */
   externalMetrics?: import('../types').ExternalMetricSeriesData[]
+  /** WC.5 — entity name on the cover page. */
+  businessName?: string
   sections?: ReportSections
   pdfLayout?: import('../types/pdf-layout').PDFLayout | null
 }
@@ -125,6 +127,10 @@ export class MonthlyReportPDFService {
 
     const sec = this.options.sections
 
+    // WC.5 — cover first. The constructor already made page 1; the cover
+    // draws on it and the executive summary moves to its own page.
+    this.addCoverPage()
+    this.addPage('portrait')
     this.addExecutiveSummary()
     this.addBudgetVsActualDetail()
     if (this.report.settings.show_ytd) {
@@ -212,6 +218,77 @@ export class MonthlyReportPDFService {
       this.pageHeight = A4_LONG
     }
     this.yPosition = this.margin
+  }
+
+  // =====================================================================
+  // Cover page (WC.5) — entity, month, basis, prepared-on, draft/final
+  // =====================================================================
+  // Draws on the CURRENT page: page 1 in the default flow, the widget's page
+  // in the layout flow. The status line is the honest one — a report behind
+  // the reconciliation gate says PROVISIONAL here and is watermarked on every
+  // page (addAllFooters), instead of exporting indistinguishable from final.
+  private addCoverPage(): void {
+    const { report } = this
+    const centerX = this.pageWidth / 2
+    let y = this.pageHeight * 0.32
+
+    this.doc.setFontSize(24)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(NAVY[0], NAVY[1], NAVY[2])
+    this.doc.text(this.options.businessName || 'Monthly Report', centerX, y, { align: 'center' })
+    y += 12
+
+    this.doc.setFontSize(12)
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setTextColor(90, 90, 90)
+    this.doc.text('Monthly Management Report', centerX, y, { align: 'center' })
+    y += 14
+
+    this.doc.setFontSize(16)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.text(this.formatMonth(report.report_month), centerX, y, { align: 'center' })
+    y += 7
+
+    this.doc.setFontSize(10)
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setTextColor(90, 90, 90)
+    this.doc.text(`Financial Year ${report.fiscal_year}`, centerX, y, { align: 'center' })
+    y += 16
+
+    this.doc.setDrawColor(200, 200, 200)
+    this.doc.line(centerX - 30, y, centerX + 30, y)
+    y += 12
+
+    this.doc.setFontSize(9)
+    // Basis is accruals until WD.7 ships a cash-basis pack; say so explicitly
+    // rather than leaving the reader to guess.
+    this.doc.text('Basis: Accruals', centerX, y, { align: 'center' })
+    y += 6
+    this.doc.text(`Prepared ${new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}`, centerX, y, { align: 'center' })
+    y += 12
+
+    if (report.is_draft) {
+      const n = report.unreconciled_count ?? 0
+      this.doc.setFontSize(11)
+      this.doc.setFont('helvetica', 'bold')
+      this.doc.setTextColor(185, 28, 28) // red-700
+      const label = n > 0
+        ? `PROVISIONAL — ${n} unreconciled transaction${n === 1 ? '' : 's'}`
+        : 'PROVISIONAL — DRAFT'
+      this.doc.text(label, centerX, y, { align: 'center' })
+    } else {
+      this.doc.setFontSize(10)
+      this.doc.setFont('helvetica', 'normal')
+      this.doc.setTextColor(22, 101, 52) // green-800
+      this.doc.text('Final', centerX, y, { align: 'center' })
+    }
+    this.doc.setTextColor(0, 0, 0)
+  }
+
+  renderCoverPage(): void {
+    // Layout path — the widget's page already exists; draw directly.
+    this.addCoverPage()
   }
 
   // =====================================================================
@@ -2820,6 +2897,34 @@ export class MonthlyReportPDFService {
       this.doc.setPage(i)
       const pw = this.doc.internal.pageSize.getWidth()
       const ph = this.doc.internal.pageSize.getHeight()
+
+      // WC.5 — a provisional report is watermarked on EVERY page. Before this,
+      // a draft export was indistinguishable from a final one the moment it
+      // left the app (the reconciliation gate's whole point, dropped at the
+      // last step).
+      if (this.report.is_draft) {
+        this.doc.setFontSize(80)
+        this.doc.setFont('helvetica', 'bold')
+        let stamped = false
+        try {
+          const anyDoc = this.doc as any
+          if (typeof anyDoc.saveGraphicsState === 'function' && typeof anyDoc.GState === 'function') {
+            anyDoc.saveGraphicsState()
+            anyDoc.setGState(new anyDoc.GState({ opacity: 0.08 }))
+            this.doc.setTextColor(150, 30, 30)
+            this.doc.text('DRAFT', pw / 2, ph / 2, { align: 'center', angle: 35 })
+            anyDoc.restoreGraphicsState()
+            stamped = true
+          }
+        } catch {
+          // fall through to the opaque-but-faint fallback below
+        }
+        if (!stamped) {
+          this.doc.setTextColor(246, 226, 226)
+          this.doc.text('DRAFT', pw / 2, ph / 2, { align: 'center', angle: 35 })
+        }
+      }
+
       this.doc.setFontSize(7)
       this.doc.setFont('helvetica', 'normal')
       this.doc.setTextColor(150, 150, 150)
@@ -2829,6 +2934,10 @@ export class MonthlyReportPDFService {
         ph - 8,
         { align: 'center' }
       )
+      if (this.report.is_draft) {
+        this.doc.setTextColor(185, 28, 28)
+        this.doc.text('PROVISIONAL', pw - this.margin, ph - 8, { align: 'right' })
+      }
     }
     this.doc.setTextColor(0, 0, 0)
   }
