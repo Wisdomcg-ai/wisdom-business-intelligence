@@ -28,6 +28,8 @@ interface PDFOptions {
   subscriptionDetail?: SubscriptionDetailData
   wagesDetail?: WagesDetailData
   cashflowForecast?: CashflowForecastData
+  /** WE.1b — external-metrics series with this month's values (entered data). */
+  externalMetrics?: import('../types').ExternalMetricSeriesData[]
   sections?: ReportSections
   pdfLayout?: import('../types/pdf-layout').PDFLayout | null
 }
@@ -133,6 +135,11 @@ export class MonthlyReportPDFService {
     }
     if (this.options.wagesDetail && this.options.wagesDetail.accounts.length > 0) {
       this.addWagesDetailPage()
+    }
+    // WE.1b — the entered external-data inserts, one page per series with
+    // values (the Calxa packs give each insert its own page).
+    for (const series of this.options.externalMetrics ?? []) {
+      if (series.values.length > 0) this.addExternalMetricPage(series)
     }
     if (this.options.cashflowForecast && this.options.cashflowForecast.months.length > 0) {
       this.addCashflowForecastPage()
@@ -913,6 +920,126 @@ export class MonthlyReportPDFService {
           }
         },
       })
+    }
+  }
+
+  // =====================================================================
+  // External Metrics (PORTRAIT — WE.1b, the entered non-Xero inserts)
+  // =====================================================================
+  private addExternalMetricPage(series: import('../types').ExternalMetricSeriesData): void {
+    this.addPage('portrait')
+
+    this.doc.setFontSize(14)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.text(`${series.display_name} — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
+    this.yPosition += 8
+
+    // Only measures that actually carry values render as columns; a measure
+    // gets a Budget + Variance pair only when budget values exist for it.
+    const byCell = new Map<string, number>()
+    const dims = new Set<string>()
+    const measuresWithValues = new Set<string>()
+    const measuresWithBudget = new Set<string>()
+    for (const v of series.values) {
+      byCell.set(`${v.dimension_value} ${v.measure_key} ${v.scenario}`, v.value)
+      dims.add(v.dimension_value)
+      measuresWithValues.add(v.measure_key)
+      if (v.scenario === 'budget') measuresWithBudget.add(v.measure_key)
+    }
+    const measures = series.measures.filter(m => measuresWithValues.has(m.key))
+    const rows = [...dims].sort((a, b) => a.localeCompare(b))
+
+    const fmtBy = (format: string | undefined, value: number): string => {
+      if (format === 'currency') return this.fmtCurrency(value)
+      if (format === 'percent') return `${value.toFixed(1)}%`
+      return value.toLocaleString('en-AU', { maximumFractionDigits: 1 })
+    }
+
+    // Column plan: dimension + per measure (Actual [, Budget, Var])
+    const headers: string[] = [series.dimension_label]
+    const columns: { measure: typeof measures[number]; kind: 'actual' | 'budget' | 'variance' }[] = []
+    for (const m of measures) {
+      const hasBudget = measuresWithBudget.has(m.key)
+      headers.push(hasBudget ? `${m.label} Actual` : m.label)
+      columns.push({ measure: m, kind: 'actual' })
+      if (hasBudget) {
+        headers.push(`${m.label} Budget`, 'Var')
+        columns.push({ measure: m, kind: 'budget' }, { measure: m, kind: 'variance' })
+      }
+    }
+
+    const cellValue = (dim: string, m: string, scenario: string): number | null => {
+      const v = byCell.get(`${dim} ${m} ${scenario}`)
+      return v === undefined ? null : v
+    }
+
+    const tableData: any[] = rows.map(dim => [
+      dim,
+      ...columns.map(({ measure, kind }) => {
+        const actual = cellValue(dim, measure.key, 'actual')
+        const budget = cellValue(dim, measure.key, 'budget')
+        if (kind === 'actual') return actual !== null ? fmtBy(measure.format, actual) : '—'
+        if (kind === 'budget') return budget !== null ? fmtBy(measure.format, budget) : '—'
+        // Variance renders only when BOTH sides exist — no fake zero.
+        return actual !== null && budget !== null ? fmtBy(measure.format, actual - budget) : '—'
+      }),
+    ])
+
+    // Total row — percent measures don't sum meaningfully, show a dash.
+    const totalStyle = { fontStyle: 'bold' as const, fillColor: NAVY as number[], textColor: [255, 255, 255] as number[] }
+    tableData.push([
+      { content: 'Total', styles: totalStyle },
+      ...columns.map(({ measure, kind }) => {
+        if (measure.format === 'percent') return { content: '—', styles: totalStyle }
+        let sum = 0
+        let any = false
+        for (const dim of rows) {
+          const a = cellValue(dim, measure.key, 'actual')
+          const b = cellValue(dim, measure.key, 'budget')
+          if (kind === 'actual' && a !== null) { sum += a; any = true }
+          if (kind === 'budget' && b !== null) { sum += b; any = true }
+          if (kind === 'variance' && a !== null && b !== null) { sum += a - b; any = true }
+        }
+        return { content: any ? fmtBy(measure.format, sum) : '—', styles: totalStyle }
+      }),
+    ])
+
+    autoTable(this.doc, {
+      startY: this.yPosition,
+      head: [headers],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold', fontSize: 8 },
+      bodyStyles: { fontSize: 8 },
+      columnStyles: { 0: { cellWidth: 45 } },
+      margin: { left: this.margin, right: this.margin },
+      didParseCell: (data) => {
+        if (data.column.index > 0 && data.section !== 'head') {
+          data.cell.styles.halign = 'right'
+        }
+      },
+    })
+
+    // EXT-TIES footnote — three-state: silent when not comparable.
+    const tie = series.tie
+    if (tie?.comparable) {
+      const y = (this.doc as any).lastAutoTable?.finalY ?? this.yPosition
+      this.doc.setFontSize(8)
+      this.doc.setFont('helvetica', 'normal')
+      if (tie.within_tolerance) {
+        this.doc.setTextColor(22, 101, 52) // green-800
+        this.doc.text(
+          `Ties to "${tie.account_name}" in Xero (${this.fmtCurrency(tie.account_actual)}).`,
+          this.margin, y + 6,
+        )
+      } else {
+        this.doc.setTextColor(146, 64, 14) // amber-800
+        this.doc.text(
+          `Entered total ${this.fmtCurrency(tie.series_total)} vs "${tie.account_name}" ${this.fmtCurrency(tie.account_actual)} in Xero — difference ${this.fmtCurrency(Math.abs(tie.delta))}.`,
+          this.margin, y + 6,
+        )
+      }
+      this.doc.setTextColor(0, 0, 0)
     }
   }
 
@@ -2316,6 +2443,8 @@ export class MonthlyReportPDFService {
       case 'wages_detail':
       case 'chart_cost_per_employee':
         return !!this.options.wagesDetail
+      case 'external_metric':
+        return (this.options.externalMetrics ?? []).some(s => s.values.length > 0)
       default:
         return true
     }
@@ -2395,6 +2524,24 @@ export class MonthlyReportPDFService {
 
   renderWagesDetail(box: WidgetBoundingBox): void {
     this.renderWithSkipPage(this.addWagesDetailPage, box)
+  }
+
+  renderExternalMetric(box: WidgetBoundingBox, widget?: import('../types/pdf-layout').LayoutWidget): void {
+    // WE.1b — default: every active series with values for the month, one page
+    // each. config.series_key narrows a placement to a single series so a
+    // layout can give each insert its own positioned page.
+    const seriesKey = typeof widget?.config?.series_key === 'string' ? widget.config.series_key : undefined
+    const all = (this.options.externalMetrics ?? []).filter(s => s.values.length > 0)
+    const list = seriesKey ? all.filter(s => s.series_key === seriesKey) : all
+    if (list.length === 0) {
+      // hasDataForWidget passed on SOME series, but the config narrowed to one
+      // with no data — say so rather than rendering a blank page.
+      this.renderPlaceholder('external_metric', box, seriesKey ? `No data for series '${seriesKey}' this month` : 'No external data for this month')
+      return
+    }
+    this.renderWithSkipPage(() => {
+      for (const series of list) this.addExternalMetricPage(series)
+    }, box)
   }
 
   renderCashflowForecastTable(box: WidgetBoundingBox): void {

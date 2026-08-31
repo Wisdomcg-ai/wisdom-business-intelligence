@@ -25,6 +25,8 @@ export const WIDGET_METHOD_MAP: Record<WidgetType, string | null> = {
   subscription_detail: 'renderSubscriptionDetail',
   wages_detail: 'renderWagesDetail',
   cashflow_forecast_table: 'renderCashflowForecastTable',
+  // WE.1b — renders every series with month values (config.series_key narrows)
+  external_metric: 'renderExternalMetric',
   // P&L Charts — the three analysis types share one renderer; it reads the
   // section from the widget type, with config.section as a WC.1 override.
   analysis_chart_income: 'renderAnalysisChart',

@@ -10,6 +10,11 @@ export type WidgetType =
   | 'subscription_detail'
   | 'wages_detail'
   | 'cashflow_forecast_table'
+  // WE.1b — the external-metrics insert pages (Lumary clinic income, Hubstaff
+  // hours, HubSpot memberships…). ONE type: by default it renders every active
+  // series that has values for the month (one page each, like the Calxa
+  // packs); config.series_key narrows a placement to a single series.
+  | 'external_metric'
   // P&L Charts
   // WD.1 — one renderer serves all three; the type carries the section, and
   // widget.config.section may override it (WC.1). Three types rather than one

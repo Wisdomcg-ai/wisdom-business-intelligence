@@ -72,6 +72,18 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     minColSpan: 3, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
     dataDependency: 'cashflow',
   },
+  external_metric: {
+    type: 'external_metric',
+    label: 'External Data',
+    category: 'tables',
+    fullRow: true,
+    icon: 'Database',
+    defaultColSpan: 2, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+    // No dataDependency: the palette can't know per-business series, and a
+    // placed widget with no data for the month renders a placeholder page,
+    // same as every other data-gated widget.
+  },
 
   // ─── P&L Charts ─────────────────────────────────────────────────
   // WD.1 — the Calxa Actual/Budget/Last-Year analysis charts, one per section.
