@@ -17,6 +17,10 @@ const SECTION_WIDGET_MAP: { sectionKey: keyof ReportSections | null; type: Widge
   { sectionKey: 'payroll_detail', type: 'wages_detail' },
   { sectionKey: 'cashflow', type: 'cashflow_forecast_table' },
   // Charts
+  // WD.1 — the A/B/PY analysis trio rides the trend_charts flag.
+  { sectionKey: 'trend_charts', type: 'analysis_chart_income' },
+  { sectionKey: 'trend_charts', type: 'analysis_chart_cogs' },
+  { sectionKey: 'trend_charts', type: 'analysis_chart_expense' },
   { sectionKey: 'cashflow', type: 'chart_cashflow_forecast' },
   { sectionKey: 'chart_revenue_breakdown', type: 'chart_revenue_breakdown' },
   { sectionKey: 'chart_break_even', type: 'chart_break_even' },
@@ -90,6 +94,14 @@ export function generateDefaultLayout(sections?: ReportSections): PDFLayout {
 
   // ── Full year projection ──
   addFullPage('full_year_projection', 'landscape')
+
+  // ── WD.1: Actual / Budget / Last-Year analysis charts (Calxa's core chart,
+  //    one landscape page per section) ──
+  if (sections?.trend_charts ?? true) {
+    addFullPage('analysis_chart_income', 'landscape')
+    addFullPage('analysis_chart_cogs', 'landscape')
+    addFullPage('analysis_chart_expense', 'landscape')
+  }
 
   // ── Charts: group compatible ones onto shared landscape pages ──
 

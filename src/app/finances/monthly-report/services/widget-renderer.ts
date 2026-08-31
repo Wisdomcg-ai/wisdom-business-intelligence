@@ -25,7 +25,11 @@ export const WIDGET_METHOD_MAP: Record<WidgetType, string | null> = {
   subscription_detail: 'renderSubscriptionDetail',
   wages_detail: 'renderWagesDetail',
   cashflow_forecast_table: 'renderCashflowForecastTable',
-  // P&L Charts
+  // P&L Charts — the three analysis types share one renderer; it reads the
+  // section from the widget type, with config.section as a WC.1 override.
+  analysis_chart_income: 'renderAnalysisChart',
+  analysis_chart_cogs: 'renderAnalysisChart',
+  analysis_chart_expense: 'renderAnalysisChart',
   chart_revenue_breakdown: 'renderRevenueBreakdownChart',
   chart_break_even: 'renderBreakEvenChart',
   chart_revenue_vs_expenses: 'renderRevenueVsExpensesChart',

@@ -11,6 +11,13 @@ export type WidgetType =
   | 'wages_detail'
   | 'cashflow_forecast_table'
   // P&L Charts
+  // WD.1 — one renderer serves all three; the type carries the section, and
+  // widget.config.section may override it (WC.1). Three types rather than one
+  // parameterised type because the default-layout/sync machinery is keyed by
+  // type-sets — this follows that grain.
+  | 'analysis_chart_income'
+  | 'analysis_chart_cogs'
+  | 'analysis_chart_expense'
   | 'chart_revenue_breakdown'
   | 'chart_break_even'
   | 'chart_revenue_vs_expenses'
