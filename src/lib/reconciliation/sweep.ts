@@ -6,21 +6,23 @@
  * in reconciliation_checks (fail-closed: an errored check is recorded as
  * status='error', never as zero outstanding).
  *
- * Primary source — Xero Finance API bank statement lines (the same items
- * Xero's "reconcile" banner counts):
- *   GET /finance.xro/1.0/BankStatementsPlus/statements
- *       ?BankAccountID=..&FromDate=..&ToDate=..&SummaryOnly=true
- * Requires the finance.bankstatementsplus.read scope, which existing org
- * connections have NOT consented to yet — they 403 until Matt reconnects
- * each org. That is the expected initial state, not an error, so a 403
- * downgrades the tenant to the fallback source:
- *
- * Fallback source — Accounting API unreconciled account transactions
+ * Operative source — Accounting API unreconciled account transactions
  * (what the pre-board /api/Xero/reconciliation check counted):
  *   GET /api.xro/2.0/BankTransactions?where=Status=="AUTHORISED" AND
  *       IsReconciled==false AND Date>=DateTime(..)
- * Counts the account-transaction side, which can differ from the banner —
- * rows carry source='account_transactions' so the UI can label it.
+ * HONESTY NOTE: this counts transactions RECORDED IN XERO that aren't matched
+ * to a statement line. It is NOT the "X items to reconcile" banner, which
+ * counts uncoded bank-feed statement lines — a feed nobody has coded shows
+ * ZERO here. The open API cannot see statement lines; label the UI
+ * accordingly and never present this as the banner number.
+ *
+ * Dormant statement-lines source — Xero Finance API
+ * (BankStatementsPlus/statements, per-line isReconciled = the actual banner
+ * population). The Finance API is CLOSED: available only to established
+ * financial-services (lending) partners, which WisdomBI is not — so this path
+ * runs only when XERO_FINANCE_SCOPES_ENABLED='true' (set if that ever
+ * changes) and 403s downgrade to the operative source. Kept because the data
+ * shape is strictly better if access ever materialises.
  */
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import {
@@ -225,13 +227,15 @@ export async function sweepTenant(
     totalCount: 0,
     totalValue: 0,
   }
+  const financeEnabled = process.env.XERO_FINANCE_SCOPES_ENABLED === 'true'
+  const primarySource: SweepSource = financeEnabled ? 'statement_lines' : 'account_transactions'
 
   const token = await getValidAccessToken({ id: connection.id }, supabase as any)
   if (!token.success || !token.accessToken) {
     return {
       ...base,
       status: 'error',
-      source: 'statement_lines',
+      source: primarySource,
       error: `token: ${token.error ?? 'unknown'}${token.shouldDeactivate ? ' (needs reconnect)' : ''}`,
     }
   }
@@ -243,28 +247,30 @@ export async function sweepTenant(
     if (bankAccounts.length === 0) {
       // A tenant with no active bank accounts genuinely has nothing to
       // reconcile — an OK check with zero buckets, not an error.
-      return { ...base, status: 'ok', source: 'statement_lines' }
+      return { ...base, status: 'ok', source: primarySource }
     }
 
-    // Primary: statement lines. A 403 on the FIRST account means the finance
-    // scope isn't consented for this org — expected until Matt reconnects it —
-    // so the whole tenant downgrades to the fallback source.
-    const accounts: AccountBuckets[] = []
-    try {
-      for (const account of bankAccounts) {
-        const buckets = await fetchStatementLineBuckets(
-          connection.tenant_id,
-          token.accessToken,
-          account,
-          window,
-        )
-        if (buckets.length > 0) {
-          accounts.push({ ...account, buckets })
+    // Statement lines only when Finance API access is explicitly enabled
+    // (closed API — see module header). A 403 means the scope isn't actually
+    // on this org's tokens; downgrade the tenant to the operative source.
+    if (financeEnabled) {
+      const accounts: AccountBuckets[] = []
+      try {
+        for (const account of bankAccounts) {
+          const buckets = await fetchStatementLineBuckets(
+            connection.tenant_id,
+            token.accessToken,
+            account,
+            window,
+          )
+          if (buckets.length > 0) {
+            accounts.push({ ...account, buckets })
+          }
         }
+        return { ...base, ...sumBuckets(accounts), status: 'ok', source: 'statement_lines', accounts }
+      } catch (err) {
+        if (!isXeroHttpError(err, 403)) throw err
       }
-      return { ...base, ...sumBuckets(accounts), status: 'ok', source: 'statement_lines', accounts }
-    } catch (err) {
-      if (!isXeroHttpError(err, 403)) throw err
     }
 
     const fallbackAccounts = await fetchFallbackAccounts(
@@ -281,12 +287,12 @@ export async function sweepTenant(
     }
   } catch (err) {
     if (err instanceof RateLimitDailyExceededError) {
-      return { ...base, status: 'error', source: 'statement_lines', error: 'xero daily rate limit — retry tomorrow' }
+      return { ...base, status: 'error', source: primarySource, error: 'xero daily rate limit — retry tomorrow' }
     }
     return {
       ...base,
       status: 'error',
-      source: 'statement_lines',
+      source: primarySource,
       error: err instanceof Error ? err.message.slice(0, 300) : String(err),
     }
   }

@@ -35,14 +35,12 @@ const SCOPES = [
   'accounting.contacts.read',
   // 'finance.statements.read',  // Finance API — cashflow (needs app config in Xero portal)
   // Finance API — bank-reconciliation sweep for the CFO production board
-  // (statement lines w/ per-line isReconciled + per-account unreconciled
-  // totals). Xero does NOT self-serve these scopes: the app must go through
-  // the "financial services partner" application and Developer Relations
-  // assigns them. Requesting unassigned scopes fails the whole OAuth consent,
-  // which would break every reconnect — so they are gated behind
-  // XERO_FINANCE_SCOPES_ENABLED, to be set to 'true' in Vercel ONLY after
-  // Xero confirms the scopes are on the app. Until then the sweep 403s on
-  // Finance endpoints and falls back to account-transaction counts.
+  // (statement lines w/ per-line isReconciled). The Finance API is a CLOSED
+  // API, available only to established financial-services (lending) partners
+  // — WisdomBI does not qualify, so this flag is expected to stay OFF and the
+  // sweep counts unreconciled account transactions instead. Requesting
+  // unassigned scopes fails the whole OAuth consent (would break every
+  // reconnect), hence the gate. Kept in case access ever materialises.
   ...(process.env.XERO_FINANCE_SCOPES_ENABLED === 'true'
     ? ['finance.bankstatementsplus.read', 'finance.cashvalidation.read']
     : []),

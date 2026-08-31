@@ -13,10 +13,11 @@ import { sweepTenant, persistTenantSweep } from '@/lib/reconciliation/sweep'
  * production board opens each morning with fresh "items to reconcile" counts,
  * after the 16:00 UTC sync-all-xero pass and before Matt's day starts.
  *
- * Per active tenant: count unreconciled items bucketed by transaction month
- * (Finance API statement lines when the org has consented the finance scopes;
- * Accounting API account transactions otherwise) into reconciliation_snapshots,
- * with the check outcome in reconciliation_checks. Distinct from
+ * Per active tenant: count unreconciled transactions recorded in Xero,
+ * bucketed by transaction month, into reconciliation_snapshots, with the
+ * check outcome in reconciliation_checks. (Statement-line counts via the
+ * closed Finance API exist behind XERO_FINANCE_SCOPES_ENABLED — see
+ * lib/reconciliation/sweep.ts.) Distinct from
  * /api/cron/reconciliation-watch, which watches P&L/BS *ledger* reconciliation
  * drift in sync_jobs — this cron is about the bank reconcile queue.
  *
