@@ -8,6 +8,8 @@
 //   - approve_and_send  : * → approved (+ snapshot), Resend send, → sent on success (D-02/D-11/D-15)
 //   - revert_to_draft   : approved|sent → draft, preserving snapshot (D-03/D-18)
 //   - resend            : re-send an already-approved/sent report (D-13)
+//   - mark_discussed    : stamp discussed_at/discussed_by — CFO board final stage
+//   - unmark_discussed  : clear the discussed stamp (mistake recovery)
 //
 // Transaction ordering follows 35-RESEARCH.md §Pitfall 2 exactly so that a
 // Resend failure NEVER leaves the row at status='sent'.
@@ -150,6 +152,10 @@ async function postHandler(request: Request) {
         return await handleApproveAndSend(user.id, body as ApproveSendBody)
       case 'resend':
         return await handleResend(user.id, body as ResendBody)
+      case 'mark_discussed':
+        return await handleMarkDiscussed(user.id, business_id, period_month)
+      case 'unmark_discussed':
+        return await handleUnmarkDiscussed(business_id, period_month)
       default:
         return errorResponse(`Unknown action: ${action}`, 400)
     }
@@ -182,6 +188,52 @@ async function handleMarkReady(userId: string, businessId: string, periodMonth: 
     return errorResponse('Failed to update status', 500)
   }
   return NextResponse.json({ success: true, status: 'ready_for_review' })
+}
+
+async function handleMarkDiscussed(userId: string, businessId: string, periodMonth: string) {
+  // CFO board final stage: the coach walked the client through the report.
+  // Requires an existing cycle row — "discussed" before anything was even
+  // generated is a UI ordering bug worth surfacing, not a state to create.
+  const { data: row, error: readError } = await supabase
+    .from('cfo_report_status')
+    .select('id')
+    .eq('business_id', businessId)
+    .eq('period_month', periodMonth)
+    .maybeSingle()
+  if (readError) {
+    Sentry.captureException(readError, { tags: { route: 'cfo/report-status' }, extra: { context: '[report-status] mark_discussed read failed' } } as any)
+    return errorResponse('Failed to load report status', 500)
+  }
+  if (!row) {
+    return errorResponse('No report cycle exists for this month yet — generate the report first', 409)
+  }
+
+  const { error } = await supabase
+    .from('cfo_report_status')
+    .update({
+      discussed_at: new Date().toISOString(),
+      discussed_by: userId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', row.id)
+  if (error) {
+    Sentry.captureException(error, { tags: { route: 'cfo/report-status' }, extra: { context: '[report-status] mark_discussed update failed' } } as any)
+    return errorResponse('Failed to update status', 500)
+  }
+  return NextResponse.json({ success: true, discussed: true })
+}
+
+async function handleUnmarkDiscussed(businessId: string, periodMonth: string) {
+  const { error } = await supabase
+    .from('cfo_report_status')
+    .update({ discussed_at: null, discussed_by: null, updated_at: new Date().toISOString() })
+    .eq('business_id', businessId)
+    .eq('period_month', periodMonth)
+  if (error) {
+    Sentry.captureException(error, { tags: { route: 'cfo/report-status' }, extra: { context: '[report-status] unmark_discussed update failed' } } as any)
+    return errorResponse('Failed to update status', 500)
+  }
+  return NextResponse.json({ success: true, discussed: false })
 }
 
 async function handleRevert(businessId: string, periodMonth: string) {
