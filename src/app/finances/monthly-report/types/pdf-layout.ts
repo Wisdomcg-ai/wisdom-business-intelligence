@@ -15,6 +15,9 @@ export type WidgetType =
   // series that has values for the month (one page each, like the Calxa
   // packs); config.series_key narrows a placement to a single series.
   | 'external_metric'
+  // WC.5 — pack cover: entity, month, basis, prepared-on, and the report's
+  // draft/final status. The provisional state finally reaches the PDF.
+  | 'cover_page'
   // P&L Charts
   // WD.1 — one renderer serves all three; the type carries the section, and
   // widget.config.section may override it (WC.1). Three types rather than one

@@ -72,6 +72,16 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     minColSpan: 3, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
     dataDependency: 'cashflow',
   },
+  cover_page: {
+    type: 'cover_page',
+    label: 'Cover Page',
+    category: 'tables',
+    fullRow: true,
+    icon: 'FileText',
+    defaultColSpan: 2, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 3, maxRowSpan: 3,
+    // Always renderable — it draws from the report itself.
+  },
   external_metric: {
     type: 'external_metric',
     label: 'External Data',

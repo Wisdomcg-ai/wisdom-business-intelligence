@@ -996,6 +996,7 @@ export default function MonthlyReportPage() {
       wagesDetail?: import('./types').WagesDetailData
       cashflowForecast?: CashflowForecastData
       externalMetrics?: import('./types').ExternalMetricSeriesData[]
+      businessName?: string
       sections?: import('./types').ReportSections
       pdfLayout?: import('./types/pdf-layout').PDFLayout | null
     }
@@ -1007,6 +1008,7 @@ export default function MonthlyReportPage() {
       options: {
         commentary,
         ...eager,
+        businessName: activeBusiness?.name ?? undefined,
         sections: settings?.sections,
         pdfLayout: settings?.pdf_layout ?? null,
       },
@@ -1152,6 +1154,7 @@ export default function MonthlyReportPage() {
       const pdf = new MonthlyReportPDFService(report, {
         commentary,
         ...eager,
+        businessName: activeBusiness?.name ?? undefined,
         sections: settings?.sections,
         pdfLayout: settings?.pdf_layout ?? null,
       })
