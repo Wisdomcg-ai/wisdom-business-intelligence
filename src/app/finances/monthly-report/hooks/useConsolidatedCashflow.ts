@@ -98,11 +98,19 @@ export function useConsolidatedCashflow(
     [businessId, isConsolidationGroup],
   )
 
+  // WA.4 — the page lazy-loads with a `!report` guard, so a fiscal-year switch
+  // must clear the cache or the consolidated tabs keep showing the previous FY.
+  const clear = useCallback(() => {
+    setReport(null)
+    setError(null)
+  }, [])
+
   return {
     report,
     isLoading,
     error,
     isConsolidationGroup,
     generateCashflow,
+    clear,
   }
 }

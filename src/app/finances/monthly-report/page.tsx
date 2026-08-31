@@ -53,7 +53,7 @@ import ConsolidatedPLTab from './components/ConsolidatedPLTab'
 import ConsolidatedBSTab from './components/ConsolidatedBSTab'
 import ConsolidatedCashflowTab from './components/ConsolidatedCashflowTab'
 import FXRateMissingBanner from './components/FXRateMissingBanner'
-import { loadSettings, getCurrentFiscalYear, getDefaultReportMonth } from './services/monthly-report-service'
+import { loadSettings, getCurrentFiscalYear, getDefaultReportMonth, getFiscalYearForMonth, defaultMonthForFiscalYear } from './services/monthly-report-service'
 import { MonthlyReportPDFService } from './services/monthly-report-pdf-service'
 import type { CashflowForecastData } from '@/app/finances/forecast/types'
 import { usePDFLayout } from './hooks/usePDFLayout'
@@ -85,8 +85,13 @@ export default function MonthlyReportPage() {
 
   const [businessId, setBusinessId] = useState('')
   const [userId, setUserId] = useState('')
-  const [fiscalYear, setFiscalYear] = useState(getCurrentFiscalYear())
+  // WA.4 — month and fiscal year are derived from the SAME anchor. They used
+  // to come from two different clocks ("last completed month" vs "FY of
+  // today"), which disagree for the whole of July: the page opened on June
+  // against the NEW fiscal year, silently zeroing YTD and looking up a budget
+  // year that contains no June.
   const [selectedMonth, setSelectedMonth] = useState(getDefaultReportMonth())
+  const [fiscalYear, setFiscalYear] = useState(() => getFiscalYearForMonth(getDefaultReportMonth()))
   const [settings, setSettings] = useState<MonthlyReportSettings | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showLayoutEditor, setShowLayoutEditor] = useState(false)
@@ -228,6 +233,7 @@ export default function MonthlyReportPage() {
     isLoading: consolidatedLoading,
     error: consolidatedError,
     generateConsolidated,
+    clear: clearConsolidated,
   } = useConsolidatedReport(businessId)
 
   // Phase 34 Iteration 34.1 — consolidated Balance Sheet payload.
@@ -238,6 +244,7 @@ export default function MonthlyReportPage() {
     isLoading: consolidatedBSLoading,
     error: consolidatedBSError,
     generateBalanceSheet: generateConsolidatedBS,
+    clear: clearConsolidatedBS,
   } = useConsolidatedBalanceSheet(businessId)
 
   // Phase 34 Iteration 34.2 — consolidated Cashflow payload. Same detection
@@ -247,6 +254,7 @@ export default function MonthlyReportPage() {
     isLoading: consolidatedCashflowLoading,
     error: consolidatedCashflowError,
     generateCashflow: generateConsolidatedCashflow,
+    clear: clearConsolidatedCashflow,
   } = useConsolidatedCashflow(businessId)
 
   // The consolidated (multi-entity rollup) tabs are a coach/admin-only view.
@@ -276,6 +284,7 @@ export default function MonthlyReportPage() {
     isLoading: fullYearLoading,
     error: fullYearError,
     loadFullYear,
+    clearFullYear,
   } = useFullYearReport(businessId)
 
   const {
@@ -788,6 +797,28 @@ export default function MonthlyReportPage() {
     }
   }, [selectedMonth, fiscalYear, reconciliation, generateReport, fetchCommentary, loadSnapshot, saveSnapshot, userId])
 
+  // WA.4 — switching fiscal year clears every FY-keyed cache (their lazy-load
+  // effects guard on `!data`, so without the clears the Full Year / Trends /
+  // Charts / consolidated tabs would keep showing the previous FY) and lands
+  // on that FY's natural month via the same path a manual month change takes.
+  // Current FY plus the two prior — matches the ~26 months of synced Xero
+  // history. Derived from the clock (not selectedMonth) so the list is stable
+  // while navigating.
+  const fiscalYearOptions = (() => {
+    const current = getCurrentFiscalYear()
+    return [current, current - 1, current - 2]
+  })()
+
+  const handleFiscalYearChange = async (fy: number) => {
+    if (fy === fiscalYear) return
+    setFiscalYear(fy)
+    clearFullYear()
+    clearConsolidated()
+    clearConsolidatedBS()
+    clearConsolidatedCashflow()
+    await handleMonthChange(defaultMonthForFiscalYear(fy))
+  }
+
   const handleMonthChange = async (month: string) => {
     setSelectedMonth(month)
     setCommentary(undefined)
@@ -1260,6 +1291,8 @@ export default function MonthlyReportPage() {
           selectedMonth={selectedMonth}
           fiscalYear={fiscalYear}
           onChange={handleMonthChange}
+          fiscalYearOptions={fiscalYearOptions}
+          onFiscalYearChange={handleFiscalYearChange}
         />
 
         {/* Xero Connection Banner */}
