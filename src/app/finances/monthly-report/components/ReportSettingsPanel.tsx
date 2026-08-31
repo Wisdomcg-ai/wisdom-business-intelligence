@@ -51,6 +51,7 @@ const SECTION_GROUPS: SectionGroup[] = [
       { key: 'balance_sheet', label: 'Balance Sheet' },
       { key: 'cashflow', label: 'Cashflow Forecast' },
       { key: 'trend_charts', label: 'Trend Charts' },
+      { key: 'cash_basis', label: 'Cash-basis mirror (extra Xero calls; needs a sync cycle)' },
     ],
   },
   {
