@@ -926,6 +926,7 @@ export default function MonthlyReportPage() {
     externalMetrics?: import('./types').ExternalMetricSeriesData[]
     memo?: string
     moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
+    consolidated?: import('./utils/consolidated-rows').ConsolidatedReportVM
   }> => {
     let fyReport = fullYearReport
     if (!fyReport && businessId) {
@@ -1026,6 +1027,21 @@ export default function MonthlyReportPage() {
       }
     }
 
+    // WD.6 — per-entity consolidated report for consolidation parents. Reuses
+    // the tab's cache; the generator returns the report directly so the PDF
+    // never depends on the coach having opened the tab (the D-07 class).
+    let consolidated: import('./utils/consolidated-rows').ConsolidatedReportVM | undefined
+    if (isConsolidationGroup && userRole !== 'client') {
+      try {
+        consolidated =
+          (consolidatedReport as any) ||
+          ((await generateConsolidated(selectedMonth, fiscalYear)) as any) ||
+          undefined
+      } catch (err) {
+        Sentry.captureException(err, { tags: { invariant: 'pdf-consolidated-load' } } as any)
+      }
+    }
+
     return {
       fullYearReport: fyReport || undefined,
       subscriptionDetail: subDetail || undefined,
@@ -1034,6 +1050,7 @@ export default function MonthlyReportPage() {
       externalMetrics: extMetrics,
       memo: memoText,
       moneyFlow,
+      consolidated,
     }
   }
 
@@ -1051,6 +1068,7 @@ export default function MonthlyReportPage() {
       externalMetrics?: import('./types').ExternalMetricSeriesData[]
       memo?: string
       moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
+      consolidated?: import('./utils/consolidated-rows').ConsolidatedReportVM
       businessName?: string
       sections?: import('./types').ReportSections
       pdfLayout?: import('./types/pdf-layout').PDFLayout | null

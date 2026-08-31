@@ -82,6 +82,15 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     minColSpan: 2, maxColSpan: 3, minRowSpan: 3, maxRowSpan: 3,
     // Always renderable — it draws from the report itself.
   },
+  consolidated_pl: {
+    type: 'consolidated_pl',
+    label: 'Consolidated P&L (per entity)',
+    category: 'tables',
+    fullRow: true,
+    icon: 'Layers',
+    defaultColSpan: 3, defaultRowSpan: 3,
+    minColSpan: 3, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+  },
   money_flow: {
     type: 'money_flow',
     label: 'Where Did Our Money Go',

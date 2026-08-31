@@ -24,6 +24,10 @@ export type WidgetType =
   // WD.4 — Where Did Our Money Go: the month's funds flow from two BS dates.
   // Self-proving (sources − uses ≡ Δbank) or it says "couldn't check".
   | 'money_flow'
+  // WD.6 — consolidated per-entity columns (Dragon 2 entities, IICT 3 w/ FX):
+  // Entity Actual[/Budget/Var] | Eliminations | Group. Renders only for
+  // consolidation parents with a loaded consolidated report.
+  | 'consolidated_pl'
   // P&L Charts
   // WD.1 — one renderer serves all three; the type carries the section, and
   // widget.config.section may override it (WC.1). Three types rather than one
