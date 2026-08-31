@@ -34,13 +34,18 @@ const SCOPES = [
   'accounting.settings.read',
   'accounting.contacts.read',
   // 'finance.statements.read',  // Finance API — cashflow (needs app config in Xero portal)
-  // Finance API — bank-reconciliation sweep for the CFO production board.
-  // BOTH require the Finance API to be enabled on the app in the Xero
-  // developer portal, and each already-connected org must re-consent (a
-  // reconnect) before its tokens carry these scopes. Until then the sweep
-  // 403s on Finance endpoints and falls back to account-transaction counts.
-  'finance.bankstatementsplus.read', // statement lines w/ per-line isReconciled
-  'finance.cashvalidation.read',     // per-account unreconciled totals
+  // Finance API — bank-reconciliation sweep for the CFO production board
+  // (statement lines w/ per-line isReconciled + per-account unreconciled
+  // totals). Xero does NOT self-serve these scopes: the app must go through
+  // the "financial services partner" application and Developer Relations
+  // assigns them. Requesting unassigned scopes fails the whole OAuth consent,
+  // which would break every reconnect — so they are gated behind
+  // XERO_FINANCE_SCOPES_ENABLED, to be set to 'true' in Vercel ONLY after
+  // Xero confirms the scopes are on the app. Until then the sweep 403s on
+  // Finance endpoints and falls back to account-transaction counts.
+  ...(process.env.XERO_FINANCE_SCOPES_ENABLED === 'true'
+    ? ['finance.bankstatementsplus.read', 'finance.cashvalidation.read']
+    : []),
   'payroll.employees',        // Payroll employee access (AU)
   'payroll.employees.read',   // Read payroll employees
   'payroll.payruns.read',     // Read pay runs and payslips
