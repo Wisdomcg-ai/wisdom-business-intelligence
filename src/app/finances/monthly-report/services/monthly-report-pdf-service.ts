@@ -9,6 +9,7 @@ import { transformRevenueVsExpensesData } from '../components/charts/RevenueVsEx
 import { transformVarianceHeatmapData } from '../components/charts/VarianceHeatmapChart'
 import { transformBurnRateData } from '../components/charts/BudgetBurnRateChart'
 import { transformAnalysisChartData, type AnalysisChartSection } from '../components/charts/analysis-chart-data'
+import { resolveSectionFilter, sectionTableTitle } from './section-table-config'
 import { transformCashRunwayData } from '../components/charts/CashRunwayChart'
 import { transformCumulativeNetCashData } from '../components/charts/CumulativeNetCashChart'
 import { transformWorkingCapitalData } from '../components/charts/WorkingCapitalGapChart'
@@ -514,14 +515,20 @@ export class MonthlyReportPDFService {
   // =====================================================================
   // Page 2+: Budget vs Actual Detail (LANDSCAPE — many columns)
   // =====================================================================
-  private addBudgetVsActualDetail(): void {
+  private addBudgetVsActualDetail(sectionFilter?: import('../types').ReportCategory[] | null): void {
+    // WD.2 — an optional section scope turns the full statement into the
+    // Calxa-style per-section table ("Income Analysis | Table" etc.). Filtered
+    // tables show lines + subtotals only: Gross Profit and Net Profit are
+    // statement-level rows and would be misleading footing a partial table.
+    const filter = sectionFilter ?? null
     this.addPage('landscape')
 
     const settings = this.report.settings
 
     this.doc.setFontSize(14)
     this.doc.setFont('helvetica', 'bold')
-    this.doc.text(`Budget vs Actual Detail — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
+    const title = sectionTableTitle(filter) ?? 'Budget vs Actual Detail'
+    this.doc.text(`${title} — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
     this.yPosition += 8
 
     const headers: string[] = ['Account', 'Budget', 'Actual', 'Var ($)', 'Var (%)']
@@ -552,7 +559,11 @@ export class MonthlyReportPDFService {
     const specialRowIndices = new Set<number>()
     let currentBodyIdx = 0
 
-    for (const section of this.report.sections) {
+    const sectionsToRender = filter
+      ? this.report.sections.filter((s) => filter.includes(s.category))
+      : this.report.sections
+
+    for (const section of sectionsToRender) {
       specialRowIndices.add(currentBodyIdx)
       tableData.push([{
         content: section.category,
@@ -600,8 +611,8 @@ export class MonthlyReportPDFService {
         }
       }
 
-      // Gross Profit after COGS
-      if (section.category === 'Cost of Sales') {
+      // Gross Profit after COGS — statement view only
+      if (!filter && section.category === 'Cost of Sales') {
         specialRowIndices.add(currentBodyIdx)
         const gpRow = this.buildLineRow(this.report.gross_profit_row, settings)
         gpRow[0] = { content: 'Gross Profit', styles: { fontStyle: 'bold', fillColor: GP_BLUE } }
@@ -613,7 +624,8 @@ export class MonthlyReportPDFService {
       }
     }
 
-    // Net Profit
+    // Net Profit — statement view only
+    if (!filter) {
     specialRowIndices.add(currentBodyIdx)
     const npRow = this.buildLineRow(this.report.net_profit_row, settings)
     npRow[0] = { content: 'Net Profit', styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } }
@@ -621,6 +633,7 @@ export class MonthlyReportPDFService {
       npRow[i] = { content: npRow[i], styles: { fillColor: NAVY, textColor: [255, 255, 255], fontStyle: 'bold' } }
     }
     tableData.push(npRow)
+    }
 
     autoTable(this.doc, {
       startY: this.yPosition,
@@ -2361,8 +2374,11 @@ export class MonthlyReportPDFService {
     this.addExecutiveSummary()
   }
 
-  renderBudgetVsActual(box: WidgetBoundingBox): void {
-    this.renderWithSkipPage(this.addBudgetVsActualDetail, box)
+  renderBudgetVsActual(box: WidgetBoundingBox, widget?: import('../types/pdf-layout').LayoutWidget): void {
+    // WD.2 — widget.config scopes the table to a section subset (see
+    // section-table-config.ts). No config = the full statement, unchanged.
+    const filter = resolveSectionFilter(widget?.config)
+    this.renderWithSkipPage(() => this.addBudgetVsActualDetail(filter), box)
   }
 
   renderYTDSummary(box: WidgetBoundingBox): void {
