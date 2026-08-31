@@ -189,6 +189,18 @@ function singlePeriodPLUrl(periodMonth: string): string {
 }
 
 /**
+ * WD.7 — the cash-basis twin of singlePeriodPLUrl: paymentsOnly=true asks
+ * Xero for the cash P&L. Same single-period shape (no periods=/timeframe=).
+ */
+function singlePeriodCashPLUrl(periodMonth: string): string {
+  const [yStr, mStr] = periodMonth.split('-')
+  const y = parseInt(yStr!, 10)
+  const m = parseInt(mStr!, 10)
+  const qs = `fromDate=${firstDayOfMonth(y, m)}&toDate=${lastDayOfMonth(y, m)}&standardLayout=false&paymentsOnly=true`
+  return `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?${qs}`
+}
+
+/**
  * Single-period FY-total URL — used as the reconciler oracle for one window.
  * Same shape as the per-month URLs (no periods=, no timeframe=); just spans
  * the full FY range.
@@ -478,6 +490,22 @@ export async function syncBusinessXeroPL(
   // rejected by a cryptic FK error (or silently orphaned where the FK drifted).
   await assertBusinessProfileId(supabase as any, profileId, { input: businessId, bizId })
 
+  // WD.7 — opt-in cash-basis mirror. When the pack enables it
+  // (monthly_report_settings.sections.cash_basis, businesses-space id), every
+  // per-month P&L fetch gets a paymentsOnly=true twin stamped basis='cash'.
+  // Off by default: zero extra Xero requests until a pack turns it on.
+  let cashBasisEnabled = false
+  try {
+    const { data: mrs } = await supabase
+      .from('monthly_report_settings')
+      .select('sections')
+      .eq('business_id', bizId)
+      .maybeSingle()
+    cashBasisEnabled = (mrs?.sections as Record<string, unknown> | null)?.cash_basis === true
+  } catch {
+    // default off — a settings read failure must never block the sync
+  }
+
   // 1. Atomically claim a sync_jobs row (44-05 single-flight guard).
   const { data: jobIdData, error: beginErr } = await supabase.rpc(
     'begin_xero_sync_job',
@@ -753,6 +781,10 @@ export async function syncBusinessXeroPL(
         // 4e. Per-window per-month fetch loop (Path A core).
         for (const window of fyWindows) {
           const monthlyRows: ParsedPLRow[] = []
+          // WD.7 — cash rows are kept OUT of monthlyRows: the FY-total
+          // reconciler oracle is accruals-only, and mixing bases there would
+          // corrupt the materiality check. They rejoin at the upsert.
+          const cashMonthlyRows: ParsedPLRow[] = []
 
           for (const periodMonth of window.monthsToFetch) {
             try {
@@ -770,6 +802,38 @@ export async function syncBusinessXeroPL(
                 conn.tenant_id,
               )
               monthlyRows.push(...parsed)
+
+              // WD.7 — the cash twin. Supplementary: a cash-fetch failure is
+              // captured but never marks the month failed (the accrual row
+              // above already landed) and never aborts the window.
+              if (cashBasisEnabled) {
+                try {
+                  const cashRes = await fetchXeroWithRateLimit(singlePeriodCashPLUrl(periodMonth), {
+                    accessToken,
+                    tenantId: conn.tenant_id,
+                  })
+                  xeroRequestCount++
+                  tenantXeroRequestCount++
+                  cashMonthlyRows.push(
+                    ...parsePLSinglePeriod(cashRes.json, periodMonth, 'cash', conn.tenant_id),
+                  )
+                } catch (cashErr) {
+                  if (cashErr instanceof RateLimitDailyExceededError) {
+                    tenantPaused = true
+                    throw cashErr
+                  }
+                  try {
+                    Sentry.captureException(cashErr, {
+                      tags: {
+                        invariant: 'xero_sync_cash_basis_month',
+                        business_id: profileId,
+                        tenant_id: conn.tenant_id,
+                        period_month: periodMonth,
+                      },
+                    } as any)
+                  } catch { /* ignore */ }
+                }
+              }
             } catch (monthErr) {
               if (monthErr instanceof RateLimitDailyExceededError) {
                 tenantPaused = true
@@ -884,7 +948,9 @@ export async function syncBusinessXeroPL(
           //   including JDS-style flat sibling sub-sections). Parser's
           //   section-based type is the fallback for FXGROUPID / SYNTH-AID
           //   rows that don't have a catalog entry.
-          const dbRows = monthlyRows.map((r) => {
+          // WD.7 — cash rows rejoin here; the mapping is basis-agnostic
+          // (r.basis flows through) and the natural key now includes basis.
+          const dbRows = [...monthlyRows, ...cashMonthlyRows].map((r) => {
             const catEntry = catalog.get(r.account_id)
             const catalogType = classifyByXeroType(catEntry?.account_type)
             return {
@@ -906,15 +972,37 @@ export async function syncBusinessXeroPL(
             const upsertResult = (await supabase
               .from('xero_pl_lines')
               .upsert(dbRows, {
-                onConflict: 'business_id,tenant_id,account_id,period_month',
+                onConflict: 'business_id,tenant_id,account_id,period_month,basis',
                 ignoreDuplicates: false,
               })) as any
             if (upsertResult?.error) {
-              throw new Error(
-                `xero_pl_lines upsert: ${
-                  upsertResult.error.message ?? upsertResult.error.code ?? 'unknown'
-                }`,
-              )
+              // WD.7 deploy-window fallback: until the natural-key migration
+              // is applied to prod, the 5-column conflict target matches no
+              // unique constraint. Cash is off fleet-wide until after the
+              // apply, so retrying accruals-only on the old 4-column key is
+              // lossless. Remove once the migration is verified in prod.
+              const msg = String(upsertResult.error.message ?? '')
+              if (/no unique|constraint matching|does not exist/i.test(msg) && cashMonthlyRows.length === 0) {
+                const retry = (await supabase
+                  .from('xero_pl_lines')
+                  .upsert(dbRows, {
+                    onConflict: 'business_id,tenant_id,account_id,period_month',
+                    ignoreDuplicates: false,
+                  })) as any
+                if (retry?.error) {
+                  throw new Error(
+                    `xero_pl_lines upsert (4-col fallback): ${
+                      retry.error.message ?? retry.error.code ?? 'unknown'
+                    }`,
+                  )
+                }
+              } else {
+                throw new Error(
+                  `xero_pl_lines upsert: ${
+                    upsertResult.error.message ?? upsertResult.error.code ?? 'unknown'
+                  }`,
+                )
+              }
             }
             rowsInserted += dbRows.length
             tenantRowsInserted += dbRows.length

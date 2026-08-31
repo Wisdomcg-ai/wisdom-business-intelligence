@@ -449,8 +449,10 @@ describe('Sync Orchestrator', () => {
     const upsertCalls = callLog.filter((c) => c.kind === 'from:xero_pl_lines:upsert')
     expect(upsertCalls.length).toBeGreaterThan(0)
     for (const call of upsertCalls) {
+      // WD.7 — the natural key includes basis so a cash-basis row can
+      // coexist with its accruals twin instead of overwriting it.
       expect(call.arg.opts.onConflict).toBe(
-        'business_id,tenant_id,account_id,period_month',
+        'business_id,tenant_id,account_id,period_month,basis',
       )
     }
     expect(upsertedRowsCapture[0]?.length ?? 0).toBeGreaterThan(0)

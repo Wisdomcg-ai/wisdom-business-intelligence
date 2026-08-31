@@ -32,6 +32,10 @@ export interface ReportSections {
   balance_sheet: boolean
   cashflow: boolean
   trend_charts: boolean
+  /** WD.7 — opt-in: sync also mirrors the cash-basis P&L (paymentsOnly=true).
+   *  Doubles the per-month Xero P&L requests for this business, so off by
+   *  default; the Cash-vs-Accruals page needs it on plus one sync cycle. */
+  cash_basis?: boolean
   // Chart toggles
   chart_cash_runway: boolean
   chart_cumulative_net_cash: boolean
@@ -44,6 +48,13 @@ export interface ReportSections {
   chart_team_cost_pct: boolean
   chart_cost_per_employee: boolean
   chart_subscription_creep: boolean
+}
+
+// WD.3 — a standing "refer to …" commentary bullet rendered under the
+// Budget-vs-Actual statement every month, regardless of variance triggers.
+export interface StandingCommentaryLine {
+  label: string
+  refer_to: string
 }
 
 export interface MonthlyReportSettings {
@@ -59,6 +70,8 @@ export interface MonthlyReportSettings {
   subscription_account_codes?: string[]
   wages_account_names?: string[]
   pdf_layout?: import('./types/pdf-layout').PDFLayout | null
+  /** WD.3 — standing commentary bullets; null/undefined = none. */
+  standing_commentary?: StandingCommentaryLine[] | null
   created_at?: string
   updated_at?: string
 }
@@ -102,6 +115,7 @@ export const DEFAULT_SECTIONS: ReportSections = {
   balance_sheet: false,
   cashflow: false,
   trend_charts: true,
+  cash_basis: false,
   // P&L charts ON by default
   chart_revenue_vs_expenses: true,
   chart_revenue_breakdown: true,
