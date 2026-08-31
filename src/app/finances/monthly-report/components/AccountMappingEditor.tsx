@@ -72,7 +72,14 @@ export default function AccountMappingEditor({
     setIsAutoMapping(true)
     try {
       const result = await onAutoMap()
-      if (result.mapped_count === 0) {
+      if (result.already_mapped) {
+        // WA.5a: auto-map is fill-gaps-only now — zero created with existing
+        // rows preserved means there was nothing to do, not a sync problem.
+        const links = result.forecast_links_added
+          ? ` (${result.forecast_links_added} budget link${result.forecast_links_added === 1 ? '' : 's'} added)`
+          : ''
+        toast.success(`All accounts already mapped — existing mappings untouched${links}`)
+      } else if (result.mapped_count === 0) {
         toast.error('No Xero accounts found. Please click "Sync P&L Data" on the Xero banner above first.')
       } else {
         const codeInfo = result.matched_by_code ? ` (${result.matched_by_code} by code, ${result.matched_by_name} by name)` : ''

@@ -35,6 +35,7 @@ import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { assertBusinessProfileId } from '@/lib/utils/assert-profile-id'
+import { autoMapIfUnmapped } from '@/lib/monthly-report/auto-map'
 import {
   computeCoverage,
   type CoverageRecord,
@@ -1240,6 +1241,24 @@ export async function syncBusinessXeroPL(
           sync_job_id: syncJobId,
         },
       } as any)
+    }
+
+    // WA.5b — a business whose sync landed data but which has ZERO account
+    // mappings can never render a monthly report (generate/route.ts turns the
+    // empty set into a hard 400 NO_MAPPINGS). Auto-map used to run only on the
+    // Xero OAuth return leg, so anyone connected before that wiring stayed
+    // stuck. Fill the gap here, where every sync path converges. Non-fatal and
+    // strictly zero-mappings-only: autoMapIfUnmapped never touches a business
+    // that has any rows, and never throws (failures are Sentry-tagged inside).
+    if (finalStatus !== 'error' && rowsInserted + rowsUpdated > 0) {
+      const autoMap = await autoMapIfUnmapped(supabase, businessId)
+      if (autoMap.triggered) {
+        Sentry.captureMessage('[Sync] Auto-mapped previously unmapped business', {
+          level: 'info' as any,
+          tags: { invariant: 'auto-map-on-sync', business_id: profileId },
+          extra: { created: autoMap.created, sync_job_id: syncJobId },
+        } as any)
+      }
     }
 
     return {
