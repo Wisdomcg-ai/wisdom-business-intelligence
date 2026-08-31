@@ -494,10 +494,14 @@ async function postHandler(request: Request) {
     const otherIncSection = sections.find(s => s.category === 'Other Income')
     const otherExpSection = sections.find(s => s.category === 'Other Expenses')
 
+    // WA.1 — Gross Profit is trading only (Revenue − COGS). Other Income no
+    // longer inflates GP; it re-enters at Net Profit below, alongside Other
+    // Expenses. Mirrors deriveProfitRows in @/lib/monthly-report/shared — the
+    // Monthly and Full Year tabs must agree on the profit structure.
     const gpMonths: FullYearMonthData[] = allFYMonths.map((m, i) => {
-      const revActual = (revSection?.subtotal.months[i].actual || 0) + (otherIncSection?.subtotal.months[i].actual || 0)
-      const revBudget = (revSection?.subtotal.months[i].budget || 0) + (otherIncSection?.subtotal.months[i].budget || 0)
-      const revPY = (revSection?.subtotal.months[i].prior_year || 0) + (otherIncSection?.subtotal.months[i].prior_year || 0)
+      const revActual = revSection?.subtotal.months[i].actual || 0
+      const revBudget = revSection?.subtotal.months[i].budget || 0
+      const revPY = revSection?.subtotal.months[i].prior_year || 0
       const cogsActual = cogsSection?.subtotal.months[i].actual || 0
       const cogsBudget = cogsSection?.subtotal.months[i].budget || 0
       const cogsPY = cogsSection?.subtotal.months[i].prior_year || 0
@@ -525,18 +529,27 @@ async function postHandler(request: Request) {
       variance_percent: gpAnnualBudget !== 0 ? ((gpProjected - gpAnnualBudget) / Math.abs(gpAnnualBudget)) * 100 : 0,
     }
 
+    // Net Profit = GP − OpEx + Other Income − Other Expenses. The VALUE is
+    // identical to the old folded formula; only where the other sections enter
+    // the structure changed.
     const npMonths: FullYearMonthData[] = allFYMonths.map((m, i) => {
       const gpActual = gpMonths[i].actual
       const gpBudget = gpMonths[i].budget
       const gpPY = gpMonths[i].prior_year
-      const opexActual = (opexSection?.subtotal.months[i].actual || 0) + (otherExpSection?.subtotal.months[i].actual || 0)
-      const opexBudget = (opexSection?.subtotal.months[i].budget || 0) + (otherExpSection?.subtotal.months[i].budget || 0)
-      const opexPY = (opexSection?.subtotal.months[i].prior_year || 0) + (otherExpSection?.subtotal.months[i].prior_year || 0)
+      const opexActual = opexSection?.subtotal.months[i].actual || 0
+      const opexBudget = opexSection?.subtotal.months[i].budget || 0
+      const opexPY = opexSection?.subtotal.months[i].prior_year || 0
+      const oiActual = otherIncSection?.subtotal.months[i].actual || 0
+      const oiBudget = otherIncSection?.subtotal.months[i].budget || 0
+      const oiPY = otherIncSection?.subtotal.months[i].prior_year || 0
+      const oeActual = otherExpSection?.subtotal.months[i].actual || 0
+      const oeBudget = otherExpSection?.subtotal.months[i].budget || 0
+      const oePY = otherExpSection?.subtotal.months[i].prior_year || 0
       return {
         month: m,
-        actual: gpActual - opexActual,
-        budget: gpBudget - opexBudget,
-        prior_year: gpPY - opexPY,
+        actual: gpActual - opexActual + oiActual - oeActual,
+        budget: gpBudget - opexBudget + oiBudget - oeBudget,
+        prior_year: gpPY - opexPY + oiPY - oePY,
         source: gpMonths[i].source,
       }
     })

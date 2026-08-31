@@ -425,6 +425,20 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                       isRevenue={true}
                     />
                   )}
+
+                  {/* WA.1 — Operating Profit (GP − OpEx) after Operating
+                      Expenses, before Other Income/Expenses. Guarded: snapshots
+                      saved before the restructure don't carry the row. */}
+                  {section.category === 'Operating Expenses' && report.operating_profit_row && (
+                    <SubtotalRow
+                      line={report.operating_profit_row}
+                      label="Operating Profit"
+                      bgClass="bg-sky-50"
+                      textClass="text-sky-900"
+                      settings={settings}
+                      isRevenue={true}
+                    />
+                  )}
                 </React.Fragment>
               )
             })}
