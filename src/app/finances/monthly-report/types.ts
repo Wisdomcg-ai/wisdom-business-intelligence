@@ -85,6 +85,10 @@ export interface ReportTemplate {
   budget_forecast_id?: string | null
   subscription_account_codes?: string[]
   wages_account_names?: string[]
+  /** WC.3 — optional saved PDF page layout. null/undefined = this template
+   *  does not manage the layout; applying it leaves the business's layout
+   *  untouched. */
+  pdf_layout?: import('./types/pdf-layout').PDFLayout | null
   created_at?: string
   updated_at?: string
 }

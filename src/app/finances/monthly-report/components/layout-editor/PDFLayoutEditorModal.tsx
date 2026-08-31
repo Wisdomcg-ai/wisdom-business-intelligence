@@ -27,6 +27,7 @@ import { WIDGET_DEFINITIONS } from '../../constants/widget-registry'
 import {
   canPlace,
   canResize,
+  clampPlacement,
   findFirstAvailablePosition,
   generateId,
   getDropTargetCells,
@@ -113,11 +114,15 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
         ...s.layout,
         pages: s.layout.pages.map(p => {
           if (p.id !== action.pageId) return p
-          // When switching orientation, clear widgets that don't fit
+          // When switching orientation: full-row widgets re-clamp to the new
+          // grid width (WC.2) rather than being dropped for "not fitting";
+          // anything else that genuinely doesn't fit is still cleared.
           const newConfig = GRID_CONFIG[action.orientation]
-          const validWidgets = p.widgets.filter(w =>
-            w.col + w.colSpan <= newConfig.cols && w.row + w.rowSpan <= newConfig.rows
-          )
+          const validWidgets = p.widgets
+            .map(w => ({ ...w, ...clampPlacement(w.type, action.orientation, w.col, w.colSpan) }))
+            .filter(w =>
+              w.col + w.colSpan <= newConfig.cols && w.row + w.rowSpan <= newConfig.rows
+            )
           return { ...p, orientation: action.orientation, widgets: validWidgets }
         }),
       }
@@ -146,7 +151,9 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
             ...p,
             widgets: p.widgets.map(w => {
               if (w.id !== action.widgetId) return w
-              return { ...w, col: action.col, row: action.row }
+              // WC.2 — a full-row widget can move between rows, never off col 0.
+              const clamped = clampPlacement(w.type, p.orientation, action.col, w.colSpan)
+              return { ...w, col: clamped.col, colSpan: clamped.colSpan, row: action.row }
             }),
           }
         }),
@@ -164,7 +171,9 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
             ...p,
             widgets: p.widgets.map(w => {
               if (w.id !== action.widgetId) return w
-              return { ...w, colSpan: action.colSpan, rowSpan: action.rowSpan }
+              // WC.2 — horizontal resize is a no-op for full-row widgets.
+              const clamped = clampPlacement(w.type, p.orientation, w.col, action.colSpan)
+              return { ...w, colSpan: clamped.colSpan, rowSpan: action.rowSpan }
             }),
           }
         }),
@@ -195,10 +204,12 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       const widget = fromPage.widgets.find(w => w.id === action.widgetId)
       if (!widget) return state
 
-      // Clamp span to fit the target page's grid
+      // Clamp span to fit the target page's grid (full-row types snap to the
+      // target grid's full width — WC.2)
       const targetConfig = GRID_CONFIG[toPage.orientation]
       const def = WIDGET_DEFINITIONS[widget.type]
-      const clampedColSpan = Math.min(widget.colSpan, targetConfig.cols, def.maxColSpan)
+      const preClamp = clampPlacement(widget.type, toPage.orientation, 0, widget.colSpan)
+      const clampedColSpan = Math.min(preClamp.colSpan, targetConfig.cols, def.maxColSpan)
       const clampedRowSpan = Math.min(widget.rowSpan, targetConfig.rows, def.maxRowSpan)
 
       // Find first available position on target page
@@ -396,18 +407,29 @@ export default function PDFLayoutEditorModal({
       return
     }
 
-    const { row, col } = overData as { row: number; col: number }
+    const { row, col: rawCol } = overData as { row: number; col: number }
     let colSpan = 1
     let rowSpan = 1
+    let dragType: WidgetType | null = null
 
     if (draggedItem?.type === 'palette-widget' && draggedItem.widgetType) {
       const def = WIDGET_DEFINITIONS[draggedItem.widgetType]
       colSpan = def.defaultColSpan
       rowSpan = def.defaultRowSpan
+      dragType = draggedItem.widgetType
     } else if (draggedItem?.type === 'placed-widget' && draggedItem.widget) {
       colSpan = draggedItem.widget.colSpan
       rowSpan = draggedItem.widget.rowSpan
+      dragType = draggedItem.widget.type
     }
+
+    // WC.2 — preview exactly what the drop will do: full-row widgets snap to
+    // col 0 × full width regardless of which cell the cursor is over.
+    const clamped = dragType
+      ? clampPlacement(dragType, selectedPage.orientation, rawCol, colSpan)
+      : { col: rawCol, colSpan }
+    const col = clamped.col
+    colSpan = clamped.colSpan
 
     const cells = getDropTargetCells(col, row, colSpan, rowSpan)
     const valid = canPlace(
@@ -457,15 +479,16 @@ export default function PDFLayoutEditorModal({
     if (activeData?.type === 'palette-widget') {
       const widgetType = activeData.widgetType as WidgetType
       const def = WIDGET_DEFINITIONS[widgetType]
+      const clamped = clampPlacement(widgetType, selectedPage.orientation, col, def.defaultColSpan)
 
-      if (!canPlace(selectedPage, col, row, def.defaultColSpan, def.defaultRowSpan)) return
+      if (!canPlace(selectedPage, clamped.col, row, clamped.colSpan, def.defaultRowSpan)) return
 
       const widget: LayoutWidget = {
         id: generateId(),
         type: widgetType,
-        col,
+        col: clamped.col,
         row,
-        colSpan: def.defaultColSpan,
+        colSpan: clamped.colSpan,
         rowSpan: def.defaultRowSpan,
       }
       dispatch({ type: 'ADD_WIDGET', pageId: selectedPage.id, widget })
@@ -475,12 +498,13 @@ export default function PDFLayoutEditorModal({
     // ── Placed widget reposition ──
     if (activeData?.type === 'placed-widget') {
       const widget = activeData.widget as LayoutWidget
-      if (!canPlace(selectedPage, col, row, widget.colSpan, widget.rowSpan, widget.id)) return
+      const clamped = clampPlacement(widget.type, selectedPage.orientation, col, widget.colSpan)
+      if (!canPlace(selectedPage, clamped.col, row, clamped.colSpan, widget.rowSpan, widget.id)) return
       dispatch({
         type: 'MOVE_WIDGET',
         pageId: selectedPage.id,
         widgetId: widget.id,
-        col,
+        col: clamped.col,
         row,
       })
     }

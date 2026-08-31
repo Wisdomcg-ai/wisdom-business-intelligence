@@ -25,6 +25,7 @@ const TemplatesPostSchema = z.object({
   is_default: z.boolean().optional(),
   sections: z.any(),
   column_settings: z.any(),
+  pdf_layout: z.any().optional(),
   budget_forecast_id: z.string().nullable().optional(),
   subscription_account_codes: z.array(z.string()).optional(),
   wages_account_names: z.array(z.string()).optional(),
@@ -114,6 +115,7 @@ async function postHandler(request: Request) {
       is_default = false,
       sections,
       column_settings,
+      pdf_layout,
       budget_forecast_id = null,
       subscription_account_codes = [],
       wages_account_names = [],
@@ -146,6 +148,9 @@ async function postHandler(request: Request) {
         is_default,
         sections,
         column_settings,
+        // WC.3 — a template may carry a saved PDF page layout; null means
+        // "this template does not manage the layout".
+        pdf_layout: pdf_layout ?? null,
         budget_forecast_id: budget_forecast_id || null,
         subscription_account_codes,
         wages_account_names,
@@ -206,7 +211,7 @@ async function putHandler(request: Request) {
     }
 
     const updateData: Record<string, unknown> = {}
-    const allowed = ['name', 'is_default', 'sections', 'column_settings', 'budget_forecast_id', 'subscription_account_codes', 'wages_account_names']
+    const allowed = ['name', 'is_default', 'sections', 'column_settings', 'budget_forecast_id', 'subscription_account_codes', 'wages_account_names', 'pdf_layout']
     for (const key of allowed) {
       if (key in fields) {
         updateData[key] = fields[key]
