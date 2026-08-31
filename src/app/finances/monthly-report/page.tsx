@@ -6,7 +6,7 @@ import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { createClient } from '@/lib/supabase/client'
 import dynamic from 'next/dynamic'
-import { Loader2, BarChart3, Settings, Download, Save, LayoutGrid } from 'lucide-react'
+import { Loader2, BarChart3, Settings, Download, Save, LayoutGrid, StickyNote } from 'lucide-react'
 // Phase 42 Plan 04: auto-save lifecycle (D-01..D-15) + visible save indicator (D-08, D-09).
 import { useAutoSaveReport } from './hooks/useAutoSaveReport'
 import SaveIndicator from './components/SaveIndicator'
@@ -29,6 +29,7 @@ import WagesAnalysisTab from './components/WagesAnalysisTab'
 import ChartsTab from './components/ChartsTab'
 import CashflowTab from './components/CashflowTab'
 import ExternalDataTab from './components/ExternalDataTab'
+import MemoModal from './components/MemoModal'
 import ForecastService from '@/app/finances/forecast/services/forecast-service'
 // Phase 71 Plan 09 (S6) — one-time per-session toast on multi-currency redirect.
 import {
@@ -923,6 +924,7 @@ export default function MonthlyReportPage() {
     wagesDetail?: import('./types').WagesDetailData
     cashflowForecast?: CashflowForecastData
     externalMetrics?: import('./types').ExternalMetricSeriesData[]
+    memo?: string
   }> => {
     let fyReport = fullYearReport
     if (!fyReport && businessId) {
@@ -975,12 +977,38 @@ export default function MonthlyReportPage() {
       }
     }
 
+    // WD.8 — the month's memo lives on the snapshot (coach_notes); read it at
+    // export time so the PDF always carries what was last saved. Same
+    // fail-open posture as external metrics: never block the PDF, never
+    // swallow the failure.
+    let memoText: string | undefined
+    if (businessId) {
+      try {
+        const res = await fetch(
+          `/api/monthly-report/snapshot?business_id=${encodeURIComponent(businessId)}&report_month=${encodeURIComponent(selectedMonth)}`
+        )
+        if (res.ok) {
+          const data = await res.json()
+          const notes = data.snapshot?.coach_notes
+          if (typeof notes === 'string' && notes.trim() !== '') memoText = notes
+        } else {
+          Sentry.captureMessage(
+            `[PDF] memo load failed (${res.status}) — PDF will omit the memo page`,
+            'warning' as any
+          )
+        }
+      } catch (err) {
+        Sentry.captureException(err, { tags: { invariant: 'pdf-memo-load' } } as any)
+      }
+    }
+
     return {
       fullYearReport: fyReport || undefined,
       subscriptionDetail: subDetail || undefined,
       wagesDetail: wDetail || undefined,
       cashflowForecast: cfData,
       externalMetrics: extMetrics,
+      memo: memoText,
     }
   }
 
@@ -996,6 +1024,7 @@ export default function MonthlyReportPage() {
       wagesDetail?: import('./types').WagesDetailData
       cashflowForecast?: CashflowForecastData
       externalMetrics?: import('./types').ExternalMetricSeriesData[]
+      memo?: string
       businessName?: string
       sections?: import('./types').ReportSections
       pdfLayout?: import('./types/pdf-layout').PDFLayout | null
@@ -1138,6 +1167,7 @@ export default function MonthlyReportPage() {
   }
 
   const [isExporting, setIsExporting] = useState(false)
+  const [showMemo, setShowMemo] = useState(false)
 
   const handleExportPDF = async () => {
     if (!report) return
@@ -1290,6 +1320,14 @@ export default function MonthlyReportPage() {
                     <span className="hidden sm:inline">Unfinalise to edit</span>
                   </button>
                 )}
+                <button
+                  onClick={() => setShowMemo(true)}
+                  title="Write this month's memo — it appears as its own page in the PDF"
+                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  <StickyNote className="w-4 h-4" />
+                  <span className="hidden sm:inline">Memo</span>
+                </button>
                 <button
                   onClick={handleExportPDF}
                   disabled={isExporting}
@@ -1600,6 +1638,17 @@ export default function MonthlyReportPage() {
       </div>
 
       {/* Settings Panel */}
+      {/* WD.8 — memo editor (stored on the month's snapshot, rendered in the PDF) */}
+      {businessId && (
+        <MemoModal
+          isOpen={showMemo}
+          onClose={() => setShowMemo(false)}
+          businessId={businessId}
+          reportMonth={selectedMonth}
+          monthLabel={new Date(selectedMonth + '-01').toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })}
+        />
+      )}
+
       {settings && (
         <ReportSettingsPanel
           isOpen={showSettings}
