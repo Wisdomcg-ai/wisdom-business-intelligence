@@ -61,6 +61,15 @@ export const MONITORED_CRONS: readonly MonitoredCron[] = [
     maxStaleHours: 30,
     activeFrom: '2026-08-17T00:00:00Z',
   },
+  // Daily 19:30 UTC (05:30 AEST) — feeds the CFO production board's
+  // "items to reconcile" counts. A silent death here would leave the board
+  // showing yesterday's reconciliation state as if it were fresh.
+  {
+    path: '/api/cron/bank-reconciliation-sweep',
+    label: 'Bank reconciliation sweep',
+    maxStaleHours: 30,
+    activeFrom: '2026-09-02T00:00:00Z',
+  },
 ]
 
 export interface HeartbeatSnapshot {

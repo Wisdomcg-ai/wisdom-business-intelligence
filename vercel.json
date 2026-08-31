@@ -31,6 +31,10 @@
     {
       "path": "/api/cron/sync-bs-mirror",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/bank-reconciliation-sweep",
+      "schedule": "30 19 * * *"
     }
   ]
 }
