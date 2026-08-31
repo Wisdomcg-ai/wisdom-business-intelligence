@@ -21,6 +21,9 @@ export type WidgetType =
   // WD.8 — the month's written memo (snapshot coach_notes), a first-class
   // page. IICT's July insurance memo is why the client pays.
   | 'memo'
+  // WD.4 — Where Did Our Money Go: the month's funds flow from two BS dates.
+  // Self-proving (sources − uses ≡ Δbank) or it says "couldn't check".
+  | 'money_flow'
   // P&L Charts
   // WD.1 — one renderer serves all three; the type carries the section, and
   // widget.config.section may override it (WC.1). Three types rather than one

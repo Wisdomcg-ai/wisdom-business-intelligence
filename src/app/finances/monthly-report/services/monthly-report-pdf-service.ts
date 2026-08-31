@@ -34,6 +34,8 @@ interface PDFOptions {
   businessName?: string
   /** WD.8 — the month's written memo (snapshot coach_notes). */
   memo?: string
+  /** WD.4 — the month's funds flow (Where Did Our Money Go). */
+  moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
   sections?: ReportSections
   pdfLayout?: import('../types/pdf-layout').PDFLayout | null
 }
@@ -153,6 +155,11 @@ export class MonthlyReportPDFService {
     // values (the Calxa packs give each insert its own page).
     for (const series of this.options.externalMetrics ?? []) {
       if (series.values.length > 0) this.addExternalMetricPage(series)
+    }
+    // WD.4 — Where Did Our Money Go. Default flow only when the derivation
+    // proved itself; an explicitly-placed widget shows the honest reason card.
+    if (this.options.moneyFlow?.comparable) {
+      this.addMoneyFlowPage()
     }
     if (this.options.cashflowForecast && this.options.cashflowForecast.months.length > 0) {
       this.addCashflowForecastPage()
@@ -339,6 +346,105 @@ export class MonthlyReportPDFService {
 
   renderMemo(box: WidgetBoundingBox): void {
     this.renderWithSkipPage(this.addMemoPage, box)
+  }
+
+  // =====================================================================
+  // Where Did Our Money Go (WD.4, PORTRAIT) — funds flow from two BS dates
+  // =====================================================================
+  private addMoneyFlowPage(): void {
+    const flow = this.options.moneyFlow!
+    this.addPage('portrait')
+
+    this.doc.setFontSize(14)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.text(`Where Did Our Money Go? — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
+    this.yPosition += 10
+
+    if (!flow.comparable) {
+      // The honest card: the page can't prove itself this month, and says why.
+      this.doc.setFillColor(251, 243, 228)
+      this.doc.setDrawColor(224, 174, 92)
+      this.doc.roundedRect(this.margin, this.yPosition, this.pageWidth - this.margin * 2, 24, 2, 2, 'FD')
+      this.doc.setFontSize(10)
+      this.doc.setFont('helvetica', 'normal')
+      this.doc.setTextColor(138, 94, 18)
+      const msg: string[] = this.doc.splitTextToSize(
+        `This page couldn't be verified this month: ${flow.reason ?? 'insufficient data'}`,
+        this.pageWidth - this.margin * 2 - 10,
+      )
+      this.doc.text(msg, this.margin + 5, this.yPosition + 8)
+      this.doc.setTextColor(0, 0, 0)
+      return
+    }
+
+    // Lead sentence — the one line a non-numbers owner reads.
+    const up = flow.bank.delta >= 0
+    this.doc.setFontSize(11)
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.text(
+      `Your bank moved from ${this.fmtCurrency(flow.bank.start)} to ${this.fmtCurrency(flow.bank.end)} — ${up ? 'up' : 'down'} ${this.fmtCurrency(Math.abs(flow.bank.delta))}.`,
+      this.margin, this.yPosition,
+    )
+    this.yPosition += 9
+
+    // Roll the tail up so the page stays readable.
+    const TOP_N = 12
+    const rollup = (items: typeof flow.sources) => {
+      if (items.length <= TOP_N) return items
+      const head = items.slice(0, TOP_N)
+      const tail = items.slice(TOP_N)
+      return [
+        ...head,
+        { label: `Everything else (${tail.length} smaller movements)`, section: null, amount: Math.round(tail.reduce((s, i) => s + i.amount, 0) * 100) / 100, kind: 'other' },
+      ]
+    }
+
+    const table = (title: string, items: ReturnType<typeof rollup>, headColor: [number, number, number]) => {
+      const total = items.reduce((s, i) => s + i.amount, 0)
+      autoTable(this.doc, {
+        startY: this.yPosition,
+        head: [[title, '']],
+        body: [
+          ...items.map((i) => [i.label, this.fmtCurrency(i.amount)]),
+          [
+            { content: 'Total', styles: { fontStyle: 'bold' as const } },
+            { content: this.fmtCurrency(Math.round(total * 100) / 100), styles: { fontStyle: 'bold' as const } },
+          ],
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: headColor, textColor: 255, fontStyle: 'bold', fontSize: 9 },
+        bodyStyles: { fontSize: 9 },
+        columnStyles: { 1: { halign: 'right', cellWidth: 35 } },
+        margin: { left: this.margin, right: this.margin },
+      })
+      this.yPosition = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 8
+    }
+
+    table('Where money came from', rollup(flow.sources), [13, 118, 105]) // teal-ish ok
+    table('Where it went', rollup(flow.uses), [166, 43, 34]) // deep red
+
+    // The proof line. Residual is zero by construction; if it ever isn't,
+    // say so in amber rather than pretending.
+    this.doc.setFontSize(8.5)
+    this.doc.setFont('helvetica', 'normal')
+    if (Math.abs(flow.continuity_residual) <= 0.01) {
+      this.doc.setTextColor(90, 90, 90)
+      this.doc.text(
+        'These two columns explain the bank movement exactly — they are your balance sheet in motion.',
+        this.margin, this.yPosition,
+      )
+    } else {
+      this.doc.setTextColor(146, 64, 14)
+      this.doc.text(
+        `Note: the columns differ from the bank movement by ${this.fmtCurrency(flow.continuity_residual)} — treat this page as indicative this month.`,
+        this.margin, this.yPosition,
+      )
+    }
+    this.doc.setTextColor(0, 0, 0)
+  }
+
+  renderMoneyFlow(box: WidgetBoundingBox): void {
+    this.renderWithSkipPage(this.addMoneyFlowPage, box)
   }
 
   // =====================================================================
@@ -2574,6 +2680,10 @@ export class MonthlyReportPDFService {
         return (this.options.externalMetrics ?? []).some(s => s.values.length > 0)
       case 'memo':
         return (this.options.memo ?? '').trim() !== ''
+      case 'money_flow':
+        // Present even when not comparable — the renderer draws the honest
+        // "couldn't check" card with the reason instead of a blank page.
+        return !!this.options.moneyFlow
       default:
         return true
     }

@@ -146,3 +146,48 @@ describe('WD.8 — memo page', () => {
     expect(docText(without.generate() as any)).not.toContain('Memo —')
   })
 })
+
+describe('WD.4 — Where Did Our Money Go page', () => {
+  const comparableFlow = {
+    comparable: true as const,
+    period_month: '2026-07',
+    prior_month: '2026-06',
+    bank: { start: 10_000, end: 14_500, delta: 4_500 },
+    sources: [
+      { label: 'Current Year Earnings', section: null, amount: 4_000, kind: 'equity' },
+      { label: 'Trade Debtors', section: 'Current Assets', amount: 2_000, kind: 'asset' },
+    ],
+    uses: [
+      { label: 'Trade Creditors', section: 'Current Liabilities', amount: 1_000, kind: 'liability' },
+      { label: 'Equipment', section: 'Fixed Assets', amount: 500, kind: 'asset' },
+    ],
+    continuity_residual: 0,
+  }
+
+  it('a comparable flow renders the lead sentence and both columns', () => {
+    const svc = new MonthlyReportPDFService(fixtureReport(), { moneyFlow: comparableFlow })
+    const text = docText(svc.generate() as any)
+    expect(text).toContain('Where Did Our Money Go?')
+    expect(text).toContain('Where money came from')
+    expect(text).toContain('Where it went')
+    expect(text).toContain('Trade Debtors')
+    expect(text).toContain('explain the bank movement exactly')
+  })
+
+  it('a NOT-comparable flow adds no page in the default flow', () => {
+    const svc = new MonthlyReportPDFService(fixtureReport(), {
+      moneyFlow: { ...comparableFlow, comparable: false, reason: 'multi-entity', sources: [], uses: [] },
+    })
+    const text = docText(svc.generate() as any)
+    expect(text).not.toContain('Where Did Our Money Go?')
+  })
+
+  it('a non-zero residual is disclosed, not hidden', () => {
+    const svc = new MonthlyReportPDFService(fixtureReport(), {
+      moneyFlow: { ...comparableFlow, continuity_residual: 12.34 },
+    })
+    const text = docText(svc.generate() as any)
+    expect(text).toContain('treat this page as indicative')
+    expect(text).not.toContain('explain the bank movement exactly')
+  })
+})

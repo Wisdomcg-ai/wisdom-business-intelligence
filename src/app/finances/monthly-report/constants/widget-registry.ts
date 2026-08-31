@@ -82,6 +82,15 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     minColSpan: 2, maxColSpan: 3, minRowSpan: 3, maxRowSpan: 3,
     // Always renderable — it draws from the report itself.
   },
+  money_flow: {
+    type: 'money_flow',
+    label: 'Where Did Our Money Go',
+    category: 'tables',
+    fullRow: true,
+    icon: 'ArrowLeftRight',
+    defaultColSpan: 2, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+  },
   memo: {
     type: 'memo',
     label: 'Memo',
