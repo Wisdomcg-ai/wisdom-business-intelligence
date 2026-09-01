@@ -20,7 +20,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   Loader2, ChevronDown, ChevronRight, AlertTriangle, Clock, CheckCircle2,
-  RefreshCw, ExternalLink, ClipboardList,
+  RefreshCw, ExternalLink, ClipboardList, EyeOff,
 } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
 
@@ -74,6 +74,7 @@ interface BoardStats {
 interface BoardResponse {
   month: string
   clients: BoardClient[]
+  hidden: { business_id: string; business_name: string }[]
   stats: BoardStats
 }
 
@@ -142,6 +143,8 @@ export default function CfoBoardPage() {
   const [filter, setFilter] = useState<BoardSection | 'all'>('all')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [showSent, setShowSent] = useState(false)
+  const [checkAll, setCheckAll] = useState<{ done: number; total: number; current: string } | null>(null)
+  const [checkAllResult, setCheckAllResult] = useState<string | null>(null)
 
   const load = async () => {
     setIsLoading(true)
@@ -184,6 +187,46 @@ export default function CfoBoardPage() {
       return next
     })
 
+  // One click, whole fleet: run the live re-check for every visible client,
+  // SEQUENTIALLY — parallel would stack Xero calls across tenants and each
+  // request stays inside its own server time budget this way.
+  const runCheckAll = async () => {
+    const targets = data?.clients ?? []
+    if (targets.length === 0 || checkAll) return
+    setCheckAllResult(null)
+    const failures: string[] = []
+    for (let i = 0; i < targets.length; i++) {
+      const client = targets[i]
+      setCheckAll({ done: i, total: targets.length, current: client.business_name })
+      try {
+        const res = await fetch('/api/cfo/recheck-reconciliation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ business_id: client.business_id }),
+        })
+        if (!res.ok) failures.push(client.business_name)
+      } catch {
+        failures.push(client.business_name)
+      }
+    }
+    setCheckAll(null)
+    setCheckAllResult(
+      failures.length === 0
+        ? `All ${targets.length} clients re-checked.`
+        : `${targets.length - failures.length} of ${targets.length} re-checked — failed: ${failures.join(', ')}`,
+    )
+    await load()
+  }
+
+  const restoreClient = async (businessId: string) => {
+    await fetch('/api/cfo/board-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ business_id: businessId, hide_from_board: false }),
+    }).catch(() => {})
+    await load()
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <PageHeader
@@ -211,6 +254,19 @@ export default function CfoBoardPage() {
             onChange={e => setMonth(e.target.value)}
             className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/40"
           />
+          <button
+            onClick={runCheckAll}
+            disabled={checkAll !== null || isLoading || (data?.clients.length ?? 0) === 0}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-brand-navy hover:bg-brand-navy-800 rounded-lg disabled:opacity-60"
+          >
+            {checkAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {checkAll
+              ? `Checking ${checkAll.current} · ${checkAll.done + 1} of ${checkAll.total}…`
+              : 'Check all reconciliation'}
+          </button>
+          {checkAllResult && !checkAll && (
+            <span className="text-xs font-medium text-gray-500">{checkAllResult}</span>
+          )}
           {filter !== 'all' && (
             <button
               onClick={() => setFilter('all')}
@@ -299,12 +355,50 @@ export default function CfoBoardPage() {
             )}
           </div>
         )}
+
+        {data && data.hidden.length > 0 && (
+          <HiddenList hidden={data.hidden} onRestore={restoreClient} />
+        )}
       </div>
     </div>
   )
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
+
+function HiddenList({ hidden, onRestore }: {
+  hidden: { business_id: string; business_name: string }[]
+  onRestore: (businessId: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="pt-2 border-t border-gray-200">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-gray-600"
+      >
+        {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+        <EyeOff className="w-3.5 h-3.5" />
+        Hidden clients ({hidden.length})
+      </button>
+      {open && (
+        <ul className="mt-2 space-y-1">
+          {hidden.map(h => (
+            <li key={h.business_id} className="flex items-center gap-3 text-sm text-gray-500">
+              <span>{h.business_name}</span>
+              <button
+                onClick={() => onRestore(h.business_id)}
+                className="text-xs font-semibold text-brand-navy underline"
+              >
+                Restore
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 function StatCard({ label, value, tone, active, onClick }: {
   label: string
@@ -661,6 +755,14 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
             Undo discussed
           </button>
         )}
+        <button
+          onClick={() => post('Hide', '/api/cfo/board-settings', { business_id: client.business_id, hide_from_board: true })}
+          disabled={busy !== null}
+          className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-gray-600 disabled:opacity-50"
+          title="Remove this client from the board — restore any time from the Hidden clients list below"
+        >
+          <EyeOff className="w-3 h-3" /> Hide from board
+        </button>
         {actionError && <span className="text-xs font-medium text-red-600">{actionError}</span>}
       </div>
     </div>

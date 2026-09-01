@@ -84,7 +84,7 @@ async function getHandler(request: Request) {
     if (bizError) throw new Error(`businesses query failed: ${bizError.message}`)
     const allowedIds = (businesses ?? []).map(b => b.id)
     if (allowedIds.length === 0) {
-      return NextResponse.json({ month, clients: [], stats: emptyStats() })
+      return NextResponse.json({ month, clients: [], hidden: [], stats: emptyStats() })
     }
 
     // Dual-ID expansion: connection rows carry business_id in EITHER id-space.
@@ -115,13 +115,13 @@ async function getHandler(request: Request) {
     // Fleet = businesses with at least one connection row (locked decision).
     const fleetIds = allowedIds.filter(id => (connsByBiz.get(id) ?? []).length > 0)
     if (fleetIds.length === 0) {
-      return NextResponse.json({ month, clients: [], stats: emptyStats() })
+      return NextResponse.json({ month, clients: [], hidden: [], stats: emptyStats() })
     }
 
     const [settingsRes, cycleRes, checksRes, bucketsRes, syncClock] = await Promise.all([
       supabase
         .from('monthly_report_settings')
-        .select('business_id, report_due_day, bookkeeper_name, bookkeeper_email')
+        .select('business_id, report_due_day, bookkeeper_name, bookkeeper_email, hide_from_board')
         .in('business_id', fleetIds),
       supabase
         .from('cfo_report_status')
@@ -157,7 +157,18 @@ async function getHandler(request: Request) {
     const todayIso = new Date().toISOString()
     const now = Date.now()
 
-    const clients = fleetIds.map(businessId => {
+    // Hidden clients drop out of sections and stats but are returned by name
+    // so the page can offer a restore list — hide, never delete.
+    const hidden = fleetIds
+      .filter(id => settingsByBiz.get(id)?.hide_from_board === true)
+      .map(id => ({
+        business_id: id,
+        business_name: (businesses ?? []).find(b => b.id === id)?.name ?? '(Unnamed)',
+      }))
+      .sort((a, b) => a.business_name.localeCompare(b.business_name))
+    const visibleIds = fleetIds.filter(id => settingsByBiz.get(id)?.hide_from_board !== true)
+
+    const clients = visibleIds.map(businessId => {
       const biz = (businesses ?? []).find(b => b.id === businessId)
       const conns = connsByBiz.get(businessId) ?? []
       const activeTenants = Array.from(
@@ -244,7 +255,7 @@ async function getHandler(request: Request) {
       discussed: clients.filter(c => c.stage === 'discussed').length,
     }
 
-    return NextResponse.json({ month, clients, stats })
+    return NextResponse.json({ month, clients, hidden, stats })
   } catch (error) {
     Sentry.captureException(error, {
       tags: { route: 'cfo/board' },
