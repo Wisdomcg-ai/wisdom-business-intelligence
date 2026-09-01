@@ -83,14 +83,26 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
     push('freshness', 'Data freshness', 'fail', `Sync data is ${inputs.dataQualityLevel.replace('_', ' ')} — the numbers behind this pack are not current.`)
   }
 
-  // 2. Reconciliation — the gate's own numbers.
+  // 2. Reconciliation — the gate's own numbers. The label says "recorded
+  // transactions" deliberately: uncoded bank-feed statement lines (Xero's
+  // reconcile badge) are invisible to this count.
   if (inputs.reconciliation == null) {
-    push('reconciliation', 'Bank reconciliation', 'skip', 'Reconciliation was not checked this run.')
+    push('reconciliation', 'Bank reconciliation (recorded transactions)', 'skip', 'Reconciliation was not checked this run.')
+  } else if (inputs.reconciliation.check_failed) {
+    // FLEET-04 semantics must hold HERE too: a failed check with a zero count
+    // (no connection, every org erroring) previously passed as "all
+    // reconciled" — a failure can never read as a clean bill of health.
+    push(
+      'reconciliation',
+      'Bank reconciliation (recorded transactions)',
+      'warn',
+      `Reconciliation could not be verified — ${inputs.reconciliation.failure_reason ?? 'one or more Xero organisations could not be checked'}`,
+    )
   } else if ((report.unreconciled_count ?? 0) > 0 || inputs.reconciliation.unreconciled_count > 0) {
     const n = Math.max(report.unreconciled_count ?? 0, inputs.reconciliation.unreconciled_count)
-    push('reconciliation', 'Bank reconciliation', 'warn', `${n} unreconciled transaction${n === 1 ? '' : 's'} — the pack is stamped PROVISIONAL.`)
+    push('reconciliation', 'Bank reconciliation (recorded transactions)', 'warn', `${n} unreconciled recorded transaction${n === 1 ? '' : 's'} — the pack is stamped PROVISIONAL.`)
   } else {
-    push('reconciliation', 'Bank reconciliation', 'pass', 'All transactions reconciled.')
+    push('reconciliation', 'Bank reconciliation (recorded transactions)', 'pass', 'All recorded transactions reconciled. Uncoded bank-feed lines are not visible to this check.')
   }
 
   // 3. Budget present.

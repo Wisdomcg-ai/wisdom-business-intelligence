@@ -756,9 +756,11 @@ export default function MonthlyReportPage() {
     // but state it explicitly — this is the gate that let a Dragon July report
     // get FINAL-stamped on an unconditional "all reconciled" for a business
     // whose orgs were never checked.
+    // A NULL reconciliation (check never ran, or its fetch failed) is
+    // fail-CLOSED: absence of a check must never authorise a FINAL stamp.
     const isDraft =
       forceDraft ||
-      (reconciliation ? !reconciliation.is_clean || reconciliation.check_failed === true : false)
+      (reconciliation ? !reconciliation.is_clean || reconciliation.check_failed === true : true)
     const result = await generateReport(selectedMonth, fiscalYear, isDraft)
 
     if (result && 'needsMappings' in result && result.needsMappings) {

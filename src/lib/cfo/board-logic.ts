@@ -74,8 +74,9 @@ export interface ReconCheckRow {
   status: string
   checked_at: string | null
   source: string
-  total_unreconciled_count: number
-  total_unreconciled_value: number
+  /** NULL on errored checks — never render as zero. */
+  total_unreconciled_count: number | null
+  total_unreconciled_value: number | null
   error_message?: string | null
 }
 
