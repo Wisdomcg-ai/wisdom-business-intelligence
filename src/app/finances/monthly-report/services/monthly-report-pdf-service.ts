@@ -40,6 +40,9 @@ interface PDFOptions {
   moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
   /** WD.6 — the consolidated report (per-entity columns) for consolidation parents. */
   consolidated?: import('../utils/consolidated-rows').ConsolidatedReportVM
+  /** WF.4 — true when this month's budget was back-filled from actuals: the
+   *  cover must say so, because a ~0% variance is an echo, not performance. */
+  budgetBackfilled?: boolean
   sections?: ReportSections
   pdfLayout?: import('../types/pdf-layout').PDFLayout | null
 }
@@ -304,6 +307,19 @@ export class MonthlyReportPDFService {
       this.doc.setFont('helvetica', 'normal')
       this.doc.setTextColor(22, 101, 52) // green-800
       this.doc.text('Final', centerX, y, { align: 'center' })
+    }
+
+    // WF.4 — budget provenance. A back-filled budget makes every variance an
+    // echo of the actuals; the pack must say so where the reader starts.
+    if (this.options.budgetBackfilled) {
+      y += 8
+      this.doc.setFontSize(9)
+      this.doc.setFont('helvetica', 'normal')
+      this.doc.setTextColor(146, 64, 14) // amber-800
+      this.doc.text(
+        'Budget for this month was back-filled from actuals — variance columns are not a measure of performance.',
+        centerX, y, { align: 'center' },
+      )
     }
     this.doc.setTextColor(0, 0, 0)
   }

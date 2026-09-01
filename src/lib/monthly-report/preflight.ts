@@ -1,13 +1,13 @@
 /**
- * WF.2 — the pre-flight checks: assert, then send.
+ * WF.2 + WF.4 — the pre-flight checks: assert, then send.
  *
  * Runs over EXACTLY the data going into the PDF (the shared eager loader's
  * output plus the generated report), so a pass means the pack in hand was
  * checked — not some other fetch at some other moment.
  *
  * Statuses: pass | warn | fail | skip. Skip is honest absence ("no external
- * series configured"), never a silent pass — the fourteen checks render as
- * fourteen rows every time, and a check that can't run says why. Warnings
+ * series configured"), never a silent pass — every check renders as a row
+ * every time, and a check that can't run says why. Warnings
  * and failures never BLOCK an export (warning-only house style — the coach
  * decides); they inform, and the run is persisted either way.
  *
@@ -22,6 +22,7 @@ import type {
 } from '@/app/finances/monthly-report/types'
 import type { MoneyFlow } from '@/lib/monthly-report/money-flow'
 import { netProfitFromBuckets } from '@/lib/finance/net-profit'
+import { SUPERANNUATION } from '@/app/finances/forecast/constants'
 
 export type PreflightStatus = 'pass' | 'warn' | 'fail' | 'skip'
 
@@ -46,12 +47,19 @@ export interface PreflightInputs {
     missing_rates?: Array<{ currency_pair: string; period: string }>
   } | null
   unmappedCount?: number
-  /** data_quality verdict from the read-path probe, when available. */
-  dataQuality?: { level?: string; stale?: boolean; detail?: string } | null
-  /** Commentary entries keyed by account (to check trigger coverage). */
-  commentary?: Record<string, { coach_note?: string }> | null
+  /** Read-path data-quality verdict (D-44.2 probe). undefined = not threaded. */
+  dataQualityLevel?: 'verified' | 'partial' | 'failed' | 'no_sync' | 'stale' | null
+  /** True when the quality probe itself failed — could-not-check, not clean. */
+  qualityCheckFailed?: boolean
+  /** Commentary entries keyed by account (coverage + reconciliation checks). */
+  commentary?: Record<string, { coach_note?: string; vendor_summary?: Array<{ vendor: string; amount: number }> }> | null
   /** Accounts that fired commentary triggers this month. */
   triggeredAccounts?: string[] | null
+  /** The budget forecast's superannuation_rate (null = unset → statutory default). */
+  budgetSuperRate?: number | null
+  /** The budget forecast's actual_end_month ('YYYY-MM') — months at or before
+   *  it carry a budget BACK-FILLED from actuals, not a plan (WF.4). */
+  budgetActualEndMonth?: string | null
 }
 
 const r2 = (v: number) => Math.round(v * 100) / 100
@@ -62,13 +70,17 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
   const push = (key: string, label: string, status: PreflightStatus, detail: string) =>
     results.push({ key, label, status, detail })
 
-  // 1. Freshness — the read-path quality probe.
-  if (inputs.dataQuality == null) {
+  // 1. Freshness — the read-path quality probe (D-44.2).
+  if (inputs.qualityCheckFailed) {
+    push('freshness', 'Data freshness', 'warn', "The freshness check itself couldn't run — treat the data age as unverified.")
+  } else if (inputs.dataQualityLevel == null) {
     push('freshness', 'Data freshness', 'skip', 'No data-quality verdict available for this run.')
-  } else if (inputs.dataQuality.stale || inputs.dataQuality.level === 'stale' || inputs.dataQuality.level === 'failed') {
-    push('freshness', 'Data freshness', 'fail', inputs.dataQuality.detail || 'The sync data behind this report is stale.')
+  } else if (inputs.dataQualityLevel === 'verified') {
+    push('freshness', 'Data freshness', 'pass', 'Sync data is current and verified.')
+  } else if (inputs.dataQualityLevel === 'partial') {
+    push('freshness', 'Data freshness', 'warn', 'Sync data is partial — some tenants or months may be behind.')
   } else {
-    push('freshness', 'Data freshness', 'pass', 'Sync data is current.')
+    push('freshness', 'Data freshness', 'fail', `Sync data is ${inputs.dataQualityLevel.replace('_', ' ')} — the numbers behind this pack are not current.`)
   }
 
   // 2. Reconciliation — the gate's own numbers.
@@ -226,7 +238,67 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
     }
   }
 
-  // 13. Draft state honesty — a final pack must have a clean gate.
+  // 13. Commentary reconciles — the vendor amounts quoted in commentary must
+  // not exceed what the account actually spent (a top-N vendor list summing
+  // PAST the account total means the drill-down and the statement disagree).
+  {
+    const entries = Object.entries(inputs.commentary ?? {}).filter(
+      ([, e]) => (e.vendor_summary ?? []).length > 0,
+    )
+    if (inputs.commentary == null) {
+      push('commentary_reconciles', 'Commentary reconciles', 'skip', 'Commentary not available this run.')
+    } else if (entries.length === 0) {
+      push('commentary_reconciles', 'Commentary reconciles', 'skip', 'No vendor drill-downs in commentary this month.')
+    } else {
+      const actualByAccount = new Map<string, number>()
+      for (const sec of report.sections) {
+        for (const l of sec.lines) actualByAccount.set(l.account_name, l.actual)
+      }
+      const overs: string[] = []
+      let comparable = 0
+      for (const [account, e] of entries) {
+        const actual = actualByAccount.get(account)
+        if (actual === undefined) continue
+        comparable++
+        const vendorSum = (e.vendor_summary ?? []).reduce((sum, v) => sum + (v.amount ?? 0), 0)
+        if (vendorSum > Math.abs(actual) + 1) overs.push(account)
+      }
+      if (comparable === 0) {
+        push('commentary_reconciles', 'Commentary reconciles', 'skip', 'No commentary account matches a statement line this month.')
+      } else if (overs.length === 0) {
+        push('commentary_reconciles', 'Commentary reconciles', 'pass', `Vendor drill-downs stay within their account totals (${comparable} checked).`)
+      } else {
+        push('commentary_reconciles', 'Commentary reconciles', 'warn', `${overs.slice(0, 3).join(', ')}${overs.length > 3 ? '\u2026' : ''}: quoted vendors sum past the account's actual.`)
+      }
+    }
+  }
+
+  // 14. Super rate — the statutory SG rate moves; a forecast carrying an old
+  // override quietly misprices every payroll month.
+  {
+    if (inputs.budgetSuperRate === undefined || !report.has_budget) {
+      push('super_rate', 'Super rate', 'skip', report.has_budget ? 'Budget super rate not available this run.' : 'No budget in this pack.')
+    } else if (inputs.budgetSuperRate === null || Math.abs(inputs.budgetSuperRate - SUPERANNUATION.DEFAULT_RATE) < 0.0001) {
+      push('super_rate', 'Super rate', 'pass', `Budget uses the current statutory rate (${(SUPERANNUATION.DEFAULT_RATE * 100).toFixed(1)}%).`)
+    } else {
+      push('super_rate', 'Super rate', 'warn', `Budget carries ${(inputs.budgetSuperRate * 100).toFixed(1)}% super vs the statutory ${(SUPERANNUATION.DEFAULT_RATE * 100).toFixed(1)}% — payroll months are mispriced.`)
+    }
+  }
+
+  // 15. Budget provenance (WF.4) — a month at or before the forecast's
+  // actual_end_month carries a budget BACK-FILLED from actuals, so a ~0%
+  // variance is an echo, not performance.
+  {
+    if (inputs.budgetActualEndMonth === undefined || !report.has_budget) {
+      push('budget_provenance', 'Budget provenance', 'skip', report.has_budget ? 'Budget provenance not available this run.' : 'No budget in this pack.')
+    } else if (inputs.budgetActualEndMonth !== null && report.report_month <= inputs.budgetActualEndMonth) {
+      push('budget_provenance', 'Budget provenance', 'warn', `This month's budget was back-filled from actuals (forecast actuals run to ${inputs.budgetActualEndMonth}) — variances are an echo, not performance. The cover says so.`)
+    } else {
+      push('budget_provenance', 'Budget provenance', 'pass', 'The budget for this month was planned, not back-filled.')
+    }
+  }
+
+  // 16. Draft state honesty — a final pack must have a clean gate.
   {
     if (!report.is_draft && (report.unreconciled_count ?? 0) > 0) {
       push('draft_state', 'Draft state', 'fail', `Report is marked FINAL with ${report.unreconciled_count} unreconciled transactions.`)
@@ -237,7 +309,7 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
     }
   }
 
-  // 14. Month coverage — the report's month actually carries data.
+  // 17. Month coverage — the report's month actually carries data.
   {
     const total = Math.abs(report.summary.revenue.actual) + Math.abs(report.summary.opex.actual) + Math.abs(report.summary.cogs.actual)
     if (total > 0) {
