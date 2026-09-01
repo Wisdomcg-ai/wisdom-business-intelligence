@@ -1,53 +1,80 @@
 'use client'
 
+/**
+ * CFO Production Board — replaces the old financial summary dashboard.
+ *
+ * One job: where is every client in this month's report cycle, and what's
+ * blocking me. NO financial figures by design (locked decision, Sep 2026) —
+ * performance lives in the monthly report itself. Rows lead with the 5-stage
+ * pipeline (Data ready → Generated → Reviewed → Sent → Discussed),
+ * reconciliation-by-month, and data health.
+ *
+ * Fail-closed rendering rules (house):
+ * - recon state 'unknown'/'partial' is NEVER shown as zero outstanding.
+ * - The recon count is unreconciled TRANSACTIONS recorded in Xero — not the
+ *   bank-feed "items to reconcile" banner (uncoded feed lines are invisible
+ *   to the open API). The expanded view carries that caveat verbatim.
+ */
+
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Loader2, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, ExternalLink } from 'lucide-react'
+import {
+  Loader2, ChevronDown, ChevronRight, AlertTriangle, Clock, CheckCircle2,
+  RefreshCw, ExternalLink, ClipboardList,
+} from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
-import { BarChart3 } from 'lucide-react'
 
-type StatusBadge = 'on_track' | 'watch' | 'alert'
-type ReportStatus = 'draft' | 'ready_for_review' | 'approved' | 'sent' | 'none'
-type FilterMode = 'all' | 'alert' | 'watch' | 'on_track'
+type PipelineStage = 'none' | 'generated' | 'ready' | 'approved' | 'sent' | 'discussed'
+type BoardSection = 'overdue' | 'blocked' | 'in_progress' | 'sent'
+type ReconState = 'clear' | 'outstanding' | 'partial' | 'unknown'
 
-interface ClientSummary {
+interface BoardClient {
   business_id: string
   business_name: string
-  industry: string | null
-  revenue: number
-  revenue_budget: number
-  revenue_vs_budget_pct: number | null
-  gross_profit: number
-  gross_profit_pct: number | null
-  net_profit: number
-  net_profit_budget: number
-  /** FLEET-02: null = unknown (no bank rows). NOT $0. */
-  cash_balance: number | null
-  /** null = no reconciliation check on record. NOT "0 unreconciled". */
-  unreconciled_count: number | null
-  cash_as_at?: string | null
-  cash_missing_fx?: { currency_pair: string; period: string }[]
-  report_status: ReportStatus
-  badge: StatusBadge
-  manual_status_override: string | null
-  /** FX-01: months a non-AUD member could not be translated for. Non-empty =>
-   *  this row's money figures include UNTRANSLATED foreign currency. */
-  fx_missing_rates?: { currency_pair: string; period: string }[]
+  section: BoardSection
+  stage: PipelineStage
+  cycle: {
+    generated_at: string | null
+    approved_at: string | null
+    sent_at: string | null
+    discussed_at: string | null
+    status: string | null
+  }
+  due_day: number | null
+  due_date: string | null
+  days_overdue: number | null
+  connection: {
+    status: string
+    needs_attention: boolean
+    last_sync_at: string | null
+    tenant_count: number
+    tenant_names: (string | null)[]
+  }
+  recon: {
+    state: ReconState
+    totalCount: number
+    totalValue: number
+    months: { month: string; count: number; value: number }[]
+    checkedAt: string | null
+    checkedTenants: number
+    erroredTenants: number
+    tenantCount: number
+  }
+  bookkeeper: { name: string | null; email: string | null }
 }
 
-interface StatsCards {
-  on_track: number
-  watch: number
-  alert: number
-  pending_approval: number
-  /** Phase D: clients whose report for a closed month is still none/draft. */
+interface BoardStats {
   overdue: number
+  blocked: number
+  in_progress: number
+  sent: number
+  discussed: number
 }
 
-interface SummariesResponse {
+interface BoardResponse {
   month: string
-  summaries: ClientSummary[]
-  stats: StatsCards
+  clients: BoardClient[]
+  stats: BoardStats
 }
 
 function defaultReportMonth(): string {
@@ -57,134 +84,116 @@ function defaultReportMonth(): string {
 }
 
 function formatMonthLabel(monthKey: string): string {
-  const date = new Date(monthKey + '-01')
+  const date = new Date(monthKey + '-01T00:00:00')
   return date.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
 }
 
-function fmtCurrency(value: number, compact = true): string {
-  if (compact && Math.abs(value) >= 1000) {
-    const units = ['', 'k', 'M', 'B']
-    let n = value
-    let u = 0
-    while (Math.abs(n) >= 1000 && u < units.length - 1) {
-      n /= 1000
-      u++
-    }
-    return `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(Math.abs(n) >= 10 ? 0 : 1)}${units[u]}`
-  }
+function shortMonth(monthKey: string): string {
+  const date = new Date(monthKey + '-01T00:00:00')
+  return date.toLocaleDateString('en-AU', { month: 'short' })
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
+}
+
+function fmtMoney(value: number): string {
   return value.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
 }
 
-function fmtPct(value: number | null): string {
-  if (value === null) return '—'
-  return `${value}%`
+function relTime(iso: string | null): string {
+  if (!iso) return ''
+  const hours = Math.round((Date.now() - new Date(iso).getTime()) / 3_600_000)
+  if (hours < 1) return 'just now'
+  if (hours < 48) return `${hours} h ago`
+  return `${Math.round(hours / 24)} d ago`
 }
 
-const BADGE_STYLES: Record<StatusBadge, string> = {
-  on_track: 'bg-green-100 text-green-800',
-  watch: 'bg-amber-100 text-amber-800',
-  alert: 'bg-red-100 text-red-800',
+const CONNECTION_LABELS: Record<string, string> = {
+  connected: 'Xero OK',
+  data_stale: 'No fresh data',
+  auth_stale: 'Auth stale',
+  pending_first_sync: 'First sync pending',
+  dead: 'Xero disconnected',
+  none: 'No connection',
+  unknown: 'Health unknown',
 }
 
-const BADGE_LABELS: Record<StatusBadge, string> = {
-  on_track: 'On Track',
-  watch: 'Watch',
-  alert: 'Alert',
+const SECTION_META: Record<BoardSection, { title: string; dot: string }> = {
+  overdue: { title: 'Overdue', dot: 'bg-red-600' },
+  blocked: { title: 'Blocked — data not ready', dot: 'bg-amber-500' },
+  in_progress: { title: 'In progress', dot: 'bg-brand-navy-400' },
+  sent: { title: 'Sent', dot: 'bg-green-500' },
 }
 
-const REPORT_STATUS_STYLES: Record<ReportStatus, string> = {
-  draft: 'bg-gray-100 text-gray-700',
-  ready_for_review: 'bg-blue-100 text-blue-700',
-  approved: 'bg-purple-100 text-purple-700',
-  sent: 'bg-green-100 text-green-700',
-  none: 'bg-gray-50 text-gray-400',
+const STRIPE: Record<BoardSection, string> = {
+  overdue: 'bg-red-600',
+  blocked: 'bg-amber-500',
+  in_progress: 'bg-brand-navy-400',
+  sent: 'bg-green-500',
 }
 
-const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
-  draft: 'Draft',
-  ready_for_review: 'Ready',
-  approved: 'Approved',
-  sent: 'Sent',
-  none: 'Not Started',
-}
-
-export default function CfoDashboardPage() {
+export default function CfoBoardPage() {
   const [month, setMonth] = useState(defaultReportMonth())
-  const [data, setData] = useState<SummariesResponse | null>(null)
+  const [data, setData] = useState<BoardResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<FilterMode>('all')
-  const [search, setSearch] = useState('')
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
-  const [showOnTrack, setShowOnTrack] = useState(false)
+  const [filter, setFilter] = useState<BoardSection | 'all'>('all')
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [showSent, setShowSent] = useState(false)
 
-  const loadSummaries = async () => {
+  const load = async () => {
     setIsLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/cfo/summaries?month=${month}`)
+      const res = await fetch(`/api/cfo/board?month=${month}`)
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         setError(body.error ?? `Failed to load (${res.status})`)
         return
       }
       setData(await res.json())
-    } catch (err) {
-      console.error('[CFO Dashboard] load error:', err)
-      setError('Network error loading dashboard')
+    } catch {
+      setError('Network error loading the board')
     } finally {
       setIsLoading(false)
     }
   }
 
   useEffect(() => {
-    loadSummaries()
+    load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month])
 
-  // Apply filters (filter bar + search)
-  const filteredSummaries = useMemo(() => {
-    if (!data) return []
-    let list = data.summaries
-    if (filter !== 'all') list = list.filter(s => s.badge === filter)
-    if (search) {
-      const q = search.toLowerCase()
-      list = list.filter(s =>
-        s.business_name.toLowerCase().includes(q) ||
-        (s.industry ?? '').toLowerCase().includes(q)
-      )
-    }
-    return list
-  }, [data, filter, search])
-
-  // Group by priority
-  const grouped = useMemo(() => {
+  const sections = useMemo(() => {
+    const clients = (data?.clients ?? []).filter(c => filter === 'all' || c.section === filter)
     return {
-      alert: filteredSummaries.filter(s => s.badge === 'alert'),
-      watch: filteredSummaries.filter(s => s.badge === 'watch'),
-      on_track: filteredSummaries.filter(s => s.badge === 'on_track'),
+      overdue: clients.filter(c => c.section === 'overdue'),
+      blocked: clients.filter(c => c.section === 'blocked'),
+      in_progress: clients.filter(c => c.section === 'in_progress'),
+      sent: clients.filter(c => c.section === 'sent'),
     }
-  }, [filteredSummaries])
+  }, [data, filter])
 
-  const toggleRow = (bizId: string) => {
-    setExpandedRows(prev => {
+  const toggleRow = (id: string) =>
+    setExpanded(prev => {
       const next = new Set(prev)
-      if (next.has(bizId)) next.delete(bizId)
-      else next.add(bizId)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <PageHeader
         variant="banner"
-        title="CFO Dashboard"
-        subtitle={`Multi-client overview · ${formatMonthLabel(month)}`}
-        icon={BarChart3}
+        title="Report Production"
+        subtitle={`${formatMonthLabel(month)} cycle · every Xero-connected client`}
+        icon={ClipboardList}
         actions={
           <button
-            onClick={loadSummaries}
+            onClick={load}
             disabled={isLoading}
             className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg disabled:opacity-50"
           >
@@ -194,8 +203,7 @@ export default function CfoDashboardPage() {
         }
       />
 
-      <div className="max-w-[1800px] mx-auto p-4 sm:p-6 lg:p-8 space-y-4">
-        {/* Month selector + filter bar */}
+      <div className="max-w-[1400px] mx-auto p-4 sm:p-6 lg:p-8 space-y-5">
         <div className="flex flex-wrap items-center gap-3">
           <input
             type="month"
@@ -203,142 +211,89 @@ export default function CfoDashboardPage() {
             onChange={e => setMonth(e.target.value)}
             className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/40"
           />
-
-          <div className="inline-flex rounded-lg border border-gray-200 bg-white overflow-hidden">
-            {(['all', 'alert', 'watch', 'on_track'] as FilterMode[]).map(f => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                  filter === f
-                    ? 'bg-brand-navy text-white'
-                    : 'text-gray-600 hover:bg-gray-50 border-l border-gray-200 first:border-l-0'
-                }`}
-              >
-                {f === 'all' ? 'All' :
-                 f === 'alert' ? 'Alert' :
-                 f === 'watch' ? 'Watch' : 'On Track'}
-              </button>
-            ))}
-          </div>
-
-          <div className="relative flex-1 min-w-[200px] max-w-xs">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search clients…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-7 pr-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/40"
-            />
-          </div>
+          {filter !== 'all' && (
+            <button
+              onClick={() => setFilter('all')}
+              className="text-xs font-medium text-brand-navy underline"
+            >
+              Clear filter
+            </button>
+          )}
         </div>
 
-        {/* Stat cards */}
         {data && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard
-              label="On Track"
-              value={data.stats.on_track}
-              color="green"
-              icon={<CheckCircle2 className="w-4 h-4" />}
-            />
-            <StatCard
-              label="Pending Approval"
-              value={data.stats.pending_approval}
-              color="amber"
-              icon={<Clock className="w-4 h-4" />}
-            />
-            <StatCard
-              label="Alerts"
-              value={data.stats.alert}
-              color="red"
-              icon={<AlertTriangle className="w-4 h-4" />}
-            />
-            <StatCard
-              label="Reports Overdue"
-              value={data.stats.overdue > 0 ? data.stats.overdue : 'All clear'}
-              color={data.stats.overdue > 0 ? 'red' : 'navy'}
-            />
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <StatCard label="Overdue" value={data.stats.overdue} tone="red" active={filter === 'overdue'} onClick={() => setFilter(f => (f === 'overdue' ? 'all' : 'overdue'))} />
+            <StatCard label="Blocked — data not ready" value={data.stats.blocked} tone="amber" active={filter === 'blocked'} onClick={() => setFilter(f => (f === 'blocked' ? 'all' : 'blocked'))} />
+            <StatCard label="In progress" value={data.stats.in_progress} tone="blue" active={filter === 'in_progress'} onClick={() => setFilter(f => (f === 'in_progress' ? 'all' : 'in_progress'))} />
+            <StatCard label="Sent" value={data.stats.sent} tone="green" active={filter === 'sent'} onClick={() => setFilter(f => (f === 'sent' ? 'all' : 'sent'))} />
+            <StatCard label="Discussed with client" value={`${data.stats.discussed} / ${data.stats.sent}`} tone="navy" />
           </div>
         )}
 
-        {/* Error / empty / loading states */}
         {error && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-            {error}
-          </div>
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
         )}
 
         {isLoading && !data && (
           <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
             <Loader2 className="w-6 h-6 animate-spin text-brand-orange mx-auto mb-2" />
-            <p className="text-sm text-gray-600">Loading dashboard…</p>
+            <p className="text-sm text-gray-600">Loading the board…</p>
           </div>
         )}
 
-        {data && data.summaries.length === 0 && (
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-            <p className="text-sm font-medium text-amber-900">No CFO clients flagged yet</p>
-            <p className="text-xs text-amber-700 mt-1">
-              To add a client here: open the client in the coach portal
-              (<span className="font-medium">Clients → select a client</span>), then
-              choose <span className="font-medium">&ldquo;Mark as CFO client&rdquo;</span> from
-              the actions menu (top-right <span aria-hidden="true">⋯</span>).
-            </p>
+        {data && data.clients.length === 0 && (
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+            No Xero-connected clients found for your account.
           </div>
         )}
 
-        {/* Priority-sorted sections */}
-        {data && data.summaries.length > 0 && (
+        {data && data.clients.length > 0 && (
           <div className="space-y-6">
-            {grouped.alert.length > 0 && (
-              <PrioritySection
-                title="Needs Attention"
-                badge="alert"
-                count={grouped.alert.length}
-                clients={grouped.alert}
-                expandedRows={expandedRows}
-                onToggleRow={toggleRow}
-              />
+            {(['overdue', 'blocked', 'in_progress'] as BoardSection[]).map(section =>
+              sections[section].length > 0 ? (
+                <Section
+                  key={section}
+                  section={section}
+                  clients={sections[section]}
+                  month={month}
+                  expanded={expanded}
+                  onToggleRow={toggleRow}
+                  onChanged={load}
+                />
+              ) : null,
             )}
 
-            {grouped.watch.length > 0 && (
-              <PrioritySection
-                title="Watch"
-                badge="watch"
-                count={grouped.watch.length}
-                clients={grouped.watch}
-                expandedRows={expandedRows}
-                onToggleRow={toggleRow}
-              />
-            )}
-
-            {grouped.on_track.length > 0 && (
+            {sections.sent.length > 0 && (
               <div>
                 <button
-                  onClick={() => setShowOnTrack(v => !v)}
+                  onClick={() => setShowSent(v => !v)}
                   className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900 mb-2"
                 >
-                  {showOnTrack ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                  <span>On Track</span>
-                  <span className="text-xs font-normal text-gray-400">({grouped.on_track.length})</span>
+                  {showSent ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  <span className={`w-2 h-2 rounded-full ${SECTION_META.sent.dot}`} />
+                  <span>Sent</span>
+                  <span className="text-xs font-normal text-gray-400">({sections.sent.length})</span>
                 </button>
-                {showOnTrack && (
-                  <ClientList
-                    clients={grouped.on_track}
-                    expandedRows={expandedRows}
+                {showSent && (
+                  <Section
+                    section="sent"
+                    clients={sections.sent}
+                    month={month}
+                    expanded={expanded}
                     onToggleRow={toggleRow}
+                    onChanged={load}
+                    bare
                   />
                 )}
               </div>
             )}
 
-            {grouped.alert.length === 0 && grouped.watch.length === 0 && !showOnTrack && (
+            {sections.overdue.length === 0 && sections.blocked.length === 0 && sections.in_progress.length === 0 && !showSent && (
               <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-green-700" />
                 <p className="text-sm font-medium text-green-900">
-                  All clients on track for {formatMonthLabel(month)}
+                  Every report for {formatMonthLabel(month)} is sent.
                 </p>
               </div>
             )}
@@ -349,238 +304,465 @@ export default function CfoDashboardPage() {
   )
 }
 
-// ─── Sub-components ─────────────────────────────────────────────────────
+// ─── Sub-components ─────────────────────────────────────────────────────────
 
-function StatCard({
-  label,
-  value,
-  color,
-  icon,
-}: {
+function StatCard({ label, value, tone, active, onClick }: {
   label: string
   value: number | string
-  color: 'green' | 'amber' | 'red' | 'navy'
-  icon?: React.ReactNode
+  tone: 'red' | 'amber' | 'blue' | 'green' | 'navy'
+  active?: boolean
+  onClick?: () => void
 }) {
-  const colorClasses: Record<typeof color, string> = {
-    green: 'text-green-700 bg-green-50 border-green-200',
-    amber: 'text-amber-700 bg-amber-50 border-amber-200',
-    red: 'text-red-700 bg-red-50 border-red-200',
-    navy: 'text-brand-navy bg-gray-50 border-gray-200',
+  const tones: Record<typeof tone, string> = {
+    red: 'border-t-red-600 text-red-700',
+    amber: 'border-t-amber-500 text-amber-700',
+    blue: 'border-t-brand-navy-400 text-brand-navy-600',
+    green: 'border-t-green-500 text-green-700',
+    navy: 'border-t-brand-navy text-brand-navy',
   }
   return (
-    <div className={`rounded-lg border p-3 ${colorClasses[color]}`}>
-      <div className="flex items-center gap-2 text-xs font-medium">
-        {icon}
-        <span>{label}</span>
-      </div>
-      <div className="mt-1 text-2xl font-bold">{value}</div>
-    </div>
+    <button
+      onClick={onClick}
+      disabled={!onClick}
+      className={`text-left bg-white rounded-lg border border-gray-200 border-t-[3px] p-3 shadow-sm ${tones[tone]} ${
+        active ? 'ring-2 ring-brand-orange/50' : onClick ? 'hover:border-gray-300' : ''
+      }`}
+    >
+      <div className="text-2xl font-bold tabular-nums">{value}</div>
+      <div className="text-xs font-semibold text-gray-500 mt-0.5">{label}</div>
+    </button>
   )
 }
 
-function PrioritySection({
-  title,
-  badge,
-  count,
-  clients,
-  expandedRows,
-  onToggleRow,
-}: {
-  title: string
-  badge: StatusBadge
-  count: number
-  clients: ClientSummary[]
-  expandedRows: Set<string>
+function Section({ section, clients, month, expanded, onToggleRow, onChanged, bare }: {
+  section: BoardSection
+  clients: BoardClient[]
+  month: string
+  expanded: Set<string>
   onToggleRow: (id: string) => void
+  onChanged: () => void
+  bare?: boolean
 }) {
+  const meta = SECTION_META[section]
   return (
     <div>
-      <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900 mb-2">
-        {badge === 'alert' && <AlertTriangle className="w-4 h-4 text-red-600" />}
-        {badge === 'watch' && <Clock className="w-4 h-4 text-amber-600" />}
-        {title}
-        <span className="text-xs font-normal text-gray-400">({count})</span>
-      </h2>
-      <ClientList clients={clients} expandedRows={expandedRows} onToggleRow={onToggleRow} />
+      {!bare && (
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900 mb-2">
+          <span className={`w-2 h-2 rounded-full ${meta.dot}`} />
+          {meta.title}
+          <span className="text-xs font-normal text-gray-400">({clients.length})</span>
+        </h2>
+      )}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100 shadow-sm">
+        {clients.map(client => (
+          <ClientRow
+            key={client.business_id}
+            client={client}
+            month={month}
+            isExpanded={expanded.has(client.business_id)}
+            onToggle={() => onToggleRow(client.business_id)}
+            onChanged={onChanged}
+          />
+        ))}
+      </div>
     </div>
   )
 }
 
-function ClientList({
-  clients,
-  expandedRows,
-  onToggleRow,
-}: {
-  clients: ClientSummary[]
-  expandedRows: Set<string>
-  onToggleRow: (id: string) => void
-}) {
+function pipelineSteps(client: BoardClient): { done: boolean; now: boolean; blocked: boolean }[] {
+  const stage = client.stage
+  const dataReady = !client.connection.needs_attention && client.recon.state === 'clear'
+  const reached = (s: PipelineStage[]) => s.includes(stage)
+  return [
+    {
+      done: dataReady || reached(['generated', 'ready', 'approved', 'sent', 'discussed']),
+      now: false,
+      blocked: !dataReady && stage === 'none',
+    },
+    { done: reached(['generated', 'ready', 'approved', 'sent', 'discussed']), now: stage === 'none' && dataReady, blocked: false },
+    { done: reached(['approved', 'sent', 'discussed']), now: stage === 'generated' || stage === 'ready', blocked: false },
+    { done: reached(['sent', 'discussed']), now: stage === 'approved', blocked: false },
+    { done: stage === 'discussed', now: stage === 'sent', blocked: false },
+  ]
+}
+
+function stageLabel(client: BoardClient): { text: string; tone: 'ok' | 'warn' | 'bad' } {
+  const { stage, connection, recon } = client
+  if (stage === 'discussed') return { text: `Discussed ${fmtDate(client.cycle.discussed_at)}`, tone: 'ok' }
+  if (stage === 'sent') return { text: `Sent ${fmtDate(client.cycle.sent_at)} — meeting pending`, tone: 'ok' }
+  if (stage === 'approved') return { text: 'Approved — awaiting send', tone: 'ok' }
+  if (stage === 'ready') return { text: 'In review', tone: 'ok' }
+  if (stage === 'generated') return { text: `Generated ${fmtDate(client.cycle.generated_at)} — in review`, tone: 'ok' }
+  if (connection.needs_attention) return { text: CONNECTION_LABELS[connection.status] ?? 'Data problem', tone: 'bad' }
+  if (recon.state === 'unknown') return { text: 'Reconciliation not checked', tone: 'bad' }
+  if (recon.state === 'partial') return { text: 'Some orgs unchecked', tone: 'warn' }
+  if (recon.state === 'outstanding') return { text: 'Awaiting reconciliation', tone: 'warn' }
+  return { text: 'Ready to generate', tone: 'ok' }
+}
+
+function ReconChip({ recon }: { recon: BoardClient['recon'] }) {
+  if (recon.state === 'unknown') {
+    return <Chip tone="red">Couldn&apos;t check reconciliation</Chip>
+  }
+  if (recon.state === 'partial') {
+    return (
+      <Chip tone="amber">
+        {recon.checkedTenants} of {recon.tenantCount} orgs checked · {recon.totalCount}+ unreconciled
+      </Chip>
+    )
+  }
+  if (recon.state === 'outstanding') {
+    return (
+      <Chip tone="amber">
+        {recon.totalCount} unreconciled
+        {recon.months.slice(-3).map(m => ` · ${shortMonth(m.month)} ${m.count}`).join('')}
+      </Chip>
+    )
+  }
+  return <Chip tone="green">No unreconciled transactions</Chip>
+}
+
+function Chip({ tone, children }: { tone: 'red' | 'amber' | 'green' | 'gray'; children: React.ReactNode }) {
+  const tones = {
+    red: 'bg-red-50 text-red-700 border-red-200',
+    amber: 'bg-amber-50 text-amber-800 border-amber-200',
+    green: 'bg-green-50 text-green-700 border-green-200',
+    gray: 'bg-gray-50 text-gray-600 border-gray-200',
+  }
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden divide-y divide-gray-200">
-      {clients.map(client => (
-        <ClientRow
-          key={client.business_id}
-          client={client}
-          isExpanded={expandedRows.has(client.business_id)}
-          onToggle={() => onToggleRow(client.business_id)}
-        />
-      ))}
-    </div>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-semibold whitespace-nowrap ${tones[tone]}`}>
+      {children}
+    </span>
   )
 }
 
-function ClientRow({
-  client,
-  isExpanded,
-  onToggle,
-}: {
-  client: ClientSummary
+function ClientRow({ client, month, isExpanded, onToggle, onChanged }: {
+  client: BoardClient
+  month: string
   isExpanded: boolean
   onToggle: () => void
+  onChanged: () => void
 }) {
-  const fxMissing = client.fx_missing_rates ?? []
-  const hasFxGap = fxMissing.length > 0
+  const label = stageLabel(client)
+  const steps = pipelineSteps(client)
+  const conn = client.connection
+
   return (
     <div>
-      {/* Compact row */}
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 text-left"
-      >
-        {isExpanded ? (
-          <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
-        ) : (
-          <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
-        )}
-
-        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${BADGE_STYLES[client.badge]}`}>
-          {BADGE_LABELS[client.badge]}
-        </span>
-
+      <button onClick={onToggle} className="w-full flex items-center gap-3 pr-4 py-2.5 hover:bg-gray-50 text-left">
+        <span className={`self-stretch w-1 shrink-0 ${STRIPE[client.section]}`} />
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-gray-900 truncate">{client.business_name}</div>
-          {client.industry && (
-            <div className="text-xs text-gray-500 truncate">{client.industry}</div>
+          <div className="text-sm font-semibold text-brand-navy truncate">{client.business_name}</div>
+          <div className="text-xs text-gray-400 truncate">
+            {conn.tenant_count > 1 ? `${conn.tenant_count} Xero orgs · ` : ''}
+            {client.due_day ? `due ${client.due_day}th of month` : 'no due date set'}
+          </div>
+        </div>
+
+        <div className="w-24 shrink-0 text-xs font-semibold">
+          {client.days_overdue !== null && client.days_overdue > 0 ? (
+            <span className="text-red-600">
+              Due {fmtDate(client.due_date)}
+              <span className="block font-bold">{client.days_overdue}d overdue</span>
+            </span>
+          ) : client.due_date ? (
+            <span className="text-gray-600">Due {fmtDate(client.due_date)}</span>
+          ) : (
+            <span className="text-gray-300">—</span>
           )}
         </div>
 
-        {/* FX-01: when a member currency could not be translated, these figures
-            include raw foreign-currency amounts (IICT: ~5.3x overstated). Showing
-            them as clean numbers is worse than showing nothing — suppress and say why. */}
-        {hasFxGap ? (
-          <div className="hidden sm:flex items-center shrink-0">
-            <span className="px-2 py-1 rounded text-xs font-semibold bg-amber-100 text-amber-900 whitespace-nowrap">
-              ⚠ FX rate missing — figures unreliable
-            </span>
-          </div>
-        ) : (
-          <div className="hidden sm:flex items-center gap-4 text-xs tabular-nums shrink-0">
-            <Metric label="Rev" value={fmtPct(client.revenue_vs_budget_pct)} />
-            <Metric label="GP" value={fmtPct(client.gross_profit_pct)} />
-            <Metric label="Net" value={fmtCurrency(client.net_profit)} emphasise={client.net_profit < 0} />
-            <Metric
-              label="Cash"
-              value={client.cash_balance === null ? '—' : fmtCurrency(client.cash_balance)}
+        <div className="hidden sm:flex items-center gap-1 shrink-0" aria-label={`Pipeline: ${label.text}`}>
+          {steps.map((step, i) => (
+            <span
+              key={i}
+              className={`w-5 h-1.5 rounded-full ${
+                step.blocked ? 'bg-amber-400' : step.done ? 'bg-green-500' : step.now ? 'bg-brand-orange ring-2 ring-brand-orange-200' : 'bg-gray-200'
+              }`}
             />
-          </div>
-        )}
+          ))}
+        </div>
 
-        {(client.unreconciled_count ?? 0) > 0 && (
-          <span className="text-xs text-amber-700 whitespace-nowrap">
-            ⚠ {client.unreconciled_count}
-          </span>
-        )}
+        <div className={`hidden md:block w-52 shrink-0 text-xs font-medium truncate ${
+          label.tone === 'bad' ? 'text-red-700' : label.tone === 'warn' ? 'text-amber-700' : 'text-gray-700'
+        }`}>
+          {label.text}
+        </div>
 
-        <span className={`px-2 py-0.5 rounded text-xs font-medium ${REPORT_STATUS_STYLES[client.report_status]}`}>
-          {REPORT_STATUS_LABELS[client.report_status]}
-        </span>
+        <div className="hidden lg:flex items-center gap-1.5 shrink-0">
+          <ReconChip recon={client.recon} />
+          {conn.needs_attention ? (
+            <Chip tone="red">{CONNECTION_LABELS[conn.status] ?? conn.status}</Chip>
+          ) : (
+            <Chip tone="green">Xero OK{conn.last_sync_at ? ` · synced ${relTime(conn.last_sync_at)}` : ''}</Chip>
+          )}
+        </div>
+
+        {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />}
       </button>
 
-      {/* Expanded detail */}
-      {isExpanded && (
-        <div className="px-10 py-3 bg-gray-50 border-t border-gray-100 space-y-3">
-          {hasFxGap && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-sm font-semibold text-amber-900">
-                FX rate missing — these figures are not reliable
-              </p>
-              <p className="mt-1 text-sm text-amber-800">
-                {Array.from(new Set(fxMissing.map((r) => r.currency_pair))).join(', ')} has no rate for{' '}
-                {Array.from(new Set(fxMissing.map((r) => r.period))).sort().join(', ')}. Foreign-currency
-                amounts are included <strong>untranslated</strong>, so revenue, profit and cash are
-                overstated. Enter the missing rate to correct them.
-              </p>
-              <Link
-                href="/admin/consolidation"
-                className="mt-2 inline-flex items-center text-sm font-medium text-amber-900 underline hover:text-amber-950"
-              >
-                Enter FX rate →
-              </Link>
-            </div>
-          )}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-            <Detail label="Revenue" value={fmtCurrency(client.revenue, false)} sub={`Budget: ${fmtCurrency(client.revenue_budget, false)}`} />
-            <Detail label="Gross Profit" value={fmtCurrency(client.gross_profit, false)} sub={fmtPct(client.gross_profit_pct)} />
-            <Detail
-              label="Net Profit"
-              value={fmtCurrency(client.net_profit, false)}
-              sub={`Budget: ${fmtCurrency(client.net_profit_budget, false)}`}
-              emphasise={client.net_profit < 0}
-            />
-            <Detail
-              label="Cash"
-              value={client.cash_balance === null ? '—' : fmtCurrency(client.cash_balance, false)}
-              sub={
-                client.cash_balance === null
-                  ? 'No bank data synced'
-                  : (client.cash_missing_fx?.length ?? 0) > 0
-                    ? `Partial — ${client.cash_missing_fx![0].currency_pair} rate missing`
-                    : client.cash_as_at
-                      ? `As at ${client.cash_as_at}`
-                      : undefined
-              }
-            />
-            <Detail
-              label="Reconciliation"
-              value={
-                client.unreconciled_count === null
-                  ? '—'
-                  : client.unreconciled_count > 0
-                    ? `${client.unreconciled_count} unreconciled`
-                    : 'Reconciled'
-              }
-              sub={client.unreconciled_count === null ? 'Not checked' : undefined}
-            />
+      {isExpanded && <RowDetail client={client} month={month} onChanged={onChanged} />}
+    </div>
+  )
+}
+
+function RowDetail({ client, month, onChanged }: { client: BoardClient; month: string; onChanged: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const post = async (label: string, url: string, body: Record<string, unknown>) => {
+    setBusy(label)
+    setActionError(null)
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        setActionError(payload.error ?? `${label} failed (${res.status})`)
+        return
+      }
+      onChanged()
+    } catch {
+      setActionError(`${label} failed — network error`)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const recheck = () => post('Re-check', '/api/cfo/recheck-reconciliation', { business_id: client.business_id })
+  const markDiscussed = () =>
+    post('Mark discussed', '/api/cfo/report-status', {
+      action: 'mark_discussed', business_id: client.business_id, period_month: `${month}-01`,
+    })
+  const unmarkDiscussed = () =>
+    post('Unmark discussed', '/api/cfo/report-status', {
+      action: 'unmark_discussed', business_id: client.business_id, period_month: `${month}-01`,
+    })
+
+  const recon = client.recon
+  const timeline: { stage: string; note: string; done: boolean }[] = [
+    {
+      stage: 'Data ready',
+      done: !client.connection.needs_attention && recon.state === 'clear',
+      note:
+        recon.state === 'outstanding' ? `${recon.totalCount} transactions unreconciled`
+        : recon.state === 'unknown' ? 'reconciliation not checked'
+        : recon.state === 'partial' ? `${recon.erroredTenants} org(s) could not be checked`
+        : client.connection.needs_attention ? (CONNECTION_LABELS[client.connection.status] ?? 'connection problem')
+        : 'synced & reconciled',
+    },
+    { stage: 'Generated', done: !!client.cycle.generated_at, note: fmtDate(client.cycle.generated_at) },
+    { stage: 'Reviewed', done: ['approved', 'sent', 'discussed'].includes(client.stage), note: client.stage === 'ready' ? 'in review' : client.cycle.approved_at ? `approved ${fmtDate(client.cycle.approved_at)}` : '—' },
+    { stage: 'Sent', done: ['sent', 'discussed'].includes(client.stage), note: fmtDate(client.cycle.sent_at) },
+    { stage: 'Discussed', done: client.stage === 'discussed', note: fmtDate(client.cycle.discussed_at) },
+  ]
+
+  return (
+    <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 grid gap-5 md:grid-cols-2">
+      <div>
+        <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
+          Unreconciled by month
+        </h4>
+        {recon.state === 'unknown' ? (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+            Reconciliation could not be checked
+            {recon.tenantCount > 0 ? ` for ${recon.tenantCount === 1 ? 'this org' : `any of ${recon.tenantCount} orgs`}` : ''} —
+            this is <strong>not</strong> the same as zero outstanding.
           </div>
+        ) : recon.months.length === 0 ? (
+          <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+            No unreconciled transactions in the last 12 months
+            {recon.state === 'partial' ? ` across the ${recon.checkedTenants} org(s) that could be checked` : ''}.
+          </div>
+        ) : (
+          <table className="w-full bg-white border border-gray-200 rounded-lg overflow-hidden text-sm">
+            <thead>
+              <tr className="bg-gray-100 text-[11px] uppercase tracking-wide text-gray-500">
+                <th className="text-left px-3 py-1.5">Month</th>
+                <th className="text-right px-3 py-1.5">Items</th>
+                <th className="text-right px-3 py-1.5">Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recon.months.map(m => (
+                <tr key={m.month} className="border-t border-gray-100">
+                  <td className="px-3 py-1.5">{formatMonthLabel(m.month)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{m.count}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{fmtMoney(m.value)}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-gray-200 bg-amber-50 font-semibold text-brand-navy">
+                <td className="px-3 py-1.5">Total outstanding</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{recon.totalCount}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{fmtMoney(recon.totalValue)}</td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+        <p className="mt-2 text-[11px] leading-relaxed text-gray-400">
+          Counts are unreconciled <strong className="text-gray-500">transactions recorded in Xero</strong>
+          {recon.tenantCount > 1 ? ` across ${recon.tenantCount} orgs` : ''}. This is not the bank-feed
+          banner: statement lines nobody has coded yet don&apos;t appear here — open Xero to see feed backlog.
+          {recon.checkedAt ? ` Last checked ${relTime(recon.checkedAt)}.` : ''}
+        </p>
+      </div>
 
-          <Link
-            href={`/coach/clients/${client.business_id}/view/finances/monthly-report`}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-brand-orange hover:bg-brand-orange-600 rounded-lg"
+      <div>
+        <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
+          {formatMonthLabel(month)} cycle
+        </h4>
+        <ul className="space-y-1.5">
+          {timeline.map(item => (
+            <li key={item.stage} className="flex items-baseline gap-2.5 text-sm">
+              <span className={`w-2 h-2 rounded-full self-center shrink-0 ${item.done ? 'bg-green-500' : 'bg-gray-300'}`} />
+              <span className={`w-24 shrink-0 font-semibold ${item.done ? 'text-brand-navy' : 'text-gray-400'}`}>{item.stage}</span>
+              <span className="text-xs text-gray-500">{item.note}</span>
+            </li>
+          ))}
+        </ul>
+
+        <SettingsEditor client={client} onSaved={onChanged} />
+      </div>
+
+      <div className="md:col-span-2 flex flex-wrap items-center gap-2">
+        <Link
+          href={`/coach/clients/${client.business_id}/view/finances/monthly-report`}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-brand-orange hover:bg-brand-orange-600 rounded-lg"
+        >
+          Open report <ExternalLink className="w-3 h-3" />
+        </Link>
+        <button
+          onClick={recheck}
+          disabled={busy !== null}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-brand-navy bg-white border border-gray-300 hover:bg-gray-50 rounded-lg disabled:opacity-50"
+        >
+          {busy === 'Re-check' ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+          Re-check reconciliation
+        </button>
+        {client.stage === 'sent' && (
+          <button
+            onClick={markDiscussed}
+            disabled={busy !== null}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-brand-navy bg-white border border-gray-300 hover:bg-gray-50 rounded-lg disabled:opacity-50"
           >
-            Review Report <ExternalLink className="w-3 h-3" />
-          </Link>
-        </div>
-      )}
+            {busy === 'Mark discussed' ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+            Mark discussed with client
+          </button>
+        )}
+        {client.stage === 'discussed' && (
+          <button
+            onClick={unmarkDiscussed}
+            disabled={busy !== null}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg disabled:opacity-50"
+          >
+            Undo discussed
+          </button>
+        )}
+        {actionError && <span className="text-xs font-medium text-red-600">{actionError}</span>}
+      </div>
     </div>
   )
 }
 
-function Metric({ label, value, emphasise }: { label: string; value: string; emphasise?: boolean }) {
-  return (
-    <div className="text-right">
-      <div className="text-[10px] uppercase text-gray-400 tracking-wide">{label}</div>
-      <div className={`text-sm font-medium ${emphasise ? 'text-red-600' : 'text-gray-900'}`}>{value}</div>
-    </div>
-  )
-}
+function SettingsEditor({ client, onSaved }: { client: BoardClient; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [dueDay, setDueDay] = useState<string>(client.due_day ? String(client.due_day) : '')
+  const [bkName, setBkName] = useState(client.bookkeeper.name ?? '')
+  const [bkEmail, setBkEmail] = useState(client.bookkeeper.email ?? '')
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
-function Detail({ label, value, sub, emphasise }: { label: string; value: string; sub?: string; emphasise?: boolean }) {
+  if (!editing) {
+    return (
+      <div className="mt-4 text-xs text-gray-500">
+        {client.bookkeeper.name || client.bookkeeper.email ? (
+          <span>Bookkeeper: {client.bookkeeper.name ?? client.bookkeeper.email}</span>
+        ) : (
+          <span className="text-gray-400">No bookkeeper contact set</span>
+        )}
+        {' · '}
+        <button onClick={() => setEditing(true)} className="font-semibold text-brand-navy underline">
+          Edit due day &amp; bookkeeper
+        </button>
+      </div>
+    )
+  }
+
+  const save = async () => {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const res = await fetch('/api/cfo/board-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          business_id: client.business_id,
+          report_due_day: dueDay ? Number(dueDay) : null,
+          bookkeeper_name: bkName || null,
+          bookkeeper_email: bkEmail || null,
+        }),
+      })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        setSaveError(payload.error ?? `Save failed (${res.status})`)
+        return
+      }
+      setEditing(false)
+      onSaved()
+    } catch {
+      setSaveError('Save failed — network error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
-    <div>
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className={`text-sm font-semibold ${emphasise ? 'text-red-600' : 'text-gray-900'}`}>{value}</div>
-      {sub && <div className="text-xs text-gray-400">{sub}</div>}
+    <div className="mt-4 p-3 bg-white border border-gray-200 rounded-lg space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <label className="font-semibold text-gray-600">Report due day</label>
+        <select
+          value={dueDay}
+          onChange={e => setDueDay(e.target.value)}
+          className="px-2 py-1 border border-gray-300 rounded-md text-xs"
+        >
+          <option value="">No due date</option>
+          {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
+            <option key={d} value={d}>{d}th of following month</option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <input
+          type="text"
+          placeholder="Bookkeeper name"
+          value={bkName}
+          onChange={e => setBkName(e.target.value)}
+          className="flex-1 min-w-[140px] px-2 py-1 text-xs border border-gray-300 rounded-md"
+        />
+        <input
+          type="email"
+          placeholder="Bookkeeper email"
+          value={bkEmail}
+          onChange={e => setBkEmail(e.target.value)}
+          className="flex-1 min-w-[180px] px-2 py-1 text-xs border border-gray-300 rounded-md"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="px-3 py-1 text-xs font-semibold text-white bg-brand-navy hover:bg-brand-navy-800 rounded-md disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button onClick={() => setEditing(false)} className="px-3 py-1 text-xs font-medium text-gray-500">
+          Cancel
+        </button>
+        {saveError && <span className="text-xs font-medium text-red-600">{saveError}</span>}
+      </div>
     </div>
   )
 }
