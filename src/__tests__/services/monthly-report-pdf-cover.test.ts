@@ -255,3 +255,14 @@ describe('WD.6 — consolidated per-entity page', () => {
     expect(docText(svc.generate() as any)).not.toContain('CONSOLIDATION')
   })
 })
+
+describe('WF.4 — budget provenance marker on the cover', () => {
+  it('a back-filled budget is disclosed on page 1; a planned one is not', () => {
+    const marked = new MonthlyReportPDFService(fixtureReport(), { budgetBackfilled: true })
+    const page1 = (marked.generate() as any).internal.pages[1].join('\n')
+    expect(page1).toContain('back-filled from actuals')
+
+    const clean = new MonthlyReportPDFService(fixtureReport(), {})
+    expect(docText(clean.generate() as any)).not.toContain('back-filled')
+  })
+})

@@ -929,6 +929,9 @@ export default function MonthlyReportPage() {
     memo?: string
     moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
     consolidated?: import('./utils/consolidated-rows').ConsolidatedReportVM
+    budgetSuperRate?: number | null
+    budgetActualEndMonth?: string | null
+    budgetBackfilled?: boolean
   }> => {
     let fyReport = fullYearReport
     if (!fyReport && businessId) {
@@ -1044,6 +1047,29 @@ export default function MonthlyReportPage() {
       }
     }
 
+    // WF.2/WF.4 — budget metadata for the super-rate and provenance checks.
+    // undefined = not threaded (checks skip); null rate = statutory default.
+    let budgetSuperRate: number | null | undefined
+    let budgetActualEndMonth: string | null | undefined
+    if (settings?.budget_forecast_id) {
+      try {
+        const sb = createClient()
+        const { data: fc } = await sb
+          .from('financial_forecasts')
+          .select('superannuation_rate, actual_end_month')
+          .eq('id', settings.budget_forecast_id)
+          .maybeSingle()
+        if (fc) {
+          budgetSuperRate = fc.superannuation_rate ?? null
+          budgetActualEndMonth = fc.actual_end_month ?? null
+        }
+      } catch (err) {
+        Sentry.captureException(err, { tags: { invariant: 'preflight-budget-meta' } } as any)
+      }
+    }
+    const budgetBackfilled =
+      !!report && !!budgetActualEndMonth && report.report_month <= budgetActualEndMonth
+
     return {
       fullYearReport: fyReport || undefined,
       subscriptionDetail: subDetail || undefined,
@@ -1053,6 +1079,9 @@ export default function MonthlyReportPage() {
       memo: memoText,
       moneyFlow,
       consolidated,
+      budgetSuperRate,
+      budgetActualEndMonth,
+      budgetBackfilled,
     }
   }
 
@@ -1126,6 +1155,37 @@ export default function MonthlyReportPage() {
     const pdfInput = await buildPdfInput()
     const snapshot = buildSnapshotData()
     if (!pdfInput || !snapshot || !businessId || !report) return null
+
+    // WF.1 — Approve & Send persists a pre-flight run too (no panel: this
+    // flow already confirms). The emailed pack gets the same proof-of-state
+    // record as a download.
+    try {
+      const opts: any = pdfInput.options
+      const t = collectCommentaryTriggers(report, balanceSheet)
+      const results = runPreflight({
+        report,
+        reconciliation,
+        wagesDetail: opts.wagesDetail ?? null,
+        subscriptionDetail: opts.subscriptionDetail ?? null,
+        externalMetrics: opts.externalMetrics ?? null,
+        moneyFlow: opts.moneyFlow ?? null,
+        consolidated: opts.consolidated?.diagnostics ?? null,
+        unmappedCount: unmapped.length,
+        dataQualityLevel: dataQuality,
+        qualityCheckFailed,
+        budgetSuperRate: opts.budgetSuperRate,
+        budgetActualEndMonth: opts.budgetActualEndMonth,
+        commentary: commentary as any,
+        triggeredAccounts: [...t.expense_lines, ...t.revenue_lines, ...t.favourable_expense_lines].map(l => l.account_name),
+      })
+      fetch('/api/monthly-report/preflight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_id: businessId, report_month: report.report_month, context: 'approve_send', results }),
+      }).catch(err => Sentry.captureException(err, { tags: { invariant: 'preflight-persist-client' } } as any))
+    } catch (err) {
+      Sentry.captureException(err, { tags: { invariant: 'preflight-approve-send' } } as any)
+    }
     return {
       business_id: businessId,
       period_month: `${report.report_month}-01`,
@@ -1242,6 +1302,10 @@ export default function MonthlyReportPage() {
         moneyFlow: eager.moneyFlow ?? null,
         consolidated: (eager.consolidated as any)?.diagnostics ?? null,
         unmappedCount: unmapped.length,
+        dataQualityLevel: dataQuality,
+        qualityCheckFailed,
+        budgetSuperRate: eager.budgetSuperRate,
+        budgetActualEndMonth: eager.budgetActualEndMonth,
         commentary: commentary as any,
         triggeredAccounts: (() => {
           const t = collectCommentaryTriggers(report, balanceSheet)
