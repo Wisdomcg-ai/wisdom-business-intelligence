@@ -200,28 +200,36 @@ export default function CfoBoardPage() {
       return next
     })
 
-  // One click, whole fleet: run the live re-check for every visible client,
-  // SEQUENTIALLY — parallel would stack Xero calls across tenants and each
-  // request stays inside its own server time budget this way.
+  // One click, whole fleet. Three clients in flight at once — Xero's rate
+  // limits are PER TENANT, so cross-tenant concurrency is safe, and each
+  // request still fits its own server time budget.
   const runCheckAll = async () => {
     const targets = data?.clients ?? []
     if (targets.length === 0 || checkAll) return
     setCheckAllResult(null)
     const failures: string[] = []
-    for (let i = 0; i < targets.length; i++) {
-      const client = targets[i]
-      setCheckAll({ done: i, total: targets.length, current: client.business_name })
-      try {
-        const res = await fetch('/api/cfo/recheck-reconciliation', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ business_id: client.business_id }),
-        })
-        if (!res.ok) failures.push(client.business_name)
-      } catch {
-        failures.push(client.business_name)
+    let done = 0
+    let next = 0
+    setCheckAll({ done: 0, total: targets.length, current: targets[0].business_name })
+    const worker = async () => {
+      while (next < targets.length) {
+        const client = targets[next++]
+        setCheckAll(prev => ({ done: prev?.done ?? done, total: targets.length, current: client.business_name }))
+        try {
+          const res = await fetch('/api/cfo/recheck-reconciliation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ business_id: client.business_id }),
+          })
+          if (!res.ok) failures.push(client.business_name)
+        } catch {
+          failures.push(client.business_name)
+        }
+        done++
+        setCheckAll(prev => (prev ? { ...prev, done } : prev))
       }
     }
+    await Promise.all(Array.from({ length: Math.min(3, targets.length) }, worker))
     setCheckAll(null)
     setCheckAllResult(
       failures.length === 0
