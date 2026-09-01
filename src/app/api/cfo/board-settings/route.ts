@@ -32,6 +32,7 @@ const PostBodySchema = z
     report_due_day: z.number().nullable().optional(),
     bookkeeper_name: z.string().nullable().optional(),
     bookkeeper_email: z.string().nullable().optional(),
+    hide_from_board: z.boolean().optional(),
   })
   .passthrough()
 
@@ -60,6 +61,12 @@ async function postHandler(request: Request) {
         return NextResponse.json({ error: 'bookkeeper_email is not a valid email' }, { status: 400 })
       }
       patch.bookkeeper_email = email || null
+    }
+    if ('hide_from_board' in body) {
+      if (typeof body.hide_from_board !== 'boolean') {
+        return NextResponse.json({ error: 'hide_from_board must be a boolean' }, { status: 400 })
+      }
+      patch.hide_from_board = body.hide_from_board
     }
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
@@ -107,7 +114,7 @@ async function postHandler(request: Request) {
         { business_id: businessId, ...patch, updated_at: new Date().toISOString() },
         { onConflict: 'business_id', ignoreDuplicates: false },
       )
-      .select('business_id, report_due_day, bookkeeper_name, bookkeeper_email')
+      .select('business_id, report_due_day, bookkeeper_name, bookkeeper_email, hide_from_board')
       .single()
     if (error) {
       Sentry.captureException(error, {
