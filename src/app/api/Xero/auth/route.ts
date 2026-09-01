@@ -35,8 +35,19 @@ const SCOPES = [
   'accounting.contacts.read',
   // NOTE: no finance.* scopes — Xero's Finance API is closed (lending
   // partners only) and requesting unassigned scopes fails the whole consent.
-  // The CFO board's statement-line reconciliation counts come from the
-  // accounting Reports/BankStatement report under accounting.reports.read.
+  //
+  // Bank Statement report (the CFO board's banner-exact reconciliation
+  // counts): since Xero's April 2024 change it sits behind its own scope,
+  // which only works after Matt signs the Bank Statement addendum to the
+  // developer terms via Xero API support. Requesting it before the addendum
+  // is processed risks failing the whole consent — so it is gated. Flip
+  // XERO_BANKSTATEMENT_SCOPE_ENABLED='true' in Vercel once Xero confirms,
+  // then reconnect orgs one by one; the sweep upgrades per org automatically
+  // (it retries statement lines every run and falls back with a recorded
+  // reason — see lib/reconciliation/sweep.ts).
+  ...(process.env.XERO_BANKSTATEMENT_SCOPE_ENABLED === 'true'
+    ? ['accounting.reports.bankstatement.read']
+    : []),
   'payroll.employees',        // Payroll employee access (AU)
   'payroll.employees.read',   // Read payroll employees
   'payroll.payruns.read',     // Read pay runs and payslips
