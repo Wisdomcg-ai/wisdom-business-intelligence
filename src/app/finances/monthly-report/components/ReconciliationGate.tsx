@@ -95,8 +95,15 @@ export default function ReconciliationGate({
         <AlertTriangle className={`w-5 h-5 ${iconColor} flex-shrink-0 mt-0.5`} />
         <div className="flex-1">
           <p className={`text-sm font-medium ${textColor}`}>
-            {reconciliation.has_more ? '100+' : count} unreconciled transaction{count !== 1 ? 's' : ''} ({formattedTotal})
+            {reconciliation.has_more ? '500+' : count} unreconciled transaction{count !== 1 ? 's' : ''} ({formattedTotal})
           </p>
+          {(reconciliation.bank_accounts?.length ?? 0) > 0 && (
+            <p className={`text-xs mt-1 ${textColor} opacity-90`}>
+              {reconciliation.bank_accounts
+                .map(a => `${a.name}: ${a.count}`)
+                .join(' · ')}
+            </p>
+          )}
           <p className={`text-xs mt-1 ${textColor} opacity-80`}>
             Report will be marked as DRAFT until all transactions are reconciled in Xero.
           </p>

@@ -10,6 +10,7 @@ import { requireSectionPermission } from '@/lib/permissions/requireSectionPermis
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 import { withQuerySchema } from '@/lib/api/with-schema'
 import { z } from 'zod'
+import { UNRECONCILED_AUTHORISED, monthRangeWhere } from '@/lib/reconciliation/where-clauses'
 
 export const dynamic = 'force-dynamic'
 
@@ -95,21 +96,38 @@ async function getHandler(request: NextRequest) {
       })
     }
 
-    // Build where clause for unreconciled bank transactions
-    let whereClause = 'IsReconciled==false'
-    if (month) {
-      const [y, m] = month.split('-').map(Number)
-      const lastDay = new Date(y, m, 0).getDate()
-      whereClause += `&&Date>= DateTime(${y},${m},1)&&Date<=DateTime(${y},${m},${lastDay})`
+    // Build where clause for unreconciled bank transactions.
+    //
+    // THE DELETED TRAP (see lib/reconciliation/where-clauses.ts): a deleted
+    // Xero bank transaction keeps IsReconciled=false FOREVER while appearing
+    // in no reconciliation report and no reconcile badge. Without the
+    // Status=="AUTHORISED" filter, every deleted duplicate haunted this count
+    // permanently — a business whose bank rec reports tied to the cent could
+    // still show "4 unreconciled" here. Also note: this counts unreconciled
+    // TRANSACTIONS recorded in Xero, not the bank-feed statement lines behind
+    // Xero's per-account reconcile badge (unreachable without the
+    // addendum-gated Bank Statement scope) — label it accordingly.
+    const monthRange = month ? monthRangeWhere(month) : null
+    if (month && !monthRange) {
+      return NextResponse.json({ error: 'month must be YYYY-MM' }, { status: 400 })
     }
+    const whereClause = monthRange
+      ? `${UNRECONCILED_AUTHORISED} AND ${monthRange}`
+      : UNRECONCILED_AUTHORISED
 
     let unreconciledCount = 0
     let unreconciledTotal = 0
     let hasMore = false
+    // Per-account attribution: Xero's reconcile badge is PER ACCOUNT, so a
+    // nonzero org-wide count with a clean-looking Xero is routinely one
+    // secondary account nobody runs reports for. Naming it closes that gap.
+    const perAccount = new Map<string, { count: number; total: number }>()
     // Any org we could not check makes the whole answer indeterminate. We must
     // never present a partial count as a clean bill of health.
     const failedTenants: string[] = []
     const okTenants: string[] = []
+    // 5 pages × 100 = 500-transaction cap per org, mirroring the board sweep.
+    const MAX_PAGES = 5
 
     for (const connection of connections) {
       const tenantLabel = connection.tenant_name || connection.tenant_id
@@ -124,77 +142,58 @@ async function getHandler(request: NextRequest) {
         continue
       }
 
-      const txnUrl = `https://api.xero.com/api.xro/2.0/BankTransactions?where=${encodeURIComponent(whereClause)}&page=1`
-      const txnResponse = await fetch(txnUrl, {
-        headers: {
-          'Authorization': `Bearer ${tokenResult.accessToken!}`,
-          'xero-tenant-id': connection.tenant_id,
-          'Accept': 'application/json',
-        },
-      })
-
-      if (!txnResponse.ok) {
-        // Previously this left the count at 0 and therefore reported CLEAN —
-        // a Xero outage or a revoked grant rendered as "all reconciled".
-        Sentry.captureException(new Error(`BankTransactions ${txnResponse.status}`), {
-          tags: { route: 'Xero/reconciliation', invariant: 'reconciliation_check_failed' },
-          extra: { context: '[Reconciliation] BankTransactions fetch failed', tenant: tenantLabel, status: txnResponse.status },
-        } as any)
-        failedTenants.push(tenantLabel)
-        continue
-      }
-
-      const txnData = await txnResponse.json()
-      const transactions = txnData.BankTransactions || []
-      unreconciledCount += transactions.length
-      unreconciledTotal += transactions.reduce(
-        (sum: number, t: any) => sum + Math.abs(parseFloat(t.Total || '0')),
-        0,
-      )
-      // Xero returns up to 100 per page; exactly 100 means there are likely more.
-      if (transactions.length >= 100) hasMore = true
-      okTenants.push(tenantLabel)
-    }
-
-    const checkFailed = failedTenants.length > 0
-    if (hasMore) unreconciledCount = Math.max(unreconciledCount, 100)
-
-    // Fetch bank accounts for context, across every org we could reach.
-    // (Previously bound to the single resolved connection's token/tenant.)
-    const bankAccounts: { name: string; count: number; balance: number }[] = []
-    try {
-      for (const connection of connections) {
-        const tk = await getValidAccessToken(connection, supabase)
-        if (!tk.success) continue
-        const acctUrl = 'https://api.xero.com/api.xro/2.0/Accounts?where=Type=="BANK"'
-        const acctResponse = await fetch(acctUrl, {
+      let tenantFailed = false
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const txnUrl = `https://api.xero.com/api.xro/2.0/BankTransactions?where=${encodeURIComponent(whereClause)}&page=${page}`
+        const txnResponse = await fetch(txnUrl, {
           headers: {
-            'Authorization': `Bearer ${tk.accessToken!}`,
+            'Authorization': `Bearer ${tokenResult.accessToken!}`,
             'xero-tenant-id': connection.tenant_id,
             'Accept': 'application/json',
           },
         })
 
-        if (acctResponse.ok) {
-          const acctData = await acctResponse.json()
-          for (const acc of (acctData.Accounts || [])) {
-            if (acc.Status === 'ACTIVE') {
-              bankAccounts.push({
-                // Multi-org: prefix the org so two "Business Cheque" accounts
-                // from different entities are distinguishable in the UI.
-                name: connections.length > 1
-                  ? `${connection.tenant_name ?? 'Org'} — ${acc.Name}`
-                  : acc.Name,
-                count: 0,
-                balance: parseFloat(acc.BankAccountType === 'CREDITCARD' ? acc.CurrencyCode : '0'),
-              })
-            }
-          }
+        if (!txnResponse.ok) {
+          // A failed fetch (Xero outage, revoked grant, or a 400 rejecting the
+          // where clause) must surface as a named per-org failure — leaving
+          // the count at 0 would render as "all reconciled".
+          Sentry.captureException(new Error(`BankTransactions ${txnResponse.status}`), {
+            tags: { route: 'Xero/reconciliation', invariant: 'reconciliation_check_failed' },
+            extra: { context: '[Reconciliation] BankTransactions fetch failed', tenant: tenantLabel, status: txnResponse.status },
+          } as any)
+          failedTenants.push(tenantLabel)
+          tenantFailed = true
+          break
         }
+
+        const txnData = await txnResponse.json()
+        const transactions = txnData.BankTransactions || []
+        unreconciledCount += transactions.length
+        for (const t of transactions) {
+          const amount = Math.abs(parseFloat(t.Total || '0'))
+          unreconciledTotal += amount
+          // Multi-org: prefix the org so two "Business Cheque" accounts from
+          // different entities stay distinguishable in the UI.
+          const accountName = t.BankAccount?.Name ?? '(unknown account)'
+          const key = connections.length > 1
+            ? `${connection.tenant_name ?? 'Org'} — ${accountName}`
+            : accountName
+          const entry = perAccount.get(key) ?? { count: 0, total: 0 }
+          entry.count += 1
+          entry.total += amount
+          perAccount.set(key, entry)
+        }
+        if (transactions.length < 100) break
+        if (page === MAX_PAGES) hasMore = true
       }
-    } catch (err) {
-      Sentry.captureException(err, { tags: { route: 'Xero/reconciliation' }, extra: { context: "[Reconciliation] Error fetching bank accounts" } } as any)
+      if (!tenantFailed) okTenants.push(tenantLabel)
     }
+
+    const checkFailed = failedTenants.length > 0
+
+    const bankAccounts = Array.from(perAccount.entries())
+      .map(([name, v]) => ({ name, count: v.count, total: Math.round(v.total * 100) / 100 }))
+      .sort((a, b) => b.count - a.count)
 
     // FAIL CLOSED: "clean" now requires that every org was actually checked.
     // A partial answer is not a clean bill of health.

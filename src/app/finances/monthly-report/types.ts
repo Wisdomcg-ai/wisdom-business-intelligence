@@ -255,7 +255,10 @@ export interface ReconciliationStatus {
   unreconciled_count: number
   unreconciled_total: number
   has_more: boolean
-  bank_accounts: { name: string; count: number; balance: number }[]
+  /** Per-account attribution of the unreconciled count (accounts with items
+   *  only; org-prefixed for multi-org businesses). Xero's reconcile badge is
+   *  per account, so this names where a nonzero count actually lives. */
+  bank_accounts: { name: string; count: number; total: number }[]
   is_clean: boolean
   /**
    * FLEET-04 (26 Aug 2026): true when one or more connected Xero orgs could not

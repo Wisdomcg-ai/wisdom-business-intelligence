@@ -58,6 +58,7 @@ interface BoardClient {
     mixedCurrencies: boolean
     source: 'statement_lines' | 'account_transactions' | 'mixed' | null
     months: { month: string; count: number; value: number | null }[]
+    byAccount: { name: string; count: number }[]
     checkedAt: string | null
     checkedTenants: number
     erroredTenants: number
@@ -730,6 +731,12 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
               </tr>
             </tbody>
           </table>
+        )}
+        {recon.byAccount.length > 0 && recon.totalCount > 0 && (
+          <p className="mt-2 text-xs text-gray-600">
+            <span className="font-semibold text-gray-500">By account:</span>{' '}
+            {recon.byAccount.map(a => `${a.name} ${a.count}`).join(' · ')}
+          </p>
         )}
         <p className="mt-2 text-[11px] leading-relaxed text-gray-400">
           {sourceCaveat(client)}

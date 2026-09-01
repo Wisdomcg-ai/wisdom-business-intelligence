@@ -111,6 +111,10 @@ export interface ReconSummary {
   source: 'statement_lines' | 'account_transactions' | 'mixed' | null
   /** Aggregated across tenants and bank accounts, ascending by month ('YYYY-MM'). */
   months: { month: string; count: number; value: number | null }[]
+  /** Per-bank-account attribution, count-descending. Xero's reconcile badge
+   *  is PER ACCOUNT — naming the account explains a count that looks wrong
+   *  from the org-wide view (routinely a secondary account nobody checks). */
+  byAccount: { name: string; count: number }[]
   /** Oldest successful check — the honest "as at" for the whole business. */
   checkedAt: string | null
   checkedTenants: number
@@ -143,13 +147,19 @@ export function summariseRecon(
         : null
 
   const monthMap = new Map<string, { count: number; value: number }>()
+  const accountMap = new Map<string, number>()
   for (const bucket of buckets) {
     const key = bucket.month.slice(0, 7)
     const entry = monthMap.get(key) ?? { count: 0, value: 0 }
     entry.count += bucket.unreconciled_count
     entry.value += Number(bucket.unreconciled_value ?? 0)
     monthMap.set(key, entry)
+    const accountName = bucket.bank_account_name ?? '(unknown account)'
+    accountMap.set(accountName, (accountMap.get(accountName) ?? 0) + bucket.unreconciled_count)
   }
+  const byAccount = Array.from(accountMap.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
   const months = Array.from(monthMap.entries())
     .map(([month, m]) => ({
       month,
@@ -181,6 +191,7 @@ export function summariseRecon(
     mixedCurrencies,
     source,
     months,
+    byAccount,
     checkedAt,
     checkedTenants: ok.length,
     erroredTenants: failedCoverage,
