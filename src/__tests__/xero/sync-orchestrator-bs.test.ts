@@ -768,4 +768,58 @@ describe('Path A BS sync orchestrator', () => {
       expect(day).toBeGreaterThanOrEqual(28) // last day of any month
     }
   })
+
+  it('Test 9 — BS stale-row sweep: every balanced date gets a delete scoped to today\'s account set; unbalanced dates are NOT swept', async () => {
+    // The JDS bug class: a mid-month sync stores a forward-dated balance
+    // (Wages Payable $70,539.88 on 23 Aug for 2026-08-31); the account clears
+    // by real month-end and vanishes from the final report, so the lingering
+    // row breaks A − L − E by exactly its value. The sweep deletes rows for a
+    // balanced date whose account_id is not in that date's fresh write set.
+    const UNBALANCED_DATE = '2025-12-31'
+    const { callLog } = makeSupabaseStub({
+      connections: [
+        { id: 'conn-1', tenant_id: 'tenant-A-uuid', tenant_name: 'JDS', business_id: 'profile-id-1' },
+      ],
+    })
+    const plH = defaultPLHandlers({})
+    mockFetchRouted((u) => {
+      const pl = plH(u); if (pl) return pl
+      if (isBSUrl(u)) {
+        const d = balanceDateFromBSUrl(u)!
+        const equity = d === UNBALANCED_DATE ? 595 : 600
+        return makeJsonResponse(
+          singlePeriodBSReport(d, [
+            { name: 'NAB Bank', id: BS_ASSET_ID, amount: '1000.00', section: 'Assets' },
+            { name: 'GST Payable', id: BS_LIAB_ID, amount: '400.00', section: 'Liabilities' },
+            { name: 'Retained Earnings', id: BS_EQUITY_ID, amount: equity.toFixed(2), section: 'Equity' },
+          ]),
+        )
+      }
+      return makeJsonResponse({}, 500)
+    })
+
+    const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
+    await syncBusinessXeroPL('biz-id-1')
+
+    const bsDeletes = callLog.filter(
+      (c: any) => c.kind === 'from:xero_bs_lines:delete',
+    )
+    // One sweep per BALANCED date (22 month-ends − 1 unbalanced = 21).
+    expect(bsDeletes.length).toBe(21)
+    // Every sweep is scoped: business + tenant + a single balance_date +
+    // NOT-IN today's account_id set — and never the unbalanced date.
+    for (const d of bsDeletes) {
+      const filters: any[] = d.arg
+      const dateFilter = filters.find((f) => f.kind === 'eq' && f.col === 'balance_date')
+      expect(dateFilter).toBeDefined()
+      expect(dateFilter.val).not.toBe(UNBALANCED_DATE)
+      const notIn = filters.find((f) => f.kind === 'not' && f.col === 'account_id')
+      expect(notIn).toBeDefined()
+      expect(notIn.val).toContain(BS_ASSET_ID)
+      expect(notIn.val).toContain(BS_EQUITY_ID)
+      expect(filters.some((f) => f.kind === 'eq' && f.col === 'business_id')).toBe(true)
+      expect(filters.some((f) => f.kind === 'eq' && f.col === 'tenant_id')).toBe(true)
+    }
+  })
+
 })
