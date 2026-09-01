@@ -263,15 +263,27 @@ function inFlightRejectionResult(businessId: string): SyncResult {
  * adjustments for. Path A: this list should be empty.
  */
 /**
- * Materiality for the P&L monthly-sum vs FY-total checks ONLY. Xero itself
- * rounds FX-revalued accounts differently between a monthly report and an FY
- * report, so a persistent $0.01 delta is Xero disagreeing with Xero — not a
- * data defect (proven on the Pulse fork: Kogarah's FX account sat at exactly
- * $0.01 for a week and paged Sentry every sync). Books balance to the cent;
- * reports round — so the balance-sheet equation check deliberately stays at
- * $0.01 and does NOT use this constant.
+ * Materiality for the P&L monthly-sum vs FY-total checks. Xero itself rounds
+ * FX-revalued accounts differently between a monthly report and an FY report,
+ * so a persistent $0.01 delta is Xero disagreeing with Xero — not a data
+ * defect (proven on the Pulse fork: Kogarah's FX account sat at exactly
+ * $0.01 for a week and paged Sentry every sync).
  */
 const PL_RECONCILIATION_MATERIALITY = 0.05
+
+/**
+ * Materiality for the BS Net Assets == Equity write-gate. This deliberately
+ * sat at $0.01 on the theory that "books balance to the cent; reports round"
+ * applied only to the P&L. Attaquer disproved it (1 Sep 2026): its July BS —
+ * five foreign-currency bank accounts revalued per-row, the FX offset in
+ * equity rounded independently — re-adds $0.03 off in Xero's OWN report,
+ * while Xero's displayed totals agree because they come from unrounded
+ * internals. The $0.01 gate refused to store that month forever. The BS is a
+ * report too; cents-level residuals are structural for FX-holding orgs, and
+ * every genuine defect we've caught ($2k–$70k) clears $0.05 by orders of
+ * magnitude. Matt approved $0.05 (P&L parity) 1 Sep 2026.
+ */
+const BS_EQUATION_MATERIALITY = 0.05
 
 function regressionAdjustments(
   monthlyRows: ParsedPLRow[],
@@ -389,7 +401,7 @@ async function syncBalanceSheetForTenant(
   for (const [date, sums] of byDate.entries()) {
     const netAssets = sums.asset - sums.liability
     const delta = Math.round((netAssets - sums.equity) * 100) / 100
-    if (Math.abs(delta) > 0.01) {
+    if (Math.abs(delta) > BS_EQUATION_MATERIALITY) {
       unbalancedDates.push({ balance_date: date, delta })
       unbalancedSet.add(date)
       try {

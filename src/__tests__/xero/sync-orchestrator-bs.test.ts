@@ -822,4 +822,48 @@ describe('Path A BS sync orchestrator', () => {
     }
   })
 
+
+  it("Test 10 — FX rounding tolerance: a 3-cent Net-Assets/Equity delta STORES (Attaquer's July); $5 still gates", async () => {
+    // Xero's own BS report re-adds cents off for FX-holding orgs (per-row
+    // revaluation rounding vs an independently-rounded equity offset), while
+    // its displayed totals agree from unrounded internals. The write-gate is
+    // $0.05 — P&L materiality parity — so a structural 3-cent wobble stores;
+    // Test 3 above still proves a real defect ($5) is refused.
+    const WOBBLE_DATE = '2026-01-31'
+    const { upsertCallsByTable, syncJobsUpdatePayloads } = makeSupabaseStub({
+      connections: [
+        { id: 'conn-1', tenant_id: 'tenant-A-uuid', tenant_name: 'Attaquer', business_id: 'profile-id-1' },
+      ],
+    })
+    const plH = defaultPLHandlers({})
+    mockFetchRouted((u) => {
+      const pl = plH(u); if (pl) return pl
+      if (isBSUrl(u)) {
+        const d = balanceDateFromBSUrl(u)!
+        // 3-cent short equity on the wobble date only.
+        const equity = d === WOBBLE_DATE ? 599.97 : 600
+        return makeJsonResponse(
+          singlePeriodBSReport(d, [
+            { name: 'Westpac (EUR)', id: BS_ASSET_ID, amount: '1000.00', section: 'Assets' },
+            { name: 'GST Payable', id: BS_LIAB_ID, amount: '400.00', section: 'Liabilities' },
+            { name: 'Retained Earnings', id: BS_EQUITY_ID, amount: equity.toFixed(2), section: 'Equity' },
+          ]),
+        )
+      }
+      return makeJsonResponse({}, 500)
+    })
+
+    const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
+    const result = await syncBusinessXeroPL('biz-id-1')
+    expect(result.status).toBe('success')
+
+    // The wobble date is NOT gated: its rows are written…
+    const bsRows = upsertCallsByTable['xero_bs_lines'] ?? []
+    expect(bsRows.filter((r: any) => r.balance_date === WOBBLE_DATE).length).toBe(3)
+    // …and it does not appear in unbalanced_dates.
+    const tu = syncJobsUpdatePayloads[0]!
+    const unbalanced = (tu.payload.reconciliation.bs.unbalanced_dates ?? []).map((e: any) => e.balance_date)
+    expect(unbalanced).not.toContain(WOBBLE_DATE)
+  })
+
 })
