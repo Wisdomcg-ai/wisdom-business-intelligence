@@ -45,7 +45,7 @@ deploy rules. Never operate on that directory from a session here.
 ## Xero pipeline (since Aug 2026 backport)
 - sync-all-xero: 6-hourly (`0 4,10,16,22 * * *`), 700s budget, stalest-first
   rotation, self-chaining, start-marker heartbeats, ONE aggregated Sentry
-  event per run. P&L reconciliation materiality $0.05; BS equation stays $0.01.
+  event per run. P&L reconciliation materiality $0.05; BS equation also $0.05 (1 Sep 2026 — FX per-row rounding in Xero's own report; genuine defects are $1k+).
 - "Connected" has ONE definition: `src/lib/xero/connection-status.ts`
   (7 states, auth×data axes). Never derive connection health inline.
 - Heartbeats in `cron_heartbeats`; watchdog every 2h; metric invariants daily

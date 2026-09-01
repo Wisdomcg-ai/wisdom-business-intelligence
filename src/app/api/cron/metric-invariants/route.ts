@@ -39,7 +39,11 @@ export const maxDuration = 120
 const CRON_PATH = '/api/cron/metric-invariants'
 
 /** $0.01 — books balance to the cent; the mirror must too. */
-const BS_EQUATION_TOLERANCE = 0.01
+// 1 Sep 2026: $0.01 → $0.05, aligned with the sync write-gate (Matt-approved).
+// FX-holding orgs (Attaquer: 5 foreign-currency bank accounts) carry
+// structural cents-level rounding in Xero's own BS report; storing those
+// months and then flagging them daily forever would be noise, not signal.
+const BS_EQUATION_TOLERANCE = 0.05
 /** Matches the R34 Gate-4 rule: uncategorized BS rows must net to nothing. */
 const BS_UNCATEGORIZED_TOLERANCE = 0.01
 /** Months of P&L content lag tolerated before the mirror reads as stale.
