@@ -28,8 +28,10 @@ import {
   deriveStage,
   dueDateForMonth,
   daysOverdue,
+  daysSince,
   summariseRecon,
   deriveSection,
+  STALE_CODING_DAYS,
   type BoardSection,
 } from '@/lib/cfo/board-logic'
 
@@ -118,7 +120,7 @@ async function getHandler(request: Request) {
       return NextResponse.json({ month, clients: [], hidden: [], stats: emptyStats() })
     }
 
-    const [settingsRes, cycleRes, checksRes, bucketsRes, syncClock] = await Promise.all([
+    const [settingsRes, cycleRes, checksRes, bucketsRes, syncClock, accountStatusRes] = await Promise.all([
       supabase
         .from('monthly_report_settings')
         .select('business_id, report_due_day, bookkeeper_name, bookkeeper_email, hide_from_board')
@@ -137,12 +139,17 @@ async function getHandler(request: Request) {
         .select('business_id, tenant_id, month, unreconciled_count, unreconciled_value, currency, bank_account_name')
         .in('business_id', fleetIds),
       getLastSyncByTenant(supabase as never, 60),
+      supabase
+        .from('bank_account_status')
+        .select('business_id, tenant_id, bank_account_id, bank_account_name, currency, short_code, last_coded_date, checked_at')
+        .in('business_id', fleetIds),
     ])
     for (const [label, res] of [
       ['settings', settingsRes],
       ['cycle', cycleRes],
       ['checks', checksRes],
       ['buckets', bucketsRes],
+      ['account_status', accountStatusRes],
     ] as const) {
       if ((res as { error: { message: string } | null }).error) {
         throw new Error(`${label} query failed: ${(res as any).error.message}`)
@@ -153,6 +160,7 @@ async function getHandler(request: Request) {
     const cycleByBiz = new Map((cycleRes.data ?? []).map(c => [c.business_id, c]))
     const checksByBiz = groupBy(checksRes.data ?? [], r => r.business_id)
     const bucketsByBiz = groupBy(bucketsRes.data ?? [], r => r.business_id)
+    const accountStatusByBiz = groupBy(accountStatusRes.data ?? [], r => r.business_id)
 
     const todayIso = new Date().toISOString()
     const now = Date.now()
@@ -233,6 +241,24 @@ async function getHandler(request: Request) {
           name: settings?.bookkeeper_name ?? null,
           email: settings?.bookkeeper_email ?? null,
         },
+        // Per-account backlog hints + reconcile-screen deep links. The stale
+        // flag is a SMELL (nothing coded recently), never the banner count.
+        bank_accounts: (accountStatusByBiz.get(businessId) ?? [])
+          .map(s => {
+            const days = daysSince(s.last_coded_date, todayIso)
+            return {
+              bank_account_id: s.bank_account_id,
+              name: s.bank_account_name,
+              currency: s.currency,
+              last_coded_date: s.last_coded_date,
+              days_since_coded: days,
+              stale: days !== null && days > STALE_CODING_DAYS,
+              reconcile_url: s.short_code
+                ? `https://go.xero.com/organisationlogin/default.aspx?shortcode=${encodeURIComponent(s.short_code)}&redirecturl=${encodeURIComponent(`/Bank/BankRec.aspx?accountID=${s.bank_account_id}`)}`
+                : null,
+            }
+          })
+          .sort((a, b) => (b.days_since_coded ?? -1) - (a.days_since_coded ?? -1)),
       }
     })
 

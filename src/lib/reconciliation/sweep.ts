@@ -34,6 +34,7 @@ import {
 import {
   bucketByMonth,
   xeroDateToMonthKey,
+  xeroDateToIsoDate,
   type MonthBucket,
   type UnreconciledItem,
 } from './bucketing'
@@ -50,6 +51,19 @@ export interface AccountBuckets {
   buckets: MonthBucket[]
 }
 
+/**
+ * Per-account status row — the "current scopes" feed-backlog signal.
+ * last_coded_date is the newest AUTHORISED bank transaction date; a stale
+ * value is the backlog SMELL, never the banner count. null = could not be
+ * determined (render unknown, not fresh).
+ */
+export interface BankAccountStatus {
+  bankAccountId: string
+  bankAccountName: string | null
+  currency: string | null
+  lastCodedDate: string | null
+}
+
 export interface TenantSweepResult {
   tenantId: string
   /** Canonical businesses-space id (resolved by the caller). */
@@ -61,6 +75,10 @@ export interface TenantSweepResult {
   fallbackReason?: string
   source: SweepSource
   accounts: AccountBuckets[]
+  /** One row per active bank account regardless of unreconciled state. */
+  accountStatuses: BankAccountStatus[]
+  /** Org short code (Organisation endpoint) for reconcile-screen deep links. */
+  shortCode: string | null
   totalCount: number
   totalValue: number
 }
@@ -172,6 +190,16 @@ export function groupFallbackTransactions(transactions: any[]): {
   return { byAccount, dropped }
 }
 
+/** Newest transaction date from a BankTransactions page ordered Date DESC. */
+export function latestCodedDate(json: any): string | null {
+  const txns = Array.isArray(json?.BankTransactions) ? json.BankTransactions : []
+  for (const txn of txns) {
+    const date = xeroDateToIsoDate(txn?.DateString ?? txn?.Date)
+    if (date) return date
+  }
+  return null
+}
+
 export function sumBuckets(accounts: AccountBuckets[]): { totalCount: number; totalValue: number } {
   let totalCount = 0
   let totalValue = 0
@@ -215,6 +243,36 @@ async function listBankAccounts(
       bankAccountName: a.Name ?? null,
       currency: a.CurrencyCode ?? null,
     }))
+}
+
+/** Org short code for reconcile-screen deep links; null on any failure (fail-soft — it's navigation, not data). */
+async function fetchShortCode(tenantId: string, accessToken: string): Promise<string | null> {
+  try {
+    const res = await fetchXeroWithRateLimit(`${ACCOUNTING_BASE}/Organisation`, { accessToken, tenantId })
+    const org = Array.isArray(res.json?.Organisations) ? res.json.Organisations[0] : null
+    return org?.ShortCode ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Newest coded (AUTHORISED) transaction date for one bank account. Fail-soft:
+ * null means "could not determine", which renders as unknown — never fresh.
+ */
+async function fetchLastCodedDate(
+  tenantId: string,
+  accessToken: string,
+  bankAccountId: string,
+): Promise<string | null> {
+  try {
+    const where = `Status=="AUTHORISED" AND BankAccount.AccountID==Guid("${bankAccountId}")`
+    const url = `${ACCOUNTING_BASE}/BankTransactions?where=${encodeURIComponent(where)}&order=${encodeURIComponent('Date DESC')}&page=1`
+    const res = await fetchXeroWithRateLimit(url, { accessToken, tenantId })
+    return latestCodedDate(res.json)
+  } catch {
+    return null
+  }
 }
 
 async function fetchStatementLineItems(
@@ -270,6 +328,8 @@ export async function sweepTenant(
     tenantId: connection.tenant_id,
     businessId: canonicalBusinessId,
     accounts: [],
+    accountStatuses: [],
+    shortCode: null,
     totalCount: 0,
     totalValue: 0,
   }
@@ -294,6 +354,22 @@ export async function sweepTenant(
       return { ...base, status: 'ok', source: 'statement_lines' }
     }
     const accountCurrency = new Map(bankAccounts.map(a => [a.bankAccountId, a.currency]))
+
+    // Per-account backlog signal + deep-link identity. Fail-soft per item —
+    // these are hints and navigation, never gating data.
+    base.shortCode = await fetchShortCode(connection.tenant_id, token.accessToken)
+    for (const account of bankAccounts) {
+      base.accountStatuses.push({
+        bankAccountId: account.bankAccountId,
+        bankAccountName: account.bankAccountName,
+        currency: account.currency,
+        lastCodedDate: await fetchLastCodedDate(
+          connection.tenant_id,
+          token.accessToken,
+          account.bankAccountId,
+        ),
+      })
+    }
 
     // Primary: statement lines from the Bank Statement report. If ANY
     // account's report can't be fetched or parsed, the whole tenant falls
@@ -407,9 +483,31 @@ export async function persistTenantSweep(
       checked_at: checkedAtIso,
     })),
   )
-  if (rows.length === 0) return null
+  if (rows.length > 0) {
+    const { error: insertError } = await supabase.from('reconciliation_snapshots').insert(rows)
+    if (insertError) return `reconciliation_snapshots insert failed: ${insertError.message}`
+  }
 
-  const { error: insertError } = await supabase.from('reconciliation_snapshots').insert(rows)
-  if (insertError) return `reconciliation_snapshots insert failed: ${insertError.message}`
+  if (result.accountStatuses.length > 0) {
+    const { error: statusDeleteError } = await supabase
+      .from('bank_account_status')
+      .delete()
+      .eq('tenant_id', result.tenantId)
+    if (statusDeleteError) return `bank_account_status delete failed: ${statusDeleteError.message}`
+
+    const { error: statusInsertError } = await supabase.from('bank_account_status').insert(
+      result.accountStatuses.map(s => ({
+        tenant_id: result.tenantId,
+        business_id: result.businessId,
+        bank_account_id: s.bankAccountId,
+        bank_account_name: s.bankAccountName,
+        currency: s.currency,
+        short_code: result.shortCode,
+        last_coded_date: s.lastCodedDate,
+        checked_at: checkedAtIso,
+      })),
+    )
+    if (statusInsertError) return `bank_account_status insert failed: ${statusInsertError.message}`
+  }
   return null
 }
