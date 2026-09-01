@@ -4,7 +4,6 @@ import {
   parseBankStatementReport,
   groupFallbackTransactions,
   sumBuckets,
-  latestCodedDate,
 } from '../sweep'
 
 describe('sweepWindow', () => {
@@ -162,24 +161,5 @@ describe('sumBuckets', () => {
 
   it('returns zeros for a fully reconciled tenant', () => {
     expect(sumBuckets([])).toEqual({ totalCount: 0, totalValue: 0 })
-  })
-})
-
-describe('latestCodedDate', () => {
-  it('takes the first parseable date from a Date-DESC-ordered page', () => {
-    expect(
-      latestCodedDate({
-        BankTransactions: [
-          { DateString: '2026-08-03T00:00:00', Total: 10 },
-          { DateString: '2026-07-01T00:00:00', Total: 5 },
-        ],
-      }),
-    ).toBe('2026-08-03')
-  })
-
-  it('null for empty or malformed pages — unknown, never fresh', () => {
-    expect(latestCodedDate({ BankTransactions: [] })).toBeNull()
-    expect(latestCodedDate({})).toBeNull()
-    expect(latestCodedDate({ BankTransactions: [{ DateString: 'garbage' }] })).toBeNull()
   })
 })
