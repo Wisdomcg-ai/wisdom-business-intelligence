@@ -456,6 +456,71 @@ async function syncBalanceSheetForTenant(
       )
     }
     rowsInserted = dbRows.length
+
+    // BS stale-row sweep — the P&L's P3a sweep, which the BS mirror never
+    // got. The cron fetches FUTURE month-ends all month (Xero answers a
+    // forward date with the balance as of now — this is what keeps the cash
+    // position fresh), so an account that carries a balance mid-month and
+    // clears to zero by the real month-end VANISHES from the final report:
+    // the upsert never touches its forward-dated row and the lingering value
+    // breaks A − L − E by exactly that amount. Proven fleet-wide 1 Sep 2026:
+    // six businesses off by $2.97–$70,539.88, every one collapsing to ≤1¢
+    // once rows absent from the latest write were excluded (JDS: a $70,539.88
+    // 'Wages Payable' fetched mid-payrun on 23 Aug, zero by month-end).
+    //
+    // Per-date scope; only BALANCED dates are swept (an unbalanced date was
+    // never upserted, and sweeping against a gated fetch would delete good
+    // rows). Failure is non-fatal — next sync retries.
+    const dateToAccountIds = new Map<string, string[]>()
+    for (const r of dbRows) {
+      const arr = dateToAccountIds.get(r.balance_date) ?? []
+      arr.push(r.account_id)
+      dateToAccountIds.set(r.balance_date, arr)
+    }
+    let bsStaleSwept = 0
+    for (const [date, accountIds] of dateToAccountIds) {
+      const inClause = `(${accountIds.map((id) => `"${id}"`).join(',')})`
+      const sweepRes = (await supabase
+        .from('xero_bs_lines')
+        .delete({ count: 'exact' })
+        .eq('business_id', profileId)
+        .eq('tenant_id', conn.tenant_id)
+        .eq('balance_date', date)
+        .not('account_id', 'in', inClause)) as any
+      if (sweepRes?.error) {
+        try {
+          Sentry.captureMessage('xero_bs_lines stale-row sweep failed', {
+            level: 'warning',
+            tags: {
+              invariant: 'xero_sync_bs_stale_sweep',
+              business_id: profileId,
+              tenant_id: conn.tenant_id,
+              balance_date: date,
+            },
+            extra: { error: sweepRes.error.message ?? sweepRes.error.code ?? 'unknown' },
+          } as any)
+        } catch {
+          // Sentry failure must not abort.
+        }
+      } else {
+        bsStaleSwept += sweepRes?.count ?? 0
+      }
+    }
+    if (bsStaleSwept > 0) {
+      try {
+        Sentry.captureMessage('xero_bs_lines stale rows swept', {
+          level: 'info',
+          tags: {
+            invariant: 'xero_sync_bs_stale_sweep',
+            business_id: profileId,
+            tenant_id: conn.tenant_id,
+          },
+          extra: { swept: bsStaleSwept },
+        } as any)
+      } catch {
+        // Sentry failure must not abort.
+      }
+    }
   }
 
   return {
