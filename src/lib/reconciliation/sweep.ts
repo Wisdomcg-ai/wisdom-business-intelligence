@@ -56,6 +56,9 @@ export interface TenantSweepResult {
   businessId: string
   status: 'ok' | 'error'
   error?: string
+  /** Why the statement-line primary path was abandoned for this tenant —
+   *  recorded on the check row so a silent fallback is diagnosable. */
+  fallbackReason?: string
   source: SweepSource
   accounts: AccountBuckets[]
   totalCount: number
@@ -295,6 +298,7 @@ export async function sweepTenant(
     // Primary: statement lines from the Bank Statement report. If ANY
     // account's report can't be fetched or parsed, the whole tenant falls
     // back — a partial statement-line picture must not read as complete.
+    let fallbackReason: string | undefined
     try {
       const accounts: AccountBuckets[] = []
       for (const account of bankAccounts) {
@@ -313,7 +317,11 @@ export async function sweepTenant(
       return { ...base, ...sumBuckets(accounts), status: 'ok', source: 'statement_lines', accounts }
     } catch (primaryErr) {
       if (primaryErr instanceof RateLimitDailyExceededError) throw primaryErr
-      // Fall through to the account-transaction count, labelled as such.
+      // Fall through to the account-transaction count, labelled as such —
+      // but never silently: the reason lands on the check row.
+      fallbackReason = `statement report unavailable: ${
+        primaryErr instanceof Error ? primaryErr.message.slice(0, 250) : String(primaryErr)
+      }`
     }
 
     const fallbackAccounts = await fetchFallbackAccounts(
@@ -327,6 +335,7 @@ export async function sweepTenant(
       ...sumBuckets(fallbackAccounts),
       status: 'ok',
       source: 'account_transactions',
+      fallbackReason,
       accounts: fallbackAccounts,
     }
   } catch (err) {
@@ -365,7 +374,9 @@ export async function persistTenantSweep(
       business_id: result.businessId,
       source: result.source,
       status: result.status,
-      error_message: result.error ?? null,
+      // On an ok check this may carry the fallback reason (why statement
+      // lines weren't used) — readers only surface it for status='error'.
+      error_message: result.error ?? result.fallbackReason ?? null,
       total_unreconciled_count: result.totalCount,
       total_unreconciled_value: result.totalValue,
       checked_at: checkedAtIso,
