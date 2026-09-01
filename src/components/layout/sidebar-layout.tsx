@@ -274,6 +274,9 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   // Don't render client sidebar for coach routes, auth routes, marketing pages, or legal pages
   const isCoachRoute = pathname?.startsWith('/coach')
   const isAdminRoute = pathname?.startsWith('/admin')
+  // /cfo is the coach-facing production board — it carries the coach chrome
+  // (its own layout wraps CoachLayoutNew), never the client sidebar.
+  const isCfoRoute = pathname?.startsWith('/cfo')
   const isAuthRoute = pathname?.startsWith('/auth') || pathname?.startsWith('/login')
   const isHomePage = pathname === '/'
   const isLegalPage = pathname === '/privacy' || pathname === '/terms'
@@ -429,7 +432,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
 
   // For coach/admin/auth routes, home page, legal pages, and public report views,
   // just render children without the client sidebar (and without waiting on auth).
-  if (isCoachRoute || isAdminRoute || isAuthRoute || isHomePage || isLegalPage || isStandalonePage || isPublicReportView) {
+  if (isCoachRoute || isAdminRoute || isCfoRoute || isAuthRoute || isHomePage || isLegalPage || isStandalonePage || isPublicReportView) {
     return <>{children}</>
   }
 

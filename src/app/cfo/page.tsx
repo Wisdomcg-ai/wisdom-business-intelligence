@@ -509,7 +509,9 @@ function ReconChip({ recon }: { recon: BoardClient['recon'] }) {
     return (
       <Chip tone="amber">
         {recon.totalCount} unreconciled
-        {recon.months.slice(-3).map(m => ` · ${shortMonth(m.month)} ${m.count}`).join('')}
+        {recon.months.length === 1
+          ? ` · all ${shortMonth(recon.months[0].month)}`
+          : recon.months.slice(-3).map(m => ` · ${shortMonth(m.month)} ${m.count}`).join('')}
       </Chip>
     )
   }
