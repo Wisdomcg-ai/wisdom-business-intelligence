@@ -37,6 +37,7 @@ import {
   type MonthBucket,
   type UnreconciledItem,
 } from './bucketing'
+import { UNRECONCILED_AUTHORISED, sinceWhere } from './where-clauses'
 
 type SupabaseLike = { from: (table: string) => any }
 
@@ -237,8 +238,8 @@ async function fetchFallbackAccounts(
   window: { fromDate: string },
   accountCurrency: Map<string, string | null>,
 ): Promise<AccountBuckets[]> {
-  const [y, m, d] = window.fromDate.split('-').map(Number)
-  const where = `Status=="AUTHORISED" AND IsReconciled==false AND Date>=DateTime(${y},${m},${d})`
+  const since = sinceWhere(window.fromDate)
+  const where = since ? `${UNRECONCILED_AUTHORISED} AND ${since}` : UNRECONCILED_AUTHORISED
   const transactions: any[] = []
   for (let page = 1; page <= FALLBACK_MAX_PAGES; page++) {
     const url = `${ACCOUNTING_BASE}/BankTransactions?where=${encodeURIComponent(where)}&page=${page}`

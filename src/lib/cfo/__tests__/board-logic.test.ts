@@ -203,3 +203,30 @@ describe('summariseRecon — source labelling', () => {
     expect(summariseRecon([], [], 1).source).toBeNull()
   })
 })
+
+describe('summariseRecon — per-account attribution (the reconcile badge is per account)', () => {
+  it('names each account with its count, descending', () => {
+    const s = summariseRecon(
+      [okCheck('t1', 6)],
+      [
+        { tenant_id: 't1', month: '2026-08-01', unreconciled_count: 4, unreconciled_value: 400, bank_account_name: 'Airwallex' },
+        { tenant_id: 't1', month: '2026-07-01', unreconciled_count: 2, unreconciled_value: 200, bank_account_name: 'ANZ Cheque' },
+        { tenant_id: 't1', month: '2026-08-01', unreconciled_count: 1, unreconciled_value: 50, bank_account_name: 'ANZ Cheque' },
+      ],
+      1,
+    )
+    expect(s.byAccount).toEqual([
+      { name: 'Airwallex', count: 4 },
+      { name: 'ANZ Cheque', count: 3 },
+    ])
+  })
+
+  it('a missing account name is labelled, never dropped', () => {
+    const s = summariseRecon(
+      [okCheck('t1', 1)],
+      [{ tenant_id: 't1', month: '2026-08-01', unreconciled_count: 1, unreconciled_value: 10 }],
+      1,
+    )
+    expect(s.byAccount).toEqual([{ name: '(unknown account)', count: 1 }])
+  })
+})
