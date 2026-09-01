@@ -134,7 +134,7 @@ async function getHandler(request: Request) {
         .in('business_id', fleetIds),
       supabase
         .from('reconciliation_snapshots')
-        .select('business_id, tenant_id, month, unreconciled_count, unreconciled_value, bank_account_name')
+        .select('business_id, tenant_id, month, unreconciled_count, unreconciled_value, currency, bank_account_name')
         .in('business_id', fleetIds),
       getLastSyncByTenant(supabase as never, 60),
     ])

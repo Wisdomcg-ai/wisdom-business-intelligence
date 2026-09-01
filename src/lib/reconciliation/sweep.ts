@@ -6,23 +6,25 @@
  * in reconciliation_checks (fail-closed: an errored check is recorded as
  * status='error', never as zero outstanding).
  *
- * Operative source — Accounting API unreconciled account transactions
- * (what the pre-board /api/Xero/reconciliation check counted):
+ * PRIMARY source — Accounting API Bank Statement report:
+ *   GET /api.xro/2.0/Reports/BankStatement?bankAccountID=..&fromDate=..&toDate=..
+ * Returns the imported bank-feed STATEMENT LINES with a per-line Reconciled
+ * column — the same population as Xero's "Reconcile N items" banner (proven
+ * against IICT's Airwallex feed: 25 uncoded lines invisible to the
+ * account-transaction count). Standard accounting.reports.read scope, already
+ * consented by every org. (The endpoint is real but absent from Xero's
+ * OpenAPI spec — XeroAPI/xero-node#313.)
+ *
+ * FALLBACK source — Accounting API unreconciled account transactions:
  *   GET /api.xro/2.0/BankTransactions?where=Status=="AUTHORISED" AND
  *       IsReconciled==false AND Date>=DateTime(..)
- * HONESTY NOTE: this counts transactions RECORDED IN XERO that aren't matched
- * to a statement line. It is NOT the "X items to reconcile" banner, which
- * counts uncoded bank-feed statement lines — a feed nobody has coded shows
- * ZERO here. The open API cannot see statement lines; label the UI
- * accordingly and never present this as the banner number.
+ * Used per tenant when the statement report fails or its shape isn't
+ * recognised (a shape we can't parse must never read as "all clear").
+ * Rows carry source so the UI can label which population was counted.
  *
- * Dormant statement-lines source — Xero Finance API
- * (BankStatementsPlus/statements, per-line isReconciled = the actual banner
- * population). The Finance API is CLOSED: available only to established
- * financial-services (lending) partners, which WisdomBI is not — so this path
- * runs only when XERO_FINANCE_SCOPES_ENABLED='true' (set if that ever
- * changes) and 403s downgrade to the operative source. Kept because the data
- * shape is strictly better if access ever materialises.
+ * CURRENCY: statement lines are denominated in the bank account's currency
+ * (IICT's feed is HKD). Every bucket carries the account's CurrencyCode;
+ * readers must never sum or render values across differing currencies as AUD.
  */
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import {
@@ -31,8 +33,7 @@ import {
 } from '@/lib/xero/xero-api-client'
 import {
   bucketByMonth,
-  outstandingStatementLines,
-  type FinanceStatementLine,
+  xeroDateToMonthKey,
   type MonthBucket,
   type UnreconciledItem,
 } from './bucketing'
@@ -44,6 +45,8 @@ export type SweepSource = 'statement_lines' | 'account_transactions'
 export interface AccountBuckets {
   bankAccountId: string
   bankAccountName: string | null
+  /** ISO code of the bank account's currency; null when Xero omits it. */
+  currency: string | null
   buckets: MonthBucket[]
 }
 
@@ -63,7 +66,7 @@ export interface TenantSweepResult {
 
 /**
  * 12-month lookback window: first day of the month 11 months before `now`,
- * through today. Matches the Finance API's maximum FromDate..ToDate range.
+ * through today.
  */
 export function sweepWindow(now: Date): { fromDate: string; toDate: string } {
   const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1))
@@ -73,22 +76,73 @@ export function sweepWindow(now: Date): { fromDate: string; toDate: string } {
   return { fromDate: iso(from), toDate: iso(now) }
 }
 
-/** Flatten a BankStatementsPlus response into its statement lines. */
-export function flattenStatementLines(json: any): FinanceStatementLine[] {
-  const statements = Array.isArray(json?.statements) ? json.statements : []
-  const lines: FinanceStatementLine[] = []
-  for (const statement of statements) {
-    if (Array.isArray(statement?.statementLines)) {
-      lines.push(...statement.statementLines)
-    }
-  }
-  return lines
+export interface ParsedStatementReport {
+  /** False when the report shape wasn't recognised — the caller MUST fall
+   *  back, never treat it as zero outstanding. */
+  parsed: boolean
+  items: UnreconciledItem[]
 }
 
 /**
- * Group Accounting-API bank transactions by bank account. Transactions
- * missing an account id are dropped (they cannot be attributed to a
- * reconcile queue) — callers report the drop count.
+ * Parse a Reports/BankStatement response down to its unreconciled statement
+ * lines. Standard Xero report envelope: Reports[0].Rows with a Header row
+ * naming the columns (Date / Description / Reference / Reconciled / Source /
+ * Amount / Balance) and Section rows holding the data rows. Opening/closing
+ * balance rows have no Reconciled value and are skipped; only an explicit
+ * Reconciled === "No" counts as outstanding.
+ */
+export function parseBankStatementReport(json: any): ParsedStatementReport {
+  const report = Array.isArray(json?.Reports) ? json.Reports[0] : null
+  const topRows = Array.isArray(report?.Rows) ? report.Rows : null
+  if (!topRows) return { parsed: false, items: [] }
+
+  let dateIdx = -1
+  let reconciledIdx = -1
+  let amountIdx = -1
+  let descriptionIdx = -1
+
+  const dataRows: any[] = []
+  const walk = (rows: any[]) => {
+    for (const row of rows) {
+      if (row?.RowType === 'Header' && Array.isArray(row.Cells)) {
+        row.Cells.forEach((cell: any, i: number) => {
+          const title = String(cell?.Value ?? '').trim().toLowerCase()
+          if (title === 'date') dateIdx = i
+          if (title === 'reconciled') reconciledIdx = i
+          if (title === 'amount') amountIdx = i
+          if (title === 'description') descriptionIdx = i
+        })
+      } else if (row?.RowType === 'Row' && Array.isArray(row.Cells)) {
+        dataRows.push(row)
+      }
+      if (Array.isArray(row?.Rows)) walk(row.Rows)
+    }
+  }
+  walk(topRows)
+
+  if (dateIdx < 0 || reconciledIdx < 0 || amountIdx < 0) {
+    // Unrecognised shape — refuse to conclude anything from it.
+    return { parsed: false, items: [] }
+  }
+
+  const items: UnreconciledItem[] = []
+  for (const row of dataRows) {
+    const cells = row.Cells
+    const description = String(cells[descriptionIdx]?.Value ?? '')
+    if (/^(opening|closing) balance$/i.test(description.trim())) continue
+    const reconciled = String(cells[reconciledIdx]?.Value ?? '').trim().toLowerCase()
+    if (reconciled !== 'no') continue
+    const date = String(cells[dateIdx]?.Value ?? '')
+    if (!xeroDateToMonthKey(date)) continue
+    const amount = Number(String(cells[amountIdx]?.Value ?? '0').replace(/,/g, ''))
+    items.push({ date, amount: Math.abs(Number.isFinite(amount) ? amount : 0) })
+  }
+  return { parsed: true, items }
+}
+
+/**
+ * Group Accounting-API bank transactions by bank account (fallback source).
+ * Transactions missing an account id are dropped.
  */
 export function groupFallbackTransactions(transactions: any[]): {
   byAccount: Map<string, { name: string | null; items: UnreconciledItem[] }>
@@ -115,11 +169,6 @@ export function groupFallbackTransactions(transactions: any[]): {
   return { byAccount, dropped }
 }
 
-/** True when `err` is the typed message fetchXeroWithRateLimit throws for this HTTP status. */
-export function isXeroHttpError(err: unknown, status: number): boolean {
-  return err instanceof Error && err.message.startsWith(`xero ${status} `)
-}
-
 export function sumBuckets(accounts: AccountBuckets[]): { totalCount: number; totalValue: number } {
   let totalCount = 0
   let totalValue = 0
@@ -134,7 +183,6 @@ export function sumBuckets(accounts: AccountBuckets[]): { totalCount: number; to
 
 // ─── Xero IO ────────────────────────────────────────────────────────────────
 
-const FINANCE_BASE = 'https://api.xero.com/finance.xro/1.0'
 const ACCOUNTING_BASE = 'https://api.xero.com/api.xro/2.0'
 /** Safety cap on fallback pagination: 10 pages × 100 = 1000 unreconciled txns. */
 const FALLBACK_MAX_PAGES = 10
@@ -142,55 +190,49 @@ const FALLBACK_MAX_PAGES = 10
 interface BankAccountRef {
   bankAccountId: string
   bankAccountName: string | null
+  currency: string | null
 }
 
 /**
- * Bank accounts (incl. credit cards — Xero types them BANK too) for a tenant.
- * Cache-first from xero_accounts (refreshed by the 6-hourly sync); falls back
- * to a live Accounts call for tenants the catalog hasn't covered yet.
+ * Live bank-account listing (incl. credit cards — Xero types them BANK too).
+ * Live rather than the xero_accounts cache because the cache doesn't carry
+ * CurrencyCode, and currency is load-bearing for value display.
  */
 async function listBankAccounts(
-  supabase: SupabaseLike,
   tenantId: string,
   accessToken: string,
 ): Promise<BankAccountRef[]> {
-  const { data: cached, error } = await supabase
-    .from('xero_accounts')
-    .select('xero_account_id, account_name, xero_status')
-    .eq('tenant_id', tenantId)
-    .eq('xero_type', 'BANK')
-  if (!error && Array.isArray(cached) && cached.length > 0) {
-    return cached
-      .filter((a: any) => (a.xero_status ?? 'ACTIVE') === 'ACTIVE' && a.xero_account_id)
-      .map((a: any) => ({ bankAccountId: a.xero_account_id, bankAccountName: a.account_name ?? null }))
-  }
-
   const url = `${ACCOUNTING_BASE}/Accounts?where=${encodeURIComponent('Type=="BANK"')}`
   const res = await fetchXeroWithRateLimit(url, { accessToken, tenantId })
   const accounts = Array.isArray(res.json?.Accounts) ? res.json.Accounts : []
   return accounts
     .filter((a: any) => a?.Status === 'ACTIVE' && a?.AccountID)
-    .map((a: any) => ({ bankAccountId: a.AccountID, bankAccountName: a.Name ?? null }))
+    .map((a: any) => ({
+      bankAccountId: a.AccountID,
+      bankAccountName: a.Name ?? null,
+      currency: a.CurrencyCode ?? null,
+    }))
 }
 
-async function fetchStatementLineBuckets(
+async function fetchStatementLineItems(
   tenantId: string,
   accessToken: string,
   account: BankAccountRef,
   window: { fromDate: string; toDate: string },
-): Promise<MonthBucket[]> {
+): Promise<ParsedStatementReport> {
   const url =
-    `${FINANCE_BASE}/BankStatementsPlus/statements` +
-    `?BankAccountID=${encodeURIComponent(account.bankAccountId)}` +
-    `&FromDate=${window.fromDate}&ToDate=${window.toDate}&SummaryOnly=true`
+    `${ACCOUNTING_BASE}/Reports/BankStatement` +
+    `?bankAccountID=${encodeURIComponent(account.bankAccountId)}` +
+    `&fromDate=${window.fromDate}&toDate=${window.toDate}`
   const res = await fetchXeroWithRateLimit(url, { accessToken, tenantId })
-  return bucketByMonth(outstandingStatementLines(flattenStatementLines(res.json)))
+  return parseBankStatementReport(res.json)
 }
 
 async function fetchFallbackAccounts(
   tenantId: string,
   accessToken: string,
   window: { fromDate: string },
+  accountCurrency: Map<string, string | null>,
 ): Promise<AccountBuckets[]> {
   const [y, m, d] = window.fromDate.split('-').map(Number)
   const where = `Status=="AUTHORISED" AND IsReconciled==false AND Date>=DateTime(${y},${m},${d})`
@@ -206,6 +248,7 @@ async function fetchFallbackAccounts(
   return Array.from(byAccount.entries()).map(([bankAccountId, entry]) => ({
     bankAccountId,
     bankAccountName: entry.name,
+    currency: accountCurrency.get(bankAccountId) ?? null,
     buckets: bucketByMonth(entry.items),
   }))
 }
@@ -227,15 +270,13 @@ export async function sweepTenant(
     totalCount: 0,
     totalValue: 0,
   }
-  const financeEnabled = process.env.XERO_FINANCE_SCOPES_ENABLED === 'true'
-  const primarySource: SweepSource = financeEnabled ? 'statement_lines' : 'account_transactions'
 
   const token = await getValidAccessToken({ id: connection.id }, supabase as any)
   if (!token.success || !token.accessToken) {
     return {
       ...base,
       status: 'error',
-      source: primarySource,
+      source: 'statement_lines',
       error: `token: ${token.error ?? 'unknown'}${token.shouldDeactivate ? ' (needs reconnect)' : ''}`,
     }
   }
@@ -243,40 +284,43 @@ export async function sweepTenant(
   const window = sweepWindow(now)
 
   try {
-    const bankAccounts = await listBankAccounts(supabase, connection.tenant_id, token.accessToken)
+    const bankAccounts = await listBankAccounts(connection.tenant_id, token.accessToken)
     if (bankAccounts.length === 0) {
       // A tenant with no active bank accounts genuinely has nothing to
       // reconcile — an OK check with zero buckets, not an error.
-      return { ...base, status: 'ok', source: primarySource }
+      return { ...base, status: 'ok', source: 'statement_lines' }
     }
+    const accountCurrency = new Map(bankAccounts.map(a => [a.bankAccountId, a.currency]))
 
-    // Statement lines only when Finance API access is explicitly enabled
-    // (closed API — see module header). A 403 means the scope isn't actually
-    // on this org's tokens; downgrade the tenant to the operative source.
-    if (financeEnabled) {
+    // Primary: statement lines from the Bank Statement report. If ANY
+    // account's report can't be fetched or parsed, the whole tenant falls
+    // back — a partial statement-line picture must not read as complete.
+    try {
       const accounts: AccountBuckets[] = []
-      try {
-        for (const account of bankAccounts) {
-          const buckets = await fetchStatementLineBuckets(
-            connection.tenant_id,
-            token.accessToken,
-            account,
-            window,
-          )
-          if (buckets.length > 0) {
-            accounts.push({ ...account, buckets })
-          }
+      for (const account of bankAccounts) {
+        const parsed = await fetchStatementLineItems(
+          connection.tenant_id,
+          token.accessToken,
+          account,
+          window,
+        )
+        if (!parsed.parsed) throw new Error(`bank statement report shape not recognised (${account.bankAccountName ?? account.bankAccountId})`)
+        const buckets = bucketByMonth(parsed.items)
+        if (buckets.length > 0) {
+          accounts.push({ ...account, buckets })
         }
-        return { ...base, ...sumBuckets(accounts), status: 'ok', source: 'statement_lines', accounts }
-      } catch (err) {
-        if (!isXeroHttpError(err, 403)) throw err
       }
+      return { ...base, ...sumBuckets(accounts), status: 'ok', source: 'statement_lines', accounts }
+    } catch (primaryErr) {
+      if (primaryErr instanceof RateLimitDailyExceededError) throw primaryErr
+      // Fall through to the account-transaction count, labelled as such.
     }
 
     const fallbackAccounts = await fetchFallbackAccounts(
       connection.tenant_id,
       token.accessToken,
       window,
+      accountCurrency,
     )
     return {
       ...base,
@@ -287,12 +331,12 @@ export async function sweepTenant(
     }
   } catch (err) {
     if (err instanceof RateLimitDailyExceededError) {
-      return { ...base, status: 'error', source: primarySource, error: 'xero daily rate limit — retry tomorrow' }
+      return { ...base, status: 'error', source: 'statement_lines', error: 'xero daily rate limit — retry tomorrow' }
     }
     return {
       ...base,
       status: 'error',
-      source: primarySource,
+      source: 'statement_lines',
       error: err instanceof Error ? err.message.slice(0, 300) : String(err),
     }
   }
@@ -344,6 +388,7 @@ export async function persistTenantSweep(
       business_id: result.businessId,
       bank_account_id: account.bankAccountId,
       bank_account_name: account.bankAccountName,
+      currency: account.currency,
       month: `${bucket.month}-01`,
       unreconciled_count: bucket.count,
       unreconciled_value: bucket.value,

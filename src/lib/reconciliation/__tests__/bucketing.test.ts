@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  bucketByMonth,
-  outstandingStatementLines,
-  xeroDateToMonthKey,
-} from '../bucketing'
+import { bucketByMonth, xeroDateToMonthKey } from '../bucketing'
 
 describe('xeroDateToMonthKey', () => {
   it('parses plain ISO dates', () => {
@@ -79,18 +75,3 @@ describe('bucketByMonth', () => {
   })
 })
 
-describe('outstandingStatementLines', () => {
-  it('keeps only unreconciled, non-deleted, non-duplicate lines', () => {
-    const items = outstandingStatementLines([
-      { postedDate: '2026-08-01', amount: 100, isReconciled: false },
-      { postedDate: '2026-08-02', amount: 200, isReconciled: true },
-      { postedDate: '2026-08-03', amount: 300, isReconciled: false, isDeleted: true },
-      { postedDate: '2026-08-04', amount: 400, isReconciled: false, isDuplicate: true },
-    ])
-    expect(items).toEqual([{ date: '2026-08-01', amount: 100 }])
-  })
-
-  it('treats a line with no isReconciled flag as NOT outstanding (fail closed on shape drift)', () => {
-    expect(outstandingStatementLines([{ postedDate: '2026-08-01', amount: 100 }])).toEqual([])
-  })
-})

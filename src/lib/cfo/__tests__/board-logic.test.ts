@@ -154,3 +154,52 @@ describe('deriveSection', () => {
     expect(deriveSection({ ...base, daysOverdue: 0 })).toBe('in_progress')
   })
 })
+
+describe('summariseRecon — currency safety (the IICT HKD lesson)', () => {
+  const bucket = (tenant: string, month: string, count: number, value: number, currency: string | null) => ({
+    tenant_id: tenant, month, unreconciled_count: count, unreconciled_value: value, currency,
+  })
+
+  it('a single shared currency keeps values and names it', () => {
+    const s = summariseRecon([okCheck('t1', 25)], [bucket('t1', '2026-08-01', 25, 42533.4, 'HKD')], 1)
+    expect(s.mixedCurrencies).toBe(false)
+    expect(s.currency).toBe('HKD')
+    expect(s.months[0].value).toBe(42533.4)
+  })
+
+  it('mixed currencies suppress ALL values but never the counts', () => {
+    const s = summariseRecon(
+      [okCheck('t1', 26)],
+      [bucket('t1', '2026-08-01', 25, 42533.4, 'HKD'), bucket('t1', '2026-08-01', 1, 217, 'AUD')],
+      1,
+    )
+    expect(s.mixedCurrencies).toBe(true)
+    expect(s.currency).toBeNull()
+    expect(s.totalValue).toBeNull()
+    expect(s.months).toEqual([{ month: '2026-08', count: 26, value: null }])
+  })
+
+  it('legacy rows without currency behave as a single (unnamed) currency', () => {
+    const s = summariseRecon([okCheck('t1', 2)], [bucket('t1', '2026-07-01', 2, 100, null)], 1)
+    expect(s.mixedCurrencies).toBe(false)
+    expect(s.currency).toBeNull()
+    expect(s.months[0].value).toBe(100)
+  })
+})
+
+describe('summariseRecon — source labelling', () => {
+  it('names the single source, or mixed across orgs', () => {
+    expect(summariseRecon([okCheck('t1', 0)], [], 1).source).toBe('account_transactions')
+    expect(
+      summariseRecon([okCheck('t1', 0, { source: 'statement_lines' })], [], 1).source,
+    ).toBe('statement_lines')
+    expect(
+      summariseRecon(
+        [okCheck('t1', 0, { source: 'statement_lines' }), okCheck('t2', 0)],
+        [],
+        2,
+      ).source,
+    ).toBe('mixed')
+    expect(summariseRecon([], [], 1).source).toBeNull()
+  })
+})
