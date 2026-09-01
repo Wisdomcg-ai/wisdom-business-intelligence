@@ -64,6 +64,15 @@ interface BoardClient {
     tenantCount: number
   }
   bookkeeper: { name: string | null; email: string | null }
+  bank_accounts: {
+    bank_account_id: string
+    name: string | null
+    currency: string | null
+    last_coded_date: string | null
+    days_since_coded: number | null
+    stale: boolean
+    reconcile_url: string | null
+  }[]
 }
 
 interface BoardStats {
@@ -722,6 +731,41 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
               </tr>
             </tbody>
           </table>
+        )}
+        {client.bank_accounts.length > 0 && (
+          <div className="mt-3">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+              Bank accounts — coding activity
+            </h4>
+            <ul className="space-y-1">
+              {client.bank_accounts.map(account => (
+                <li key={account.bank_account_id} className="flex items-baseline gap-2 text-xs">
+                  <span className="text-gray-600 truncate">
+                    {account.name ?? account.bank_account_id}
+                    {account.currency && account.currency !== 'AUD' ? ` (${account.currency})` : ''}
+                  </span>
+                  <span className={`whitespace-nowrap font-medium ${
+                    account.stale ? 'text-amber-700' : account.days_since_coded === null ? 'text-gray-400' : 'text-gray-500'
+                  }`}>
+                    {account.days_since_coded === null
+                      ? 'last coded: unknown'
+                      : `last coded ${fmtDate(account.last_coded_date)} · ${account.days_since_coded}d`}
+                    {account.stale ? ' — possible feed backlog' : ''}
+                  </span>
+                  {account.reconcile_url && (
+                    <a
+                      href={account.reconcile_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-auto whitespace-nowrap font-semibold text-brand-navy underline"
+                    >
+                      Reconcile in Xero ↗
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
         <p className="mt-2 text-[11px] leading-relaxed text-gray-400">
           {sourceCaveat(client)}

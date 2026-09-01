@@ -3,6 +3,7 @@ import {
   deriveStage,
   dueDateForMonth,
   daysOverdue,
+  daysSince,
   summariseRecon,
   deriveSection,
   type ReconCheckRow,
@@ -201,5 +202,16 @@ describe('summariseRecon — source labelling', () => {
       ).source,
     ).toBe('mixed')
     expect(summariseRecon([], [], 1).source).toBeNull()
+  })
+})
+
+describe('daysSince (coding staleness)', () => {
+  it('whole days since the date; zero-floors future dates', () => {
+    expect(daysSince('2026-08-03', '2026-09-01')).toBe(29)
+    expect(daysSince('2026-09-05', '2026-09-01')).toBe(0)
+  })
+  it('null when unknown — unknown must never render as fresh', () => {
+    expect(daysSince(null, '2026-09-01')).toBeNull()
+    expect(daysSince('garbage', '2026-09-01')).toBeNull()
   })
 })

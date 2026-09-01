@@ -44,6 +44,28 @@ export function xeroDateToMonthKey(raw: string | undefined | null): string | nul
   return null
 }
 
+/**
+ * Full ISO date ('YYYY-MM-DD') from either Xero date form, or null.
+ * Companion to xeroDateToMonthKey for when the day matters (last-coded dates).
+ */
+export function xeroDateToIsoDate(raw: string | undefined | null): string | null {
+  if (!raw) return null
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw)
+  if (iso) {
+    const m = Number(iso[2])
+    const d = Number(iso[3])
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return `${iso[1]}-${iso[2]}-${iso[3]}`
+    return null
+  }
+  const dotNet = /\/Date\((-?\d+)/.exec(raw)
+  if (dotNet) {
+    const date = new Date(Number(dotNet[1]))
+    if (Number.isNaN(date.getTime())) return null
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+  }
+  return null
+}
+
 /** Reduce items to sorted per-month buckets. Items with unparseable dates are dropped. */
 export function bucketByMonth(items: UnreconciledItem[]): MonthBucket[] {
   const map = new Map<string, { count: number; value: number }>()

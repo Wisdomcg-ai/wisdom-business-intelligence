@@ -188,6 +188,23 @@ export function summariseRecon(
   }
 }
 
+/** Whole days since `dateIso`; null when unknown (render unknown, never fresh). */
+export function daysSince(dateIso: string | null, todayIso: string): number | null {
+  if (!dateIso) return null
+  const then = Date.parse(`${dateIso.slice(0, 10)}T00:00:00Z`)
+  const today = Date.parse(`${todayIso.slice(0, 10)}T00:00:00Z`)
+  if (Number.isNaN(then) || Number.isNaN(today)) return null
+  return Math.max(0, Math.floor((today - then) / 86_400_000))
+}
+
+/**
+ * Coding-staleness warn threshold (days): an account with nothing coded for
+ * longer than this is flagged as possible feed backlog. A HINT, not a count —
+ * the banner number needs the Bank Statement addendum. Threshold is Matt's
+ * to tune (fail-open house rule: thresholds are the operator's call).
+ */
+export const STALE_CODING_DAYS = 14
+
 export type BoardSection = 'overdue' | 'blocked' | 'in_progress' | 'sent'
 
 /**
