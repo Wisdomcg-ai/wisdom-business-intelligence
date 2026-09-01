@@ -53,8 +53,11 @@ interface BoardClient {
   recon: {
     state: ReconState
     totalCount: number
-    totalValue: number
-    months: { month: string; count: number; value: number }[]
+    totalValue: number | null
+    currency: string | null
+    mixedCurrencies: boolean
+    source: 'statement_lines' | 'account_transactions' | 'mixed' | null
+    months: { month: string; count: number; value: number | null }[]
     checkedAt: string | null
     checkedTenants: number
     erroredTenants: number
@@ -99,8 +102,18 @@ function fmtDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
 }
 
-function fmtMoney(value: number): string {
-  return value.toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 })
+function fmtMoney(value: number | null, currency: string | null): string {
+  if (value === null) return '—'
+  try {
+    return value.toLocaleString('en-AU', {
+      style: 'currency',
+      currency: currency ?? 'AUD',
+      maximumFractionDigits: 0,
+    })
+  } catch {
+    // Unknown/invalid currency code from Xero — show the number with the raw code.
+    return `${currency ?? ''} ${value.toLocaleString('en-AU', { maximumFractionDigits: 0 })}`.trim()
+  }
 }
 
 function relTime(iso: string | null): string {
@@ -518,6 +531,18 @@ function ReconChip({ recon }: { recon: BoardClient['recon'] }) {
   return <Chip tone="green">No unreconciled transactions</Chip>
 }
 
+function sourceCaveat(client: BoardClient): string {
+  const recon = client.recon
+  const orgs = recon.tenantCount > 1 ? ` across ${recon.tenantCount} orgs` : ''
+  if (recon.source === 'statement_lines') {
+    return `Counts are unreconciled bank-feed statement lines${orgs} — the same items Xero's "Reconcile" banner counts.`
+  }
+  return (
+    `Counts are unreconciled transactions recorded in Xero${orgs} — not the bank-feed banner: ` +
+    `statement lines nobody has coded yet don't appear here (open Xero for feed backlog).`
+  )
+}
+
 function Chip({ tone, children }: { tone: 'red' | 'amber' | 'green' | 'gray'; children: React.ReactNode }) {
   const tones = {
     red: 'bg-red-50 text-red-700 border-red-200',
@@ -687,21 +712,21 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
                 <tr key={m.month} className="border-t border-gray-100">
                   <td className="px-3 py-1.5">{formatMonthLabel(m.month)}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{m.count}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{fmtMoney(m.value)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{fmtMoney(m.value, recon.currency)}</td>
                 </tr>
               ))}
               <tr className="border-t border-gray-200 bg-amber-50 font-semibold text-brand-navy">
                 <td className="px-3 py-1.5">Total outstanding</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{recon.totalCount}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{fmtMoney(recon.totalValue)}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{fmtMoney(recon.totalValue, recon.currency)}</td>
               </tr>
             </tbody>
           </table>
         )}
         <p className="mt-2 text-[11px] leading-relaxed text-gray-400">
-          Counts are unreconciled <strong className="text-gray-500">transactions recorded in Xero</strong>
-          {recon.tenantCount > 1 ? ` across ${recon.tenantCount} orgs` : ''}. This is not the bank-feed
-          banner: statement lines nobody has coded yet don&apos;t appear here — open Xero to see feed backlog.
+          {sourceCaveat(client)}
+          {recon.mixedCurrencies ? ' Values hidden — bank accounts are in different currencies, so a single total would be misleading.' : ''}
+          {recon.currency && recon.currency !== 'AUD' && !recon.mixedCurrencies ? ` Values are ${recon.currency}.` : ''}
           {recon.checkedAt ? ` Last checked ${relTime(recon.checkedAt)}.` : ''}
         </p>
       </div>

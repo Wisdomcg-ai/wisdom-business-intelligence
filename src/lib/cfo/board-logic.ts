@@ -84,6 +84,8 @@ export interface ReconBucketRow {
   month: string
   unreconciled_count: number
   unreconciled_value: number
+  /** ISO code of the bank account's currency; null on legacy rows. */
+  currency?: string | null
   bank_account_name?: string | null
 }
 
@@ -97,9 +99,18 @@ export interface ReconSummary {
    */
   state: ReconState
   totalCount: number
-  totalValue: number
+  /** Null when the business's items span multiple currencies — counts stay
+   *  exact, but summing HKD into AUD is forbidden (house FX rule). */
+  totalValue: number | null
+  /** Single shared currency of all items, when one exists (null = legacy rows
+   *  with no recorded currency — rendered as plain AUD-style, or mixed). */
+  currency: string | null
+  mixedCurrencies: boolean
+  /** 'statement_lines' = the banner population (bank-feed lines);
+   *  'account_transactions' = the coded-side count; 'mixed' across orgs. */
+  source: 'statement_lines' | 'account_transactions' | 'mixed' | null
   /** Aggregated across tenants and bank accounts, ascending by month ('YYYY-MM'). */
-  months: { month: string; count: number; value: number }[]
+  months: { month: string; count: number; value: number | null }[]
   /** Oldest successful check — the honest "as at" for the whole business. */
   checkedAt: string | null
   checkedTenants: number
@@ -118,20 +129,39 @@ export function summariseRecon(
   const unchecked = Math.max(0, tenantCount - checks.length)
   const failedCoverage = errored.length + unchecked
 
+  const currencies = new Set(buckets.map(b => b.currency ?? null))
+  const mixedCurrencies = currencies.size > 1
+  const currency = mixedCurrencies ? null : (currencies.values().next().value ?? null)
+
+  // Which population the counts came from — drives the UI's honesty caveat.
+  const sources = new Set(ok.map(c => c.source))
+  const source: ReconSummary['source'] =
+    sources.size === 1
+      ? (sources.values().next().value as 'statement_lines' | 'account_transactions')
+      : sources.size > 1
+        ? 'mixed'
+        : null
+
   const monthMap = new Map<string, { count: number; value: number }>()
   for (const bucket of buckets) {
     const key = bucket.month.slice(0, 7)
     const entry = monthMap.get(key) ?? { count: 0, value: 0 }
     entry.count += bucket.unreconciled_count
-    entry.value += bucket.unreconciled_value
+    entry.value += Number(bucket.unreconciled_value ?? 0)
     monthMap.set(key, entry)
   }
   const months = Array.from(monthMap.entries())
-    .map(([month, m]) => ({ month, count: m.count, value: Math.round(m.value * 100) / 100 }))
+    .map(([month, m]) => ({
+      month,
+      count: m.count,
+      value: mixedCurrencies ? null : Math.round(m.value * 100) / 100,
+    }))
     .sort((a, b) => a.month.localeCompare(b.month))
 
   const totalCount = ok.reduce((s, c) => s + (c.total_unreconciled_count ?? 0), 0)
-  const totalValue = Math.round(ok.reduce((s, c) => s + Number(c.total_unreconciled_value ?? 0), 0) * 100) / 100
+  const totalValue = mixedCurrencies
+    ? null
+    : Math.round(ok.reduce((s, c) => s + Number(c.total_unreconciled_value ?? 0), 0) * 100) / 100
 
   let state: ReconState
   if (ok.length === 0) state = 'unknown'
@@ -147,6 +177,9 @@ export function summariseRecon(
     state,
     totalCount,
     totalValue,
+    currency,
+    mixedCurrencies,
+    source,
     months,
     checkedAt,
     checkedTenants: ok.length,

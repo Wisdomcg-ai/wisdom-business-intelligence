@@ -33,17 +33,10 @@ const SCOPES = [
   'accounting.reports.read',
   'accounting.settings.read',
   'accounting.contacts.read',
-  // 'finance.statements.read',  // Finance API — cashflow (needs app config in Xero portal)
-  // Finance API — bank-reconciliation sweep for the CFO production board
-  // (statement lines w/ per-line isReconciled). The Finance API is a CLOSED
-  // API, available only to established financial-services (lending) partners
-  // — WisdomBI does not qualify, so this flag is expected to stay OFF and the
-  // sweep counts unreconciled account transactions instead. Requesting
-  // unassigned scopes fails the whole OAuth consent (would break every
-  // reconnect), hence the gate. Kept in case access ever materialises.
-  ...(process.env.XERO_FINANCE_SCOPES_ENABLED === 'true'
-    ? ['finance.bankstatementsplus.read', 'finance.cashvalidation.read']
-    : []),
+  // NOTE: no finance.* scopes — Xero's Finance API is closed (lending
+  // partners only) and requesting unassigned scopes fails the whole consent.
+  // The CFO board's statement-line reconciliation counts come from the
+  // accounting Reports/BankStatement report under accounting.reports.read.
   'payroll.employees',        // Payroll employee access (AU)
   'payroll.employees.read',   // Read payroll employees
   'payroll.payruns.read',     // Read pay runs and payslips

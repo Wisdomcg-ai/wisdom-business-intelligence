@@ -1,12 +1,11 @@
 /**
  * Pure bucketing logic for the CFO production board's reconciliation counts.
  *
- * Primary source: Xero Finance API BankStatementsPlus statement lines — the
- * same items Xero's "reconcile" banner counts. Fallback source (orgs whose
- * finance scopes aren't consented yet): Accounting API BankTransactions with
- * IsReconciled==false, which counts the account-transaction side instead.
- * Both are reduced to the same shape: per-month buckets of item count +
- * gross (absolute) dollar value, keyed 'YYYY-MM' by transaction date.
+ * Sources (see sweep.ts): unreconciled bank-feed statement lines from the
+ * Reports/BankStatement report (primary — the banner population), or
+ * unreconciled account transactions (fallback). Both reduce to the same
+ * shape: per-month buckets of item count + gross (absolute) value, keyed
+ * 'YYYY-MM' by transaction date.
  */
 
 export interface UnreconciledItem {
@@ -21,15 +20,6 @@ export interface MonthBucket {
   count: number
   /** Sum of absolute amounts, rounded to cents — gross value of items to clear */
   value: number
-}
-
-/** Finance API statement line, as returned by BankStatementsPlus (SummaryOnly). */
-export interface FinanceStatementLine {
-  postedDate?: string
-  amount?: number
-  isReconciled?: boolean
-  isDeleted?: boolean
-  isDuplicate?: boolean
 }
 
 /**
@@ -68,14 +58,4 @@ export function bucketByMonth(items: UnreconciledItem[]): MonthBucket[] {
   return Array.from(map.entries())
     .map(([month, b]) => ({ month, count: b.count, value: Math.round(b.value * 100) / 100 }))
     .sort((a, b) => a.month.localeCompare(b.month))
-}
-
-/**
- * Filter Finance API statement lines down to genuinely outstanding items:
- * unreconciled, not deleted, not flagged duplicate.
- */
-export function outstandingStatementLines(lines: FinanceStatementLine[]): UnreconciledItem[] {
-  return lines
-    .filter(l => l.isReconciled === false && !l.isDeleted && !l.isDuplicate)
-    .map(l => ({ date: l.postedDate ?? '', amount: l.amount ?? 0 }))
 }
