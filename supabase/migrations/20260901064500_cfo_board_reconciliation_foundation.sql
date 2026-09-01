@@ -5,10 +5,12 @@
 --    distinguish "checked, zero outstanding" from "could not check" — an
 --    errored/missing check must never render as "0 unreconciled".
 -- 2) reconciliation_snapshots: unreconciled items bucketed by transaction
---    month, per tenant + bank account. Primary source is Finance API bank
---    statement lines (the same items Xero's "reconcile" banner counts);
---    fallback for orgs without the finance scopes is the Accounting API
---    account-transaction count, labelled via `source`.
+--    month, per tenant + bank account. Primary source is the ACCOUNTING API
+--    Reports/BankStatement statement lines (the same items Xero's "reconcile"
+--    banner counts; requires the addendum-gated bankstatement scope — 401s
+--    until granted); fallback is the account-transaction count, labelled via
+--    `source`. (Comment corrected 1 Sep: an earlier version said "Finance
+--    API", a different, closed product.)
 -- 3) monthly_report_settings: per-client report due day + bookkeeper contact
 --    for the production board and reconcile-nudge emails.
 --

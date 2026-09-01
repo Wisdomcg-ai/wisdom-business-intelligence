@@ -8,6 +8,17 @@
  * 'YYYY-MM' by transaction date.
  */
 
+/**
+ * Lookback windows (months). Statement lines look back further — the sibling
+ * platform's incident was old uncoded feed lines beyond 12 months. The
+ * BankTransactions fallback deliberately stays at 12: widening it stresses
+ * its silent page cap, and uncoded lines are invisible to that population at
+ * ANY window. Client-importable (this module is pure) so UI copy can name
+ * the bound it is asserting.
+ */
+export const STATEMENT_WINDOW_MONTHS = 24
+export const FALLBACK_WINDOW_MONTHS = 12
+
 export interface UnreconciledItem {
   /** ISO date (yyyy-MM-dd or full timestamp) of the statement line / transaction */
   date: string

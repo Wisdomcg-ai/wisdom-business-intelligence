@@ -204,3 +204,32 @@ describe('WF.2 additions — super rate, commentary reconciles; WF.4 provenance'
     expect(byKey({ report: baseReport(), dataQualityLevel: 'verified', qualityCheckFailed: true }).get('freshness').status).toBe('warn')
   })
 })
+
+describe('reconciliation check — a failed check can never pass as clean (FLEET-04 in preflight)', () => {
+  const failedRecon = {
+    unreconciled_count: 0,
+    unreconciled_total: 0,
+    has_more: false,
+    bank_accounts: [],
+    is_clean: false,
+    check_failed: true,
+    failure_reason: 'Could not check 2 of 3 connected Xero organisations: IICT HK, IICT Aust.',
+  } as any
+
+  it('check_failed with a ZERO count warns with the failure reason — never "all reconciled"', () => {
+    const { get } = byKey({ report: baseReport(), reconciliation: failedRecon })
+    const row = get('reconciliation')
+    expect(row.status).toBe('warn')
+    expect(row.detail).toContain('could not be verified')
+    expect(row.detail).toContain('IICT HK')
+  })
+
+  it('a clean successful check passes with the recorded-transactions caveat', () => {
+    const cleanRecon = { ...failedRecon, is_clean: true, check_failed: false, failure_reason: undefined }
+    const { get } = byKey({ report: baseReport(), reconciliation: cleanRecon })
+    const row = get('reconciliation')
+    expect(row.status).toBe('pass')
+    expect(row.detail).toContain('recorded transactions')
+    expect(row.detail).toContain('not visible')
+  })
+})

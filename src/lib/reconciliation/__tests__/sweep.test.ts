@@ -4,6 +4,7 @@ import {
   parseBankStatementReport,
   groupFallbackTransactions,
   sumBuckets,
+  statementWindows,
 } from '../sweep'
 
 describe('sweepWindow', () => {
@@ -96,15 +97,57 @@ describe('parseBankStatementReport', () => {
     expect(parsed.items).toEqual([])
   })
 
-  it('skips rows with unparseable dates and non-numeric amounts fail to zero', () => {
+  it('an UNRECONCILED row with an unparseable date REFUSES the report — dropping it would zero the count on a format change', () => {
     const parsed = parseBankStatementReport(
-      statementReport([
-        row('not a date', 'MYSTERY', 'No', '100.00'),
-        row('2026-08-05', 'BAD AMOUNT', 'No', 'abc'),
-      ]),
+      statementReport([row('14 Aug 2026', 'MYSTERY', 'No', '100.00')]),
+    )
+    expect(parsed.parsed).toBe(false)
+    expect(parsed.reason).toContain('unparseable date')
+    expect(parsed.reason).toContain('14 Aug 2026')
+  })
+
+  it('a non-numeric amount on a valid unreconciled row fails to zero (count survives)', () => {
+    const parsed = parseBankStatementReport(
+      statementReport([row('2026-08-05', 'BAD AMOUNT', 'No', 'abc')]),
     )
     expect(parsed.parsed).toBe(true)
     expect(parsed.items).toEqual([{ date: '2026-08-05', amount: 0 }])
+  })
+
+  it('a data row missing its Reconciled cell REFUSES — a truncated unreconciled row must not read as reconciled', () => {
+    const short = { RowType: 'Row', Cells: [{ Value: '2026-08-05' }, { Value: 'TRUNCATED' }] }
+    const parsed = parseBankStatementReport(statementReport([short]))
+    expect(parsed.parsed).toBe(false)
+    expect(parsed.reason).toContain('missing its Reconciled cell')
+  })
+
+  it('Reconciled vocabulary drift REFUSES — an unknown token must not read as reconciled', () => {
+    const parsed = parseBankStatementReport(
+      statementReport([row('2026-08-05', 'DRIFT', 'N', '10.00')]),
+    )
+    expect(parsed.parsed).toBe(false)
+    expect(parsed.reason).toContain('unrecognised Reconciled value')
+  })
+
+  it('conflicting duplicate header rows REFUSE — last-header-wins would misindex earlier sections', () => {
+    const fixture = statementReport([row('2026-08-05', 'OK', 'No', '10.00')])
+    fixture.Reports[0].Rows.push({
+      RowType: 'Header',
+      Cells: [{ Value: 'Reconciled' }, { Value: 'Date' }, { Value: 'Amount' }],
+    } as any)
+    const parsed = parseBankStatementReport(fixture)
+    expect(parsed.parsed).toBe(false)
+    expect(parsed.reason).toContain('conflicting duplicate header')
+  })
+})
+
+describe('statementWindows (24 months, chunked ≤12)', () => {
+  it('covers the full 24-month span in two contiguous chunks', () => {
+    const chunks = statementWindows(new Date(Date.UTC(2026, 8, 16)))
+    expect(chunks).toEqual([
+      { fromDate: '2024-10-01', toDate: '2025-09-30' },
+      { fromDate: '2025-10-01', toDate: '2026-09-16' },
+    ])
   })
 })
 

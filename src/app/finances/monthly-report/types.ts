@@ -259,6 +259,10 @@ export interface ReconciliationStatus {
    *  only; org-prefixed for multi-org businesses). Xero's reconcile badge is
    *  per account, so this names where a nonzero count actually lives. */
   bank_accounts: { name: string; count: number; total: number }[]
+  /** Which population the count measures. 'account_transactions' = recorded
+   *  transactions never matched to a statement line; uncoded bank-feed lines
+   *  (Xero's reconcile badge) are INVISIBLE to that count. */
+  source?: 'account_transactions' | 'statement_lines'
   is_clean: boolean
   /**
    * FLEET-04 (26 Aug 2026): true when one or more connected Xero orgs could not

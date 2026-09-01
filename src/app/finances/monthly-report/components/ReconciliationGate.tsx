@@ -68,9 +68,19 @@ export default function ReconciliationGate({
     return (
       <div className="mb-6 p-4 bg-green-50 rounded-lg border border-green-200 flex items-center gap-3">
         <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-        <span className="text-sm text-green-800 font-medium">
-          All transactions reconciled for {monthLabel}
-        </span>
+        <div>
+          <span className="text-sm text-green-800 font-medium">
+            All recorded transactions reconciled for {monthLabel}
+          </span>
+          {/* Uncoded-lines honesty: this check counts recorded transactions.
+              Bank-feed statement lines nobody has coded yet (what Xero's
+              "Reconcile N items" badge counts) are invisible to it — a green
+              state here must not read as "books complete". */}
+          <p className="text-xs text-green-700 opacity-80 mt-0.5">
+            Bank-feed lines not yet coded into Xero aren&apos;t visible to this check —
+            uncoded activity would be missing from this P&amp;L.
+          </p>
+        </div>
       </div>
     )
   }
@@ -105,7 +115,8 @@ export default function ReconciliationGate({
             </p>
           )}
           <p className={`text-xs mt-1 ${textColor} opacity-80`}>
-            Report will be marked as DRAFT until all transactions are reconciled in Xero.
+            Report will be marked as DRAFT until all recorded transactions are reconciled in
+            Xero. Bank-feed lines not yet coded aren&apos;t visible to this check.
           </p>
           <div className="flex items-center gap-3 mt-3">
             <a

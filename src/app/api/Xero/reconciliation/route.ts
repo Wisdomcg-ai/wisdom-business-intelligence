@@ -243,6 +243,11 @@ async function getHandler(request: NextRequest) {
       has_more: hasMore,
       bank_accounts: bankAccounts,
       is_clean: isClean,
+      // Which population was counted: recorded transactions. Uncoded bank-feed
+      // statement lines (Xero's reconcile badge) are invisible to this check —
+      // consumers must caveat accordingly, and this field lets copy branch on
+      // data instead of hardcoding when statement lines become available.
+      source: 'account_transactions' as const,
       // Multi-org transparency: how many orgs were checked, and which (if any)
       // could not be. The UI must not show a green tick when this is set.
       check_failed: checkFailed,

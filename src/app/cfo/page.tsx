@@ -517,42 +517,51 @@ function stageLabel(client: BoardClient): { text: string; tone: 'ok' | 'warn' | 
 }
 
 function ReconChip({ recon }: { recon: BoardClient['recon'] }) {
+  // Every displayed count carries when it was fetched — a nightly snapshot
+  // compared against live Xero mid-afternoon reads as a bug otherwise.
+  const asOf = recon.checkedAt
+    ? `As of ${new Date(recon.checkedAt).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`
+    : undefined
   if (recon.state === 'unknown') {
     return <Chip tone="red">Couldn&apos;t check reconciliation</Chip>
   }
   if (recon.state === 'partial') {
     return (
-      <Chip tone="amber">
+      <Chip tone="amber" title={asOf}>
         {recon.checkedTenants} of {recon.tenantCount} orgs checked · {recon.totalCount}+ unreconciled
       </Chip>
     )
   }
   if (recon.state === 'outstanding') {
     return (
-      <Chip tone="amber">
-        {recon.totalCount} unreconciled
+      <Chip tone="amber" title={asOf}>
+        {recon.totalCount} {recon.source === 'statement_lines' ? 'to reconcile' : 'unreconciled'}
         {recon.months.length === 1
           ? ` · all ${shortMonth(recon.months[0].month)}`
           : recon.months.slice(-3).map(m => ` · ${shortMonth(m.month)} ${m.count}`).join('')}
       </Chip>
     )
   }
-  return <Chip tone="green">No unreconciled transactions</Chip>
+  return (
+    <Chip tone="green" title={asOf}>
+      {recon.source === 'statement_lines' ? 'Nothing to reconcile' : 'No unreconciled transactions'}
+    </Chip>
+  )
 }
 
 function sourceCaveat(client: BoardClient): string {
   const recon = client.recon
   const orgs = recon.tenantCount > 1 ? ` across ${recon.tenantCount} orgs` : ''
   if (recon.source === 'statement_lines') {
-    return `Counts are unreconciled bank-feed statement lines${orgs} — the same items Xero's "Reconcile" banner counts.`
+    return `Counts are bank-feed statement lines awaiting reconciliation${orgs} — the same items Xero's "Reconcile" banner counts. Looking back 24 months.`
   }
   return (
     `Counts are unreconciled transactions recorded in Xero${orgs} — not the bank-feed banner: ` +
-    `statement lines nobody has coded yet don't appear here (open Xero for feed backlog).`
+    `statement lines nobody has coded yet don't appear here (open Xero for feed backlog). Looking back 12 months.`
   )
 }
 
-function Chip({ tone, children }: { tone: 'red' | 'amber' | 'green' | 'gray'; children: React.ReactNode }) {
+function Chip({ tone, title, children }: { tone: 'red' | 'amber' | 'green' | 'gray'; title?: string; children: React.ReactNode }) {
   const tones = {
     red: 'bg-red-50 text-red-700 border-red-200',
     amber: 'bg-amber-50 text-amber-800 border-amber-200',
@@ -560,7 +569,7 @@ function Chip({ tone, children }: { tone: 'red' | 'amber' | 'green' | 'gray'; ch
     gray: 'bg-gray-50 text-gray-600 border-gray-200',
   }
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-semibold whitespace-nowrap ${tones[tone]}`}>
+    <span title={title} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-semibold whitespace-nowrap ${tones[tone]}`}>
       {children}
     </span>
   )
@@ -704,7 +713,9 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
           </div>
         ) : recon.months.length === 0 ? (
           <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
-            No unreconciled transactions in the last 12 months
+            {recon.source === 'statement_lines'
+              ? 'No statement lines awaiting reconciliation in the last 24 months'
+              : 'No unreconciled transactions in the last 12 months'}
             {recon.state === 'partial' ? ` across the ${recon.checkedTenants} org(s) that could be checked` : ''}.
           </div>
         ) : (
