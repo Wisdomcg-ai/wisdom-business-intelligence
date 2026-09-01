@@ -30,6 +30,8 @@ import ChartsTab from './components/ChartsTab'
 import CashflowTab from './components/CashflowTab'
 import ExternalDataTab from './components/ExternalDataTab'
 import MemoModal from './components/MemoModal'
+import PreflightPanel from './components/PreflightPanel'
+import { runPreflight, type PreflightResult } from '@/lib/monthly-report/preflight'
 import ForecastService from '@/app/finances/forecast/services/forecast-service'
 // Phase 71 Plan 09 (S6) — one-time per-session toast on multi-currency redirect.
 import {
@@ -1212,6 +1214,9 @@ export default function MonthlyReportPage() {
 
   const [isExporting, setIsExporting] = useState(false)
   const [showMemo, setShowMemo] = useState(false)
+  // WF.1 — pre-flight panel: results + the promise resolver for the export
+  // that is waiting on the coach's decision.
+  const [preflight, setPreflight] = useState<{ results: PreflightResult[]; resolve: (go: boolean) => void } | null>(null)
 
   const handleExportPDF = async () => {
     if (!report) return
@@ -1224,6 +1229,36 @@ export default function MonthlyReportPage() {
       // which is exactly the D-07 drift the shared loader exists to prevent —
       // it would have silently omitted the external-data pages here).
       const eager = await loadPdfSections()
+
+      // WF.1 — pre-flight over exactly the data going into this PDF. The
+      // panel informs, never blocks; the run is persisted either way so the
+      // pack can prove later what was true when it went out.
+      const preflightResults = runPreflight({
+        report,
+        reconciliation,
+        wagesDetail: eager.wagesDetail ?? null,
+        subscriptionDetail: eager.subscriptionDetail ?? null,
+        externalMetrics: eager.externalMetrics ?? null,
+        moneyFlow: eager.moneyFlow ?? null,
+        consolidated: (eager.consolidated as any)?.diagnostics ?? null,
+        unmappedCount: unmapped.length,
+        commentary: commentary as any,
+        triggeredAccounts: (() => {
+          const t = collectCommentaryTriggers(report, balanceSheet)
+          return [...t.expense_lines, ...t.revenue_lines, ...t.favourable_expense_lines].map(l => l.account_name)
+        })(),
+      })
+      fetch('/api/monthly-report/preflight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_id: businessId, report_month: report.report_month, context: 'export', results: preflightResults }),
+      }).catch(err => Sentry.captureException(err, { tags: { invariant: 'preflight-persist-client' } } as any))
+      const proceed = await new Promise<boolean>(resolve => setPreflight({ results: preflightResults, resolve }))
+      setPreflight(null)
+      if (!proceed) {
+        toast.info('Export cancelled')
+        return
+      }
 
       const pdf = new MonthlyReportPDFService(report, {
         commentary,
@@ -1682,6 +1717,15 @@ export default function MonthlyReportPage() {
       </div>
 
       {/* Settings Panel */}
+      {/* WF.1 — pre-flight panel awaiting the coach's export decision */}
+      {preflight && (
+        <PreflightPanel
+          results={preflight.results}
+          onCancel={() => preflight.resolve(false)}
+          onProceed={() => preflight.resolve(true)}
+        />
+      )}
+
       {/* WD.8 — memo editor (stored on the month's snapshot, rendered in the PDF) */}
       {businessId && (
         <MemoModal
