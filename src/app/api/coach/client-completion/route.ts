@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { withQuerySchema } from '@/lib/api/with-schema'
+import { visionMissionStatus } from '@/lib/vision-mission/status'
 
 // VALID-05a (observe mode): GET takes no input.
 const CoachClientCompletionQuerySchema = z.object({})
@@ -62,6 +63,16 @@ async function safeQuery<T>(
     return null
   }
 }
+
+/**
+ * Postgres rejects a non-uuid string in an `in (...)` list against a uuid
+ * column ("invalid input syntax for type uuid"), so an EMPTY id list must be
+ * stood in for by a value that is a valid uuid and matches nothing — not a
+ * placeholder word. WISDOM-BI-S was every profile-keyed query failing this
+ * way whenever the profile list came back empty.
+ */
+const NIL_UUID = '00000000-0000-0000-0000-000000000000'
+const idsOrNil = (ids: string[]): string[] => (ids.length > 0 ? ids : [NIL_UUID])
 
 /** Calculate days between two dates */
 function daysBetween(a: Date, b: Date): number {
@@ -229,11 +240,11 @@ async function getHandler() {
     const ownerIds = businesses.map((b) => b.owner_id).filter(Boolean) as string[]
 
     // Get business_profiles.id (profileIds) for tables that use that FK
-    type ProfileRow = { id: string; business_id: string; user_id: string; business_name: string; mission: string | null; vision: string | null; owner_info: any }
+    type ProfileRow = { id: string; business_id: string; user_id: string; business_name: string; owner_info: any }
     const profilesResult = await safeQuery<ProfileRow[]>(() =>
       supabase
         .from('business_profiles')
-        .select('id, business_id, user_id, business_name, mission, vision, owner_info')
+        .select('id, business_id, user_id, business_name, owner_info')
         .in('business_id', businessIds)
     )
     const profiles = profilesResult || []
@@ -251,8 +262,8 @@ async function getHandler() {
       ? `user_id.in.(${q(ownerIds)}),business_id.in.(${q(businessIds)})`
       : `business_id.in.(${q(businessIds)})`
     const ownerOrProfileFilter = ownerIds.length > 0
-      ? `user_id.in.(${q(ownerIds)}),business_id.in.(${q(profileIds.length > 0 ? profileIds : ['__none__'])})`
-      : `business_id.in.(${q(profileIds.length > 0 ? profileIds : ['__none__'])})`
+      ? `user_id.in.(${q(ownerIds)}),business_id.in.(${q(idsOrNil(profileIds))})`
+      : `business_id.in.(${q(idsOrNil(profileIds))})`
     const qrIds = [...profileIds, ...ownerIds]
 
     // ── Row type aliases for safeQuery generics ──────────────────
@@ -262,6 +273,7 @@ async function getHandler() {
     const [
       // SETUP
       assessmentsResult,
+      visionMissionResult,
       xeroConnectionsResult,
       // PLAN
       swotResult,
@@ -296,8 +308,16 @@ async function getHandler() {
         supabase
           .from('assessments')
           .select('id, user_id, status')
-          .in('user_id', ownerIds.length > 0 ? ownerIds : ['__none__'])
+          .in('user_id', idsOrNil(ownerIds))
           .eq('status', 'completed')
+      ),
+      // 4. Vision & Mission — strategy_data.vision_mission, keyed by the
+      // owner's user_id (the /vision-mission page's only write path).
+      safeQuery<R[]>(() =>
+        supabase
+          .from('strategy_data')
+          .select('user_id, vision_mission')
+          .in('user_id', idsOrNil(ownerIds))
       ),
       // 3. Xero Connected — check both businessIds and profileIds.
       // is_active filter: a dead connection (Xero terminally refused the
@@ -316,7 +336,7 @@ async function getHandler() {
         supabase
           .from('swot_analyses')
           .select('id, business_id')
-          .in('business_id', ownerIds.length > 0 ? ownerIds : ['__none__'])
+          .in('business_id', idsOrNil(ownerIds))
       ),
       // 6. Goals
       safeQuery<R[]>(() =>
@@ -330,14 +350,14 @@ async function getHandler() {
         supabase
           .from('plan_snapshots')
           .select('id, business_id')
-          .in('business_id', profileIds.length > 0 ? profileIds : ['__none__'])
+          .in('business_id', idsOrNil(profileIds))
       ),
       // 8. Strategic Initiatives (uses business_profiles.id)
       safeQuery<R[]>(() =>
         supabase
           .from('strategic_initiatives')
           .select('id, business_id')
-          .in('business_id', profileIds.length > 0 ? profileIds : ['__none__'])
+          .in('business_id', idsOrNil(profileIds))
       ),
       // ── FINANCE ──
       // 9. Forecast
@@ -345,14 +365,14 @@ async function getHandler() {
         supabase
           .from('financial_forecasts')
           .select('id, business_id, is_completed')
-          .in('business_id', profileIds.length > 0 ? profileIds : ['__none__'])
+          .in('business_id', idsOrNil(profileIds))
       ),
       // 10/12. Weekly Metrics Snapshots
       safeQuery<R[]>(() =>
         supabase
           .from('weekly_metrics_snapshots')
           .select('id, business_id, week_ending_date, created_at')
-          .in('business_id', profileIds.length > 0 ? profileIds : ['__none__'])
+          .in('business_id', idsOrNil(profileIds))
       ),
       // ── EXECUTE ──
       // 13. Weekly Reviews (keyed by business_profiles.id, like strategic_initiatives/forecasts)
@@ -360,14 +380,14 @@ async function getHandler() {
         supabase
           .from('weekly_reviews')
           .select('id, business_id, user_id, is_completed, week_start_date')
-          .in('business_id', profileIds.length > 0 ? profileIds : ['__none__'])
+          .in('business_id', idsOrNil(profileIds))
       ),
       // 14. Quarterly Reviews (uses business_id — either profileId or ownerIds)
       safeQuery<R[]>(() =>
         supabase
           .from('quarterly_reviews')
           .select('id, business_id, status')
-          .in('business_id', qrIds.length > 0 ? qrIds : ['__none__'])
+          .in('business_id', idsOrNil(qrIds))
       ),
       // 15. Issues List (has both user_id and business_id)
       safeQuery<R[]>(() =>
@@ -399,7 +419,7 @@ async function getHandler() {
         supabase
           .from('stop_doing_items')
           .select('id, user_id')
-          .in('user_id', ownerIds.length > 0 ? ownerIds : ['__none__'])
+          .in('user_id', idsOrNil(ownerIds))
       ),
       // ── TEAM ──
       // 19/20. Team Data (accountability_chart + org_chart)
@@ -407,7 +427,7 @@ async function getHandler() {
         supabase
           .from('team_data')
           .select('id, user_id, accountability_chart, org_chart')
-          .in('user_id', ownerIds.length > 0 ? ownerIds : ['__none__'])
+          .in('user_id', idsOrNil(ownerIds))
       ),
       // ── SYSTEMS ──
       // 22. Processes
@@ -415,7 +435,7 @@ async function getHandler() {
         supabase
           .from('process_diagrams')
           .select('id, user_id')
-          .in('user_id', ownerIds.length > 0 ? ownerIds : ['__none__'])
+          .in('user_id', idsOrNil(ownerIds))
       ),
       // ── COACHING ──
       // 23. Session Notes
@@ -438,7 +458,7 @@ async function getHandler() {
         supabase
           .from('users')
           .select('id, last_login_at')
-          .in('id', ownerIds.length > 0 ? ownerIds : ['__none__'])
+          .in('id', idsOrNil(ownerIds))
       ),
       // Coaching sessions (for days-since-session)
       safeQuery<R[]>(() =>
@@ -477,6 +497,10 @@ async function getHandler() {
     // Build sets/maps for quick lookups
     const assessmentsByUser = new Set(
       (assessmentsResult || []).map((a) => a.user_id)
+    )
+
+    const visionMissionByUser = new Map(
+      (visionMissionResult || []).map((v) => [v.user_id, v.vision_mission])
     )
 
     const xeroByBusiness = new Set(
@@ -550,14 +574,13 @@ async function getHandler() {
           ? 'completed'
           : 'not_started'
 
-      // 4. Vision & Mission
-      const hasVision = !!(
-        profile?.mission ||
-        profile?.vision ||
-        (profile?.owner_info && typeof profile.owner_info === 'object' &&
-          ((profile.owner_info as any).mission || (profile.owner_info as any).vision))
+      // 4. Vision & Mission — read from strategy_data (owner-keyed). The
+      // previous read selected business_profiles.mission / .vision, columns
+      // that have never existed (WISDOM-BI-T); prod has zero owner_info rows
+      // carrying vision/mission keys, so that legacy fallback is dropped too.
+      modules['vision_mission'] = visionMissionStatus(
+        ownerId ? visionMissionByUser.get(ownerId) : undefined
       )
-      modules['vision_mission'] = hasVision ? 'completed' : 'not_started'
 
       // 5. SWOT (uses user_id as business_id in swot_analyses)
       modules['swot'] = ownerId && swotByUser.has(ownerId) ? 'completed' : 'not_started'

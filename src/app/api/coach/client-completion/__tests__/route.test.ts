@@ -60,13 +60,18 @@ type MockOpts = {
   defaults?: Record<string, TableResp>
 }
 
-function makeChainable(result: TableResp): Record<string, any> {
+/** Every query-shape call the route makes, for assertions on the SQL it would send. */
+const selectCalls: Array<{ table: string; cols: string }> = []
+const inCalls: Array<{ table: string; col: string; vals: unknown[] }> = []
+const orCalls: Array<{ table: string; filter: string }> = []
+
+function makeChainable(result: TableResp, table = ''): Record<string, any> {
   const b: Record<string, any> = {}
   const ret = () => b
-  b.select = vi.fn(ret)
+  b.select = vi.fn((cols: string) => { selectCalls.push({ table, cols }); return b })
   b.eq = vi.fn(ret)
-  b.in = vi.fn(ret)
-  b.or = vi.fn(ret)
+  b.in = vi.fn((col: string, vals: unknown[]) => { inCalls.push({ table, col, vals }); return b })
+  b.or = vi.fn((filter: string) => { orCalls.push({ table, filter }); return b })
   b.order = vi.fn(ret)
   b.limit = vi.fn(ret)
   b.single = vi.fn(() => Promise.resolve(result))
@@ -90,7 +95,7 @@ function makeSupabase(opts: MockOpts = {}) {
     },
     business_profiles = {
       data: [
-        { id: 'prof-1', business_id: 'biz-1', user_id: 'owner-1', business_name: 'Acme', mission: null, vision: null, owner_info: null },
+        { id: 'prof-1', business_id: 'biz-1', user_id: 'owner-1', business_name: 'Acme' },
       ],
       error: null,
     },
@@ -104,12 +109,12 @@ function makeSupabase(opts: MockOpts = {}) {
     : ideas
 
   const fromSpy = vi.fn((table: string) => {
-    if (table === 'system_roles') return makeChainable(systemRole)
-    if (table === 'businesses') return makeChainable(businesses)
-    if (table === 'business_profiles') return makeChainable(business_profiles)
-    if (table === 'ideas') return makeChainable(ideasResp)
-    if (defaults[table]) return makeChainable(defaults[table])
-    return makeChainable({ data: [], error: null })
+    if (table === 'system_roles') return makeChainable(systemRole, table)
+    if (table === 'businesses') return makeChainable(businesses, table)
+    if (table === 'business_profiles') return makeChainable(business_profiles, table)
+    if (table === 'ideas') return makeChainable(ideasResp, table)
+    if (defaults[table]) return makeChainable(defaults[table], table)
+    return makeChainable({ data: [], error: null }, table)
   })
 
   return {
@@ -128,6 +133,9 @@ import { GET } from '../route'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  selectCalls.length = 0
+  inCalls.length = 0
+  orCalls.length = 0
 })
 
 // ─── Group A — Pre-phase shape preserved ─────────────────────────────────────
@@ -368,5 +376,113 @@ describe('Group H — Auth gates remain in place', () => {
     )
     const res = await GET(new Request('http://localhost/api/coach/client-completion'))
     expect(res.status).toBe(403)
+  })
+})
+
+// ─── Group I — WISDOM-BI-T / WISDOM-BI-S: query shape is valid SQL ───────────
+//
+// The route selected business_profiles.mission / .vision (columns that have
+// never existed) → the profiles query failed → profileIds was [] → every
+// profile-keyed query hit `.in('business_id', ['__none__'])`, which Postgres
+// rejects as an invalid uuid. Net effect on the engagement dashboard: plan,
+// initiatives, forecast, metrics, weekly and quarterly reviews read as
+// not_started for EVERY client, with 7 Sentry warnings per page load.
+
+const NIL_UUID = '00000000-0000-0000-0000-000000000000'
+const fullVisionMission = {
+  mission_statement: 'We exist to help family businesses become calm, profitable and worth owning.',
+  vision_statement: 'By 2030 every client business runs on a plan its owner understands, with a team that runs the week.',
+  core_values: ['Integrity', 'Curiosity', 'Care'],
+}
+
+describe('Group I — query shape (WISDOM-BI-T / WISDOM-BI-S)', () => {
+  it('never selects mission/vision from business_profiles — those columns do not exist', async () => {
+    createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase())
+    await GET(new Request('http://localhost/api/coach/client-completion'))
+
+    const profileSelects = selectCalls.filter((c) => c.table === 'business_profiles')
+    expect(profileSelects.length).toBeGreaterThan(0)
+    for (const c of profileSelects) {
+      expect(c.cols).not.toMatch(/\bmission\b|\bvision\b/)
+    }
+  })
+
+  it('never sends the "__none__" placeholder; an empty id list becomes the nil uuid', async () => {
+    // No profiles and no owner → every derived id list is empty.
+    createRouteHandlerClientMock.mockResolvedValueOnce(
+      makeSupabase({
+        businesses: { data: [{ id: 'biz-1', business_name: 'Acme', name: 'Acme', owner_id: null, status: 'active' }], error: null },
+        business_profiles: { data: [], error: null },
+      }),
+    )
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
+    expect(res.status).toBe(200)
+
+    for (const c of inCalls) expect(c.vals, `${c.table}.${c.col}`).not.toContain('__none__')
+    for (const c of orCalls) expect(c.filter, c.table).not.toContain('__none__')
+
+    // Profile-keyed tables are still queried (not skipped) with a valid, no-match uuid.
+    const planSnapshots = inCalls.find((c) => c.table === 'plan_snapshots')
+    expect(planSnapshots?.vals).toEqual([NIL_UUID])
+  })
+
+  it('a failing profiles query no longer cascades into a uuid error per profile-keyed table', async () => {
+    // The exact WISDOM-BI-T condition, replayed.
+    createRouteHandlerClientMock.mockResolvedValueOnce(
+      makeSupabase({
+        business_profiles: { data: null, error: { message: 'column business_profiles.mission does not exist' } },
+      }),
+    )
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
+    expect(res.status).toBe(200)
+
+    for (const c of inCalls) expect(c.vals, `${c.table}.${c.col}`).not.toContain('__none__')
+    // Exactly the one upstream warning — not one per downstream table.
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ─── Group J — Vision & Mission reads its real source ────────────────────────
+
+describe('Group J — vision_mission module reads strategy_data (owner-keyed)', () => {
+  it('queries strategy_data by the owners\' user_id', async () => {
+    createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase())
+    await GET(new Request('http://localhost/api/coach/client-completion'))
+
+    const q = inCalls.find((c) => c.table === 'strategy_data')
+    expect(q).toBeDefined()
+    expect(q!.col).toBe('user_id')
+    expect(q!.vals).toEqual(['owner-1'])
+    expect(selectCalls.find((c) => c.table === 'strategy_data')?.cols).toContain('vision_mission')
+  })
+
+  it('completed when the owner has a full vision_mission document', async () => {
+    createRouteHandlerClientMock.mockResolvedValueOnce(
+      makeSupabase({
+        defaults: { strategy_data: { data: [{ user_id: 'owner-1', vision_mission: fullVisionMission }], error: null } },
+      }),
+    )
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
+    const body = await res.json()
+    expect(body.clients[0].modules.visionMission).toBe('completed')
+  })
+
+  it('in_progress when partially filled; not_started when there is no row', async () => {
+    createRouteHandlerClientMock.mockResolvedValueOnce(
+      makeSupabase({
+        defaults: {
+          strategy_data: {
+            data: [{ user_id: 'owner-1', vision_mission: { ...fullVisionMission, core_values: [] } }],
+            error: null,
+          },
+        },
+      }),
+    )
+    let res = await GET(new Request('http://localhost/api/coach/client-completion'))
+    expect((await res.json()).clients[0].modules.visionMission).toBe('in_progress')
+
+    createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase())
+    res = await GET(new Request('http://localhost/api/coach/client-completion'))
+    expect((await res.json()).clients[0].modules.visionMission).toBe('not_started')
   })
 })
