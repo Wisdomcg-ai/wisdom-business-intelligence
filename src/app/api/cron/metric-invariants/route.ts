@@ -108,6 +108,8 @@ function monthsBetween(fromKey: string, to: Date): number {
   return (to.getUTCFullYear() - y) * 12 + (to.getUTCMonth() + 1 - m)
 }
 
+import { evaluateBsEquation, type PathABsRow } from '@/lib/invariants/bs-equation'
+
 const round2 = (n: number) => Math.round(n * 100) / 100
 
 async function getHandler(req: NextRequest) {
@@ -141,9 +143,15 @@ async function getHandler(req: NextRequest) {
       ).entries(),
     )
 
+    // 2 Sep 2026: read the PATH-A mirror (xero_bs_lines, via its compat view),
+    // not xero_balance_sheet_lines. Every report page, the money-flow gate and
+    // the fleet repair read xero_bs_lines; this check was watching the other
+    // table and reported Armstrong-only for weeks while six tenants sat out of
+    // balance in the mirror that actually renders. The view already filters
+    // basis='accruals'. balances_by_date is keyed 'YYYY-MM-DD' month-ends.
     const { data: bsData, error: bsError } = await supabase
-      .from('xero_balance_sheet_lines')
-      .select('tenant_id, account_name, account_type, section, monthly_values')
+      .from('xero_bs_lines_wide_compat')
+      .select('tenant_id, account_name, account_type, section, balances_by_date')
     if (bsError) throw new Error(`balance-sheet query failed: ${bsError.message}`)
 
     // `xero_pl_lines` is LONG format (one row per account per period_month); the
@@ -196,8 +204,8 @@ async function getHandler(req: NextRequest) {
       // If this fails, the check below simply skips — never invents a failure.
     }
 
-    const bsByTenant = new Map<string, MirrorLine[]>()
-    for (const row of (bsData ?? []) as MirrorLine[]) {
+    const bsByTenant = new Map<string, PathABsRow[]>()
+    for (const row of (bsData ?? []) as PathABsRow[]) {
       if (!row.tenant_id) continue
       const list = bsByTenant.get(row.tenant_id) ?? []
       list.push(row)
@@ -217,70 +225,43 @@ async function getHandler(req: NextRequest) {
       const bs = bsByTenant.get(tenantId) ?? []
       const pl = plByTenant.get(tenantId) ?? []
 
-      // ── bs_equation: assets − liabilities − equity at the latest month ──
-      const bsMonth = newestMonthKey(bs)
-      if (bsMonth) {
-        let assets = 0
-        let liabilities = 0
-        let equity = 0
-        for (const l of bs) {
-          const v = Number(l.monthly_values?.[bsMonth] ?? 0)
-          if (!Number.isFinite(v)) continue
-          if (l.account_type === 'asset') assets += v
-          else if (l.account_type === 'liability') liabilities += v
-          else if (l.account_type === 'equity') equity += v
-        }
-        const delta = round2(assets - liabilities - equity)
-
+      // ── bs_equation: assets − liabilities − equity at the newest COMPLETED
+      //    month-end of the Path-A mirror (forward-dated current-month
+      //    snapshots are legitimately in flux and are skipped) ──
+      const bsEval = evaluateBsEquation(bs, now)
+      if (bsEval.balance_date) {
         // A month with NO data satisfies the equation trivially — 0 − 0 − 0 = 0 —
         // and would be recorded as a pass. A monitoring check that reports success
         // for absent data is worse than no check: it converts "we are not syncing
         // this tenant" into "this tenant is healthy". Distinguish the two.
-        //
-        // This is not hypothetical. Dragon Roofing has no balance-sheet rows at
-        // all before June 2026, and those empty months read as passes — which is
-        // what made the imbalance in its populated months look like a regression
-        // that "started in June" rather than the standing condition it is.
-        const grossMagnitude = bs.reduce((sum, l) => {
-          const v = Number(l.monthly_values?.[bsMonth] ?? 0)
-          return Number.isFinite(v) ? sum + Math.abs(v) : sum
-        }, 0)
-        const hasData = grossMagnitude > 0
-
         rows.push({
           run_at: runAt,
           check_name: 'bs_equation',
           family: 'identity',
           severity: 'watch',
           subject: tenantName,
-          observed: hasData ? Math.abs(delta) : null,
+          observed: bsEval.hasData ? Math.abs(bsEval.delta) : null,
           threshold: BS_EQUATION_TOLERANCE,
-          passed: hasData && Math.abs(delta) <= BS_EQUATION_TOLERANCE,
-          detail: hasData
-            ? `${bsMonth}: assets ${round2(assets)} − liabilities ${round2(liabilities)} − equity ${round2(equity)} = ${delta}`
-            : `${bsMonth}: no balance-sheet values for this tenant — cannot verify the equation`,
+          passed: bsEval.hasData && Math.abs(bsEval.delta) <= BS_EQUATION_TOLERANCE,
+          detail: bsEval.hasData
+            ? `${bsEval.balance_date}: assets ${bsEval.assets} − liabilities ${bsEval.liabilities} − equity ${bsEval.equity} = ${bsEval.delta}`
+            : `${bsEval.balance_date}: no balance-sheet values for this tenant — cannot verify the equation`,
         })
 
-        // ── bs_uncategorized: section-less rows must net to nothing ──
-        let uncategorized = 0
-        let uncategorizedCount = 0
-        for (const l of bs) {
-          if ((l.section ?? '').trim() !== '') continue
-          const v = Number(l.monthly_values?.[bsMonth] ?? 0)
-          if (!Number.isFinite(v) || v === 0) continue
-          uncategorized += Math.abs(v)
-          uncategorizedCount++
-        }
+        // ── bs_uncategorized: on the Path-A mirror every row carries an
+        //    asset/liability/equity type (equity rows have section NULL by
+        //    parser design), so "uncategorised" means an unknown account_type —
+        //    those rows are outside the equation and must net to nothing ──
         rows.push({
           run_at: runAt,
           check_name: 'bs_uncategorized',
           family: 'identity',
           severity: 'watch',
           subject: tenantName,
-          observed: round2(uncategorized),
+          observed: bsEval.uncategorised_total,
           threshold: BS_UNCATEGORIZED_TOLERANCE,
-          passed: uncategorized <= BS_UNCATEGORIZED_TOLERANCE,
-          detail: uncategorizedCount > 0 ? `${uncategorizedCount} uncategorized row(s) at ${bsMonth}` : null,
+          passed: bsEval.uncategorised_total <= BS_UNCATEGORIZED_TOLERANCE,
+          detail: bsEval.uncategorised_count > 0 ? `${bsEval.uncategorised_count} untyped row(s) at ${bsEval.balance_date}` : null,
         })
       } else {
         rows.push({
@@ -292,7 +273,7 @@ async function getHandler(req: NextRequest) {
           observed: null,
           threshold: BS_EQUATION_TOLERANCE,
           passed: false,
-          detail: 'no balance-sheet rows in the mirror for this tenant',
+          detail: 'no completed month-end in the balance-sheet mirror for this tenant',
         })
       }
 
