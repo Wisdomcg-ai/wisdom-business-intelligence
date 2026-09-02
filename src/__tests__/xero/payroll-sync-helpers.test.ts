@@ -9,7 +9,9 @@ import {
   parseXeroDate,
   resolveGroupKey,
   pickRunsNeedingDetail,
+  isPayrollNotAccessible,
 } from '@/lib/xero/payroll-sync'
+import { XeroHttpError, RateLimitDailyExceededError } from '@/lib/xero/xero-api-client'
 
 describe('parseXeroDate', () => {
   it('parses Xero /Date(ms)/ and ISO, rejects garbage', () => {
@@ -72,5 +74,27 @@ describe('pickRunsNeedingDetail — backfill convergence', () => {
     expect(pickRunsNeedingDetail(runs, 0)).toHaveLength(0)
     // A negative remainder (cap already consumed) must not throw or go weird.
     expect(pickRunsNeedingDetail(runs, -5)).toHaveLength(0)
+  })
+})
+
+describe('isPayrollNotAccessible — "no payroll" is a state of the org, not a defect', () => {
+  it('401 (Payroll API access not authorised) and 403 (Payroll has not been purchased)', () => {
+    expect(
+      isPayrollNotAccessible(new XeroHttpError(401, 't', 'Payroll API access not authorised')),
+    ).toBe(true)
+    expect(
+      isPayrollNotAccessible(new XeroHttpError(403, 't', 'Payroll has not been purchased')),
+    ).toBe(true)
+  })
+
+  it('any other status is still a real error', () => {
+    expect(isPayrollNotAccessible(new XeroHttpError(404, 't', 'not found'))).toBe(false)
+    expect(isPayrollNotAccessible(new XeroHttpError(400, 't', 'bad request'))).toBe(false)
+  })
+
+  it('typed only — a daily rate-limit pause or a generic Error mentioning 401 is not "no payroll"', () => {
+    expect(isPayrollNotAccessible(new RateLimitDailyExceededError('t'))).toBe(false)
+    expect(isPayrollNotAccessible(new Error('xero 401 for tenant t: nope'))).toBe(false)
+    expect(isPayrollNotAccessible(null)).toBe(false)
   })
 })

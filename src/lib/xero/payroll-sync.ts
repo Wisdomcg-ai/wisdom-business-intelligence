@@ -24,7 +24,12 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import * as Sentry from '@sentry/nextjs'
-import { fetchXeroWithRateLimit, RateLimitDailyExceededError } from './xero-api-client'
+import {
+  fetchXeroWithRateLimit,
+  RateLimitDailyExceededError,
+  XeroHttpError,
+  type FetchXeroResult,
+} from './xero-api-client'
 import { getValidAccessToken } from './token-manager'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import {
@@ -97,6 +102,22 @@ export function pickRunsNeedingDetail<
     .slice(0, Math.max(0, cap))
 }
 
+/**
+ * Is this the Payroll API refusing the org outright — no payroll purchased
+ * (403 "Payroll has not been purchased") or the connection not authorised for
+ * payroll (401 "Payroll API access not authorised")? Both are permanent
+ * conditions of the org, not defects of this pipeline: record and move on.
+ *
+ * Typed-only on purpose: fetchXeroWithRateLimit throws XeroHttpError for every
+ * non-429 4xx, so this is the one place the "no payroll" branch can live. (The
+ * original `calRes.status === 403` check was dead code — the client never
+ * returns a non-ok result — which is why every no-payroll org raised a Sentry
+ * error on every 6-hourly run.)
+ */
+export function isPayrollNotAccessible(err: unknown): err is XeroHttpError {
+  return err instanceof XeroHttpError && (err.status === 401 || err.status === 403)
+}
+
 export async function syncPayrollForBusiness(
   supabase: SupabaseClient,
   businessId: string,
@@ -152,17 +173,23 @@ export async function syncPayrollForBusiness(
       }
 
       // ── 1. Payroll calendars → calendar_type lookup ────────────────────────
+      // This is the first Payroll API call for the tenant, so it is where an
+      // org with no payroll (403) or a connection not authorised for payroll
+      // (401) declares itself. Not an error for this pipeline — record and
+      // move on to the next tenant, with no Sentry capture.
       const calendarType = new Map<string, string>()
-      const calRes = await xero('https://api.xero.com/payroll.xro/1.0/PayrollCalendars')
-      if (calRes.ok) {
-        for (const cal of calRes.json?.PayrollCalendars ?? []) {
-          if (cal.PayrollCalendarID) calendarType.set(cal.PayrollCalendarID, cal.CalendarType ?? 'UNKNOWN')
+      let calRes: FetchXeroResult
+      try {
+        calRes = await xero('https://api.xero.com/payroll.xro/1.0/PayrollCalendars')
+      } catch (err) {
+        if (isPayrollNotAccessible(err)) {
+          result.errors.push(`${conn.tenant_id}: payroll not accessible (${err.status})`)
+          continue
         }
-      } else if (calRes.status === 403 || calRes.status === 401) {
-        // Org has no payroll, or the connection predates the payroll scopes.
-        // Not an error for this pipeline — record and move on.
-        result.errors.push(`${conn.tenant_id}: payroll not accessible (${calRes.status})`)
-        continue
+        throw err
+      }
+      for (const cal of calRes.json?.PayrollCalendars ?? []) {
+        if (cal.PayrollCalendarID) calendarType.set(cal.PayrollCalendarID, cal.CalendarType ?? 'UNKNOWN')
       }
 
       // ── 2. Employees (paged) ───────────────────────────────────────────────

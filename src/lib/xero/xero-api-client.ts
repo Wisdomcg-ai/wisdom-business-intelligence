@@ -55,6 +55,25 @@ export class RateLimitDailyExceededError extends Error {
   }
 }
 
+/**
+ * Thrown for any non-429 4xx (no retry). Carries the HTTP status so callers
+ * can classify a refusal without parsing the message — e.g. payroll-sync
+ * treats 401/403 from the Payroll API as "this org has no payroll", not as a
+ * defect. The message is unchanged from the untyped Error it replaces.
+ */
+export class XeroHttpError extends Error {
+  readonly tenantId: string
+  readonly status: number
+  readonly body: string
+  constructor(status: number, tenantId: string, body: string) {
+    super(`xero ${status} for tenant ${tenantId}: ${body.slice(0, 300)}`)
+    this.name = 'XeroHttpError'
+    this.status = status
+    this.tenantId = tenantId
+    this.body = body
+  }
+}
+
 // ─── Internal helpers ───────────────────────────────────────────────────────
 
 const FIVEXX_BACKOFF_MS = [1_000, 2_000, 5_000, 15_000, 60_000]
@@ -138,7 +157,7 @@ async function readBodySafe(res: Response): Promise<any> {
  *
  * @returns On success, FetchXeroResult with ok=true and parsed JSON body.
  * @throws  RateLimitDailyExceededError on 429-daily.
- * @throws  Error on other 4xx / exhausted 5xx retries.
+ * @throws  XeroHttpError on other 4xx (no retry); Error on exhausted 5xx retries.
  */
 export async function fetchXeroWithRateLimit(
   url: string,
@@ -257,11 +276,10 @@ export async function fetchXeroWithRateLimit(
       continue
     }
 
-    // 4xx (other than 429) → no retry; throw.
+    // 4xx (other than 429) → no retry; throw a typed error so callers can
+    // branch on status without parsing the message.
     const body = await readBodySafe(res)
     const bodyStr = typeof body === 'string' ? body : JSON.stringify(body ?? {})
-    throw new Error(
-      `xero ${res.status} for tenant ${opts.tenantId}: ${bodyStr.slice(0, 300)}`,
-    )
+    throw new XeroHttpError(res.status, opts.tenantId, bodyStr)
   }
 }
