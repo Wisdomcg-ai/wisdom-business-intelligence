@@ -201,6 +201,33 @@ describe('fetchXeroWithRateLimit', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 
+  it('4xx — throws XeroHttpError carrying status + tenantId, message unchanged', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+      makeResponse(403, {
+        Type: 'Error',
+        Message: 'Payroll has not been purchased',
+      }),
+    )
+    const { fetchXeroWithRateLimit, XeroHttpError } = await import('@/lib/xero/xero-api-client')
+
+    let caught: unknown
+    try {
+      await fetchXeroWithRateLimit('https://api.xero.com/payroll.xro/1.0/PayrollCalendars', {
+        accessToken: 'tok',
+        tenantId: 'tenant-A',
+      })
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(XeroHttpError)
+    const err = caught as InstanceType<typeof XeroHttpError>
+    expect(err.status).toBe(403)
+    expect(err.tenantId).toBe('tenant-A')
+    expect(err.body).toContain('Payroll has not been purchased')
+    // Message format is a contract — existing callers regex on it.
+    expect(err.message).toMatch(/^xero 403 for tenant tenant-A: /)
+  })
+
   it('captures Sentry breadcrumb with X-DayLimit-Remaining on every response', async () => {
     const Sentry = await import('@sentry/nextjs')
     vi.spyOn(global, 'fetch').mockResolvedValueOnce(
