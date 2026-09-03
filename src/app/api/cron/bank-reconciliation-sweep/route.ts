@@ -13,17 +13,18 @@ import { sweepTenant, persistTenantSweep } from '@/lib/reconciliation/sweep'
  * production board opens each morning with fresh "items to reconcile" counts,
  * after the 16:00 UTC sync-all-xero pass and before Matt's day starts.
  *
- * Per active tenant: count unreconciled items bucketed by transaction month
- * into reconciliation_snapshots, with the check outcome in
- * reconciliation_checks. Primary source is the Reports/BankStatement
- * statement lines (the banner population); account-transaction counts are
- * the labelled fallback — see lib/reconciliation/sweep.ts. Distinct from
+ * Per active tenant: count unreconciled account transactions bucketed by
+ * transaction month into reconciliation_snapshots, with the check outcome in
+ * reconciliation_checks. That is the only population the Accounting API
+ * exposes — bank-feed statement lines (Xero's "Reconcile N items" banner)
+ * sit behind a scope Xero no longer grants, so they arrive via the dashboard
+ * capture instead — see lib/reconciliation/sweep.ts. Distinct from
  * /api/cron/reconciliation-watch, which watches P&L/BS *ledger* reconciliation
  * drift in sync_jobs — this cron is about the bank reconcile queue.
  *
- * Load: per tenant ≈ 1 token refresh + 1 accounts lookup (cache-first) +
- * 1 call per bank account (or ≤10 fallback pages) — well under the
- * 60/min/tenant limit; fetchXeroWithRateLimit absorbs 429s.
+ * Load: per tenant ≈ 1 token refresh + 1 accounts lookup + ≤10 transaction
+ * pages — well under the 60/min/tenant limit; fetchXeroWithRateLimit
+ * absorbs 429s.
  */
 export const dynamic = 'force-dynamic'
 export const maxDuration = 800
@@ -151,7 +152,6 @@ async function getHandler(req: NextRequest) {
       metadata: {
         tenants: results.length,
         ok: okCount,
-        statement_line_tenants: results.filter(r => r.source === 'statement_lines' && r.status === 'ok').length,
         skipped: skipped.length,
         duration_ms: Date.now() - startedAt,
       },

@@ -1,23 +1,19 @@
 /**
  * Pure bucketing logic for the CFO production board's reconciliation counts.
  *
- * Sources (see sweep.ts): unreconciled bank-feed statement lines from the
- * Reports/BankStatement report (primary — the banner population), or
- * unreconciled account transactions (fallback). Both reduce to the same
- * shape: per-month buckets of item count + gross (absolute) value, keyed
- * 'YYYY-MM' by transaction date.
+ * Source (see sweep.ts): unreconciled account transactions from the
+ * Accounting API, reduced to per-month buckets of item count + gross
+ * (absolute) value, keyed 'YYYY-MM' by transaction date.
  */
 
 /**
- * Lookback windows (months). Statement lines look back further — the sibling
- * platform's incident was old uncoded feed lines beyond 12 months. The
- * BankTransactions fallback deliberately stays at 12: widening it stresses
- * its silent page cap, and uncoded lines are invisible to that population at
- * ANY window. Client-importable (this module is pure) so UI copy can name
- * the bound it is asserting.
+ * Lookback window (months). Deliberately 12: widening it stresses the
+ * BankTransactions page cap (a full final page makes the count a floor), and
+ * uncoded bank-feed lines — the population Xero's banner counts — are
+ * invisible to this API at ANY window (see sweep.ts). Client-importable
+ * (this module is pure) so UI copy can name the bound it is asserting.
  */
-export const STATEMENT_WINDOW_MONTHS = 24
-export const FALLBACK_WINDOW_MONTHS = 12
+export const SWEEP_WINDOW_MONTHS = 12
 
 export interface UnreconciledItem {
   /** ISO date (yyyy-MM-dd or full timestamp) of the statement line / transaction */

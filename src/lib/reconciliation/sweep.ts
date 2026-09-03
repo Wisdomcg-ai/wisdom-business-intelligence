@@ -6,29 +6,29 @@
  * in reconciliation_checks (fail-closed: an errored check is recorded as
  * status='error', never as zero outstanding).
  *
- * PRIMARY source — Accounting API Bank Statement report:
- *   GET /api.xro/2.0/Reports/BankStatement?bankAccountID=..&fromDate=..&toDate=..
- * Returns the imported bank-feed STATEMENT LINES with a per-line Reconciled
- * column — the same population as Xero's "Reconcile N items" banner (proven
- * against IICT's Airwallex feed: 25 uncoded lines invisible to the
- * account-transaction count). OPERATIVE REALITY: since Xero's April 2024
- * carve-out this report requires the addendum-gated
- * accounting.reports.bankstatement.read scope — this app's tokens 401
- * (AuthorizationUnsuccessful, proven live), so every tenant currently falls
- * through to the fallback with the reason recorded, until Matt's signed
- * addendum lands. (The endpoint is real but absent from Xero's OpenAPI
- * spec — XeroAPI/xero-node#313.)
- *
- * FALLBACK source — Accounting API unreconciled account transactions:
+ * SOURCE — Accounting API unreconciled account transactions:
  *   GET /api.xro/2.0/BankTransactions?where=Status=="AUTHORISED" AND
  *       IsReconciled==false AND Date>=DateTime(..)
- * Used per tenant when the statement report fails or its shape isn't
- * recognised (a shape we can't parse must never read as "all clear").
- * Rows carry source so the UI can label which population was counted.
+ * This is the ONLY population the Accounting API exposes: transactions
+ * already recorded in Xero that have not been matched to a statement line.
+ * Rows carry source='account_transactions' so readers label it honestly —
+ * "unreconciled transactions", never "to reconcile".
  *
- * CURRENCY: statement lines are denominated in the bank account's currency
- * (IICT's feed is HKD). Every bucket carries the account's CurrencyCode;
- * readers must never sum or render values across differing currencies as AUD.
+ * WHAT IT CANNOT SEE — bank-feed STATEMENT LINES, the population behind
+ * Xero's "Reconcile N items" banner (uncoded feed lines have no transaction
+ * yet; IICT's Airwallex feed proved 25 such lines invisible here). The
+ * Reports/BankStatement report that carries them sits behind the
+ * accounting.reports.bankstatement.read scope (Xero's 2 Apr 2024 carve-out),
+ * and Xero API support confirmed on 2 Sep 2026 that the scope is no longer
+ * granted to any app — statement lines are Finance / Bank Feeds API only,
+ * restricted to banks and regulated partners. The primary statement-report
+ * path this module carried from #443 to #450 therefore 401'd on every
+ * tenant on every sweep (12/12 on 2 Sep 2026) and was removed; banner-exact
+ * numbers come from the dashboard capture recorded as its own source.
+ *
+ * CURRENCY: every bucket carries the bank account's CurrencyCode (IICT's
+ * feed is HKD); readers must never sum or render values across differing
+ * currencies as AUD.
  */
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import {
@@ -42,11 +42,16 @@ import {
   type UnreconciledItem,
 } from './bucketing'
 import { UNRECONCILED_AUTHORISED, sinceWhere } from './where-clauses'
-import { STATEMENT_WINDOW_MONTHS, FALLBACK_WINDOW_MONTHS } from './bucketing'
+import { SWEEP_WINDOW_MONTHS } from './bucketing'
 
 type SupabaseLike = { from: (table: string) => any }
 
-export type SweepSource = 'statement_lines' | 'account_transactions'
+/**
+ * The one population the Accounting API can see: recorded bank transactions
+ * not yet reconciled. Bank-feed statement lines (the "Reconcile N items"
+ * banner) are not reachable by this app — see the module header.
+ */
+export type SweepSource = 'account_transactions'
 
 export interface AccountBuckets {
   bankAccountId: string
@@ -62,10 +67,7 @@ export interface TenantSweepResult {
   businessId: string
   status: 'ok' | 'error'
   error?: string
-  /** Why the statement-line primary path was abandoned for this tenant —
-   *  recorded on the check row so a silent fallback is diagnosable. */
-  fallbackReason?: string
-  /** Honesty caveats about an OK result (fallback truncated at the page cap,
+  /** Honesty caveats about an OK result (truncated at the page cap,
    *  transactions without an account id dropped) — persisted with it. */
   caveats?: string[]
   source: SweepSource
@@ -86,134 +88,17 @@ const isoDay = (d: Date) =>
  */
 export function sweepWindow(
   now: Date,
-  monthsBack: number = FALLBACK_WINDOW_MONTHS,
+  monthsBack: number = SWEEP_WINDOW_MONTHS,
 ): { fromDate: string; toDate: string } {
   const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (monthsBack - 1), 1))
   return { fromDate: isoDay(from), toDate: isoDay(now) }
 }
 
 /**
- * The statement-line window (24 months) split into ≤12-month chunks. The
- * Bank Statement report is undocumented in Xero's spec, and its sibling
- * Finance-API endpoint caps ranges at 12 months — chunking by design means
- * we never depend on the longer range being accepted.
+ * Group Accounting-API bank transactions by bank account. Transactions
+ * missing an account id are dropped (and counted, so the caveat can say so).
  */
-export function statementWindows(now: Date): { fromDate: string; toDate: string }[] {
-  const whole = sweepWindow(now, STATEMENT_WINDOW_MONTHS)
-  const mid = sweepWindow(now, FALLBACK_WINDOW_MONTHS)
-  const dayBeforeMid = new Date(Date.parse(`${mid.fromDate}T00:00:00Z`) - 86_400_000)
-  return [
-    { fromDate: whole.fromDate, toDate: isoDay(dayBeforeMid) },
-    { fromDate: mid.fromDate, toDate: whole.toDate },
-  ]
-}
-
-export interface ParsedStatementReport {
-  /** False when the report shape wasn't recognised — the caller MUST fall
-   *  back, never treat it as zero outstanding. `reason` names what refused. */
-  parsed: boolean
-  items: UnreconciledItem[]
-  reason?: string
-}
-
-/**
- * Parse a Reports/BankStatement response down to its unreconciled statement
- * lines. Standard Xero report envelope: Reports[0].Rows with a Header row
- * naming the columns (Date / Description / Reference / Reconciled / Source /
- * Amount / Balance) and Section rows holding the data rows. Opening/closing
- * balance rows have no Reconciled value and are skipped; only an explicit
- * Reconciled === "No" counts as outstanding.
- */
-export function parseBankStatementReport(json: any): ParsedStatementReport {
-  const refuse = (reason: string): ParsedStatementReport => ({ parsed: false, items: [], reason })
-
-  const report = Array.isArray(json?.Reports) ? json.Reports[0] : null
-  const topRows = Array.isArray(report?.Rows) ? report.Rows : null
-  if (!topRows) return refuse('no Reports[0].Rows envelope')
-
-  let dateIdx = -1
-  let reconciledIdx = -1
-  let amountIdx = -1
-  let descriptionIdx = -1
-  let headerConflict = false
-
-  const dataRows: any[] = []
-  const walk = (rows: any[]) => {
-    for (const row of rows) {
-      if (row?.RowType === 'Header' && Array.isArray(row.Cells)) {
-        const next = { date: -1, reconciled: -1, amount: -1, description: -1 }
-        row.Cells.forEach((cell: any, i: number) => {
-          const title = String(cell?.Value ?? '').trim().toLowerCase()
-          if (title === 'date') next.date = i
-          if (title === 'reconciled') next.reconciled = i
-          if (title === 'amount') next.amount = i
-          if (title === 'description') next.description = i
-        })
-        // A second header whose indices disagree would misindex earlier
-        // sections' rows — refuse rather than last-header-wins.
-        if (
-          reconciledIdx >= 0 &&
-          (next.date !== dateIdx || next.reconciled !== reconciledIdx || next.amount !== amountIdx)
-        ) {
-          headerConflict = true
-        }
-        dateIdx = next.date
-        reconciledIdx = next.reconciled
-        amountIdx = next.amount
-        descriptionIdx = next.description
-      } else if (row?.RowType === 'Row' && Array.isArray(row.Cells)) {
-        dataRows.push(row)
-      }
-      if (Array.isArray(row?.Rows)) walk(row.Rows)
-    }
-  }
-  walk(topRows)
-
-  if (headerConflict) return refuse('conflicting duplicate header rows')
-  if (dateIdx < 0 || reconciledIdx < 0 || amountIdx < 0) {
-    return refuse('header lacks a Date, Reconciled, or Amount column')
-  }
-
-  const items: UnreconciledItem[] = []
-  for (const row of dataRows) {
-    const cells = row.Cells
-    const description = String(cells[descriptionIdx]?.Value ?? '')
-    if (/^(opening|closing) balance$/i.test(description.trim())) continue
-
-    // A row too short to carry a Reconciled cell must refuse — coercing the
-    // missing cell to '' would count a truncated UNRECONCILED row as
-    // reconciled.
-    const reconciledCell = cells[reconciledIdx]
-    if (reconciledCell === undefined || reconciledCell.Value === undefined) {
-      return refuse('data row missing its Reconciled cell')
-    }
-    const reconciled = String(reconciledCell.Value).trim().toLowerCase()
-    // Closed vocabulary: yes/no, plus '' for balance-style rows. ANY other
-    // token means the column's vocabulary drifted — refuse rather than read
-    // an unknown value as "reconciled".
-    if (reconciled !== 'yes' && reconciled !== 'no' && reconciled !== '') {
-      return refuse(`unrecognised Reconciled value "${String(reconciledCell.Value).slice(0, 30)}"`)
-    }
-    if (reconciled !== 'no') continue
-
-    const date = String(cells[dateIdx]?.Value ?? '')
-    if (!xeroDateToMonthKey(date)) {
-      // An explicitly-UNRECONCILED line whose date we cannot read must refuse
-      // the whole report: silently dropping it zeroes the count on a date-
-      // format change in an endpoint Xero doesn't document.
-      return refuse(`unparseable date "${date.slice(0, 30)}" on an unreconciled row`)
-    }
-    const amount = Number(String(cells[amountIdx]?.Value ?? '0').replace(/,/g, ''))
-    items.push({ date, amount: Math.abs(Number.isFinite(amount) ? amount : 0) })
-  }
-  return { parsed: true, items }
-}
-
-/**
- * Group Accounting-API bank transactions by bank account (fallback source).
- * Transactions missing an account id are dropped.
- */
-export function groupFallbackTransactions(transactions: any[]): {
+export function groupAccountTransactions(transactions: any[]): {
   byAccount: Map<string, { name: string | null; items: UnreconciledItem[] }>
   dropped: number
 } {
@@ -253,8 +138,9 @@ export function sumBuckets(accounts: AccountBuckets[]): { totalCount: number; to
 // ─── Xero IO ────────────────────────────────────────────────────────────────
 
 const ACCOUNTING_BASE = 'https://api.xero.com/api.xro/2.0'
-/** Safety cap on fallback pagination: 10 pages × 100 = 1000 unreconciled txns. */
-const FALLBACK_MAX_PAGES = 10
+/** Safety cap on pagination: 10 pages × 100 = 1000 unreconciled txns. A full
+ *  final page is reported as a caveat — the count is then a FLOOR. */
+const MAX_PAGES = 10
 
 interface BankAccountRef {
   bankAccountId: string
@@ -289,21 +175,7 @@ async function listBankAccounts(
     }))
 }
 
-async function fetchStatementLineItems(
-  tenantId: string,
-  accessToken: string,
-  account: BankAccountRef,
-  window: { fromDate: string; toDate: string },
-): Promise<ParsedStatementReport> {
-  const url =
-    `${ACCOUNTING_BASE}/Reports/BankStatement` +
-    `?bankAccountID=${encodeURIComponent(account.bankAccountId)}` +
-    `&fromDate=${window.fromDate}&toDate=${window.toDate}`
-  const res = await fetchXeroWithRateLimit(url, { accessToken, tenantId })
-  return parseBankStatementReport(res.json)
-}
-
-async function fetchFallbackAccounts(
+async function fetchUnreconciledAccountTransactions(
   tenantId: string,
   accessToken: string,
   window: { fromDate: string },
@@ -313,7 +185,7 @@ async function fetchFallbackAccounts(
   const where = since ? `${UNRECONCILED_AUTHORISED} AND ${since}` : UNRECONCILED_AUTHORISED
   const transactions: any[] = []
   let truncated = false
-  for (let page = 1; page <= FALLBACK_MAX_PAGES; page++) {
+  for (let page = 1; page <= MAX_PAGES; page++) {
     const url = `${ACCOUNTING_BASE}/BankTransactions?where=${encodeURIComponent(where)}&page=${page}`
     const res = await fetchXeroWithRateLimit(url, { accessToken, tenantId })
     const batch = Array.isArray(res.json?.BankTransactions) ? res.json.BankTransactions : []
@@ -321,9 +193,9 @@ async function fetchFallbackAccounts(
     if (batch.length < 100) break
     // A full final page means the cap cut us off — the count is a FLOOR and
     // must be labelled, never stored as if complete.
-    if (page === FALLBACK_MAX_PAGES) truncated = true
+    if (page === MAX_PAGES) truncated = true
   }
-  const { byAccount, dropped } = groupFallbackTransactions(transactions)
+  const { byAccount, dropped } = groupAccountTransactions(transactions)
   return {
     accounts: Array.from(byAccount.entries()).map(([bankAccountId, entry]) => ({
       bankAccountId,
@@ -359,100 +231,49 @@ export async function sweepTenant(
     return {
       ...base,
       status: 'error',
-      source: 'statement_lines',
+      source: 'account_transactions',
       error: `token: ${token.error ?? 'unknown'}${token.shouldDeactivate ? ' (needs reconnect)' : ''}`,
     }
   }
 
-  // Statement lines look back STATEMENT_WINDOW_MONTHS in ≤12-month chunks;
-  // the fallback keeps its shorter FALLBACK_WINDOW_MONTHS bound (see
-  // bucketing.ts for why the two differ).
-  const stmtWindows = statementWindows(now)
-  const fallbackWindow = sweepWindow(now, FALLBACK_WINDOW_MONTHS)
-  // Hoisted so the double-failure path (statement refused AND fallback threw)
-  // still names the original statement-report reason on the check row.
-  let fallbackReason: string | undefined
+  const window = sweepWindow(now, SWEEP_WINDOW_MONTHS)
 
   try {
     const bankAccounts = await listBankAccounts(connection.tenant_id, token.accessToken)
     if (bankAccounts.length === 0) {
       // A tenant with no active bank accounts genuinely has nothing to
       // reconcile — an OK check with zero buckets, not an error.
-      return { ...base, status: 'ok', source: 'statement_lines' }
+      return { ...base, status: 'ok', source: 'account_transactions' }
     }
     const accountCurrency = new Map(bankAccounts.map(a => [a.bankAccountId, a.currency]))
 
-    // Primary: statement lines from the Bank Statement report. If ANY
-    // account's report can't be fetched or parsed, the whole tenant falls
-    // back — a partial statement-line picture must not read as complete.
-    try {
-      const accounts: AccountBuckets[] = []
-      for (const account of bankAccounts) {
-        const items: UnreconciledItem[] = []
-        for (const chunk of stmtWindows) {
-          const parsed = await fetchStatementLineItems(
-            connection.tenant_id,
-            token.accessToken,
-            account,
-            chunk,
-          )
-          if (!parsed.parsed) {
-            throw new Error(
-              `bank statement report shape not recognised (${account.bankAccountName ?? account.bankAccountId}): ${parsed.reason ?? 'unknown'}`,
-            )
-          }
-          items.push(...parsed.items)
-        }
-        const buckets = bucketByMonth(items)
-        if (buckets.length > 0) {
-          accounts.push({ ...account, buckets })
-        }
-      }
-      return { ...base, ...sumBuckets(accounts), status: 'ok', source: 'statement_lines', accounts }
-    } catch (primaryErr) {
-      if (primaryErr instanceof RateLimitDailyExceededError) throw primaryErr
-      // Fall through to the account-transaction count, labelled as such —
-      // but never silently: the reason lands on the check row.
-      fallbackReason = `statement report unavailable: ${
-        primaryErr instanceof Error ? primaryErr.message.slice(0, 250) : String(primaryErr)
-      }`
-    }
-
-    const fallback = await fetchFallbackAccounts(
+    const swept = await fetchUnreconciledAccountTransactions(
       connection.tenant_id,
       token.accessToken,
-      fallbackWindow,
+      window,
       accountCurrency,
     )
     const caveats: string[] = []
-    if (fallback.truncated) {
-      caveats.push(`fallback truncated at ${FALLBACK_MAX_PAGES * 100} transactions — count is a floor`)
+    if (swept.truncated) {
+      caveats.push(`truncated at ${MAX_PAGES * 100} transactions — count is a floor`)
     }
-    if (fallback.dropped > 0) {
-      caveats.push(`${fallback.dropped} transaction(s) lacked a bank account id and were not counted`)
+    if (swept.dropped > 0) {
+      caveats.push(`${swept.dropped} transaction(s) lacked a bank account id and were not counted`)
     }
     return {
       ...base,
-      ...sumBuckets(fallback.accounts),
+      ...sumBuckets(swept.accounts),
       status: 'ok',
       source: 'account_transactions',
-      fallbackReason,
       caveats: caveats.length > 0 ? caveats : undefined,
-      accounts: fallback.accounts,
+      accounts: swept.accounts,
     }
   } catch (err) {
     if (err instanceof RateLimitDailyExceededError) {
-      return { ...base, status: 'error', source: 'statement_lines', error: 'xero daily rate limit — retry tomorrow' }
+      return { ...base, status: 'error', source: 'account_transactions', error: 'xero daily rate limit — retry tomorrow' }
     }
     const message = err instanceof Error ? err.message.slice(0, 250) : String(err)
-    return {
-      ...base,
-      status: 'error',
-      source: 'statement_lines',
-      // Double failure: the fallback died AFTER the statement path was
-      // abandoned — keep both reasons on the row.
-      error: fallbackReason ? `${message} (after ${fallbackReason})` : message,
-    }
+    return { ...base, status: 'error', source: 'account_transactions', error: message }
   }
 }
 
@@ -473,7 +294,7 @@ export async function persistTenantSweep(
   // (tenant_id) — a mismatched conflict target fails on every call and
   // supabase-js reports it via `error`, not by throwing (the financial_metrics
   // lesson).
-  const notes = [result.error ?? result.fallbackReason, ...(result.caveats ?? [])]
+  const notes = [result.error, ...(result.caveats ?? [])]
     .filter(Boolean)
     .join(' | ')
   const { error: checkError } = await supabase.from('reconciliation_checks').upsert(
@@ -482,9 +303,9 @@ export async function persistTenantSweep(
       business_id: result.businessId,
       source: result.source,
       status: result.status,
-      // On an ok check this may carry the fallback reason and honesty caveats
-      // (truncation, dropped rows) — readers only SURFACE it for
-      // status='error', but it is always available for diagnosis.
+      // On an ok check this may carry honesty caveats (truncation, dropped
+      // rows) — readers only SURFACE it for status='error', but it is always
+      // available for diagnosis.
       error_message: notes || null,
       // An errored check stores NULL totals, never a confident zero — a
       // reader that misses the status column must not see "0 outstanding".

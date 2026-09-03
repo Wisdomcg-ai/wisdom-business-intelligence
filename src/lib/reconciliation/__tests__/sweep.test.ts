@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  sweepWindow,
-  parseBankStatementReport,
-  groupFallbackTransactions,
-  sumBuckets,
-  statementWindows,
-} from '../sweep'
+import { sweepWindow, groupAccountTransactions, sumBuckets } from '../sweep'
 
 describe('sweepWindow', () => {
   it('spans from the first of the month 11 months back through today', () => {
@@ -23,137 +17,9 @@ describe('sweepWindow', () => {
   })
 })
 
-/** Realistic Reports/BankStatement envelope: Header row naming columns,
- *  Section with data rows, opening/closing balance rows without a
- *  Reconciled value. */
-function statementReport(rows: any[]) {
-  return {
-    Reports: [
-      {
-        ReportID: 'BankStatement',
-        ReportName: 'Bank Statement',
-        Rows: [
-          {
-            RowType: 'Header',
-            Cells: [
-              { Value: 'Date' }, { Value: 'Description' }, { Value: 'Reference' },
-              { Value: 'Reconciled' }, { Value: 'Source' }, { Value: 'Amount' }, { Value: 'Balance' },
-            ],
-          },
-          { RowType: 'Section', Title: '', Rows: rows },
-        ],
-      },
-    ],
-  }
-}
-
-const row = (date: string, description: string, reconciled: string, amount: string) => ({
-  RowType: 'Row',
-  Cells: [
-    { Value: date }, { Value: description }, { Value: '' },
-    { Value: reconciled }, { Value: 'Import' }, { Value: amount }, { Value: '999.00' },
-  ],
-})
-
-describe('parseBankStatementReport', () => {
-  it('keeps only Reconciled=No statement lines, with absolute amounts', () => {
-    const parsed = parseBankStatementReport(
-      statementReport([
-        row('2026-08-01', 'Opening Balance', '', '0.00'),
-        row('2026-08-03', 'AIRWALLEX TRANSFER', 'No', '-1,217.50'),
-        row('2026-08-04', 'STRIPE PAYOUT', 'Yes', '500.00'),
-        row('2026-08-05', 'FX FEE', 'No', '42.10'),
-        row('2026-08-31', 'Closing Balance', '', '0.00'),
-      ]),
-    )
-    expect(parsed.parsed).toBe(true)
-    expect(parsed.items).toEqual([
-      { date: '2026-08-03', amount: 1217.5 },
-      { date: '2026-08-05', amount: 42.1 },
-    ])
-  })
-
-  it('an unrecognised shape refuses to parse — never reads as all-clear', () => {
-    expect(parseBankStatementReport(null).parsed).toBe(false)
-    expect(parseBankStatementReport({}).parsed).toBe(false)
-    expect(parseBankStatementReport({ Reports: [{ Rows: [] }] }).parsed).toBe(false)
-    // Header present but missing the Reconciled column → refuse.
-    const noReconciled = {
-      Reports: [{
-        Rows: [
-          { RowType: 'Header', Cells: [{ Value: 'Date' }, { Value: 'Amount' }] },
-          { RowType: 'Section', Rows: [row('2026-08-03', 'X', 'No', '10')] },
-        ],
-      }],
-    }
-    expect(parseBankStatementReport(noReconciled).parsed).toBe(false)
-  })
-
-  it('a recognised report with zero unreconciled lines parses as legitimately clear', () => {
-    const parsed = parseBankStatementReport(
-      statementReport([row('2026-08-04', 'STRIPE PAYOUT', 'Yes', '500.00')]),
-    )
-    expect(parsed.parsed).toBe(true)
-    expect(parsed.items).toEqual([])
-  })
-
-  it('an UNRECONCILED row with an unparseable date REFUSES the report — dropping it would zero the count on a format change', () => {
-    const parsed = parseBankStatementReport(
-      statementReport([row('14 Aug 2026', 'MYSTERY', 'No', '100.00')]),
-    )
-    expect(parsed.parsed).toBe(false)
-    expect(parsed.reason).toContain('unparseable date')
-    expect(parsed.reason).toContain('14 Aug 2026')
-  })
-
-  it('a non-numeric amount on a valid unreconciled row fails to zero (count survives)', () => {
-    const parsed = parseBankStatementReport(
-      statementReport([row('2026-08-05', 'BAD AMOUNT', 'No', 'abc')]),
-    )
-    expect(parsed.parsed).toBe(true)
-    expect(parsed.items).toEqual([{ date: '2026-08-05', amount: 0 }])
-  })
-
-  it('a data row missing its Reconciled cell REFUSES — a truncated unreconciled row must not read as reconciled', () => {
-    const short = { RowType: 'Row', Cells: [{ Value: '2026-08-05' }, { Value: 'TRUNCATED' }] }
-    const parsed = parseBankStatementReport(statementReport([short]))
-    expect(parsed.parsed).toBe(false)
-    expect(parsed.reason).toContain('missing its Reconciled cell')
-  })
-
-  it('Reconciled vocabulary drift REFUSES — an unknown token must not read as reconciled', () => {
-    const parsed = parseBankStatementReport(
-      statementReport([row('2026-08-05', 'DRIFT', 'N', '10.00')]),
-    )
-    expect(parsed.parsed).toBe(false)
-    expect(parsed.reason).toContain('unrecognised Reconciled value')
-  })
-
-  it('conflicting duplicate header rows REFUSE — last-header-wins would misindex earlier sections', () => {
-    const fixture = statementReport([row('2026-08-05', 'OK', 'No', '10.00')])
-    fixture.Reports[0].Rows.push({
-      RowType: 'Header',
-      Cells: [{ Value: 'Reconciled' }, { Value: 'Date' }, { Value: 'Amount' }],
-    } as any)
-    const parsed = parseBankStatementReport(fixture)
-    expect(parsed.parsed).toBe(false)
-    expect(parsed.reason).toContain('conflicting duplicate header')
-  })
-})
-
-describe('statementWindows (24 months, chunked ≤12)', () => {
-  it('covers the full 24-month span in two contiguous chunks', () => {
-    const chunks = statementWindows(new Date(Date.UTC(2026, 8, 16)))
-    expect(chunks).toEqual([
-      { fromDate: '2024-10-01', toDate: '2025-09-30' },
-      { fromDate: '2025-10-01', toDate: '2026-09-16' },
-    ])
-  })
-})
-
-describe('groupFallbackTransactions', () => {
+describe('groupAccountTransactions', () => {
   it('groups by bank account with absolute totals and prefers DateString', () => {
-    const { byAccount, dropped } = groupFallbackTransactions([
+    const { byAccount, dropped } = groupAccountTransactions([
       {
         BankAccount: { AccountID: 'acc-1', Name: 'ANZ Cheque' },
         DateString: '2026-08-14T00:00:00',
@@ -175,7 +41,7 @@ describe('groupFallbackTransactions', () => {
   })
 
   it('drops transactions with no bank account id and counts them', () => {
-    const { byAccount, dropped } = groupFallbackTransactions([
+    const { byAccount, dropped } = groupAccountTransactions([
       { DateString: '2026-08-01', Total: 10 },
       { BankAccount: {}, DateString: '2026-08-01', Total: 10 },
     ])

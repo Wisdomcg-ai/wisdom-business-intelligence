@@ -1,12 +1,13 @@
 /**
  * sweepTenant integration seam — the honesty rules, pinned where they live:
  *
- *  - ANY account's statement report failing (fetch OR shape) abandons the
- *    whole statement-line pass: the result is the labelled fallback with the
- *    named reason recorded — never a partial statement-line total.
+ *  - The sweep has ONE source: unreconciled account transactions. It never
+ *    calls Reports/BankStatement — that scope is closed to this app (Xero
+ *    support, 2 Sep 2026) and every attempt 401'd on every tenant.
  *  - An unrecognised Accounts listing is an ERROR, never "no bank accounts →
  *    all clear".
- *  - Fallback truncation and double failures carry their caveats/reasons.
+ *  - Truncation at the page cap is a recorded caveat; a Xero failure is an
+ *    errored check, never a zero.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -23,10 +24,12 @@ vi.mock('@/lib/xero/xero-api-client', () => {
     fetchXeroWithRateLimit: (...args: any[]) => mockFetch(...args),
   }
 })
+const tokenMock = vi.fn<(...args: any[]) => Promise<any>>()
 vi.mock('@/lib/xero/token-manager', () => ({
-  getValidAccessToken: vi.fn(async () => ({ success: true, accessToken: 'tok' })),
+  getValidAccessToken: (...args: any[]) => tokenMock(...args),
 }))
 
+import { RateLimitDailyExceededError } from '@/lib/xero/xero-api-client'
 import { sweepTenant } from '../sweep'
 
 const CONN = { id: 'conn-1', tenant_id: 't1' }
@@ -42,94 +45,60 @@ const accountsPayload = {
   },
 }
 
-const cleanStatement = {
+const txns = (rows: Array<{ account: string; name: string; date: string; total: number }>) => ({
   ok: true, status: 200, headers: {},
   json: {
-    Reports: [{
-      Rows: [
-        { RowType: 'Header', Cells: [{ Value: 'Date' }, { Value: 'Description' }, { Value: 'Reconciled' }, { Value: 'Amount' }] },
-        { RowType: 'Section', Rows: [
-          { RowType: 'Row', Cells: [{ Value: '2026-08-03' }, { Value: 'X' }, { Value: 'Yes' }, { Value: '10.00' }] },
-        ] },
-      ],
-    }],
-  },
-}
-
-const oneUnreconciledStatement = JSON.parse(JSON.stringify(cleanStatement))
-oneUnreconciledStatement.json.Reports[0].Rows[1].Rows.push(
-  { RowType: 'Row', Cells: [{ Value: '2026-08-05' }, { Value: 'FEE' }, { Value: 'No' }, { Value: '-42.10' }] },
-)
-
-const fallbackTxns = (n: number) => ({
-  ok: true, status: 200, headers: {},
-  json: {
-    BankTransactions: Array.from({ length: n }, (_, i) => ({
-      BankAccount: { AccountID: 'acc-1', Name: 'ANZ Cheque' },
-      DateString: '2026-08-01T00:00:00',
-      Total: 5,
+    BankTransactions: rows.map(r => ({
+      BankAccount: { AccountID: r.account, Name: r.name },
+      DateString: r.date,
+      Total: r.total,
     })),
   },
 })
+
+const fullPage = (n: number) =>
+  txns(Array.from({ length: n }, () => ({ account: 'acc-1', name: 'ANZ Cheque', date: '2026-08-01T00:00:00', total: 5 })))
 
 beforeEach(() => {
   // Braces matter: mockReset() returns the mock, and vitest calls a function
   // returned from a hook as a CLEANUP callback — invoking the mock argless.
   mockFetch.mockReset()
+  tokenMock.mockReset()
+  tokenMock.mockImplementation(async () => ({ success: true, accessToken: 'tok' }))
 })
 
 describe('sweepTenant honesty at the seam', () => {
-  it('happy path: statement lines from all accounts, chunked windows, correct source', async () => {
+  it('counts unreconciled account transactions per account, with the account currency, and never touches Reports/BankStatement', async () => {
     mockFetch.mockImplementation(async (url: string) => {
       if (url.includes('/Accounts')) return accountsPayload
-      if (url.includes('/Reports/BankStatement')) {
-        return url.includes('acc-2') ? oneUnreconciledStatement : cleanStatement
+      if (url.includes('/BankTransactions')) {
+        return txns([
+          { account: 'acc-1', name: 'ANZ Cheque', date: '2026-08-03T00:00:00', total: -10 },
+          { account: 'acc-2', name: 'Airwallex', date: '2026-08-05T00:00:00', total: -42.1 },
+        ])
       }
       throw new Error(`unexpected fetch ${url}`)
     })
     const result = await sweepTenant({} as any, CONN, 'biz-1', NOW)
     expect(result.status).toBe('ok')
-    expect(result.source).toBe('statement_lines')
-    // Two chunks per unreconciled account → the count is de-duplicated by
-    // month bucketing only within each account's merged items; acc-2's 'No'
-    // row appears in both chunks' fixtures, so 2 here proves both chunks ran.
+    expect(result.source).toBe('account_transactions')
     expect(result.totalCount).toBe(2)
-    expect(result.accounts[0].currency).toBe('HKD')
-    const statementCalls = mockFetch.mock.calls.filter(([u]) => String(u).includes('BankStatement'))
-    expect(statementCalls).toHaveLength(4) // 2 accounts × 2 window chunks
+    expect(result.totalValue).toBe(52.1)
+    expect(result.accounts.find(a => a.bankAccountId === 'acc-2')?.currency).toBe('HKD')
+    expect(result.caveats).toBeUndefined()
+    // THE PIN: the closed-scope report is never requested.
+    const urls = mockFetch.mock.calls.map(([u]) => String(u))
+    expect(urls.some(u => u.includes('BankStatement'))).toBe(false)
+    expect(urls.filter(u => u.includes('/BankTransactions'))).toHaveLength(1)
   })
 
-  it('ONE account failing (404) abandons statement lines entirely — labelled fallback with the named reason', async () => {
+  it('a tenant with no active bank accounts is an OK zero — nothing to reconcile', async () => {
     mockFetch.mockImplementation(async (url: string) => {
-      if (url.includes('/Accounts')) return accountsPayload
-      if (url.includes('/Reports/BankStatement')) {
-        if (url.includes('acc-2')) throw new Error('xero 404 for tenant t1: not found')
-        return oneUnreconciledStatement
-      }
-      if (url.includes('/BankTransactions')) return fallbackTxns(1)
+      if (url.includes('/Accounts')) return { ok: true, status: 200, headers: {}, json: { Accounts: [] } }
       throw new Error(`unexpected fetch ${url}`)
     })
     const result = await sweepTenant({} as any, CONN, 'biz-1', NOW)
-    expect(result.status).toBe('ok')
-    expect(result.source).toBe('account_transactions')
-    expect(result.fallbackReason).toContain('statement report unavailable')
-    expect(result.fallbackReason).toContain('404')
-    // Nothing from the good account's statement pass survives.
-    expect(result.accounts.every(a => a.bankAccountId === 'acc-1')).toBe(true)
-    expect(result.totalCount).toBe(1)
-  })
-
-  it('an unrecognised report shape falls back with the parser reason named', async () => {
-    mockFetch.mockImplementation(async (url: string) => {
-      if (url.includes('/Accounts')) return accountsPayload
-      if (url.includes('/Reports/BankStatement')) return { ok: true, status: 200, headers: {}, json: {} }
-      if (url.includes('/BankTransactions')) return fallbackTxns(0)
-      throw new Error(`unexpected fetch ${url}`)
-    })
-    const result = await sweepTenant({} as any, CONN, 'biz-1', NOW)
-    expect(result.source).toBe('account_transactions')
-    expect(result.fallbackReason).toContain('shape not recognised')
-    expect(result.fallbackReason).toContain('no Reports[0].Rows envelope')
+    expect(result).toMatchObject({ status: 'ok', source: 'account_transactions', totalCount: 0, accounts: [] })
   })
 
   it('an unrecognised Accounts listing is an ERROR — never "no accounts, all clear"', async () => {
@@ -139,32 +108,54 @@ describe('sweepTenant honesty at the seam', () => {
     })
     const result = await sweepTenant({} as any, CONN, 'biz-1', NOW)
     expect(result.status).toBe('error')
+    expect(result.source).toBe('account_transactions')
     expect(result.error).toContain('Accounts response shape not recognised')
   })
 
-  it('fallback truncation at the page cap is a recorded caveat, not a silent floor', async () => {
+  it('truncation at the page cap is a recorded caveat, not a silent floor', async () => {
     mockFetch.mockImplementation(async (url: string) => {
       if (url.includes('/Accounts')) return accountsPayload
-      if (url.includes('/Reports/BankStatement')) throw new Error('xero 401 for tenant t1: AuthorizationUnsuccessful')
-      if (url.includes('/BankTransactions')) return fallbackTxns(100)
+      if (url.includes('/BankTransactions')) return fullPage(100)
       throw new Error(`unexpected fetch ${url}`)
     })
     const result = await sweepTenant({} as any, CONN, 'biz-1', NOW)
     expect(result.status).toBe('ok')
-    expect(result.caveats?.some(c => c.includes('truncated'))).toBe(true)
     expect(result.totalCount).toBe(1000)
+    expect(result.caveats?.some(c => c.includes('truncated'))).toBe(true)
+    expect(mockFetch.mock.calls.filter(([u]) => String(u).includes('/BankTransactions'))).toHaveLength(10)
   })
 
-  it('double failure keeps BOTH reasons: fallback error names the original statement refusal', async () => {
+  it('a Xero failure on the transactions call is an errored check carrying the reason — never a zero', async () => {
     mockFetch.mockImplementation(async (url: string) => {
       if (url.includes('/Accounts')) return accountsPayload
-      if (url.includes('/Reports/BankStatement')) throw new Error('xero 401 for tenant t1: AuthorizationUnsuccessful')
       if (url.includes('/BankTransactions')) throw new Error('xero 503 after 5 attempts for tenant t1: down')
       throw new Error(`unexpected fetch ${url}`)
     })
     const result = await sweepTenant({} as any, CONN, 'biz-1', NOW)
     expect(result.status).toBe('error')
+    expect(result.source).toBe('account_transactions')
     expect(result.error).toContain('503')
-    expect(result.error).toContain('statement report unavailable')
+    expect(result.totalCount).toBe(0)
+  })
+
+  it('a daily rate-limit pause is an errored check naming the retry, not a zero', async () => {
+    mockFetch.mockImplementation(async (url: string) => {
+      if (url.includes('/Accounts')) return accountsPayload
+      if (url.includes('/BankTransactions')) throw new RateLimitDailyExceededError('t1')
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    const result = await sweepTenant({} as any, CONN, 'biz-1', NOW)
+    expect(result.status).toBe('error')
+    expect(result.error).toContain('daily rate limit')
+  })
+
+  it('a token failure is an errored check that says so (and whether a reconnect is needed)', async () => {
+    tokenMock.mockImplementation(async () => ({ success: false, error: 'refresh refused', shouldDeactivate: true }))
+    const result = await sweepTenant({} as any, CONN, 'biz-1', NOW)
+    expect(result.status).toBe('error')
+    expect(result.source).toBe('account_transactions')
+    expect(result.error).toContain('token: refresh refused')
+    expect(result.error).toContain('needs reconnect')
+    expect(mockFetch).not.toHaveBeenCalled()
   })
 })
