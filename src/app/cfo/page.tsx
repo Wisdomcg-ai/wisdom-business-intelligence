@@ -64,6 +64,14 @@ interface BoardClient {
     erroredTenants: number
     tenantCount: number
   }
+  /** The Xero dashboard "Reconcile N items" badge, captured by an operator —
+   *  the banner-exact number the API cannot provide. Null = never captured. */
+  dashboard_capture: {
+    total_count: number
+    captured_at: string
+    captured_tenants: number
+    tenant_count: number
+  } | null
   bookkeeper: { name: string | null; email: string | null }
 }
 
@@ -516,6 +524,22 @@ function stageLabel(client: BoardClient): { text: string; tone: 'ok' | 'warn' | 
   return { text: 'Ready to generate', tone: 'ok' }
 }
 
+function DashboardBadge({ capture }: { capture: BoardClient['dashboard_capture'] }) {
+  // The badge number sits beside the API count, never replaces it: they are
+  // different populations (bank-feed lines vs recorded transactions).
+  if (!capture) return null
+  const asOf = new Date(capture.captured_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+  const partial = capture.captured_tenants < capture.tenant_count
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${capture.total_count === 0 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-800'}`}
+      title={`Xero dashboard badge, read ${asOf}${partial ? ` — ${capture.captured_tenants} of ${capture.tenant_count} orgs captured` : ''}`}
+    >
+      Xero badge: {capture.total_count}{partial ? '+' : ''} · {asOf}
+    </span>
+  )
+}
+
 function ReconChip({ recon }: { recon: BoardClient['recon'] }) {
   // Every displayed count carries when it was fetched — a nightly snapshot
   // compared against live Xero mid-afternoon reads as a bug otherwise.
@@ -630,6 +654,7 @@ function ClientRow({ client, month, isExpanded, onToggle, onChanged }: {
 
         <div className="hidden lg:flex items-center gap-1.5 shrink-0">
           <ReconChip recon={client.recon} />
+          <DashboardBadge capture={client.dashboard_capture} />
           {conn.needs_attention ? (
             <Chip tone="red">{CONNECTION_LABELS[conn.status] ?? conn.status}</Chip>
           ) : (
