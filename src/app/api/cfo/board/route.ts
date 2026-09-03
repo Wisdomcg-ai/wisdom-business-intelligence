@@ -32,6 +32,7 @@ import {
   deriveSection,
   type BoardSection,
 } from '@/lib/cfo/board-logic'
+import { summariseDashboardCaptures, type CaptureRow } from '@/lib/cfo/dashboard-capture'
 
 export const dynamic = 'force-dynamic'
 
@@ -118,7 +119,7 @@ async function getHandler(request: Request) {
       return NextResponse.json({ month, clients: [], hidden: [], stats: emptyStats() })
     }
 
-    const [settingsRes, cycleRes, checksRes, bucketsRes, syncClock] = await Promise.all([
+    const [settingsRes, cycleRes, checksRes, bucketsRes, syncClock, capturesRes] = await Promise.all([
       supabase
         .from('monthly_report_settings')
         .select('business_id, report_due_day, bookkeeper_name, bookkeeper_email, hide_from_board')
@@ -137,6 +138,14 @@ async function getHandler(request: Request) {
         .select('business_id, tenant_id, month, unreconciled_count, unreconciled_value, currency, bank_account_name')
         .in('business_id', fleetIds),
       getLastSyncByTenant(supabase as never, 60),
+      // Dashboard badge captures — the banner-exact number the API can't
+      // give (Xero, 2 Sep 2026). Latest per tenant, shown beside the API count.
+      supabase
+        .from('reconciliation_dashboard_captures')
+        .select('business_id, tenant_id, captured_at, total_count, accounts, method')
+        .in('business_id', fleetIds)
+        .order('captured_at', { ascending: false })
+        .limit(2000),
     ])
     for (const [label, res] of [
       ['settings', settingsRes],
@@ -153,6 +162,18 @@ async function getHandler(request: Request) {
     const cycleByBiz = new Map((cycleRes.data ?? []).map(c => [c.business_id, c]))
     const checksByBiz = groupBy(checksRes.data ?? [], r => r.business_id)
     const bucketsByBiz = groupBy(bucketsRes.data ?? [], r => r.business_id)
+    // A captures-query failure must not take the board down — the badge is
+    // supplementary; the API count still renders. Captured, never swallowed.
+    if ((capturesRes as { error: { message: string } | null }).error) {
+      Sentry.captureMessage('[cfo/board] dashboard captures query failed', {
+        level: 'warning',
+        extra: { error: (capturesRes as any).error.message },
+      } as any)
+    }
+    const capturesByBiz = groupBy(
+      ((capturesRes as any).data ?? []) as CaptureRow[],
+      r => r.business_id,
+    )
 
     const todayIso = new Date().toISOString()
     const now = Date.now()
@@ -197,6 +218,10 @@ async function getHandler(request: Request) {
         bucketsByBiz.get(businessId) ?? [],
         activeTenants.length,
       )
+      const dashboard_capture = summariseDashboardCaptures(
+        capturesByBiz.get(businessId) ?? [],
+        activeTenants.filter((t): t is string => typeof t === 'string'),
+      )
       const section: BoardSection = deriveSection({
         stage,
         daysOverdue: overdue,
@@ -229,6 +254,7 @@ async function getHandler(request: Request) {
             .map(c => c.tenant_name),
         },
         recon,
+        dashboard_capture,
         bookkeeper: {
           name: settings?.bookkeeper_name ?? null,
           email: settings?.bookkeeper_email ?? null,
