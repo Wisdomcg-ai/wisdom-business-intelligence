@@ -117,7 +117,6 @@ async function postHandler(request: Request) {
         tenant_id: r.tenantId,
         status: r.status,
         error: r.error,
-        fallback_reason: r.fallbackReason,
         source: r.source,
         total_count: r.totalCount,
         total_value: r.totalValue,
