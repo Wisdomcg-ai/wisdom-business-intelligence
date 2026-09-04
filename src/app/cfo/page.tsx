@@ -5,9 +5,10 @@
  *
  * One job: where is every client in this month's report cycle, and what's
  * blocking me. NO financial figures by design (locked decision, Sep 2026) —
- * performance lives in the monthly report itself. Rows lead with the 5-stage
- * pipeline (Data ready → Generated → Reviewed → Sent → Discussed),
- * reconciliation-by-month, and data health.
+ * performance lives in the monthly report itself. The main view is a simple
+ * spreadsheet-style table (Matt's own tracking sheet, 5 Sep 2026): one row
+ * per client, unreconciled counts split "before report month" / "report
+ * month", green = 0. Detail and actions live in the expandable row.
  *
  * Fail-closed rendering rules (house):
  * - The reconciliation verdict comes from the CAPTURED Xero badge (recon
@@ -18,13 +19,14 @@
  *   expanded view (demote decision, 5 Sep 2026).
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
-  Loader2, ChevronDown, ChevronRight, AlertTriangle, Clock, CheckCircle2,
+  Loader2, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2,
   RefreshCw, ExternalLink, ClipboardList, EyeOff,
 } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
+import { STALE_CAPTURE_DAYS } from '@/lib/cfo/dashboard-capture'
 
 type PipelineStage = 'none' | 'generated' | 'ready' | 'approved' | 'sent' | 'discussed'
 type BoardSection = 'overdue' | 'blocked' | 'in_progress' | 'sent'
@@ -78,11 +80,14 @@ interface BoardClient {
   } | null
   /** The board's ONE reconciliation question, from the captured badge. */
   readiness: {
-    state: 'ready' | 'blocked' | 'stale' | 'never'
+    state: 'ready' | 'blocked' | 'stale' | 'never' | 'partial'
     blocking: number
+    blocking_prior: number
+    blocking_current: number
     possibly_blocking: number
     by_account: { name: string; blocking: number; unsplit: boolean }[]
     ignored: { name: string; count: number }[]
+    uncaptured_tenants: number
     captured_at: string | null
     capture_age_days: number | null
   }
@@ -116,6 +121,11 @@ function formatMonthLabel(monthKey: string): string {
   return date.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
 }
 
+function shortMonthYear(monthKey: string): string {
+  const date = new Date(monthKey + '-01T00:00:00')
+  return date.toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })
+}
+
 function fmtDate(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
@@ -139,19 +149,15 @@ const CONNECTION_LABELS: Record<string, string> = {
   unknown: 'Health unknown',
 }
 
-const SECTION_META: Record<BoardSection, { title: string; dot: string }> = {
-  overdue: { title: 'Overdue', dot: 'bg-red-600' },
-  blocked: { title: 'Blocked — data not ready', dot: 'bg-amber-500' },
-  in_progress: { title: 'In progress', dot: 'bg-brand-navy-400' },
-  sent: { title: 'Sent', dot: 'bg-green-500' },
+/** Left-edge stripe on each table row — the urgency colour without sections. */
+const ROW_BORDER: Record<BoardSection, string> = {
+  overdue: 'border-l-red-600',
+  blocked: 'border-l-amber-500',
+  in_progress: 'border-l-brand-navy-400',
+  sent: 'border-l-green-500',
 }
 
-const STRIPE: Record<BoardSection, string> = {
-  overdue: 'bg-red-600',
-  blocked: 'bg-amber-500',
-  in_progress: 'bg-brand-navy-400',
-  sent: 'bg-green-500',
-}
+const SECTION_RANK: Record<BoardSection, number> = { overdue: 0, blocked: 1, in_progress: 2, sent: 3 }
 
 export default function CfoBoardPage() {
   const [month, setMonth] = useState(defaultReportMonth())
@@ -160,7 +166,6 @@ export default function CfoBoardPage() {
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<BoardSection | 'all'>('all')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [showSent, setShowSent] = useState(false)
   const [checkAll, setCheckAll] = useState<{ done: number; total: number; current: string } | null>(null)
   const [checkAllResult, setCheckAllResult] = useState<string | null>(null)
 
@@ -187,14 +192,12 @@ export default function CfoBoardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month])
 
-  const sections = useMemo(() => {
+  // One flat table (Matt, 5 Sep: "simple and informative"), urgent first.
+  const ordered = useMemo(() => {
     const clients = (data?.clients ?? []).filter(c => filter === 'all' || c.section === filter)
-    return {
-      overdue: clients.filter(c => c.section === 'overdue'),
-      blocked: clients.filter(c => c.section === 'blocked'),
-      in_progress: clients.filter(c => c.section === 'in_progress'),
-      sent: clients.filter(c => c.section === 'sent'),
-    }
+    return [...clients].sort(
+      (a, b) => SECTION_RANK[a.section] - SECTION_RANK[b.section] || a.business_name.localeCompare(b.business_name),
+    )
   }, [data, filter])
 
   const toggleRow = (id: string) =>
@@ -238,8 +241,8 @@ export default function CfoBoardPage() {
     setCheckAll(null)
     setCheckAllResult(
       failures.length === 0
-        ? `All ${targets.length} clients re-checked.`
-        : `${targets.length - failures.length} of ${targets.length} re-checked — failed: ${failures.join(', ')}`,
+        ? `Background API cross-check updated for all ${targets.length} clients — the table's counts only change when the recon round runs.`
+        : `Cross-check updated for ${targets.length - failures.length} of ${targets.length} — failed: ${failures.join(', ')}`,
     )
     await load()
   }
@@ -283,7 +286,8 @@ export default function CfoBoardPage() {
           <button
             onClick={runCheckAll}
             disabled={checkAll !== null || isLoading || (data?.clients.length ?? 0) === 0}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-brand-navy hover:bg-brand-navy-800 rounded-lg disabled:opacity-60"
+            title="Refreshes the background API cross-check only — the table's counts come from the Xero badge capture (recon round)"
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg disabled:opacity-60"
           >
             {checkAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             {checkAll
@@ -331,48 +335,71 @@ export default function CfoBoardPage() {
         )}
 
         {data && data.clients.length > 0 && (
-          <div className="space-y-6">
-            {(['overdue', 'blocked', 'in_progress'] as BoardSection[]).map(section =>
-              sections[section].length > 0 ? (
-                <Section
-                  key={section}
-                  section={section}
-                  clients={sections[section]}
-                  month={month}
-                  expanded={expanded}
-                  onToggleRow={toggleRow}
-                  onChanged={load}
-                />
-              ) : null,
-            )}
+          <div>
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-x-auto">
+              <table className="w-full text-sm min-w-[760px]">
+                <thead>
+                  <tr className="bg-gray-100 text-[11px] uppercase tracking-wide text-gray-500">
+                    <th className="text-left px-4 py-2.5 font-semibold">Client</th>
+                    <th className="text-center px-3 py-2.5 font-semibold w-36">
+                      Before {shortMonthYear(month)}
+                      <span className="block normal-case font-normal text-[10px] text-gray-400">unreconciled</span>
+                    </th>
+                    <th className="text-center px-3 py-2.5 font-semibold w-36">
+                      {shortMonthYear(month)}
+                      <span className="block normal-case font-normal text-[10px] text-gray-400">unreconciled</span>
+                    </th>
+                    <th className="text-left px-3 py-2.5 font-semibold">Report</th>
+                    <th className="text-left px-3 py-2.5 font-semibold w-28">Due</th>
+                    <th className="text-right px-3 py-2.5 font-semibold w-28">
+                      Updated
+                      <span className="block normal-case font-normal text-[10px] text-gray-400">recon round</span>
+                    </th>
+                    <th className="w-8" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {ordered.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
+                        No clients match this filter for {formatMonthLabel(month)}.{' '}
+                        <button onClick={() => setFilter('all')} className="font-semibold text-brand-navy underline">
+                          Show all clients
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                  {ordered.map(client => (
+                    <Fragment key={client.business_id}>
+                      <ClientTableRow
+                        client={client}
+                        isExpanded={expanded.has(client.business_id)}
+                        onToggle={() => toggleRow(client.business_id)}
+                      />
+                      {expanded.has(client.business_id) && (
+                        <tr>
+                          <td colSpan={7} className="p-0">
+                            <RowDetail client={client} month={month} onChanged={load} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-gray-400">
+              Counts are Xero&apos;s &ldquo;items to reconcile&rdquo; badge, dated up to the end of{' '}
+              {formatMonthLabel(month)} — items dated later don&apos;t affect this report and aren&apos;t
+              shown. <span className="font-medium">+N?</span> = items whose month couldn&apos;t be read
+              (could be any period). Grey = not confirmed: no capture, an incomplete one, or{' '}
+              <span className="font-medium">*</span> a capture older than {STALE_CAPTURE_DAYS} days — run the recon round.
+              Row edge: red = overdue, amber = blocked, blue = in progress, green = sent. Click a row
+              for the breakdown and actions.
+            </p>
 
-            {sections.sent.length > 0 && (
-              <div>
-                <button
-                  onClick={() => setShowSent(v => !v)}
-                  className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900 mb-2"
-                >
-                  {showSent ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                  <span className={`w-2 h-2 rounded-full ${SECTION_META.sent.dot}`} />
-                  <span>Sent</span>
-                  <span className="text-xs font-normal text-gray-400">({sections.sent.length})</span>
-                </button>
-                {showSent && (
-                  <Section
-                    section="sent"
-                    clients={sections.sent}
-                    month={month}
-                    expanded={expanded}
-                    onToggleRow={toggleRow}
-                    onChanged={load}
-                    bare
-                  />
-                )}
-              </div>
-            )}
-
-            {sections.overdue.length === 0 && sections.blocked.length === 0 && sections.in_progress.length === 0 && !showSent && (
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
+            {ordered.length > 0 && ordered.every(c => c.section === 'sent') && filter === 'all' && (
+              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-green-700" />
                 <p className="text-sm font-medium text-green-900">
                   Every report for {formatMonthLabel(month)} is sent.
@@ -454,58 +481,6 @@ function StatCard({ label, value, tone, active, onClick }: {
   )
 }
 
-function Section({ section, clients, month, expanded, onToggleRow, onChanged, bare }: {
-  section: BoardSection
-  clients: BoardClient[]
-  month: string
-  expanded: Set<string>
-  onToggleRow: (id: string) => void
-  onChanged: () => void
-  bare?: boolean
-}) {
-  const meta = SECTION_META[section]
-  return (
-    <div>
-      {!bare && (
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900 mb-2">
-          <span className={`w-2 h-2 rounded-full ${meta.dot}`} />
-          {meta.title}
-          <span className="text-xs font-normal text-gray-400">({clients.length})</span>
-        </h2>
-      )}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100 shadow-sm">
-        {clients.map(client => (
-          <ClientRow
-            key={client.business_id}
-            client={client}
-            month={month}
-            isExpanded={expanded.has(client.business_id)}
-            onToggle={() => onToggleRow(client.business_id)}
-            onChanged={onChanged}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function pipelineSteps(client: BoardClient): { done: boolean; now: boolean; blocked: boolean }[] {
-  const stage = client.stage
-  const dataReady = !client.connection.needs_attention && client.readiness.state === 'ready'
-  const reached = (s: PipelineStage[]) => s.includes(stage)
-  return [
-    {
-      done: dataReady || reached(['generated', 'ready', 'approved', 'sent', 'discussed']),
-      now: false,
-      blocked: !dataReady && stage === 'none',
-    },
-    { done: reached(['generated', 'ready', 'approved', 'sent', 'discussed']), now: stage === 'none' && dataReady, blocked: false },
-    { done: reached(['approved', 'sent', 'discussed']), now: stage === 'generated' || stage === 'ready', blocked: false },
-    { done: reached(['sent', 'discussed']), now: stage === 'approved', blocked: false },
-    { done: stage === 'discussed', now: stage === 'sent', blocked: false },
-  ]
-}
-
 function stageLabel(client: BoardClient): { text: string; tone: 'ok' | 'warn' | 'bad' } {
   const { stage, connection, readiness } = client
   if (stage === 'discussed') return { text: `Discussed ${fmtDate(client.cycle.discussed_at)}`, tone: 'ok' }
@@ -516,32 +491,12 @@ function stageLabel(client: BoardClient): { text: string; tone: 'ok' | 'warn' | 
   if (connection.needs_attention) return { text: CONNECTION_LABELS[connection.status] ?? 'Data problem', tone: 'bad' }
   if (readiness.state === 'never') return { text: 'No badge capture — run the recon round', tone: 'bad' }
   if (readiness.state === 'stale') return { text: `Capture ${readiness.capture_age_days}d old — rerun the round`, tone: 'warn' }
+  if (readiness.state === 'partial') {
+    const total = connection.tenant_count
+    return { text: `Only ${total - readiness.uncaptured_tenants} of ${total} orgs captured — rerun the round`, tone: 'warn' }
+  }
   if (readiness.state === 'blocked') return { text: 'Awaiting reconciliation', tone: 'warn' }
   return { text: 'Ready to generate', tone: 'ok' }
-}
-
-/**
- * The row's single reconciliation verdict, computed from the captured Xero
- * badge against the board's selected month (demote decision, 5 Sep 2026).
- */
-function VerdictChip({ client }: { client: BoardClient }) {
-  const r = client.readiness
-  const asOf = r.captured_at
-    ? `Badge captured ${new Date(r.captured_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`
-    : undefined
-  if (r.state === 'never') return <Chip tone="gray">No badge capture — run recon round</Chip>
-  if (r.state === 'stale') {
-    return <Chip tone="amber" title={asOf}>Capture {r.capture_age_days}d old — rerun round</Chip>
-  }
-  if (r.state === 'blocked') {
-    const n = r.blocking + r.possibly_blocking
-    return (
-      <Chip tone="amber" title={asOf}>
-        {r.possibly_blocking > 0 ? '≥' : ''}{r.blocking > 0 ? r.blocking : n} block{n === 1 ? 's' : ''} this month
-      </Chip>
-    )
-  }
-  return <Chip tone="green" title={asOf}>Ready — reconciled ✓</Chip>
 }
 
 function sourceCaveat(client: BoardClient): string {
@@ -556,87 +511,123 @@ function sourceCaveat(client: BoardClient): string {
   )
 }
 
-function Chip({ tone, title, children }: { tone: 'red' | 'amber' | 'green' | 'gray'; title?: string; children: React.ReactNode }) {
-  const tones = {
-    red: 'bg-red-50 text-red-700 border-red-200',
-    amber: 'bg-amber-50 text-amber-800 border-amber-200',
-    green: 'bg-green-50 text-green-700 border-green-200',
-    gray: 'bg-gray-50 text-gray-600 border-gray-200',
+/**
+ * One reconciliation count cell — the heart of the simple table (Matt's
+ * spreadsheet, 5 Sep 2026). Green = 0, coloured = attention. Fail-closed:
+ * no capture / stale capture NEVER renders as a clean green zero.
+ */
+function CountCell({ kind, client }: { kind: 'prior' | 'current'; client: BoardClient }) {
+  const r = client.readiness
+  if (r.state === 'never') {
+    return (
+      <td
+        className="px-3 py-2.5 text-center text-xs font-medium bg-gray-50 text-gray-400"
+        title="No Xero badge capture yet — run the recon round to get real counts"
+      >
+        no data
+      </td>
+    )
   }
+  const n = kind === 'prior' ? r.blocking_prior : r.blocking_current
+  // Items with no month split could belong to ANY period — surfaced on the
+  // worst-case (prior) column, marked with ?, never hidden.
+  const unknown = kind === 'prior' ? r.possibly_blocking : 0
+  const stale = r.state === 'stale'
+  const partialFleet = r.uncaptured_tenants > 0
+  // Green = a CONFIRMED zero: month-split accounts across every captured org,
+  // no unsplit items anywhere, every org captured, capture fresh. Anything
+  // less renders neutral, never green (fail-closed).
+  const clean = n === 0 && r.possibly_blocking === 0 && !partialFleet && !stale
+  const tone = stale
+    ? 'bg-gray-100 text-gray-500'
+    : clean
+      ? 'bg-green-50 text-green-800'
+      : n > 0
+        ? kind === 'prior' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800'
+        : 'bg-gray-50 text-gray-600'
+  const title = [
+    r.captured_at ? `From the Xero badge, captured ${relTime(r.captured_at)}` : null,
+    stale ? `Capture is ${r.capture_age_days} days old — rerun the recon round before trusting this` : null,
+    r.possibly_blocking > 0 ? `${r.possibly_blocking} item${r.possibly_blocking === 1 ? '' : 's'} with no month split — could be any period, including this one` : null,
+    partialFleet ? `${r.uncaptured_tenants} org${r.uncaptured_tenants === 1 ? '' : 's'} never captured — counts are a floor` : null,
+  ].filter(Boolean).join('. ')
   return (
-    <span title={title} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-semibold whitespace-nowrap ${tones[tone]}`}>
-      {children}
-    </span>
+    <td className={`px-3 py-2.5 text-center tabular-nums text-sm font-semibold ${tone}`} title={title}>
+      {n}
+      {unknown > 0 && <span className="font-normal text-amber-700"> +{unknown}?</span>}
+      {kind === 'current' && n === 0 && !clean && !stale && <span className="font-normal">?</span>}
+      {partialFleet && (
+        <span className="block text-[10px] font-normal">
+          {client.connection.tenant_count - r.uncaptured_tenants}/{client.connection.tenant_count} orgs
+        </span>
+      )}
+      {stale && <span className="font-normal"> *</span>}
+    </td>
   )
 }
 
-function ClientRow({ client, month, isExpanded, onToggle, onChanged }: {
+function ClientTableRow({ client, isExpanded, onToggle }: {
   client: BoardClient
-  month: string
   isExpanded: boolean
   onToggle: () => void
-  onChanged: () => void
 }) {
   const label = stageLabel(client)
-  const steps = pipelineSteps(client)
   const conn = client.connection
-
+  const r = client.readiness
   return (
-    <div>
-      <button onClick={onToggle} className="w-full flex items-center gap-3 pr-4 py-2.5 hover:bg-gray-50 text-left">
-        <span className={`self-stretch w-1 shrink-0 ${STRIPE[client.section]}`} />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-brand-navy truncate">{client.business_name}</div>
-          <div className="text-xs text-gray-400 truncate">
-            {conn.tenant_count > 1 ? `${conn.tenant_count} Xero orgs · ` : ''}
-            {client.due_day ? `due ${client.due_day}th of month` : 'no due date set'}
-          </div>
-        </div>
-
-        <div className="w-24 shrink-0 text-xs font-semibold">
-          {client.days_overdue !== null && client.days_overdue > 0 ? (
-            <span className="text-red-600">
-              Due {fmtDate(client.due_date)}
-              <span className="block font-bold">{client.days_overdue}d overdue</span>
+    <tr
+      onClick={onToggle}
+      className={`border-t border-gray-100 border-l-4 ${ROW_BORDER[client.section]} cursor-pointer hover:bg-gray-50`}
+    >
+      <td className="px-4 py-2.5">
+        <div className="text-sm font-semibold text-brand-navy">{client.business_name}</div>
+        <div className="text-xs text-gray-400">
+          {conn.tenant_count > 1 ? `${conn.tenant_count} Xero orgs` : ''}
+          {conn.needs_attention && (
+            <span className="inline-flex items-center gap-1 text-red-600 font-semibold">
+              {conn.tenant_count > 1 ? ' · ' : ''}
+              <AlertTriangle className="w-3 h-3" />
+              {CONNECTION_LABELS[conn.status] ?? 'Data problem'}
             </span>
-          ) : client.due_date ? (
-            <span className="text-gray-600">Due {fmtDate(client.due_date)}</span>
-          ) : (
-            <span className="text-gray-300">—</span>
           )}
         </div>
-
-        <div className="hidden sm:flex items-center gap-1 shrink-0" aria-label={`Pipeline: ${label.text}`}>
-          {steps.map((step, i) => (
-            <span
-              key={i}
-              className={`w-5 h-1.5 rounded-full ${
-                step.blocked ? 'bg-amber-400' : step.done ? 'bg-green-500' : step.now ? 'bg-brand-orange ring-2 ring-brand-orange-200' : 'bg-gray-200'
-              }`}
-            />
-          ))}
-        </div>
-
-        <div className={`hidden md:block w-52 shrink-0 text-xs font-medium truncate ${
-          label.tone === 'bad' ? 'text-red-700' : label.tone === 'warn' ? 'text-amber-700' : 'text-gray-700'
-        }`}>
-          {label.text}
-        </div>
-
-        <div className="hidden lg:flex items-center gap-1.5 shrink-0">
-          <VerdictChip client={client} />
-          {conn.needs_attention ? (
-            <Chip tone="red">{CONNECTION_LABELS[conn.status] ?? conn.status}</Chip>
-          ) : (
-            <Chip tone="green">Xero OK{conn.last_sync_at ? ` · synced ${relTime(conn.last_sync_at)}` : ''}</Chip>
-          )}
-        </div>
-
-        {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />}
-      </button>
-
-      {isExpanded && <RowDetail client={client} month={month} onChanged={onChanged} />}
-    </div>
+      </td>
+      <CountCell kind="prior" client={client} />
+      <CountCell kind="current" client={client} />
+      <td className={`px-3 py-2.5 text-xs font-medium ${
+        label.tone === 'bad' ? 'text-red-700' : label.tone === 'warn' ? 'text-amber-700' : 'text-gray-700'
+      }`}>
+        {label.text}
+      </td>
+      <td className="px-3 py-2.5 text-xs">
+        {client.days_overdue !== null && client.days_overdue > 0 ? (
+          <span className="font-bold text-red-600">{fmtDate(client.due_date)} · {client.days_overdue}d late</span>
+        ) : client.due_date ? (
+          <span className="text-gray-600">{fmtDate(client.due_date)}</span>
+        ) : (
+          <span className="text-gray-300">—</span>
+        )}
+      </td>
+      <td
+        className={`px-3 py-2.5 text-right text-xs ${r.state === 'stale' ? 'text-red-600 font-semibold' : 'text-gray-400'}`}
+        title={r.captured_at ? `Recon round capture ${new Date(r.captured_at).toLocaleString('en-AU')}` : 'Never captured'}
+      >
+        {r.captured_at ? relTime(r.captured_at) : '—'}
+      </td>
+      <td className="pr-3 text-right">
+        <button
+          type="button"
+          aria-expanded={isExpanded}
+          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${client.business_name}`}
+          onClick={e => { e.stopPropagation(); onToggle() }}
+          className="p-1 rounded focus-visible:ring-2 focus-visible:ring-brand-orange"
+        >
+          {isExpanded
+            ? <ChevronDown className="w-4 h-4 text-gray-400" />
+            : <ChevronRight className="w-4 h-4 text-gray-400" />}
+        </button>
+      </td>
+    </tr>
   )
 }
 
@@ -685,6 +676,7 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
         client.connection.needs_attention ? (CONNECTION_LABELS[client.connection.status] ?? 'connection problem')
         : readiness.state === 'never' ? 'no badge capture — run the recon round'
         : readiness.state === 'stale' ? `capture ${readiness.capture_age_days}d old — rerun the round`
+        : readiness.state === 'partial' ? `${readiness.uncaptured_tenants} org(s) never captured — rerun the round`
         : readiness.state === 'blocked' ? `${readiness.blocking + readiness.possibly_blocking} item(s) block ${formatMonthLabel(month)}`
         : 'reconciled & synced',
     },
@@ -731,6 +723,13 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
               ))}
             </ul>
             <p className="mt-1.5 text-xs">Nudge the client or bookkeeper to reconcile these before generating.</p>
+          </div>
+        ) : readiness.state === 'partial' ? (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+            Only {client.connection.tenant_count - readiness.uncaptured_tenants} of{' '}
+            {client.connection.tenant_count} Xero orgs were captured — the missing org&apos;s backlog is
+            unknown, so this is <strong>not</strong> confirmed clean. Rerun the recon round to cover
+            every org.
           </div>
         ) : (
           <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">

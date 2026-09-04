@@ -153,6 +153,25 @@ describe('deriveReadiness — the one question', () => {
     expect(r.by_account).toEqual([{ name: 'Amex', blocking: 22, unsplit: false }])
   })
 
+  it('splits blocking into prior months vs the report month (the two-column view)', () => {
+    const r = deriveReadiness(capture('2026-09-05T04:00:00Z', [
+      { name: 'Amex', count: 31, months: { '2026-07': 14, '2026-08': 8, '2026-09': 9 } },
+      { name: 'Cash', count: 3, months: { '2026-06': 1, '2026-08': 2 } },
+    ]), [], '2026-08', NOW)
+    expect(r.blocking_prior).toBe(15) // 14 Jul + 1 Jun
+    expect(r.blocking_current).toBe(10) // 8 + 2 Aug
+    expect(r.blocking).toBe(25)
+    expect(r.blocking_prior + r.blocking_current).toBe(r.blocking)
+  })
+
+  it('prior/current are zero when everything is later than the report month', () => {
+    const r = deriveReadiness(capture('2026-09-05T04:00:00Z', [
+      { name: 'Main', count: 3, months: { '2026-09': 3 } },
+    ]), [], '2026-08', NOW)
+    expect(r.blocking_prior).toBe(0)
+    expect(r.blocking_current).toBe(0)
+  })
+
   it('an account without a month split can never yield READY (fail-closed)', () => {
     const r = deriveReadiness(capture('2026-09-05T04:00:00Z', [
       { name: 'Mystery', count: 4, months: null },
@@ -172,6 +191,46 @@ describe('deriveReadiness — the one question', () => {
 
   it('NEVER: no capture at all', () => {
     expect(deriveReadiness(null, [], '2026-08', NOW).state).toBe('never')
+  })
+
+  it('a total-only capture (badge number, no account breakdown) can never be READY', () => {
+    const r = deriveReadiness({
+      total_count: 47, captured_at: '2026-09-05T04:00:00Z',
+      captured_tenants: 1, tenant_count: 1, per_tenant: [], notes: [], accounts: [],
+    } as any, [], '2026-08', NOW)
+    expect(r.state).toBe('blocked')
+    expect(r.possibly_blocking).toBe(47)
+    expect(r.by_account).toEqual([{ name: '(no account breakdown)', blocking: 47, unsplit: true }])
+  })
+
+  it('a tenant whose capture lacks accounts cannot hide behind an itemised clean tenant', () => {
+    // Merged summary: itemised tenant is clean (Sep only), the other tenant
+    // contributed 30 items with no account rows at all.
+    const r = deriveReadiness({
+      total_count: 33, captured_at: '2026-09-05T04:00:00Z',
+      captured_tenants: 2, tenant_count: 2, per_tenant: [], notes: [],
+      accounts: [{ name: 'Main', count: 3, months: { '2026-09': 3 } }],
+    } as any, [], '2026-08', NOW)
+    expect(r.state).toBe('blocked')
+    expect(r.possibly_blocking).toBe(30)
+  })
+
+  it('PARTIAL: a clean capture covering only some orgs is never READY', () => {
+    const r = deriveReadiness({
+      ...capture('2026-09-05T04:00:00Z', [{ name: 'Main', count: 3, months: { '2026-09': 3 } }]),
+      captured_tenants: 1, tenant_count: 3,
+    }, [], '2026-08', NOW)
+    expect(r.state).toBe('partial')
+    expect(r.uncaptured_tenants).toBe(2)
+  })
+
+  it('visible blocking items beat partial coverage (still BLOCKED, counts a floor)', () => {
+    const r = deriveReadiness({
+      ...capture('2026-09-05T04:00:00Z', [{ name: 'Main', count: 5, months: { '2026-08': 5 } }]),
+      captured_tenants: 1, tenant_count: 2,
+    }, [], '2026-08', NOW)
+    expect(r.state).toBe('blocked')
+    expect(r.uncaptured_tenants).toBe(1)
   })
 
   it('ignored accounts are excluded from the verdict but reported for visibility', () => {
