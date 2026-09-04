@@ -142,7 +142,7 @@ async function getHandler(request: Request) {
       // give (Xero, 2 Sep 2026). Latest per tenant, shown beside the API count.
       supabase
         .from('reconciliation_dashboard_captures')
-        .select('business_id, tenant_id, captured_at, total_count, accounts, method')
+        .select('business_id, tenant_id, captured_at, total_count, accounts, method, notes')
         .in('business_id', fleetIds)
         .order('captured_at', { ascending: false })
         .limit(2000),

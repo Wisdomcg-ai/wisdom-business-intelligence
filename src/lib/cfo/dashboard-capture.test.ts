@@ -64,3 +64,37 @@ describe('summariseDashboardCaptures', () => {
     expect(s?.total_count).toBe(1)
   })
 })
+
+describe('summariseDashboardCaptures — account breakdown and notes', () => {
+  const row = (tenant: string, at: string, count: number, accounts: any, notes?: string): CaptureRow => ({
+    tenant_id: tenant, business_id: 'b1', captured_at: at, total_count: count,
+    accounts, method: 'chrome_routine', notes: notes ?? null,
+  })
+
+  it('merges the LATEST capture per tenant into a count-descending account list', () => {
+    const s = summariseDashboardCaptures([
+      row('t1', '2026-09-05T04:00:00Z', 40, [{ name: 'Amex', count: 31 }, { name: 'Trans', count: 9 }]),
+      row('t1', '2026-09-01T04:00:00Z', 99, [{ name: 'STALE', count: 99 }]),
+      row('t2', '2026-09-05T04:10:00Z', 6, [{ name: 'Cheque', count: 6 }]),
+    ], ['t1', 't2'])!
+    expect(s.accounts).toEqual([
+      { name: 'Amex', count: 31 },
+      { name: 'Trans', count: 9 },
+      { name: 'Cheque', count: 6 },
+    ])
+  })
+
+  it('collects non-empty latest notes, deduped', () => {
+    const s = summariseDashboardCaptures([
+      row('t1', '2026-09-05T04:00:00Z', 1, [], 'AUG-RELEVANT: 1 of 1.'),
+      row('t2', '2026-09-05T04:10:00Z', 0, [], '  '),
+    ], ['t1', 't2'])!
+    expect(s.notes).toEqual(['AUG-RELEVANT: 1 of 1.'])
+  })
+
+  it('null accounts arrays are tolerated', () => {
+    const s = summariseDashboardCaptures([row('t1', '2026-09-05T04:00:00Z', 3, null)], ['t1'])!
+    expect(s.accounts).toEqual([])
+    expect(s.notes).toEqual([])
+  })
+})
