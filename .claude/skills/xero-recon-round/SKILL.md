@@ -62,11 +62,20 @@ routine feeds the badge side via `reconciliation_dashboard_captures`
      method: 'POST', headers: { 'Content-Type': 'application/json' },
      body: JSON.stringify({ business_id, captures: [{
        tenant_id, total_count, method: 'chrome_routine',
-       accounts: [{ name, count }, ...],
+       accounts: [{ name, count, months: { '2026-08': 15, '2026-09': 32 } }, ...],
        notes: '<anything skipped/odd>',
      }] }),
    }).then(r => r.json())
    ```
+
+   `months` comes from the date pass below and DRIVES the board's
+   READY/BLOCKED verdict — post it whenever you ran the date pass for that
+   account. It must foot to `count` exactly or the server refuses the
+   capture. If the extraction doesn't foot to the badge (±1-2 is usually
+   page furniture), re-read the page; if it still doesn't foot, OMIT
+   `months` for that account and put the approximate split in `notes` —
+   never invent a bucket to make it add up. An account without `months`
+   fails closed: the board shows it as "could be blocking", never as ready.
 
    A non-2xx or `{error}` response = that business FAILED; report it, don't
    retry blindly (401 means Matt's WisdomBI session expired — ask him to log
@@ -87,8 +96,11 @@ org is harmless.
 ## Date pass (period relevance — run after the badge walk)
 
 The badge is a total; reporting only cares about lines dated ON OR BEFORE the
-report month's end (Sep lines don't block an August pack). For every account
-with a badge > 0 (skip known legacy monsters):
+report month's end (Sep lines don't block an August pack). Since 5 Sep 2026
+the board computes its READY/BLOCKED verdict from the per-account `months`
+histogram, so the date pass is part of the standard round, not an optional
+extra. For every account with a badge > 0 (skip known legacy monsters —
+list them in the business's `recon_ignored_accounts` board setting instead):
 
 1. Open its reconcile screen (same tab):
    `https://go.xero.com/BankRec/BankRec.aspx?accountId=<ACCOUNT_ID>` —
@@ -100,8 +112,10 @@ with a badge > 0 (skip known legacy monsters):
    bucket by year-month. The match count should EQUAL the badge; a ±1-2
    mismatch is page-furniture noise (report as approximate), a big mismatch
    means pagination (page shows ~50 lines) — note it, don't guess.
-3. Report per client: "AUG-RELEVANT: N of TOTAL (account splits)" and include
-   it in the capture `notes`.
+3. Post the histogram as the account's `months` field (step 3 above) —
+   `{"2026-07": 2, "2026-08": 15, "2026-09": 32}`, keys YYYY-MM, values
+   footing to the account count. Also report per client:
+   "AUG-RELEVANT: N of TOTAL (account splits)".
 
 ## Known org short codes (verified 5 Sep 2026)
 

@@ -217,14 +217,16 @@ export function deriveSection(args: {
   stage: PipelineStage
   daysOverdue: number | null
   connectionNeedsAttention: boolean
-  reconState: ReconState
+  /** The badge-based report-readiness verdict (demote decision, 5 Sep 2026):
+   *  the API count no longer drives sections — the captured badge does. */
+  readiness: 'ready' | 'blocked' | 'stale' | 'never'
 }): BoardSection {
-  const { stage, daysOverdue: overdue, connectionNeedsAttention, reconState } = args
+  const { stage, daysOverdue: overdue, connectionNeedsAttention, readiness } = args
   if (stage === 'sent' || stage === 'discussed') return 'sent'
   if (overdue !== null && overdue > 0) return 'overdue'
-  const dataNotReady =
-    connectionNeedsAttention || reconState === 'unknown' || reconState === 'partial'
-  if (dataNotReady) return 'blocked'
-  if (stage === 'none' && reconState === 'outstanding') return 'blocked'
+  // Unknown freshness fails closed regardless of stage; KNOWN blocking items
+  // hard-block only before generation (warn-not-block once work has started).
+  if (connectionNeedsAttention || readiness === 'stale' || readiness === 'never') return 'blocked'
+  if (stage === 'none' && readiness === 'blocked') return 'blocked'
   return 'in_progress'
 }

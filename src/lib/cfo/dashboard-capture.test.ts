@@ -3,7 +3,7 @@
  * latest-per-tenant rollup the board shows beside the API count.
  */
 import { describe, it, expect } from 'vitest'
-import { validateCapture, summariseDashboardCaptures, type CaptureRow } from './dashboard-capture'
+import { validateCapture, summariseDashboardCaptures, deriveReadiness, type CaptureRow } from './dashboard-capture'
 
 describe('validateCapture', () => {
   it('accepts a well-formed capture and defaults method to manual', () => {
@@ -78,9 +78,9 @@ describe('summariseDashboardCaptures — account breakdown and notes', () => {
       row('t2', '2026-09-05T04:10:00Z', 6, [{ name: 'Cheque', count: 6 }]),
     ], ['t1', 't2'])!
     expect(s.accounts).toEqual([
-      { name: 'Amex', count: 31 },
-      { name: 'Trans', count: 9 },
-      { name: 'Cheque', count: 6 },
+      { name: 'Amex', count: 31, months: null },
+      { name: 'Trans', count: 9, months: null },
+      { name: 'Cheque', count: 6, months: null },
     ])
   })
 
@@ -96,5 +96,90 @@ describe('summariseDashboardCaptures — account breakdown and notes', () => {
     const s = summariseDashboardCaptures([row('t1', '2026-09-05T04:00:00Z', 3, null)], ['t1'])!
     expect(s.accounts).toEqual([])
     expect(s.notes).toEqual([])
+  })
+})
+
+describe('validateCapture — month histograms (schema v2)', () => {
+  const cap = (accounts: any) => ({ tenant_id: 't1', total_count: accounts.reduce((s: number, a: any) => s + a.count, 0), accounts })
+
+  it('accepts a footing month split and preserves it', () => {
+    const v = validateCapture(cap([{ name: 'Amex', count: 5, months: { '2026-08': 3, '2026-09': 2 } }]))
+    expect(v.ok).toBe(true)
+    expect(v.value!.accounts[0].months).toEqual({ '2026-08': 3, '2026-09': 2 })
+  })
+
+  it('refuses a split that does not foot to the account count', () => {
+    const v = validateCapture(cap([{ name: 'Amex', count: 5, months: { '2026-08': 3 } }]))
+    expect(v.ok).toBe(false)
+    expect(v.error).toContain('sum to 3 but count is 5')
+  })
+
+  it('refuses malformed month keys and non-integer values', () => {
+    expect(validateCapture(cap([{ name: 'A', count: 1, months: { 'Aug-2026': 1 } }])).ok).toBe(false)
+    expect(validateCapture(cap([{ name: 'A', count: 1, months: { '2026-13': 1 } }])).ok).toBe(false)
+    expect(validateCapture(cap([{ name: 'A', count: 1, months: { '2026-08': 1.5 } }])).ok).toBe(false)
+  })
+
+  it('accounts without months stay valid (v1 captures keep working)', () => {
+    const v = validateCapture(cap([{ name: 'A', count: 2 }]))
+    expect(v.ok).toBe(true)
+    expect(v.value!.accounts[0].months).toBeUndefined()
+  })
+})
+
+describe('deriveReadiness — the one question', () => {
+  const NOW = '2026-09-05T12:00:00Z'
+  const capture = (at: string, accounts: any[]): any => ({
+    total_count: accounts.reduce((s, a) => s + a.count, 0),
+    captured_at: at, captured_tenants: 1, tenant_count: 1, per_tenant: [], notes: [],
+    accounts,
+  })
+
+  it('READY: fresh capture, everything dated after the report month', () => {
+    const r = deriveReadiness(capture('2026-09-05T04:00:00Z', [
+      { name: 'Main', count: 3, months: { '2026-09': 3 } },
+    ]), [], '2026-08', NOW)
+    expect(r.state).toBe('ready')
+    expect(r.blocking).toBe(0)
+  })
+
+  it('BLOCKED: items in or before the report month, named per account', () => {
+    const r = deriveReadiness(capture('2026-09-05T04:00:00Z', [
+      { name: 'Amex', count: 31, months: { '2026-07': 14, '2026-08': 8, '2026-09': 9 } },
+      { name: 'Trans', count: 8, months: { '2026-09': 8 } },
+    ]), [], '2026-08', NOW)
+    expect(r.state).toBe('blocked')
+    expect(r.blocking).toBe(22)
+    expect(r.by_account).toEqual([{ name: 'Amex', blocking: 22, unsplit: false }])
+  })
+
+  it('an account without a month split can never yield READY (fail-closed)', () => {
+    const r = deriveReadiness(capture('2026-09-05T04:00:00Z', [
+      { name: 'Mystery', count: 4, months: null },
+    ]), [], '2026-08', NOW)
+    expect(r.state).toBe('blocked')
+    expect(r.possibly_blocking).toBe(4)
+    expect(r.by_account[0].unsplit).toBe(true)
+  })
+
+  it('STALE beats blocked/ready: an old capture cannot give a confident verdict', () => {
+    const r = deriveReadiness(capture('2026-08-20T04:00:00Z', [
+      { name: 'Main', count: 0, months: {} },
+    ]), [], '2026-08', NOW)
+    expect(r.state).toBe('stale')
+    expect(r.capture_age_days).toBeGreaterThan(7)
+  })
+
+  it('NEVER: no capture at all', () => {
+    expect(deriveReadiness(null, [], '2026-08', NOW).state).toBe('never')
+  })
+
+  it('ignored accounts are excluded from the verdict but reported for visibility', () => {
+    const r = deriveReadiness(capture('2026-09-05T04:00:00Z', [
+      { name: 'Paypal Account - DO NOT USE (legacy feed)', count: 19920, months: null },
+      { name: 'Main', count: 2, months: { '2026-09': 2 } },
+    ]), ['paypal account - do not use (legacy feed)'], '2026-08', NOW)
+    expect(r.state).toBe('ready')
+    expect(r.ignored).toEqual([{ name: 'Paypal Account - DO NOT USE (legacy feed)', count: 19920 }])
   })
 })

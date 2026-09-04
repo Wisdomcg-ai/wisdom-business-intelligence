@@ -14,6 +14,14 @@
 export interface CaptureAccount {
   name: string
   count: number
+  /**
+   * Optional month histogram of the account's unreconciled lines
+   * ({"2026-08": 15, "2026-09": 32}) from the recon round's date pass.
+   * When present it MUST foot to `count`. This is what makes the
+   * report-readiness verdict computable: lines dated in or before the
+   * report month block it; later lines don't.
+   */
+  months?: Record<string, number>
 }
 
 export interface IncomingCapture {
@@ -43,7 +51,31 @@ export function validateCapture(raw: unknown): CaptureValidation {
     if (!a || typeof a.name !== 'string' || a.name.trim() === '' || typeof a.count !== 'number' || !Number.isInteger(a.count) || a.count < 0) {
       return { ok: false, error: 'each account needs a name and a non-negative integer count' }
     }
-    accounts.push({ name: a.name.trim(), count: a.count })
+    const entry: CaptureAccount = { name: a.name.trim(), count: a.count }
+    if (a.months !== undefined) {
+      if (!a.months || typeof a.months !== 'object' || Array.isArray(a.months)) {
+        return { ok: false, error: `months for "${entry.name}" must be an object of YYYY-MM keys` }
+      }
+      let monthSum = 0
+      const months: Record<string, number> = {}
+      for (const [key, value] of Object.entries(a.months)) {
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(key)) {
+          return { ok: false, error: `months for "${entry.name}" has a non-YYYY-MM key: "${String(key).slice(0, 20)}"` }
+        }
+        if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+          return { ok: false, error: `months for "${entry.name}" has a non-integer count for ${key}` }
+        }
+        months[key] = value
+        monthSum += value
+      }
+      // The histogram must foot to the account count — a split that doesn't
+      // add up is a mis-read, not data.
+      if (monthSum !== entry.count) {
+        return { ok: false, error: `months for "${entry.name}" sum to ${monthSum} but count is ${entry.count}` }
+      }
+      entry.months = months
+    }
+    accounts.push(entry)
   }
   // When per-account detail is given it must foot to the total — a badge
   // list that doesn't add up is a mis-read, not data.
@@ -78,8 +110,10 @@ export interface BusinessDashboardCapture {
   tenant_count: number
   per_tenant: Array<{ tenant_id: string; total_count: number; captured_at: string; method: string }>
   /** Per-account badge breakdown, merged across the latest capture per
-   *  tenant, count-descending — names where the badge total actually lives. */
-  accounts: CaptureAccount[]
+   *  tenant, count-descending — names where the badge total actually lives.
+   *  `months` is the merged histogram, or null when ANY contributor lacked
+   *  one (fail-closed: an unsplit account can't claim period relevance). */
+  accounts: Array<{ name: string; count: number; months: Record<string, number> | null }>
   /** Non-empty notes from the latest captures (period relevance, feed
    *  warnings, legacy flags) — the routine's human-readable findings. */
   notes: string[]
@@ -106,14 +140,24 @@ export function summariseDashboardCaptures(
     .map(r => ({ tenant_id: r.tenant_id, total_count: r.total_count, captured_at: r.captured_at, method: r.method }))
     .sort((a, b) => a.tenant_id.localeCompare(b.tenant_id))
 
-  const accountMap = new Map<string, number>()
+  const accountMap = new Map<string, { count: number; months: Record<string, number> | null; complete: boolean }>()
   for (const r of relevant) {
     for (const a of r.accounts ?? []) {
-      accountMap.set(a.name, (accountMap.get(a.name) ?? 0) + a.count)
+      const entry = accountMap.get(a.name) ?? { count: 0, months: {}, complete: true }
+      entry.count += a.count
+      if (a.months && entry.complete) {
+        for (const [k, v] of Object.entries(a.months)) {
+          entry.months![k] = (entry.months![k] ?? 0) + v
+        }
+      } else {
+        entry.complete = false
+        entry.months = null
+      }
+      accountMap.set(a.name, entry)
     }
   }
   const accounts = Array.from(accountMap.entries())
-    .map(([name, count]) => ({ name, count }))
+    .map(([name, e]) => ({ name, count: e.count, months: e.complete ? e.months : null }))
     .sort((a, b) => b.count - a.count)
 
   const notes = Array.from(
@@ -129,4 +173,86 @@ export function summariseDashboardCaptures(
     accounts,
     notes,
   }
+}
+
+// ─── Report readiness (the board's ONE reconciliation question) ─────────────
+
+/** Capture older than this can't support a confident verdict — Matt's to tune. */
+export const STALE_CAPTURE_DAYS = 7
+
+export type ReadinessState = 'ready' | 'blocked' | 'stale' | 'never'
+
+export interface ReportReadiness {
+  /**
+   * ready   — fresh capture; nothing dated in or before the report month
+   * blocked — fresh capture; items block the report month (nudge territory)
+   * stale   — last capture too old to trust; numbers shown are historical
+   * never   — no capture yet; run the recon round
+   */
+  state: ReadinessState
+  /** Badge lines dated in or before the report month, ignored accounts excluded. */
+  blocking: number
+  /** Lines on non-ignored accounts WITHOUT a month split — fail-closed: they
+   *  COULD be blocking, so they prevent a READY verdict. */
+  possibly_blocking: number
+  /** Non-ignored accounts with blocking (or unsplit) items, worst first. */
+  by_account: Array<{ name: string; blocking: number; unsplit: boolean }>
+  /** Ignored accounts and what they carried (visibility, never counted). */
+  ignored: Array<{ name: string; count: number }>
+  captured_at: string | null
+  capture_age_days: number | null
+}
+
+export function deriveReadiness(
+  capture: BusinessDashboardCapture | null,
+  ignoredNames: string[],
+  reportMonth: string,
+  nowIso: string = new Date().toISOString(),
+): ReportReadiness {
+  const base: ReportReadiness = {
+    state: 'never',
+    blocking: 0,
+    possibly_blocking: 0,
+    by_account: [],
+    ignored: [],
+    captured_at: null,
+    capture_age_days: null,
+  }
+  if (!capture) return base
+
+  const ignore = new Set(ignoredNames.map(n => n.trim().toLowerCase()))
+  for (const account of capture.accounts) {
+    if (ignore.has(account.name.trim().toLowerCase())) {
+      base.ignored.push({ name: account.name, count: account.count })
+      continue
+    }
+    if (account.months) {
+      // YYYY-MM keys compare correctly as strings.
+      const blocking = Object.entries(account.months)
+        .filter(([month]) => month <= reportMonth)
+        .reduce((s, [, n]) => s + n, 0)
+      if (blocking > 0) base.by_account.push({ name: account.name, blocking, unsplit: false })
+      base.blocking += blocking
+    } else if (account.count > 0) {
+      // No month split — could all be blocking. Never READY on a guess.
+      base.by_account.push({ name: account.name, blocking: account.count, unsplit: true })
+      base.possibly_blocking += account.count
+    }
+  }
+  base.by_account.sort((a, b) => b.blocking - a.blocking)
+
+  base.captured_at = capture.captured_at
+  const age = Math.floor(
+    (Date.parse(nowIso) - Date.parse(capture.captured_at)) / 86_400_000,
+  )
+  base.capture_age_days = Number.isFinite(age) ? Math.max(0, age) : null
+
+  if (base.capture_age_days === null || base.capture_age_days > STALE_CAPTURE_DAYS) {
+    base.state = 'stale'
+  } else if (base.blocking + base.possibly_blocking > 0) {
+    base.state = 'blocked'
+  } else {
+    base.state = 'ready'
+  }
+  return base
 }
