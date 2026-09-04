@@ -105,8 +105,11 @@ async function getHandler(request: NextRequest) {
     // permanently — a business whose bank rec reports tied to the cent could
     // still show "4 unreconciled" here. Also note: this counts unreconciled
     // TRANSACTIONS recorded in Xero, not the bank-feed statement lines behind
-    // Xero's per-account reconcile badge (unreachable without the
-    // addendum-gated Bank Statement scope) — label it accordingly.
+    // Xero's per-account reconcile badge — those are PERMANENTLY unreachable
+    // by API (Xero support, 2 Sep 2026: scope deprecated 2024, granted to no
+    // one; statement lines are banks-only Finance/Bank Feeds territory).
+    // Label it accordingly; banner numbers come only from the dashboard
+    // capture (reconciliation_dashboard_captures).
     const monthRange = month ? monthRangeWhere(month) : null
     if (month && !monthRange) {
       return NextResponse.json({ error: 'month must be YYYY-MM' }, { status: 400 })

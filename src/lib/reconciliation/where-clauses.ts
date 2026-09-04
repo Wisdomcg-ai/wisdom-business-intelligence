@@ -11,9 +11,13 @@
  *
  * TRANSACTIONS ≠ STATEMENT LINES: this counts transactions RECORDED in Xero
  * that aren't matched to a statement line. Xero's per-account "Reconcile N
- * items" badge counts imported bank-feed STATEMENT LINES, which the open API
- * cannot see (Bank Statement report requires the addendum-gated scope). Label
- * every surface "unreconciled transactions"; never imply it equals the badge.
+ * items" badge counts imported bank-feed STATEMENT LINES, which NO API can
+ * see: Xero support confirmed (2 Sep 2026) the bankstatement report scope was
+ * deprecated in 2024 and is granted to no one; statement lines live only in
+ * the Finance / Bank Feeds APIs, restricted to banks. PERMANENT, not pending.
+ * Label every surface "unreconciled transactions"; never imply it equals the
+ * badge — banner-exact numbers come only from the dashboard capture
+ * (reconciliation_dashboard_captures).
  */
 
 export const UNRECONCILED_AUTHORISED = 'Status=="AUTHORISED" AND IsReconciled==false'
