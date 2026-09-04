@@ -180,18 +180,26 @@ export function summariseDashboardCaptures(
 /** Capture older than this can't support a confident verdict — Matt's to tune. */
 export const STALE_CAPTURE_DAYS = 7
 
-export type ReadinessState = 'ready' | 'blocked' | 'stale' | 'never'
+export type ReadinessState = 'ready' | 'blocked' | 'stale' | 'never' | 'partial'
 
 export interface ReportReadiness {
   /**
-   * ready   — fresh capture; nothing dated in or before the report month
+   * ready   — fresh capture of EVERY org; nothing dated in or before the report month
    * blocked — fresh capture; items block the report month (nudge territory)
+   * partial — fresh capture but some orgs were never captured: zero visible
+   *           blocking, yet the uncaptured orgs' backlog is unknown — never
+   *           rendered as ready (the multi-org silent-fraction incident class)
    * stale   — last capture too old to trust; numbers shown are historical
    * never   — no capture yet; run the recon round
    */
   state: ReadinessState
   /** Badge lines dated in or before the report month, ignored accounts excluded. */
   blocking: number
+  /** Of `blocking`: lines dated BEFORE the report month (prior periods).
+   *  The board's "Previous months" column. */
+  blocking_prior: number
+  /** Of `blocking`: lines dated IN the report month. The board's month column. */
+  blocking_current: number
   /** Lines on non-ignored accounts WITHOUT a month split — fail-closed: they
    *  COULD be blocking, so they prevent a READY verdict. */
   possibly_blocking: number
@@ -199,6 +207,9 @@ export interface ReportReadiness {
   by_account: Array<{ name: string; blocking: number; unsplit: boolean }>
   /** Ignored accounts and what they carried (visibility, never counted). */
   ignored: Array<{ name: string; count: number }>
+  /** Expected orgs with no capture at all — their backlog is invisible, so
+   *  counts are a FLOOR and the verdict can never be ready while > 0. */
+  uncaptured_tenants: number
   captured_at: string | null
   capture_age_days: number | null
 }
@@ -212,13 +223,17 @@ export function deriveReadiness(
   const base: ReportReadiness = {
     state: 'never',
     blocking: 0,
+    blocking_prior: 0,
+    blocking_current: 0,
     possibly_blocking: 0,
     by_account: [],
     ignored: [],
+    uncaptured_tenants: 0,
     captured_at: null,
     capture_age_days: null,
   }
   if (!capture) return base
+  base.uncaptured_tenants = Math.max(0, capture.tenant_count - capture.captured_tenants)
 
   const ignore = new Set(ignoredNames.map(n => n.trim().toLowerCase()))
   for (const account of capture.accounts) {
@@ -228,16 +243,33 @@ export function deriveReadiness(
     }
     if (account.months) {
       // YYYY-MM keys compare correctly as strings.
-      const blocking = Object.entries(account.months)
-        .filter(([month]) => month <= reportMonth)
-        .reduce((s, [, n]) => s + n, 0)
+      let prior = 0
+      let current = 0
+      for (const [month, n] of Object.entries(account.months)) {
+        if (month < reportMonth) prior += n
+        else if (month === reportMonth) current += n
+      }
+      const blocking = prior + current
       if (blocking > 0) base.by_account.push({ name: account.name, blocking, unsplit: false })
       base.blocking += blocking
+      base.blocking_prior += prior
+      base.blocking_current += current
     } else if (account.count > 0) {
       // No month split — could all be blocking. Never READY on a guess.
       base.by_account.push({ name: account.name, blocking: account.count, unsplit: true })
       base.possibly_blocking += account.count
     }
+  }
+  // A badge total with no (or an incomplete) account breakdown is legal —
+  // e.g. a quick manual capture of just the badge number. Those items have
+  // no month, no account, and could all be blocking: they must never vanish
+  // into a green zero. The remainder is measured against ALL account rows
+  // (ignored included — their counts are part of total_count too).
+  const accountedSum = capture.accounts.reduce((s, a) => s + a.count, 0)
+  const unaccounted = Math.max(0, capture.total_count - accountedSum)
+  if (unaccounted > 0) {
+    base.by_account.push({ name: '(no account breakdown)', blocking: unaccounted, unsplit: true })
+    base.possibly_blocking += unaccounted
   }
   base.by_account.sort((a, b) => b.blocking - a.blocking)
 
@@ -251,6 +283,10 @@ export function deriveReadiness(
     base.state = 'stale'
   } else if (base.blocking + base.possibly_blocking > 0) {
     base.state = 'blocked'
+  } else if (base.uncaptured_tenants > 0) {
+    // Zero visible blocking, but not every org was captured — the missing
+    // orgs' backlog is unknown, so this is not READY (fail-closed).
+    base.state = 'partial'
   } else {
     base.state = 'ready'
   }

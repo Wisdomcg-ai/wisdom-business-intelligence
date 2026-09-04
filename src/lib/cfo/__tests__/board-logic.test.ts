@@ -138,10 +138,12 @@ describe('deriveSection (badge-readiness driven — demote decision 5 Sep)', () 
     ).toBe('overdue')
   })
 
-  it('unknown freshness fails closed regardless of stage: connection, stale, never', () => {
+  it('unknown freshness/coverage fails closed regardless of stage: connection, stale, never, partial', () => {
     expect(deriveSection({ ...base, connectionNeedsAttention: true })).toBe('blocked')
     expect(deriveSection({ ...base, readiness: 'stale' })).toBe('blocked')
     expect(deriveSection({ ...base, stage: 'generated', readiness: 'never' })).toBe('blocked')
+    expect(deriveSection({ ...base, readiness: 'partial' })).toBe('blocked')
+    expect(deriveSection({ ...base, stage: 'generated', readiness: 'partial' })).toBe('blocked')
   })
 
   it('KNOWN blocking items block only BEFORE generation; after, they warn (in progress)', () => {
