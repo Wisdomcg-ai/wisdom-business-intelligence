@@ -83,3 +83,38 @@ routine feeds the badge side via `reconciliation_dashboard_captures`
 if the round dies mid-way with login pages, resume from the first skipped
 org after Matt re-authenticates; captures are append-only, re-posting an
 org is harmless.
+
+## Date pass (period relevance — run after the badge walk)
+
+The badge is a total; reporting only cares about lines dated ON OR BEFORE the
+report month's end (Sep lines don't block an August pack). For every account
+with a badge > 0 (skip known legacy monsters):
+
+1. Open its reconcile screen (same tab):
+   `https://go.xero.com/BankRec/BankRec.aspx?accountId=<ACCOUNT_ID>` —
+   prefix with the shortcode login redirect when switching orgs. Account IDs:
+   `bank_account_status.bank_account_id` (DB), else harvest from the
+   dashboard: `document.querySelectorAll('[href*="BankRec.aspx"]')`.
+2. Extract a month histogram via javascript_tool:
+   `document.body.innerText.match(/\b\d{1,2} (Jan|...|Dec) \d{4}\b/g)` →
+   bucket by year-month. The match count should EQUAL the badge; a ±1-2
+   mismatch is page-furniture noise (report as approximate), a big mismatch
+   means pagination (page shows ~50 lines) — note it, don't guess.
+3. Report per client: "AUG-RELEVANT: N of TOTAL (account splits)" and include
+   it in the capture `notes`.
+
+## Known org short codes (verified 5 Sep 2026)
+
+Attaquer !34Px3 · Digital Bond !Bzt6F · Dragon Roofing !v2-mT ·
+Easy Hail !Yy7Hg · IICT Aust !88FXr · IICT Group Ltd !KlQ18 ·
+IICT Group Pty !v3fct · JDS/Aeris !N9hJb · Sharon King !ygLv0 ·
+Urban Road !9XB-5 · Armstrong !grQ46 · Malouf Family Trust !XGy7z ·
+Sydney Pressed Metal !QrzNw
+(URL-encode the leading '!' as %21. New orgs: use the switcher's search box.)
+
+## Standing observations (recheck each round)
+
+- Urban Road: "Paypal Account - DO NOT USE" carries ~19,920 ancient lines —
+  archive that feed; exclude from counts, note as legacy.
+- Armstrong: Amex feed expires — if statement balance is stale, tell Matt to
+  renew the feed (missing imports understate the badge).
