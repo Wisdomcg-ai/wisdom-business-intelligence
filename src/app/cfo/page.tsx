@@ -10,10 +10,12 @@
  * reconciliation-by-month, and data health.
  *
  * Fail-closed rendering rules (house):
- * - recon state 'unknown'/'partial' is NEVER shown as zero outstanding.
- * - The recon count is unreconciled TRANSACTIONS recorded in Xero — not the
- *   bank-feed "items to reconcile" banner (uncoded feed lines are invisible
- *   to the open API). The expanded view carries that caveat verbatim.
+ * - The reconciliation verdict comes from the CAPTURED Xero badge (recon
+ *   round) vs the selected report month: READY / BLOCKED / STALE / NEVER.
+ *   No capture or a stale capture is never shown as ready.
+ * - The API's recorded-transaction count is a different population (it can't
+ *   see uncoded feed lines) — demoted to one cross-check line in the
+ *   expanded view (demote decision, 5 Sep 2026).
  */
 
 import { useEffect, useMemo, useState } from 'react'
@@ -71,9 +73,20 @@ interface BoardClient {
     captured_at: string
     captured_tenants: number
     tenant_count: number
-    accounts: { name: string; count: number }[]
+    accounts: { name: string; count: number; months: Record<string, number> | null }[]
     notes: string[]
   } | null
+  /** The board's ONE reconciliation question, from the captured badge. */
+  readiness: {
+    state: 'ready' | 'blocked' | 'stale' | 'never'
+    blocking: number
+    possibly_blocking: number
+    by_account: { name: string; blocking: number; unsplit: boolean }[]
+    ignored: { name: string; count: number }[]
+    captured_at: string | null
+    capture_age_days: number | null
+  }
+  recon_ignored_accounts: string[]
   bookkeeper: { name: string | null; email: string | null }
 }
 
@@ -103,28 +116,9 @@ function formatMonthLabel(monthKey: string): string {
   return date.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
 }
 
-function shortMonth(monthKey: string): string {
-  const date = new Date(monthKey + '-01T00:00:00')
-  return date.toLocaleDateString('en-AU', { month: 'short' })
-}
-
 function fmtDate(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
-}
-
-function fmtMoney(value: number | null, currency: string | null): string {
-  if (value === null) return '—'
-  try {
-    return value.toLocaleString('en-AU', {
-      style: 'currency',
-      currency: currency ?? 'AUD',
-      maximumFractionDigits: 0,
-    })
-  } catch {
-    // Unknown/invalid currency code from Xero — show the number with the raw code.
-    return `${currency ?? ''} ${value.toLocaleString('en-AU', { maximumFractionDigits: 0 })}`.trim()
-  }
 }
 
 function relTime(iso: string | null): string {
@@ -294,7 +288,7 @@ export default function CfoBoardPage() {
             {checkAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             {checkAll
               ? `Checking ${checkAll.current} · ${checkAll.done + 1} of ${checkAll.total}…`
-              : 'Check all reconciliation'}
+              : 'Re-run API cross-check'}
           </button>
           {checkAllResult && !checkAll && (
             <span className="text-xs font-medium text-gray-500">{checkAllResult}</span>
@@ -497,7 +491,7 @@ function Section({ section, clients, month, expanded, onToggleRow, onChanged, ba
 
 function pipelineSteps(client: BoardClient): { done: boolean; now: boolean; blocked: boolean }[] {
   const stage = client.stage
-  const dataReady = !client.connection.needs_attention && client.recon.state === 'clear'
+  const dataReady = !client.connection.needs_attention && client.readiness.state === 'ready'
   const reached = (s: PipelineStage[]) => s.includes(stage)
   return [
     {
@@ -513,66 +507,41 @@ function pipelineSteps(client: BoardClient): { done: boolean; now: boolean; bloc
 }
 
 function stageLabel(client: BoardClient): { text: string; tone: 'ok' | 'warn' | 'bad' } {
-  const { stage, connection, recon } = client
+  const { stage, connection, readiness } = client
   if (stage === 'discussed') return { text: `Discussed ${fmtDate(client.cycle.discussed_at)}`, tone: 'ok' }
   if (stage === 'sent') return { text: `Sent ${fmtDate(client.cycle.sent_at)} — meeting pending`, tone: 'ok' }
   if (stage === 'approved') return { text: 'Approved — awaiting send', tone: 'ok' }
   if (stage === 'ready') return { text: 'In review', tone: 'ok' }
   if (stage === 'generated') return { text: `Generated ${fmtDate(client.cycle.generated_at)} — in review`, tone: 'ok' }
   if (connection.needs_attention) return { text: CONNECTION_LABELS[connection.status] ?? 'Data problem', tone: 'bad' }
-  if (recon.state === 'unknown') return { text: 'Reconciliation not checked', tone: 'bad' }
-  if (recon.state === 'partial') return { text: 'Some orgs unchecked', tone: 'warn' }
-  if (recon.state === 'outstanding') return { text: 'Awaiting reconciliation', tone: 'warn' }
+  if (readiness.state === 'never') return { text: 'No badge capture — run the recon round', tone: 'bad' }
+  if (readiness.state === 'stale') return { text: `Capture ${readiness.capture_age_days}d old — rerun the round`, tone: 'warn' }
+  if (readiness.state === 'blocked') return { text: 'Awaiting reconciliation', tone: 'warn' }
   return { text: 'Ready to generate', tone: 'ok' }
 }
 
-function DashboardBadge({ capture }: { capture: BoardClient['dashboard_capture'] }) {
-  // The badge number sits beside the API count, never replaces it: they are
-  // different populations (bank-feed lines vs recorded transactions).
-  if (!capture) return null
-  const asOf = new Date(capture.captured_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
-  const partial = capture.captured_tenants < capture.tenant_count
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${capture.total_count === 0 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-800'}`}
-      title={`Xero dashboard badge, read ${asOf}${partial ? ` — ${capture.captured_tenants} of ${capture.tenant_count} orgs captured` : ''}`}
-    >
-      Xero badge: {capture.total_count}{partial ? '+' : ''} · {asOf}
-    </span>
-  )
-}
-
-function ReconChip({ recon }: { recon: BoardClient['recon'] }) {
-  // Every displayed count carries when it was fetched — a nightly snapshot
-  // compared against live Xero mid-afternoon reads as a bug otherwise.
-  const asOf = recon.checkedAt
-    ? `As of ${new Date(recon.checkedAt).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`
+/**
+ * The row's single reconciliation verdict, computed from the captured Xero
+ * badge against the board's selected month (demote decision, 5 Sep 2026).
+ */
+function VerdictChip({ client }: { client: BoardClient }) {
+  const r = client.readiness
+  const asOf = r.captured_at
+    ? `Badge captured ${new Date(r.captured_at).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`
     : undefined
-  if (recon.state === 'unknown') {
-    return <Chip tone="red">Couldn&apos;t check reconciliation</Chip>
+  if (r.state === 'never') return <Chip tone="gray">No badge capture — run recon round</Chip>
+  if (r.state === 'stale') {
+    return <Chip tone="amber" title={asOf}>Capture {r.capture_age_days}d old — rerun round</Chip>
   }
-  if (recon.state === 'partial') {
+  if (r.state === 'blocked') {
+    const n = r.blocking + r.possibly_blocking
     return (
       <Chip tone="amber" title={asOf}>
-        {recon.checkedTenants} of {recon.tenantCount} orgs checked · {recon.totalCount}+ unreconciled
+        {r.possibly_blocking > 0 ? '≥' : ''}{r.blocking > 0 ? r.blocking : n} block{n === 1 ? 's' : ''} this month
       </Chip>
     )
   }
-  if (recon.state === 'outstanding') {
-    return (
-      <Chip tone="amber" title={asOf}>
-        {recon.totalCount} {recon.source === 'statement_lines' ? 'to reconcile' : 'unreconciled'}
-        {recon.months.length === 1
-          ? ` · all ${shortMonth(recon.months[0].month)}`
-          : recon.months.slice(-3).map(m => ` · ${shortMonth(m.month)} ${m.count}`).join('')}
-      </Chip>
-    )
-  }
-  return (
-    <Chip tone="green" title={asOf}>
-      {recon.source === 'statement_lines' ? 'Nothing to reconcile' : 'No unreconciled transactions'}
-    </Chip>
-  )
+  return <Chip tone="green" title={asOf}>Ready — reconciled ✓</Chip>
 }
 
 function sourceCaveat(client: BoardClient): string {
@@ -655,8 +624,7 @@ function ClientRow({ client, month, isExpanded, onToggle, onChanged }: {
         </div>
 
         <div className="hidden lg:flex items-center gap-1.5 shrink-0">
-          <ReconChip recon={client.recon} />
-          <DashboardBadge capture={client.dashboard_capture} />
+          <VerdictChip client={client} />
           {conn.needs_attention ? (
             <Chip tone="red">{CONNECTION_LABELS[conn.status] ?? conn.status}</Chip>
           ) : (
@@ -708,17 +676,17 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
       action: 'unmark_discussed', business_id: client.business_id, period_month: `${month}-01`,
     })
 
-  const recon = client.recon
+  const readiness = client.readiness
   const timeline: { stage: string; note: string; done: boolean }[] = [
     {
       stage: 'Data ready',
-      done: !client.connection.needs_attention && recon.state === 'clear',
+      done: !client.connection.needs_attention && readiness.state === 'ready',
       note:
-        recon.state === 'outstanding' ? `${recon.totalCount} transactions unreconciled`
-        : recon.state === 'unknown' ? 'reconciliation not checked'
-        : recon.state === 'partial' ? `${recon.erroredTenants} org(s) could not be checked`
-        : client.connection.needs_attention ? (CONNECTION_LABELS[client.connection.status] ?? 'connection problem')
-        : 'synced & reconciled',
+        client.connection.needs_attention ? (CONNECTION_LABELS[client.connection.status] ?? 'connection problem')
+        : readiness.state === 'never' ? 'no badge capture — run the recon round'
+        : readiness.state === 'stale' ? `capture ${readiness.capture_age_days}d old — rerun the round`
+        : readiness.state === 'blocked' ? `${readiness.blocking + readiness.possibly_blocking} item(s) block ${formatMonthLabel(month)}`
+        : 'reconciled & synced',
     },
     { stage: 'Generated', done: !!client.cycle.generated_at, note: fmtDate(client.cycle.generated_at) },
     { stage: 'Reviewed', done: ['approved', 'sent', 'discussed'].includes(client.stage), note: client.stage === 'ready' ? 'in review' : client.cycle.approved_at ? `approved ${fmtDate(client.cycle.approved_at)}` : '—' },
@@ -730,58 +698,53 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
     <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 grid gap-5 md:grid-cols-2">
       <div>
         <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
-          Unreconciled by month
+          Report readiness — {formatMonthLabel(month)}
         </h4>
-        {recon.state === 'unknown' ? (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-            Reconciliation could not be checked
-            {recon.tenantCount > 0 ? ` for ${recon.tenantCount === 1 ? 'this org' : `any of ${recon.tenantCount} orgs`}` : ''} —
-            this is <strong>not</strong> the same as zero outstanding.
+        {readiness.state === 'never' ? (
+          <div className="p-3 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-700">
+            No Xero badge capture yet — run the recon round to get a verdict. This is
+            <strong> not</strong> the same as everything reconciled.
           </div>
-        ) : recon.months.length === 0 ? (
-          <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
-            {recon.source === 'statement_lines'
-              ? 'No statement lines awaiting reconciliation in the last 24 months'
-              : 'No unreconciled transactions in the last 12 months'}
-            {recon.state === 'partial' ? ` across the ${recon.checkedTenants} org(s) that could be checked` : ''}.
+        ) : readiness.state === 'stale' ? (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+            Last capture is {readiness.capture_age_days} days old — too old to trust for this
+            report. Rerun the recon round. Historical figures below are as at{' '}
+            {readiness.captured_at ? fmtDate(readiness.captured_at) : 'unknown'}.
+          </div>
+        ) : readiness.state === 'blocked' ? (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+            <p className="font-semibold">
+              {readiness.blocking > 0
+                ? `${readiness.blocking} item${readiness.blocking === 1 ? '' : 's'} dated ${formatMonthLabel(month)} or earlier block${readiness.blocking === 1 ? 's' : ''} this report`
+                : `${readiness.possibly_blocking} item${readiness.possibly_blocking === 1 ? '' : 's'} with no month split — could block this report`}
+              {readiness.blocking > 0 && readiness.possibly_blocking > 0
+                ? ` (+${readiness.possibly_blocking} more with no month split)`
+                : ''}
+              .
+            </p>
+            <ul className="mt-1.5 space-y-0.5 text-xs">
+              {readiness.by_account.map(a => (
+                <li key={a.name} className="tabular-nums">
+                  {a.name}: {a.blocking}
+                  {a.unsplit ? ' (month unknown — dates not captured)' : ''}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1.5 text-xs">Nudge the client or bookkeeper to reconcile these before generating.</p>
           </div>
         ) : (
-          <table className="w-full bg-white border border-gray-200 rounded-lg overflow-hidden text-sm">
-            <thead>
-              <tr className="bg-gray-100 text-[11px] uppercase tracking-wide text-gray-500">
-                <th className="text-left px-3 py-1.5">Month</th>
-                <th className="text-right px-3 py-1.5">Items</th>
-                <th className="text-right px-3 py-1.5">Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recon.months.map(m => (
-                <tr key={m.month} className="border-t border-gray-100">
-                  <td className="px-3 py-1.5">{formatMonthLabel(m.month)}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{m.count}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{fmtMoney(m.value, recon.currency)}</td>
-                </tr>
-              ))}
-              <tr className="border-t border-gray-200 bg-amber-50 font-semibold text-brand-navy">
-                <td className="px-3 py-1.5">Total outstanding</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{recon.totalCount}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{fmtMoney(recon.totalValue, recon.currency)}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+            Nothing unreconciled dated {formatMonthLabel(month)} or earlier — ready to produce this report.
+            {client.dashboard_capture && client.dashboard_capture.total_count > readiness.ignored.reduce((s, a) => s + a.count, 0)
+              ? ' Later-month items exist but don’t affect this report.'
+              : ''}
+          </div>
         )}
-        {recon.byAccount.length > 0 && recon.totalCount > 0 && (
-          <p className="mt-2 text-xs text-gray-600">
-            <span className="font-semibold text-gray-500">By account:</span>{' '}
-            {recon.byAccount.map(a => `${a.name} ${a.count}`).join(' · ')}
+        {readiness.ignored.length > 0 && (
+          <p className="mt-2 text-[11px] text-gray-400">
+            Ignored (excluded from verdict): {readiness.ignored.map(a => `${a.name} — ${a.count.toLocaleString('en-AU')}`).join(' · ')}
           </p>
         )}
-        <p className="mt-2 text-[11px] leading-relaxed text-gray-400">
-          {sourceCaveat(client)}
-          {recon.mixedCurrencies ? ' Values hidden — bank accounts are in different currencies, so a single total would be misleading.' : ''}
-          {recon.currency && recon.currency !== 'AUD' && !recon.mixedCurrencies ? ` Values are ${recon.currency}.` : ''}
-          {recon.checkedAt ? ` Last checked ${relTime(recon.checkedAt)}.` : ''}
-        </p>
 
         {client.dashboard_capture && (
           <div className="mt-3 p-3 bg-white border border-gray-200 rounded-lg">
@@ -809,6 +772,14 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
               recon round, since no API exposes it.
             </p>
           </div>
+        )}
+
+        {client.recon.state !== 'unknown' && (
+          <p className="mt-2 text-[11px] text-gray-400" title={sourceCaveat(client)}>
+            API cross-check: {client.recon.totalCount} unreconciled recorded transaction{client.recon.totalCount === 1 ? '' : 's'}
+            {client.recon.checkedAt ? `, checked ${relTime(client.recon.checkedAt)}` : ''} — a different
+            population to the badge; kept as an automatic freshness signal only.
+          </p>
         )}
       </div>
 
@@ -842,7 +813,7 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-brand-navy bg-white border border-gray-300 hover:bg-gray-50 rounded-lg disabled:opacity-50"
         >
           {busy === 'Re-check' ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-          Re-check reconciliation
+          Re-run API cross-check
         </button>
         {client.stage === 'sent' && (
           <button

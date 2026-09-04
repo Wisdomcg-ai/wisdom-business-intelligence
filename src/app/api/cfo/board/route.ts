@@ -32,7 +32,7 @@ import {
   deriveSection,
   type BoardSection,
 } from '@/lib/cfo/board-logic'
-import { summariseDashboardCaptures, type CaptureRow } from '@/lib/cfo/dashboard-capture'
+import { summariseDashboardCaptures, deriveReadiness, type CaptureRow } from '@/lib/cfo/dashboard-capture'
 
 export const dynamic = 'force-dynamic'
 
@@ -122,7 +122,7 @@ async function getHandler(request: Request) {
     const [settingsRes, cycleRes, checksRes, bucketsRes, syncClock, capturesRes] = await Promise.all([
       supabase
         .from('monthly_report_settings')
-        .select('business_id, report_due_day, bookkeeper_name, bookkeeper_email, hide_from_board')
+        .select('business_id, report_due_day, bookkeeper_name, bookkeeper_email, hide_from_board, recon_ignored_accounts')
         .in('business_id', fleetIds),
       supabase
         .from('cfo_report_status')
@@ -222,11 +222,21 @@ async function getHandler(request: Request) {
         capturesByBiz.get(businessId) ?? [],
         activeTenants.filter((t): t is string => typeof t === 'string'),
       )
+      // The board's ONE reconciliation question (demote decision, 5 Sep):
+      // computed from the captured badge against the selected report month.
+      // The API count no longer drives sections — it survives as a demoted
+      // secondary line in the expanded panel.
+      const readiness = deriveReadiness(
+        dashboard_capture,
+        (settings?.recon_ignored_accounts as string[] | null) ?? [],
+        month,
+        todayIso,
+      )
       const section: BoardSection = deriveSection({
         stage,
         daysOverdue: overdue,
         connectionNeedsAttention: needsAttention(classification.status),
-        reconState: recon.state,
+        readiness: readiness.state,
       })
 
       return {
@@ -255,6 +265,8 @@ async function getHandler(request: Request) {
         },
         recon,
         dashboard_capture,
+        readiness,
+        recon_ignored_accounts: (settings?.recon_ignored_accounts as string[] | null) ?? [],
         bookkeeper: {
           name: settings?.bookkeeper_name ?? null,
           email: settings?.bookkeeper_email ?? null,

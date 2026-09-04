@@ -68,6 +68,13 @@ async function postHandler(request: Request) {
       }
       patch.hide_from_board = body.hide_from_board
     }
+    if ('recon_ignored_accounts' in body) {
+      const list = body.recon_ignored_accounts
+      if (!Array.isArray(list) || list.some((n: unknown) => typeof n !== 'string' || !(n as string).trim())) {
+        return NextResponse.json({ error: 'recon_ignored_accounts must be an array of non-empty strings' }, { status: 400 })
+      }
+      patch.recon_ignored_accounts = (list as string[]).map(n => n.trim())
+    }
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
     }

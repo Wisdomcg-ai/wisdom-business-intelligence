@@ -119,12 +119,12 @@ describe('summariseRecon', () => {
   })
 })
 
-describe('deriveSection', () => {
+describe('deriveSection (badge-readiness driven — demote decision 5 Sep)', () => {
   const base = {
     stage: 'none' as const,
     daysOverdue: null,
     connectionNeedsAttention: false,
-    reconState: 'clear' as const,
+    readiness: 'ready' as const,
   }
 
   it('sent/discussed reports are done regardless of data problems', () => {
@@ -138,18 +138,18 @@ describe('deriveSection', () => {
     ).toBe('overdue')
   })
 
-  it('data-not-ready states block: connection, unknown recon, partial recon', () => {
+  it('unknown freshness fails closed regardless of stage: connection, stale, never', () => {
     expect(deriveSection({ ...base, connectionNeedsAttention: true })).toBe('blocked')
-    expect(deriveSection({ ...base, reconState: 'unknown' })).toBe('blocked')
-    expect(deriveSection({ ...base, stage: 'generated', reconState: 'partial' })).toBe('blocked')
+    expect(deriveSection({ ...base, readiness: 'stale' })).toBe('blocked')
+    expect(deriveSection({ ...base, stage: 'generated', readiness: 'never' })).toBe('blocked')
   })
 
-  it('outstanding items block only BEFORE generation; after, they warn (in progress)', () => {
-    expect(deriveSection({ ...base, reconState: 'outstanding' })).toBe('blocked')
-    expect(deriveSection({ ...base, stage: 'generated', reconState: 'outstanding' })).toBe('in_progress')
+  it('KNOWN blocking items block only BEFORE generation; after, they warn (in progress)', () => {
+    expect(deriveSection({ ...base, readiness: 'blocked' })).toBe('blocked')
+    expect(deriveSection({ ...base, stage: 'generated', readiness: 'blocked' })).toBe('in_progress')
   })
 
-  it('all clear and nothing generated yet = ready to generate (in progress)', () => {
+  it('ready and nothing generated yet = ready to generate (in progress)', () => {
     expect(deriveSection(base)).toBe('in_progress')
     expect(deriveSection({ ...base, daysOverdue: 0 })).toBe('in_progress')
   })
