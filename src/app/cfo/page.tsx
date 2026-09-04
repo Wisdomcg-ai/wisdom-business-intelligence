@@ -71,6 +71,8 @@ interface BoardClient {
     captured_at: string
     captured_tenants: number
     tenant_count: number
+    accounts: { name: string; count: number }[]
+    notes: string[]
   } | null
   bookkeeper: { name: string | null; email: string | null }
 }
@@ -780,6 +782,34 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
           {recon.currency && recon.currency !== 'AUD' && !recon.mixedCurrencies ? ` Values are ${recon.currency}.` : ''}
           {recon.checkedAt ? ` Last checked ${relTime(recon.checkedAt)}.` : ''}
         </p>
+
+        {client.dashboard_capture && (
+          <div className="mt-3 p-3 bg-white border border-gray-200 rounded-lg">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+              Xero reconcile badge — captured {relTime(client.dashboard_capture.captured_at)}
+            </h4>
+            <p className="text-sm font-semibold text-brand-navy">
+              {client.dashboard_capture.total_count.toLocaleString('en-AU')} item{client.dashboard_capture.total_count === 1 ? '' : 's'} to reconcile
+              {client.dashboard_capture.tenant_count > 1
+                ? ` across ${client.dashboard_capture.captured_tenants} of ${client.dashboard_capture.tenant_count} orgs`
+                : ''}
+            </p>
+            {client.dashboard_capture.accounts.length > 0 && (
+              <p className="mt-1 text-xs text-gray-600">
+                {client.dashboard_capture.accounts.map(a => `${a.name} ${a.count.toLocaleString('en-AU')}`).join(' · ')}
+              </p>
+            )}
+            {client.dashboard_capture.notes.map((note, i) => (
+              <p key={i} className="mt-1.5 text-[11px] leading-relaxed text-gray-500 italic">
+                {note}
+              </p>
+            ))}
+            <p className="mt-1.5 text-[11px] text-gray-400">
+              This IS the number Xero shows (bank-feed statement lines) — captured by the
+              recon round, since no API exposes it.
+            </p>
+          </div>
+        )}
       </div>
 
       <div>

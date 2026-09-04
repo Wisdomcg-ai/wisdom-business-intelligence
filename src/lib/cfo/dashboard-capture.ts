@@ -65,6 +65,7 @@ export interface CaptureRow {
   total_count: number
   accounts: CaptureAccount[] | null
   method: string
+  notes?: string | null
 }
 
 export interface BusinessDashboardCapture {
@@ -76,6 +77,12 @@ export interface BusinessDashboardCapture {
   captured_tenants: number
   tenant_count: number
   per_tenant: Array<{ tenant_id: string; total_count: number; captured_at: string; method: string }>
+  /** Per-account badge breakdown, merged across the latest capture per
+   *  tenant, count-descending — names where the badge total actually lives. */
+  accounts: CaptureAccount[]
+  /** Non-empty notes from the latest captures (period relevance, feed
+   *  warnings, legacy flags) — the routine's human-readable findings. */
+  notes: string[]
 }
 
 /**
@@ -98,11 +105,28 @@ export function summariseDashboardCaptures(
   const per_tenant = relevant
     .map(r => ({ tenant_id: r.tenant_id, total_count: r.total_count, captured_at: r.captured_at, method: r.method }))
     .sort((a, b) => a.tenant_id.localeCompare(b.tenant_id))
+
+  const accountMap = new Map<string, number>()
+  for (const r of relevant) {
+    for (const a of r.accounts ?? []) {
+      accountMap.set(a.name, (accountMap.get(a.name) ?? 0) + a.count)
+    }
+  }
+  const accounts = Array.from(accountMap.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+
+  const notes = Array.from(
+    new Set(relevant.map(r => r.notes?.trim()).filter((n): n is string => !!n)),
+  )
+
   return {
     total_count: relevant.reduce((s, r) => s + r.total_count, 0),
     captured_at: relevant.map(r => r.captured_at).sort()[0]!,
     captured_tenants: relevant.length,
     tenant_count: expectedTenantIds.length > 0 ? expectedTenantIds.length : relevant.length,
     per_tenant,
+    accounts,
+    notes,
   }
 }
