@@ -62,6 +62,45 @@ async function activeTenantIds(businessId: string): Promise<string[]> {
   return (data ?? []).map(r => r.tenant_id).filter((t): t is string => !!t)
 }
 
+/**
+ * The tenant ids a capture may legally be posted under. Real connections are
+ * the only legal set whenever ANY connection row exists (active or dead, in
+ * either business-id space — the badge-only flag is inert the moment a real
+ * connection appears). Only a business with zero connection rows and
+ * board_manual_include=true gets exactly its stored manual_tenant_key
+ * (badge-only clients, e.g. Distinct Directions — org at Xero's
+ * connected-app limit, 5 Sep 2026). Arbitrary ids are never accepted.
+ */
+async function legalTenantIds(businessId: string): Promise<string[]> {
+  const active = await activeTenantIds(businessId)
+  if (active.length > 0) return active
+  const { data: profiles } = await supabase
+    .from('business_profiles')
+    .select('id')
+    .eq('business_id', businessId)
+  const idForms = [businessId, ...(profiles ?? []).map(p => p.id)]
+  const { data: anyRows, error: anyErr } = await supabase
+    .from('xero_connections')
+    .select('id')
+    .in('business_id', idForms)
+    .limit(1)
+  if (anyErr) throw anyErr
+  if ((anyRows ?? []).length > 0) return [] // dead connections: real tenants only
+  const { data: settings } = await supabase
+    .from('monthly_report_settings')
+    .select('board_manual_include, manual_tenant_key')
+    .eq('business_id', businessId)
+    .maybeSingle()
+  if (
+    settings?.board_manual_include === true &&
+    typeof settings.manual_tenant_key === 'string' &&
+    settings.manual_tenant_key.trim()
+  ) {
+    return [settings.manual_tenant_key.trim()]
+  }
+  return []
+}
+
 async function postHandler(request: Request) {
   try {
     const body = await request.json()
@@ -76,12 +115,12 @@ async function postHandler(request: Request) {
     const auth = await authorize(business_id)
     if ('block' in auth) return auth.block
 
-    const tenants = new Set(await activeTenantIds(business_id))
+    const tenants = new Set(await legalTenantIds(business_id))
     const rows = validated.map(v => v.value!)
     const foreign = rows.filter(r => !tenants.has(r.tenant_id)).map(r => r.tenant_id)
     if (foreign.length > 0) {
       return NextResponse.json(
-        { error: `tenant(s) not an active connection of this business: ${foreign.join(', ')}` },
+        { error: `tenant(s) not an active connection (or badge-only key) of this business: ${foreign.join(', ')}` },
         { status: 400 },
       )
     }
@@ -118,7 +157,7 @@ async function getHandler(request: Request) {
     const auth = await authorize(businessId)
     if ('block' in auth) return auth.block
 
-    const tenants = await activeTenantIds(businessId)
+    const tenants = await legalTenantIds(businessId)
     const { data, error } = await supabase
       .from('reconciliation_dashboard_captures')
       .select('tenant_id, business_id, captured_at, total_count, accounts, method')

@@ -36,8 +36,22 @@ routine feeds the badge side via `reconciliation_dashboard_captures`
    left join (select distinct tenant_id, short_code from bank_account_status) bas
      on bas.tenant_id = xc.tenant_id
    where xc.is_active
-   order by b.name;
+   union all
+   select mrs.business_id, b.name, mrs.manual_tenant_key as tenant_id,
+          b.name || ' (badge-only)' as tenant_name, mrs.manual_xero_shortcode as short_code
+   from monthly_report_settings mrs
+   join businesses b on b.id = mrs.business_id
+   where mrs.board_manual_include
+     and coalesce(mrs.hide_from_board, false) = false
+     and mrs.manual_tenant_key is not null and mrs.manual_xero_shortcode is not null
+     and not exists (select 1 from xero_connections xc2
+                     where xc2.business_id = mrs.business_id)
+   order by name;
    ```
+
+   Badge-only rows post captures with `tenant_id = manual_tenant_key` (never
+   a made-up id); the manual flag is inert once any connection row exists
+   (the not-exists guard).
 
    Resolve any profile-space `business_id` to canonical `businesses.id`
    (dual-ID house rule). Clients hidden from the board
@@ -133,8 +147,17 @@ Attaquer !34Px3 · Digital Bond !Bzt6F · Dragon Roofing !v2-mT ·
 Easy Hail !Yy7Hg · IICT Aust !88FXr · IICT Group Ltd !KlQ18 ·
 IICT Group Pty !v3fct · JDS/Aeris !N9hJb · Sharon King !ygLv0 ·
 Urban Road !9XB-5 · Armstrong !grQ46 · Malouf Family Trust !XGy7z ·
-Sydney Pressed Metal !QrzNw
+Sydney Pressed Metal !QrzNw · Distinct Directions !GTlsL (badge-only)
 (URL-encode the leading '!' as %21. New orgs: use the switcher's search box.)
+
+**Badge-only clients** (`monthly_report_settings.board_manual_include`, e.g.
+Distinct Directions — its Xero org is at the connected-app limit so it has NO
+WisdomBI connection): the round is their ONLY data source. Post their
+captures with `tenant_id` = the settings row's `manual_tenant_key` (step 1's
+union — or the watcher's roster in queued runs — supplies it), never a
+made-up id. Their roster name is the WisdomBI business name, not a
+Xero-sourced tenant name — treat a close match with the Xero header as the
+correct org.
 
 ## Standing observations (recheck each round)
 

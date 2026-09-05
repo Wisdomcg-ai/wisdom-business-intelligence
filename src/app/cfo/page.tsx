@@ -175,6 +175,10 @@ function relTime(iso: string | null): string {
 }
 
 const CONNECTION_LABELS: Record<string, string> = {
+  // Badge-only client (no Xero API connection possible — e.g. org at Xero's
+  // connected-app limit): counts come solely from the recon round's browser
+  // captures. Neutral state, not a problem.
+  browser_only: 'Badge-only',
   connected: 'Xero OK',
   data_stale: 'No fresh data',
   auth_stale: 'Auth stale',
@@ -291,7 +295,8 @@ export default function CfoBoardPage() {
   // limits are PER TENANT, so cross-tenant concurrency is safe, and each
   // request still fits its own server time budget.
   const runCheckAll = async () => {
-    const targets = data?.clients ?? []
+    // Badge-only clients have no API connection to cross-check.
+    const targets = (data?.clients ?? []).filter(c => c.connection.status !== 'browser_only')
     if (targets.length === 0 || checkAll) return
     setCheckAllResult(null)
     const failures: string[] = []
@@ -726,6 +731,11 @@ function ClientTableRow({ client, isExpanded, onToggle }: {
         <div className="text-sm font-semibold text-brand-navy">{client.business_name}</div>
         <div className="text-xs text-gray-400">
           {conn.tenant_count > 1 ? `${conn.tenant_count} Xero orgs` : ''}
+          {conn.status === 'browser_only' && (
+            <span title="This org can't connect to the Xero API (connected-app limit) — its counts come solely from the recon round reading the badge in your browser">
+              badge-only · no Xero API
+            </span>
+          )}
           {conn.needs_attention && (
             <span className="inline-flex items-center gap-1 text-red-600 font-semibold">
               {conn.tenant_count > 1 ? ' · ' : ''}
@@ -949,14 +959,16 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
         >
           Open report <ExternalLink className="w-3 h-3" />
         </Link>
-        <button
-          onClick={recheck}
-          disabled={busy !== null}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-brand-navy bg-white border border-gray-300 hover:bg-gray-50 rounded-lg disabled:opacity-50"
-        >
-          {busy === 'Re-check' ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-          Re-run API cross-check
-        </button>
+        {client.connection.status !== 'browser_only' && (
+          <button
+            onClick={recheck}
+            disabled={busy !== null}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-brand-navy bg-white border border-gray-300 hover:bg-gray-50 rounded-lg disabled:opacity-50"
+          >
+            {busy === 'Re-check' ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+            Re-run API cross-check
+          </button>
+        )}
         {client.stage === 'sent' && (
           <button
             onClick={markDiscussed}

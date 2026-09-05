@@ -133,23 +133,53 @@ async function enumerateRoster() {
     .select('tenant_id, tenant_name, business_id')
     .eq('is_active', true)
   if (connErr || !allConns?.length) throw new Error(`roster enumeration failed: ${connErr?.message ?? 'no active connections'}`)
-  const { data: hiddenRows, error: hiddenErr } = await supabase
+  const { data: settingsRows, error: settingsErr } = await supabase
     .from('monthly_report_settings')
-    .select('business_id')
-    .eq('hide_from_board', true)
-  // Fail closed the cheap way: if the hidden read errors, run the FULL
-  // roster (extra coverage is harmless; silently skipping visible clients
-  // would not be).
-  const hidden = new Set(hiddenErr ? [] : (hiddenRows ?? []).map(r => r.business_id))
+    .select('business_id, hide_from_board, board_manual_include, manual_xero_shortcode, manual_tenant_key')
+  // Fail closed the cheap way: if the settings read errors, run the FULL
+  // connected roster (extra coverage is harmless; silently skipping visible
+  // clients would not be). Badge-only clients need their settings row, so
+  // they drop out on error — the board shows them stale/never, never fake.
+  const hidden = new Set(
+    settingsErr ? [] : (settingsRows ?? []).filter(s => s.hide_from_board).map(s => s.business_id),
+  )
   const conns = allConns.filter(c => !hidden.has(c.business_id))
-  if (!conns.length) throw new Error('roster enumeration failed: every connected client is hidden from the board')
   if (allConns.length !== conns.length) {
     log(`roster: skipping ${allConns.length - conns.length} org(s) belonging to board-hidden clients`)
   }
+  // Badge-only clients (board_manual_include, e.g. Distinct Directions —
+  // Xero org at the connected-app limit): no connection row, so the round is
+  // their ONLY data source. Their capture tenant_id is the stored
+  // manual_tenant_key. The flag is inert once ANY connection row exists —
+  // active or dead, in either business-id space (matching the board's rule
+  // and the capture endpoint's legalTenantIds).
+  const { data: anyConnRows } = await supabase
+    .from('xero_connections')
+    .select('business_id')
+  const { data: profileRows } = await supabase
+    .from('business_profiles')
+    .select('id, business_id')
+  const profileToBiz = new Map((profileRows ?? []).map(p => [p.id, p.business_id]))
+  const connectedBiz = new Set(
+    (anyConnRows ?? []).map(r => profileToBiz.get(r.business_id) ?? r.business_id),
+  )
+  const flaggedManual = settingsErr ? [] : (settingsRows ?? []).filter(s =>
+    s.board_manual_include && !s.hide_from_board && !connectedBiz.has(s.business_id),
+  )
+  const manual = flaggedManual.filter(s => s.manual_tenant_key && s.manual_xero_shortcode)
+  const misconfigured = flaggedManual.filter(s => !s.manual_tenant_key || !s.manual_xero_shortcode)
+  let rosterWarning = null
+  if (misconfigured.length > 0) {
+    rosterWarning = `${misconfigured.length} badge-only client(s) flagged but NOT coverable: ${misconfigured
+      .map(m => `${m.business_id} (missing ${[!m.manual_tenant_key && 'manual_tenant_key', !m.manual_xero_shortcode && 'manual_xero_shortcode'].filter(Boolean).join(' + ')})`)
+      .join(', ')} — complete their settings row or the board shows them as never-captured forever`
+    log(`roster: ${rosterWarning}`)
+  }
+  if (!conns.length && !manual.length) throw new Error('roster enumeration failed: every client is hidden from the board')
   const { data: bizzes } = await supabase
     .from('businesses')
     .select('id, name')
-    .in('id', [...new Set(conns.map(c => c.business_id))])
+    .in('id', [...new Set([...conns.map(c => c.business_id), ...manual.map(m => m.business_id)])])
   const bizName = new Map((bizzes ?? []).map(b => [b.id, b.name]))
   const { data: shortcodes } = await supabase
     .from('bank_account_status')
@@ -159,19 +189,37 @@ async function enumerateRoster() {
   for (const s of shortcodes ?? []) {
     if (s.short_code && !codeByTenant.has(s.tenant_id)) codeByTenant.set(s.tenant_id, s.short_code)
   }
-  return conns.map(c => ({
-    business: bizName.get(c.business_id) ?? '(unknown business)',
-    business_id: c.business_id,
-    tenant_id: c.tenant_id,
-    tenant_name: c.tenant_name ?? '(unnamed org)',
-    short_code: codeByTenant.get(c.tenant_id) ?? null,
-  }))
+  const roster = [
+    ...conns.map(c => ({
+      business: bizName.get(c.business_id) ?? '(unknown business)',
+      business_id: c.business_id,
+      tenant_id: c.tenant_id,
+      tenant_name: c.tenant_name ?? '(unnamed org)',
+      short_code: codeByTenant.get(c.tenant_id) ?? null,
+      badge_only: false,
+    })),
+    ...manual.map(m => ({
+      business: bizName.get(m.business_id) ?? '(unknown business)',
+      business_id: m.business_id,
+      tenant_id: m.manual_tenant_key,
+      // WisdomBI's business name, NOT a Xero-sourced tenant name — the Xero
+      // header may differ slightly; the prompt marks these entries so the
+      // run treats a close name match as correct.
+      tenant_name: bizName.get(m.business_id) ?? '(unknown business)',
+      short_code: m.manual_xero_shortcode,
+      badge_only: true,
+    })),
+  ]
+  return { roster, rosterWarning }
 }
 
 function runnerPrompt(roster) {
   const rosterLines = roster.map(r =>
     `- ${r.business} [business_id ${r.business_id}] — org "${r.tenant_name}" [tenant_id ${r.tenant_id}]` +
-    (r.short_code ? ` — shortcode ${r.short_code}` : ' — NO shortcode: use Xero\'s org switcher by name')
+    (r.short_code ? ` — shortcode ${r.short_code}` : ' — NO shortcode: use Xero\'s org switcher by name') +
+    (r.badge_only
+      ? ' — BADGE-ONLY client: no WisdomBI connection exists, so this name is the WisdomBI business name and the Xero header may differ slightly (e.g. a "Pty Ltd" suffix) — treat a close name match as the correct org'
+      : '')
   ).join('\n')
   return `You are running UNATTENDED on Matt's Mac to refresh the CFO board's Xero badge counts.
 Run the full Xero recon round by following .claude/skills/xero-recon-round/SKILL.md (badge walk over
@@ -292,12 +340,16 @@ async function tick() {
   }
 
   let roster
+  let rosterWarning = null
   try {
-    roster = await enumerateRoster()
+    ({ roster, rosterWarning } = await enumerateRoster())
   } catch (err) {
     await stampOutcome(pending.id, 'failed', `Could not enumerate the org roster: ${err.message}`)
     return
   }
+  // A misconfigured badge-only client must reach the stamped note, not just
+  // the log — the board's result_note is what Matt actually sees.
+  const withWarning = (note) => (rosterWarning ? `${note} — ${rosterWarning}` : note).slice(0, 990)
   log(`claimed request ${pending.id} (source: ${pending.source}) — launching the round over ${roster.length} orgs`)
 
   const claimStartIso = new Date().toISOString()
@@ -370,12 +422,12 @@ async function tick() {
       if (parsed.status === 'done') {
         const verifyFailure = await verifyDoneClaim(roster, claimStartIso)
         if (verifyFailure) {
-          await stampOutcome(pending.id, 'failed', `${note} — ${verifyFailure}`.slice(0, 990))
+          await stampOutcome(pending.id, 'failed', withWarning(`${note} — ${verifyFailure}`))
         } else {
-          await stampOutcome(pending.id, 'done', note || `All ${roster.length} orgs captured`)
+          await stampOutcome(pending.id, 'done', withWarning(note || `All ${roster.length} orgs captured`))
         }
       } else {
-        await stampOutcome(pending.id, 'failed', note || 'Run reported failure with no detail')
+        await stampOutcome(pending.id, 'failed', withWarning(note || 'Run reported failure with no detail'))
       }
       return
     }
@@ -394,7 +446,7 @@ async function tick() {
   } else {
     note = 'Run ended without reporting an outcome — check the watcher log'
   }
-  await stampOutcome(pending.id, 'failed', note)
+  await stampOutcome(pending.id, 'failed', withWarning(note))
 }
 
 const mode = process.argv[2]
