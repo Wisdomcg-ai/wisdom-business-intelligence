@@ -19,7 +19,7 @@
  *   expanded view (demote decision, 5 Sep 2026).
  */
 
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   Loader2, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2,
@@ -108,6 +108,41 @@ interface BoardResponse {
   clients: BoardClient[]
   hidden: { business_id: string; business_name: string }[]
   stats: BoardStats
+  /** Latest recon-round request — the "Update from Xero" button's state.
+   *  Null until the first request (or if the read degraded). */
+  recon_round: {
+    id: string
+    status: 'pending' | 'running' | 'done' | 'failed' | 'expired'
+    source: string
+    requested_at: string
+    started_at: string | null
+    finished_at: string | null
+    result_note: string | null
+  } | null
+}
+
+/** Matches PICKUP_WINDOW_MINUTES on the request route: a pending request
+ *  older than this was never collected by the Mac-side watcher. */
+const PICKUP_WINDOW_MINUTES = 30
+
+/** Client-side bound on how long a 'running' row counts as live — must stay
+ *  above the watcher's RUN_TIMEOUT_MINUTES (40, recon-round-watcher.mjs) so
+ *  a healthy run never renders as dead; if it elapses, the watcher/Mac died
+ *  mid-run and the UI must say so instead of spinning forever. */
+const RUNNING_TIMEOUT_MINUTES = 45
+
+/** Is the latest request still genuinely in flight? Shared by the button and
+ *  the poll so the two can never disagree. Both states are age-bounded —
+ *  fail-closed: a row nothing will ever finish must not render as live. */
+function reconRoundIsLive(rr: BoardResponse['recon_round']): boolean {
+  if (!rr) return false
+  if (rr.status === 'pending') {
+    return Date.now() - new Date(rr.requested_at).getTime() < PICKUP_WINDOW_MINUTES * 60_000
+  }
+  if (rr.status === 'running') {
+    return Date.now() - new Date(rr.started_at ?? rr.requested_at).getTime() < RUNNING_TIMEOUT_MINUTES * 60_000
+  }
+  return false
 }
 
 function defaultReportMonth(): string {
@@ -169,19 +204,26 @@ export default function CfoBoardPage() {
   const [checkAll, setCheckAll] = useState<{ done: number; total: number; current: string } | null>(null)
   const [checkAllResult, setCheckAllResult] = useState<string | null>(null)
 
+  // The 20s recon-round poll makes overlapping loads routine — always fetch
+  // the CURRENT month and drop any response for a month the user has since
+  // navigated away from, so old-month rows never render under new headers.
+  const monthRef = useRef(month)
+  monthRef.current = month
   const load = async () => {
+    const requestedMonth = monthRef.current
     setIsLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/cfo/board?month=${month}`)
+      const res = await fetch(`/api/cfo/board?month=${requestedMonth}`)
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        setError(body.error ?? `Failed to load (${res.status})`)
+        if (requestedMonth === monthRef.current) setError(body.error ?? `Failed to load (${res.status})`)
         return
       }
-      setData(await res.json())
+      const body = await res.json()
+      if (body.month === monthRef.current) setData(body)
     } catch {
-      setError('Network error loading the board')
+      if (requestedMonth === monthRef.current) setError('Network error loading the board')
     } finally {
       setIsLoading(false)
     }
@@ -191,6 +233,43 @@ export default function CfoBoardPage() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month])
+
+  // While a recon round is genuinely in flight, poll so the button state and
+  // (on completion) the fresh counts appear without a manual refresh. Uses
+  // the age-bounded liveness check, so a row nothing will ever finish stops
+  // the poll on its own: each poll re-renders, liveness recomputes, and the
+  // first tick past the window clears the interval.
+  const reconRoundLive = reconRoundIsLive(data?.recon_round ?? null)
+  useEffect(() => {
+    if (!reconRoundLive) return
+    const t = setInterval(() => { load() }, 20_000)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reconRoundLive, month])
+
+  const [requesting, setRequesting] = useState(false)
+  const [requestError, setRequestError] = useState<string | null>(null)
+  const requestReconRound = async () => {
+    setRequesting(true)
+    setRequestError(null)
+    try {
+      const res = await fetch('/api/cfo/recon-round-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setRequestError(body.error ?? `Could not queue the round (${res.status})`)
+        return
+      }
+      await load()
+    } catch {
+      setRequestError('Network error — the round was NOT queued. Try again.')
+    } finally {
+      setRequesting(false)
+    }
+  }
 
   // One flat table (Matt, 5 Sep: "simple and informative"), urgent first.
   const ordered = useMemo(() => {
@@ -282,6 +361,12 @@ export default function CfoBoardPage() {
             value={month}
             onChange={e => setMonth(e.target.value)}
             className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/40"
+          />
+          <ReconRoundButton
+            request={data?.recon_round ?? null}
+            busy={requesting}
+            requestError={requestError}
+            onRequest={requestReconRound}
           />
           <button
             onClick={runCheckAll}
@@ -508,6 +593,64 @@ function sourceCaveat(client: BoardClient): string {
   return (
     `Counts are unreconciled transactions recorded in Xero${orgs} — not the bank-feed banner: ` +
     `statement lines nobody has coded yet don't appear here (open Xero for feed backlog). Looking back 12 months.`
+  )
+}
+
+/**
+ * "Update from Xero" — queues a recon round for the Mac-side watcher. The
+ * round runs in Matt's logged-in Chrome (no API can read the badge), so the
+ * button's job is honest state, not execution: queued → running → done, and
+ * "not picked up" when nothing collected the request in the pickup window.
+ */
+function ReconRoundButton({ request, busy, requestError, onRequest }: {
+  request: BoardResponse['recon_round']
+  busy: boolean
+  requestError: string | null
+  onRequest: () => void
+}) {
+  // Both live states are age-bounded (reconRoundIsLive): a row nothing will
+  // ever finish must re-enable the button and say so, never spin forever.
+  const live = reconRoundIsLive(request)
+  const pendingLive = live && request?.status === 'pending'
+  const runningLive = live && request?.status === 'running'
+  const inFlight = pendingLive || runningLive
+
+  let note: { text: string; tone: 'gray' | 'red' } | null = null
+  if (requestError) {
+    note = { text: requestError, tone: 'red' }
+  } else if (runningLive) {
+    note = { text: `Running — started ${relTime(request!.started_at ?? request!.requested_at)} · takes ~10–20 min`, tone: 'gray' }
+  } else if (pendingLive) {
+    note = { text: 'Queued — your Mac picks it up within a minute', tone: 'gray' }
+  } else if (request?.status === 'running') {
+    note = { text: `Run started ${relTime(request.started_at ?? request.requested_at)} and never finished — is your Mac awake with Chrome running?`, tone: 'red' }
+  } else if (request?.status === 'pending') {
+    note = { text: 'Last request was never picked up — is your Mac awake with Chrome running?', tone: 'red' }
+  } else if (request?.status === 'expired') {
+    note = { text: 'Last request expired unclaimed — is your Mac awake with Chrome running?', tone: 'red' }
+  } else if (request?.status === 'failed') {
+    note = { text: `Last run failed${request.result_note ? ` — ${request.result_note}` : ''}`, tone: 'red' }
+  } else if (request?.status === 'done' && request.finished_at) {
+    note = { text: `Last run ${relTime(request.finished_at)}`, tone: 'gray' }
+  }
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <button
+        onClick={onRequest}
+        disabled={busy || inFlight}
+        title="Runs the Xero recon round on your Mac (Claude reading the badges in your logged-in Chrome) — refreshes every count on this table"
+        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-brand-navy hover:bg-brand-navy-800 rounded-lg disabled:opacity-60"
+      >
+        {busy || inFlight ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+        {runningLive ? 'Updating from Xero…' : pendingLive ? 'Queued…' : 'Update from Xero'}
+      </button>
+      {note && (
+        <span className={`text-xs font-medium max-w-md ${note.tone === 'red' ? 'text-red-600' : 'text-gray-500'}`}>
+          {note.text}
+        </span>
+      )}
+    </span>
   )
 }
 
