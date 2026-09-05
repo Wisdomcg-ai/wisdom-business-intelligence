@@ -18,8 +18,16 @@
  * in `report.teamCostBudget` so the UI can show budget-vs-payroll.
  *
  * Nothing is dropped silently: accounts that cannot be classified are returned
- * in `report.unclassified`; months the budget does not cover are filled
- * EXPLICITLY (prior-year actual for that calendar month, else the budgeted
+ * in `report.unclassified`.
+ *
+ * Missing months. Xero's Budgets API omits a BudgetBalance for a cell the
+ * client left at zero (seen live: Urban Road's lumpy Art Import / Insurance
+ * lines came back with gaps that are $0 in Budget Manager). So a month that is
+ * missing INSIDE the budget's overall window is budgeted ZERO and is imported
+ * as 0 — never invented from last year's actuals (the first Urban Road seed did
+ * exactly that and injected ~$115k the client never budgeted). Only months
+ * OUTSIDE the window — the budget simply does not extend there — are filled
+ * explicitly (prior-year actual for that calendar month, else the budgeted
  * average) and counted in `report.coverage.monthsFilled`.
  */
 import type {
@@ -92,8 +100,10 @@ export interface XeroBudgetSeedReport {
     firstPeriod: string | null
     lastPeriod: string | null
     monthsInFY: number
-    /** Y1 month-cells the budget did not cover and we filled explicitly. */
+    /** Y1 month-cells OUTSIDE the budget's window that we filled explicitly. */
     monthsFilled: number
+    /** Month-cells INSIDE the window that the budget left blank — imported as $0. */
+    monthsZeroed: number
     /** Later years fully covered by the budget (used verbatim); others roll forward. */
     yearsFullyCovered: Array<2 | 3>
   }
@@ -193,8 +203,20 @@ export function seedForecastFromXeroBudget(input: XeroBudgetSeedInput): XeroBudg
     }
   }
 
-  // ── 2. Y1 gap fill: explicit, counted, never silent ───────────────────────
+  // ── 2. Coverage window + Y1 fill rule ────────────────────────────────────
+  // The budget's overall window is what Xero returned any cell for. Inside it,
+  // a missing cell is a zero the client left blank; outside it, the budget does
+  // not exist yet and we fill explicitly (and say so).
+  const periods = new Set<string>()
+  for (const bl of input.budget.lines) for (const k of Object.keys(bl.months)) periods.add(k)
+  const sortedPeriods = Array.from(periods).sort()
+  const budgetFirst = sortedPeriods[0] ?? null
+  const budgetLast = sortedPeriods[sortedPeriods.length - 1] ?? null
+  const inWindow = (k: string) => budgetFirst !== null && budgetLast !== null && k >= budgetFirst && k <= budgetLast
+  const windowSpans = (keys: readonly string[]) => keys.length > 0 && inWindow(keys[0]) && inWindow(keys[keys.length - 1])
+
   let monthsFilled = 0
+  let monthsZeroed = 0
   const fillY1 = (line: ResolvedLine): Record<string, number> => {
     const out: Record<string, number> = {}
     const covered = y1Keys.filter((k) => typeof line.months[k] === 'number')
@@ -209,7 +231,13 @@ export function seedForecastFromXeroBudget(input: XeroBudgetSeedInput): XeroBudg
         out[k] = round2(line.months[k])
         continue
       }
-      // Uncovered: last year's same calendar month if we have it, else the budgeted average.
+      if (inWindow(k)) {
+        // Blank cell inside the budget → the client budgeted zero.
+        out[k] = 0
+        monthsZeroed++
+        continue
+      }
+      // Outside the budget's window: last year's same calendar month if we have it, else the budgeted average.
       const [, mm] = k.split('-')
       const priorSameMonth = priorKeys.find((pk) => pk.endsWith(`-${mm}`))
       const fill = priorSameMonth !== undefined && typeof line.priorMonthly[priorSameMonth] === 'number'
@@ -220,27 +248,20 @@ export function seedForecastFromXeroBudget(input: XeroBudgetSeedInput): XeroBudg
     }
     return out
   }
-  const fullYear = (line: ResolvedLine, keys: readonly string[]): Record<string, number> | undefined => {
-    if (!keys.every((k) => typeof line.months[k] === 'number')) return undefined
+  /** A later year the budget's window spans: explicit cells verbatim, blanks are $0. */
+  const fullYear = (line: ResolvedLine, keys: readonly string[]): Record<string, number> => {
     const out: Record<string, number> = {}
-    for (const k of keys) out[k] = round2(line.months[k])
+    for (const k of keys) out[k] = typeof line.months[k] === 'number' ? round2(line.months[k]) : 0
     return out
   }
-  // Coverage is judged on the lines we can place; an unclassified account
-  // must not veto a fully budgeted later year.
-  const placeable = resolved.filter((l) => l.bucket !== null)
-  const coverageOf = (keys: readonly string[]) =>
-    placeable.some((l) => keys.some((k) => typeof l.months[k] === 'number'))
-  const fullyCovered = (keys: readonly string[]) =>
-    placeable.length > 0 && placeable.every((l) => keys.every((k) => typeof l.months[k] === 'number'))
   const yearsFullyCovered: Array<2 | 3> = []
   if (duration >= 2) {
-    if (fullyCovered(y2Keys)) yearsFullyCovered.push(2)
-    else if (coverageOf(y2Keys)) warnings.push(`The budget covers only part of FY${input.fiscalYear + 1}; year 2 rolls forward from year 1 instead.`)
+    if (windowSpans(y2Keys)) yearsFullyCovered.push(2)
+    else if (inWindow(y2Keys[0])) warnings.push(`The budget covers only part of FY${input.fiscalYear + 1}; year 2 rolls forward from year 1 instead.`)
   }
   if (duration >= 3) {
-    if (fullyCovered(y3Keys)) yearsFullyCovered.push(3)
-    else if (coverageOf(y3Keys)) warnings.push(`The budget covers only part of FY${input.fiscalYear + 2}; year 3 rolls forward instead.`)
+    if (windowSpans(y3Keys)) yearsFullyCovered.push(3)
+    else if (inWindow(y3Keys[0])) warnings.push(`The budget covers only part of FY${input.fiscalYear + 2}; year 3 rolls forward instead.`)
   }
 
   // ── 3. Build lines per bucket ─────────────────────────────────────────────
@@ -293,10 +314,8 @@ export function seedForecastFromXeroBudget(input: XeroBudgetSeedInput): XeroBudg
         // All covered months (Y1 filled + any explicit later months) — the shared
         // projection rolls uncovered later years forward by calendar month.
         const budgetedMonthly: Record<string, number> = { ...y1 }
-        const laterKeys = duration >= 3 ? [...y2Keys, ...y3Keys] : duration === 2 ? y2Keys : []
-        for (const k of laterKeys) {
-          if (typeof line.months[k] === 'number') budgetedMonthly[k] = round2(line.months[k])
-        }
+        if (yearsFullyCovered.includes(2)) Object.assign(budgetedMonthly, fullYear(line, y2Keys))
+        if (yearsFullyCovered.includes(3)) Object.assign(budgetedMonthly, fullYear(line, y3Keys))
         opexLines.push({
           accountId: line.accountCode,
           accountName: line.accountName,
@@ -365,18 +384,16 @@ export function seedForecastFromXeroBudget(input: XeroBudgetSeedInput): XeroBudg
 
   if (revenueLines.length === 0) warnings.push('The budget has no revenue accounts — Step 3 will start empty.')
   if (unclassified.length > 0) warnings.push(`${unclassified.length} budgeted account(s) could not be categorised and were left out — see the list in Step 5.`)
-  if (monthsFilled > 0) warnings.push(`${monthsFilled} month-cell(s) were not in the budget and were filled from last year's actuals or the budgeted average.`)
+  if (monthsFilled > 0) warnings.push(`${monthsFilled} month-cell(s) fall outside the budget's window and were filled from last year's actuals or the budgeted average.`)
   if (teamCost.lines.length > 0) warnings.push(`${teamCost.lines.length} wages/super account(s) came in from the budget; Step 4 payroll replaces them once staff are imported.`)
 
   // ── 5. Assemble ──────────────────────────────────────────────────────────
-  const periods = new Set<string>()
-  for (const l of input.budget.lines) for (const k of Object.keys(l.months)) periods.add(k)
-  const sortedPeriods = Array.from(periods).sort()
   const coverage = {
-    firstPeriod: sortedPeriods[0] ?? null,
-    lastPeriod: sortedPeriods[sortedPeriods.length - 1] ?? null,
+    firstPeriod: budgetFirst,
+    lastPeriod: budgetLast,
     monthsInFY: y1Keys.filter((k) => periods.has(k)).length,
     monthsFilled,
+    monthsZeroed,
     yearsFullyCovered,
   }
 
