@@ -293,7 +293,17 @@ async function getHandler(request: Request) {
       discussed: clients.filter(c => c.stage === 'discussed').length,
     }
 
-    return NextResponse.json({ month, clients, hidden, stats })
+    // Latest recon-round request — drives the "Update from Xero" button's
+    // state. Read errors degrade to null (button still renders, just without
+    // run status), never a board failure.
+    const { data: reconRound } = await supabase
+      .from('recon_round_requests')
+      .select('id, status, source, requested_at, started_at, finished_at, result_note')
+      .order('requested_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    return NextResponse.json({ month, clients, hidden, stats, recon_round: reconRound ?? null })
   } catch (error) {
     Sentry.captureException(error, {
       tags: { route: 'cfo/board' },
