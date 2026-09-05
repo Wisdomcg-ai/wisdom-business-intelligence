@@ -7,11 +7,12 @@
 // continuity. See WIZARD_STEPS in ../types.ts for the canonical step
 // numbering and ForecastWizardV4.tsx renderStep() for the switch.
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { Fragment, useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Plus, Trash2, HelpCircle, X, Info, AlertTriangle, Users } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency, CostBehavior, OpExLine, SUPER_RATE, calculateNewSalary, InputMode } from '../types';
 import { classifyExpense, getSuggestedValue, isTeamCost } from '../utils/opex-classifier';
-import { getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
+import { getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH, generateFiscalMonthKeys } from '@/lib/utils/fiscal-year-utils';
+import { budgetedTotal, scaleBudgetedMonths, spreadTotalByPattern } from '@/lib/forecast/budgeted-line';
 import { shouldExcludeFromOpEx, deriveTeamCoverage } from '../useForecastWizard';
 
 interface Step5OpExProps {
@@ -38,6 +39,9 @@ const COST_BEHAVIORS: { value: CostBehavior; label: string; hint: string; color:
   { value: 'variable', label: '% of revenue', hint: '% of revenue', color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-300' },
   { value: 'seasonal', label: '$ with annual increase', hint: 'inflation-linked', color: 'text-amber-700', bgColor: 'bg-amber-50', borderColor: 'border-amber-300' },
   { value: 'adhoc', label: 'Custom per-month', hint: 'manual months', color: 'text-purple-700', bgColor: 'bg-purple-50', borderColor: 'border-purple-300' },
+  // Explicit amount for each month (a Xero budget, or typed in). Projection in
+  // src/lib/forecast/budgeted-line.ts — shared with the summary and materialiser.
+  { value: 'budgeted', label: 'As budgeted', hint: 'per-month budget', color: 'text-indigo-700', bgColor: 'bg-indigo-50', borderColor: 'border-indigo-300' },
 ];
 
 // Phase 51 plan 51-05 (UX-S5-01): tooltip explainer text for the info icon
@@ -49,6 +53,7 @@ const COST_BEHAVIOR_EXPLAINER = [
   '% of revenue: cost scales with revenue (card processing, freight). Use when the line is variable with sales.',
   '$ with annual increase: starts at a fixed amount and grows yearly (inflation-linked subscriptions). Use for fixed costs you expect to creep upward each year.',
   'Custom per-month: enter different values per month manually. Use for one-offs, ad-hoc spend, or seasonally-spiky costs.',
+  'As budgeted: an explicit amount for every month, e.g. pulled from a Xero budget. Later years repeat each month with the annual increase applied. Open the month editor to adjust individual months.',
 ].join('\n\n');
 
 // Helper to get behavior styling
@@ -811,6 +816,9 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
           case 'adhoc':
             updates.expectedAnnualAmount = suggested.value;
             break;
+          case 'budgeted':
+            // The months ARE the value; a suggestion has nothing to set.
+            break;
         }
 
         actions.updateOpExLine(line.id, updates);
@@ -904,10 +912,29 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
   }, [teamMembers, newHires, departures]);
 
   // Calculate annual amount for Y1
+  // 'As budgeted' lines: forecast-year month keys (July FY, as everywhere in
+  // this step) and the per-line month editor's open/closed state.
+  const y1MonthKeys = useMemo(() => generateFiscalMonthKeys(fiscalYear), [fiscalYear]);
+  const yearMonthKeys = useCallback(
+    (year: 1 | 2 | 3) => generateFiscalMonthKeys(fiscalYear + year - 1),
+    [fiscalYear],
+  );
+  const [openBudgetEditors, setOpenBudgetEditors] = useState<Set<string>>(() => new Set());
+  const toggleBudgetEditor = useCallback((lineId: string) => {
+    setOpenBudgetEditors((prev) => {
+      const next = new Set(prev);
+      if (next.has(lineId)) next.delete(lineId); else next.add(lineId);
+      return next;
+    });
+  }, []);
+
   const calculateY1Amount = useCallback((line: OpExLine): number => {
     switch (line.costBehavior) {
       case 'fixed':
         return (line.monthlyAmount || 0) * 12;
+      case 'budgeted':
+        // Y1 months are explicit; growth only matters for rolled-forward years.
+        return budgetedTotal(line, y1MonthKeys, 0);
       case 'variable':
         return (revenueByYear.y1 * (line.percentOfRevenue || 0)) / 100;
       case 'seasonal':
@@ -922,7 +949,7 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
       default:
         return line.priorYearAnnual;
     }
-  }, [revenueByYear.y1]);
+  }, [revenueByYear.y1, y1MonthKeys]);
 
   // Phase 50 (FCST-BUG-02): sum the OpEx lines that were auto-classified as
   // team costs so they're surfaced in the Team Costs row of BudgetFramework
@@ -991,10 +1018,14 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
       case 'adhoc':
         // Apply increase rate to base
         return getBaseAmount() * (1 + getIncreaseRate() / 100);
+      case 'budgeted':
+        // Explicit later-year months win; otherwise each month rolls forward
+        // with the increase rate — the shared projection, not a local formula.
+        return budgetedTotal(line, yearMonthKeys(year), getIncreaseRate());
       default:
         return y1Amount;
     }
-  }, [calculateY1Amount, revenueByYear]);
+  }, [calculateY1Amount, revenueByYear, yearMonthKeys]);
 
   // Get amount for current active year
   const getActiveYearAmount = useCallback((line: OpExLine): number => {
@@ -1040,10 +1071,12 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
     switch (line.costBehavior) {
       case 'variable':
         return (yearRevenue * (line.percentOfRevenue || 0)) / 100;
+      case 'budgeted':
+        return budgetedTotal(line, yearMonthKeys(year), getIncreaseRate());
       default:
         return getBaseAmount() * (1 + getIncreaseRate() / 100);
     }
-  }, [calculateY1Amount, revenueByYear, effectiveDefaultGrowth]);
+  }, [calculateY1Amount, revenueByYear, effectiveDefaultGrowth, yearMonthKeys]);
 
   // Total OpEx by year — uses activeOpexLines (team costs already excluded).
   //
@@ -1141,6 +1174,9 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
       case 'adhoc':
         newLine.expectedAnnualAmount = 0;
         break;
+      case 'budgeted':
+        newLine.budgetedMonthly = spreadTotalByPattern(0, y1MonthKeys);
+        break;
     }
 
     actions.addOpExLine(newLine);
@@ -1160,17 +1196,24 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
       percentOfRevenue: undefined,
       seasonalGrowthPct: undefined,
       expectedAnnualAmount: undefined,
+      budgetedMonthly: undefined,
     };
+
+    // Leaving 'As budgeted' carries its Y1 total into the new behaviour so the
+    // number on screen does not jump; every other switch seeds from prior year.
+    const baseAnnual = line.costBehavior === 'budgeted'
+      ? (budgetedTotal(line, y1MonthKeys, 0) || line.priorYearAnnual)
+      : line.priorYearAnnual;
 
     // Set sensible defaults based on prior year data
     // Note: Don't set explicit growth rates - leave undefined to use default
     switch (newBehavior) {
       case 'fixed':
-        updates.monthlyAmount = Math.round(line.priorYearAnnual / 12);
+        updates.monthlyAmount = Math.round(baseAnnual / 12);
         break;
       case 'variable':
-        if (revenueByYear.y1 > 0 && line.priorYearAnnual > 0) {
-          updates.percentOfRevenue = Math.round((line.priorYearAnnual / revenueByYear.y1) * 1000) / 10;
+        if (revenueByYear.y1 > 0 && baseAnnual > 0) {
+          updates.percentOfRevenue = Math.round((baseAnnual / revenueByYear.y1) * 1000) / 10;
         } else {
           updates.percentOfRevenue = 0;
         }
@@ -1179,7 +1222,11 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
         // Leave seasonalGrowthPct undefined to use default
         break;
       case 'adhoc':
-        updates.expectedAnnualAmount = line.priorYearAnnual;
+        updates.expectedAnnualAmount = baseAnnual;
+        break;
+      case 'budgeted':
+        // Start from last year's monthly shape when we have it, else flat.
+        updates.budgetedMonthly = spreadTotalByPattern(baseAnnual, y1MonthKeys, line.priorYearMonthly);
         break;
     }
 
@@ -1693,6 +1740,10 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
                       const annual = line.expectedAnnualAmount || 0;
                       return { monthly: annual / 12, annual, isEditable: true, isAverage: true };
                     }
+                    case 'budgeted': {
+                      const annual = budgetedTotal(line, y1MonthKeys, 0);
+                      return { monthly: annual / 12, annual, isEditable: true, isAverage: true };
+                    }
                     default:
                       return { monthly: 0, annual: 0, isEditable: false };
                   }
@@ -1713,6 +1764,12 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
                     case 'adhoc':
                       actions.updateOpExLine(line.id, { expectedAnnualAmount: value * 12 });
                       break;
+                    case 'budgeted':
+                      // Re-target the year, keep the monthly shape.
+                      actions.updateOpExLine(line.id, {
+                        budgetedMonthly: scaleBudgetedMonths(line.budgetedMonthly, y1MonthKeys, value * 12),
+                      });
+                      break;
                   }
                 };
 
@@ -1728,11 +1785,17 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
                     case 'adhoc':
                       actions.updateOpExLine(line.id, { expectedAnnualAmount: value });
                       break;
+                    case 'budgeted':
+                      actions.updateOpExLine(line.id, {
+                        budgetedMonthly: scaleBudgetedMonths(line.budgetedMonthly, y1MonthKeys, value),
+                      });
+                      break;
                   }
                 };
 
                 return (
-                  <tr key={line.id} className="hover:bg-gray-50/50 group">
+                  <Fragment key={line.id}>
+                  <tr className="hover:bg-gray-50/50 group">
                     {/* Expense Name */}
                     <td className="px-4 py-2">
                       <input
@@ -1856,6 +1919,22 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
                             placeholder="0"
                             className={`${inputStyles} w-28`}
                           />
+                          {line.costBehavior === 'budgeted' && (
+                            <button
+                              type="button"
+                              onClick={() => toggleBudgetEditor(line.id)}
+                              aria-expanded={openBudgetEditors.has(line.id)}
+                              aria-label={`Edit months for ${line.name}`}
+                              title="Edit each month"
+                              className={`ml-1 px-1.5 py-0.5 text-[10px] rounded border ${
+                                openBudgetEditors.has(line.id)
+                                  ? 'bg-indigo-600 text-white border-indigo-600'
+                                  : 'bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-50'
+                              }`}
+                            >
+                              Months
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="text-right text-gray-400 text-sm tabular-nums">
@@ -1933,6 +2012,39 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
                       </div>
                     </td>
                   </tr>
+                  {line.costBehavior === 'budgeted' && !isY2Y3 && openBudgetEditors.has(line.id) && (
+                    <tr className="bg-indigo-50/40" data-testid={`budget-months-${line.id}`}>
+                      <td colSpan={12} className="px-4 py-2">
+                        <div className="flex flex-wrap items-end gap-2">
+                          {y1MonthKeys.map((mk) => {
+                            const [yy, mm] = mk.split('-');
+                            const label = `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(mm) - 1]} ${yy.slice(-2)}`;
+                            return (
+                              <label key={mk} className="flex flex-col text-[10px] text-gray-500">
+                                <span>{label}</span>
+                                <input
+                                  type="number"
+                                  aria-label={`${line.name} ${mk}`}
+                                  value={Math.round(line.budgetedMonthly?.[mk] ?? 0) || ''}
+                                  placeholder="0"
+                                  onChange={(e) =>
+                                    actions.updateOpExLine(line.id, {
+                                      budgetedMonthly: { ...(line.budgetedMonthly ?? {}), [mk]: parseFloat(e.target.value) || 0 },
+                                    })
+                                  }
+                                  className="w-20 px-1.5 py-1 text-right border border-gray-200 rounded tabular-nums text-xs focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400"
+                                />
+                              </label>
+                            );
+                          })}
+                          <span className="ml-2 text-xs text-gray-600 tabular-nums">
+                            Year total {formatCurrency(budgetedTotal(line, y1MonthKeys, 0))}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
 

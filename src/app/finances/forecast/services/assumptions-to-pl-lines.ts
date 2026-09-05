@@ -8,6 +8,7 @@
 import type { PLLine } from '../types'
 import { calendarMonthFromFiscalIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { getPlannedSpendPLBreakdown } from '../components/wizard-v4/types'
+import { projectBudgetedMonths } from '@/lib/forecast/budgeted-line'
 import type {
   ForecastAssumptions,
   RevenueLineAssumption,
@@ -420,6 +421,17 @@ function convertOpEx(
             newForecastMonths[mk] = round2((baseAnnual * yearMultiplier) / 12)
           }
         }
+        break
+      }
+
+      case 'budgeted': {
+        // Explicit per-month amounts. The ONLY formula is projectBudgetedMonths
+        // — the wizard summary calls the same function with the same growth
+        // fallback, so screen and stored P&L agree by construction.
+        const increasePct =
+          opexLine.annualIncreasePct ?? assumptions.opex?.defaultIncreasePct ?? 0
+        const projected = projectBudgetedMonths(opexLine, forecastMonthKeys, increasePct)
+        for (const mk of forecastMonthKeys) newForecastMonths[mk] = projected[mk]
         break
       }
 

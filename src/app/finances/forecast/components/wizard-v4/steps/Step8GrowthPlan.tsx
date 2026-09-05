@@ -5,7 +5,8 @@ import {
   ChevronRight, ChevronDown, ArrowRight, AlertTriangle, CheckCircle,
   TrendingUp, TrendingDown,
 } from 'lucide-react';
-import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
+import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH, generateFiscalMonthKeys } from '@/lib/utils/fiscal-year-utils';
+import { budgetedTotal } from '@/lib/forecast/budgeted-line';
 import {
   ForecastWizardState, WizardActions, ForecastSummary, YearlySummary,
   formatCurrency, formatPercent, getRevenueLineYearTotal, generateMonthKeys,
@@ -309,6 +310,13 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
           const gPct = line.seasonalGrowthPct ?? defaultIncrease;
           return priorTotal * Math.pow(1 + gPct / 100, yearNum);
         }
+        case 'budgeted':
+          // Same projection as the summary and the materialiser.
+          return budgetedTotal(
+            line,
+            generateFiscalMonthKeys(state.fiscalYearStart + yearNum),
+            line.annualIncreasePct ?? defaultIncrease,
+          );
         default:
           return (line.priorYearAnnual || 0) * Math.pow(1 + defaultIncrease / 100, yearNum - 1);
       }
@@ -322,7 +330,7 @@ export function Step8GrowthPlan({ state, actions, summary, fiscalYear }: Step8Gr
       y2: Math.round(calcLineAmount(line, 2, y2.revenue)),
       y3: Math.round(calcLineAmount(line, 3, y3.revenue)),
     }));
-  }, [opexLines, state.defaultOpExIncreasePct, y1.revenue, y2.revenue, y3.revenue]);
+  }, [opexLines, state.defaultOpExIncreasePct, y1.revenue, y2.revenue, y3.revenue, state.fiscalYearStart]);
 
   // ─── Subscription Lines ────────────────────────────────────────────────
 

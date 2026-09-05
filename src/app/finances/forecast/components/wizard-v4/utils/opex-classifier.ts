@@ -101,6 +101,9 @@ const TEAM_COST_OPEX_OVERRIDE_KEYWORDS = [
 // ============================================================================
 
 const CLASSIFICATION_PATTERNS: Record<CostBehavior, string[]> = {
+  // Never auto-classified: a line is 'budgeted' only when the operator picks it
+  // or a Xero budget seed sets it (explicit per-month amounts).
+  budgeted: [],
   fixed: [
     // ===== PREMISES & OCCUPANCY =====
     'rent', 'lease', 'premises', 'occupancy',
@@ -821,6 +824,10 @@ export function getSuggestedValue(
       return { value: 3, unit: '% growth' };
 
     case 'adhoc':
+      return { value: priorYearAnnual, unit: '/yr' };
+
+    case 'budgeted':
+      // The months carry the value; the annual total is the only sensible summary.
       return { value: priorYearAnnual, unit: '/yr' };
 
     default:

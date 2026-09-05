@@ -9,7 +9,7 @@
 // COST BEHAVIOR
 // ============================================================
 
-export type CostBehavior = 'fixed' | 'variable' | 'adhoc' | 'seasonal';
+export type CostBehavior = 'fixed' | 'variable' | 'adhoc' | 'seasonal' | 'budgeted'; // 'budgeted' = explicit amount per month
 
 export interface CostBehaviorConfig {
   type: CostBehavior;
@@ -180,6 +180,10 @@ export interface OpExLineAssumption {
   // For adhoc:
   expectedAnnualAmount?: number;
   expectedMonths?: string[]; // Which months to spread across
+  // For budgeted: explicit amount per "YYYY-MM" (Y1–Y3). Months beyond the
+  // budget's coverage roll forward by calendar month with annualIncreasePct
+  // (falling back to opex.defaultIncreasePct). See src/lib/forecast/budgeted-line.ts.
+  budgetedMonthly?: Record<string, number>;
   // Subscription flag
   isSubscription?: boolean;
   notes?: string;
