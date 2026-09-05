@@ -124,13 +124,28 @@ async function expireStaleRows() {
 
 /** The org roster the child must cover — enumerated HERE so the child needs
  *  no database access. Live xero_connections is the source of truth, never
- *  the skill's cached shortcode list. */
+ *  the skill's cached shortcode list. Clients hidden from the board are
+ *  excluded (Matt, 5 Sep 2026): the board doesn't show them, so the round
+ *  doesn't spend time on them — restore a client to the board to include it. */
 async function enumerateRoster() {
-  const { data: conns, error: connErr } = await supabase
+  const { data: allConns, error: connErr } = await supabase
     .from('xero_connections')
     .select('tenant_id, tenant_name, business_id')
     .eq('is_active', true)
-  if (connErr || !conns?.length) throw new Error(`roster enumeration failed: ${connErr?.message ?? 'no active connections'}`)
+  if (connErr || !allConns?.length) throw new Error(`roster enumeration failed: ${connErr?.message ?? 'no active connections'}`)
+  const { data: hiddenRows, error: hiddenErr } = await supabase
+    .from('monthly_report_settings')
+    .select('business_id')
+    .eq('hide_from_board', true)
+  // Fail closed the cheap way: if the hidden read errors, run the FULL
+  // roster (extra coverage is harmless; silently skipping visible clients
+  // would not be).
+  const hidden = new Set(hiddenErr ? [] : (hiddenRows ?? []).map(r => r.business_id))
+  const conns = allConns.filter(c => !hidden.has(c.business_id))
+  if (!conns.length) throw new Error('roster enumeration failed: every connected client is hidden from the board')
+  if (allConns.length !== conns.length) {
+    log(`roster: skipping ${allConns.length - conns.length} org(s) belonging to board-hidden clients`)
+  }
   const { data: bizzes } = await supabase
     .from('businesses')
     .select('id, name')

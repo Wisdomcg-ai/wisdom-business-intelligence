@@ -40,8 +40,10 @@ routine feeds the badge side via `reconciliation_dashboard_captures`
    ```
 
    Resolve any profile-space `business_id` to canonical `businesses.id`
-   (dual-ID house rule). Skip clients hidden from the board only if Matt says
-   so — hidden clients may still need reconciliation.
+   (dual-ID house rule). Clients hidden from the board
+   (`monthly_report_settings.hide_from_board = true`) are EXCLUDED from the
+   round (Matt, 5 Sep 2026) — cover one only if Matt explicitly asks, or
+   after he restores it to the board.
 
 2. **Per org** (one Chrome tab, reused):
    - Navigate `https://go.xero.com/organisationlogin/default.aspx?shortcode=<CODE>&redirecturl=%2FDashboard%2F`
