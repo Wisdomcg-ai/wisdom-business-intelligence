@@ -43,10 +43,11 @@ const RUNNER_DIR = join(process.env.HOME, '.wisdombi', 'recon-runner')
 const CLAUDE_BIN = process.env.CLAUDE_BIN || `${process.env.HOME}/.local/bin/claude`
 /** Must match PICKUP_WINDOW_MINUTES on the request route. */
 const PICKUP_WINDOW_MINUTES = 30
-/** Badge walk + date pass over 13 orgs runs ~10-20 min; past this it's dead.
- *  The board's RUNNING_TIMEOUT_MINUTES (45) and the route's server janitor
- *  (60) must stay above this. */
-const RUN_TIMEOUT_MINUTES = 40
+/** Badge walk + date pass over 13 orgs took a fresh unattended session ~40+
+ *  min on 5 Sep (killed mid-date-pass) — 60 gives honest headroom. The
+ *  board's RUNNING_TIMEOUT_MINUTES (65) and the route's server janitor (75)
+ *  must stay above this. */
+const RUN_TIMEOUT_MINUTES = 60
 
 function loadEnvLocal() {
   let raw
@@ -167,7 +168,12 @@ ${rosterLines}
 2. HARD RULES: never log in anywhere and never touch credentials. If Xero or WisdomBI shows a login
    page, STOP and report it. A badge you could not read is a SKIPPED org, never a 0. Never invent a
    month bucket to make a histogram foot — omit months for that account and say so in notes.
-3. When finished OR stopped, end your reply with ONE final line, exactly this shape:
+3. POST INCREMENTALLY — this is mandatory. The moment you finish a business's badge read, POST its
+   capture (without months). After you finish that business's date pass, POST it again with months.
+   Never hold captures back to post in one batch at the end: you run under a hard ${RUN_TIMEOUT_MINUTES}-minute
+   kill switch, and anything unposted when it fires is lost. Work business by business: badges →
+   post → dates → post → next business.
+4. When finished OR stopped, end your reply with ONE final line, exactly this shape:
    RECON_RESULT {"status":"done","note":"<orgs captured; anything odd>"}
    or RECON_RESULT {"status":"failed","note":"<what was captured; which orgs were skipped and WHY>"}
    Use "done" ONLY if every org in the roster was captured (badge walk complete). Any skip, stop, or

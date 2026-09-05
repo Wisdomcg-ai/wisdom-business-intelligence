@@ -126,10 +126,10 @@ interface BoardResponse {
 const PICKUP_WINDOW_MINUTES = 30
 
 /** Client-side bound on how long a 'running' row counts as live — must stay
- *  above the watcher's RUN_TIMEOUT_MINUTES (40, recon-round-watcher.mjs) so
+ *  above the watcher's RUN_TIMEOUT_MINUTES (60, recon-round-watcher.mjs) so
  *  a healthy run never renders as dead; if it elapses, the watcher/Mac died
  *  mid-run and the UI must say so instead of spinning forever. */
-const RUNNING_TIMEOUT_MINUTES = 45
+const RUNNING_TIMEOUT_MINUTES = 65
 
 /** Is the latest request still genuinely in flight? Shared by the button and
  *  the poll so the two can never disagree. Both states are age-bounded —
@@ -619,7 +619,7 @@ function ReconRoundButton({ request, busy, requestError, onRequest }: {
   if (requestError) {
     note = { text: requestError, tone: 'red' }
   } else if (runningLive) {
-    note = { text: `Running — started ${relTime(request!.started_at ?? request!.requested_at)} · takes ~10–20 min`, tone: 'gray' }
+    note = { text: `Running — started ${relTime(request!.started_at ?? request!.requested_at)} · counts land org by org, full round up to ~45 min`, tone: 'gray' }
   } else if (pendingLive) {
     note = { text: 'Queued — your Mac picks it up within a minute', tone: 'gray' }
   } else if (request?.status === 'running') {

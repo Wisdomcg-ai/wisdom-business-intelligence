@@ -27,10 +27,10 @@ export const dynamic = 'force-dynamic'
  *  the next reader) treats it as expired rather than silently eternal. */
 const PICKUP_WINDOW_MINUTES = 30
 
-/** A 'running' row this old is a corpse (the watcher kills real runs at 40
+/** A 'running' row this old is a corpse (the watcher kills real runs at 60
  *  min) — retired server-side so a dead Mac can never wedge the queue
  *  against the one-live unique index. */
-const SERVER_RUNNING_TIMEOUT_MINUTES = 60
+const SERVER_RUNNING_TIMEOUT_MINUTES = 75
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
