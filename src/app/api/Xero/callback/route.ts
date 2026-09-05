@@ -11,6 +11,7 @@ import { getAppBaseUrl } from '@/lib/config/brand'
 import { withQuerySchema } from '@/lib/api/with-schema'
 import { z } from 'zod'
 import * as Sentry from '@sentry/nextjs'
+import { grantedScopesColumns, resolveGrantedScopes } from '@/lib/xero/granted-scopes';
 
 export const dynamic = 'force-dynamic'
 
@@ -48,9 +49,11 @@ async function saveXeroConnection(
     tenant: { tenantId: string; tenantName: string };
     tokens: { access_token: string; refresh_token: string };
     expiresAt: Date;
+    /** Scopes this token carries (granted-scopes.ts). Null = unknown, leave column as is. */
+    grantedScopes: string[] | null;
   }
 ): Promise<{ success: boolean; error?: string; connectionId?: string }> {
-  const { businessId, userId, tenant, tokens, expiresAt } = params;
+  const { businessId, userId, tenant, tokens, expiresAt, grantedScopes } = params;
 
   // Phase 34 pivot: upsert by (business_id, tenant_id) so reconnecting the same
   // Xero org refreshes its tokens in place, and connecting a DIFFERENT Xero org
@@ -83,6 +86,7 @@ async function saveXeroConnection(
         refresh_token: encrypt(tokens.refresh_token),
         expires_at: expiresAt.toISOString(),
         is_active: true,
+        ...grantedScopesColumns(grantedScopes),
       },
       { onConflict: 'business_id,tenant_id' },
     )
@@ -475,6 +479,7 @@ async function getHandler(request: NextRequest) {
       tenant,
       tokens,
       expiresAt,
+      grantedScopes: resolveGrantedScopes({ scope: tokens.scope, accessToken: tokens.access_token }),
     });
 
     if (!saveResult.success) {

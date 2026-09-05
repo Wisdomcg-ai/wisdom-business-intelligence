@@ -16,6 +16,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { encrypt, decrypt } from '@/lib/utils/encryption';
 import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
 import * as Sentry from '@sentry/nextjs'
+import { grantedScopesColumns, resolveGrantedScopes } from '@/lib/xero/granted-scopes';
 
 export const dynamic = 'force-dynamic';
 
@@ -138,6 +139,9 @@ async function postHandler(request: Request) {
     // Xero's OAuth grant covers all authorised orgs)
     const accessToken = decrypt(pending.encrypted_access_token);
     const refreshToken = decrypt(pending.encrypted_refresh_token);
+    // The pending row holds no token-response `scope`; the access token's JWT
+    // claim is the same fact. Shared across every selected tenant (one grant).
+    const scopeColumns = grantedScopesColumns(resolveGrantedScopes({ accessToken }));
 
     // Phase 34 pivot: upsert every selected tenant as its own xero_connections
     // row. (business_id, tenant_id) is unique, so reconnecting the same tenant
@@ -165,6 +169,7 @@ async function postHandler(request: Request) {
       refresh_token: encrypt(refreshToken),
       expires_at: pending.token_expires_at,
       is_active: true,
+      ...scopeColumns,
     }));
 
     const { data: inserted, error: insertError } = await supabaseAdmin
