@@ -49,7 +49,13 @@ const PICKUP_WINDOW_MINUTES = 30
 const RUN_TIMEOUT_MINUTES = 40
 
 function loadEnvLocal() {
-  const raw = readFileSync(join(REPO_ROOT, '.env.local'), 'utf8')
+  let raw
+  try {
+    raw = readFileSync(join(REPO_ROOT, '.env.local'), 'utf8')
+  } catch {
+    console.error(`[watcher] cannot read ${join(REPO_ROOT, '.env.local')} — the watcher needs it for NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SECRET_KEY`)
+    process.exit(1)
+  }
   const env = {}
   for (const line of raw.split('\n')) {
     const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim())
