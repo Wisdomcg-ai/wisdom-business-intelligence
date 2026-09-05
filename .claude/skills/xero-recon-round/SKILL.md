@@ -81,6 +81,14 @@ routine feeds the badge side via `reconciliation_dashboard_captures`
    retry blindly (401 means Matt's WisdomBI session expired — ask him to log
    in there too).
 
+   **Post incrementally, business by business** — badge read → POST (no
+   months yet) → date pass → POST again with months → next business.
+   Captures are append-only and latest-per-tenant wins, so re-posting is
+   free. Never hold everything back for one batch at the end: unattended
+   runs die at a hard kill switch, and anything unposted is lost (learned
+   5 Sep 2026 — a 40-minute run was killed with 13 orgs read and zero
+   captures posted).
+
 4. **Verify + report**: query `reconciliation_dashboard_captures` for rows
    with this round's timestamps; summarise per client (badge total, top
    accounts), name every skipped/failed org, and remind Matt the board's
