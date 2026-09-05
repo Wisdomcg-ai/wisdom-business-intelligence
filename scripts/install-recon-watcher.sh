@@ -1,14 +1,13 @@
 #!/bin/bash
-# Install (or reinstall) the recon-round watcher launchd jobs on this Mac.
+# Install (or reinstall) the recon-round watcher launchd job on this Mac.
 #
-#   1. com.wisdombi.recon-watcher — every 60s: picks up queued "Update from
-#      Xero" requests from the CFO board and runs the Chrome recon round.
-#   2. com.wisdombi.recon-morning — weekdays 07:00: queues a run so the board
-#      is fresh before the day starts.
+#   com.wisdombi.recon-watcher — every 60s: picks up queued "Update from
+#   Xero" requests from the CFO board and runs the Chrome recon round.
 #
-# Idempotent: re-running replaces both jobs. Remove with:
+# Manual-trigger only (Matt, 5 Sep 2026): runs happen when the board button
+# queues one — no scheduled runs, since the Mac is rarely logged into Xero
+# unattended. Idempotent: re-running replaces the job. Remove with:
 #   launchctl bootout gui/$(id -u)/com.wisdombi.recon-watcher
-#   launchctl bootout gui/$(id -u)/com.wisdombi.recon-morning
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -80,15 +79,8 @@ write_plist "com.wisdombi.recon-watcher" \
   "<key>StartInterval</key><integer>60</integer>" \
   "<string>--tick</string>"
 
-write_plist "com.wisdombi.recon-morning" \
-  "<key>StartCalendarInterval</key>
-  <array>
-    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
-  </array>" \
-  "<string>--request</string><string>schedule</string>"
+# The old weekday-morning auto-queue job is retired — remove it if present.
+launchctl bootout "gui/$UID_N/com.wisdombi.recon-morning" 2>/dev/null || true
+rm -f "$AGENTS_DIR/com.wisdombi.recon-morning.plist"
 
 echo "done — logs: $LOG_DIR/wisdombi-recon-watcher.log"
