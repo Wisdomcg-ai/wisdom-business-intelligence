@@ -12,6 +12,9 @@
  * DateFrom/DateTo descriptions are swapped and the default window is not
  * documented — see the spike in .planning/XERO-BUDGET-SEED-PLAN.md §G):
  *   - we pass the window we want AND filter the returned periods to it;
+ *   - Xero caps DateFrom→DateTo at 24 months ("Date range maximum is 24
+ *     months", QueryParseException 16 — seen live on Urban Road, 5 Sep 2026),
+ *     so a three-year window is fetched in chunks and merged per account;
  *   - amounts may arrive as strings; Period may arrive as "YYYY-MM" or as a
  *     Microsoft "/Date(ms)/" stamp;
  *   - the budgeted money is `Amount`; `UnitAmount` is only used when Amount is
@@ -192,6 +195,34 @@ export function budgetCoverage(
   }
 }
 
+/** Xero rejects a DateFrom→DateTo span longer than this (QueryParseException 16). */
+export const XERO_BUDGET_MAX_WINDOW_MONTHS = 24
+
+function monthIndex(key: string): number {
+  const m = MONTH_KEY.exec(key)
+  if (!m) throw new Error(`not a month key: ${key}`)
+  return Number(m[1]) * 12 + (Number(m[2]) - 1)
+}
+function keyFromIndex(i: number): string {
+  return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`
+}
+
+/**
+ * Split an inclusive "YYYY-MM" window into consecutive chunks of at most
+ * `maxMonths` months. A window that already fits comes back as one chunk;
+ * an inverted window comes back empty.
+ */
+export function splitPeriodWindow(window: PeriodWindow, maxMonths: number = XERO_BUDGET_MAX_WINDOW_MONTHS): PeriodWindow[] {
+  const from = monthIndex(window.from)
+  const to = monthIndex(window.to)
+  if (to < from || maxMonths < 1) return []
+  const out: PeriodWindow[] = []
+  for (let start = from; start <= to; start += maxMonths) {
+    out.push({ from: keyFromIndex(start), to: keyFromIndex(Math.min(start + maxMonths - 1, to)) })
+  }
+  return out
+}
+
 /** "YYYY-MM" → the ISO date bounds Xero's DateFrom/DateTo want. */
 export function monthKeyToDateBounds(fromKey: string, toKey: string): { dateFrom: string; dateTo: string } {
   const to = MONTH_KEY.exec(toKey)
@@ -227,7 +258,7 @@ export async function listXeroBudgets(auth: XeroBudgetsAuth): Promise<XeroBudget
   }
 }
 
-export async function getXeroBudget(
+async function fetchBudgetChunk(
   auth: XeroBudgetsAuth,
   budgetId: string,
   window: PeriodWindow,
@@ -241,4 +272,41 @@ export async function getXeroBudget(
     if (xeroHttpStatus(err) === 404) return null
     return rethrowScope(err, auth.tenantId)
   }
+}
+
+/**
+ * Fetch a budget's lines for a window of any length. Xero caps each request at
+ * 24 months, so longer windows are fetched chunk by chunk and merged per
+ * account (chunks are disjoint, so months simply union). Null when the budget
+ * does not exist.
+ */
+export async function getXeroBudget(
+  auth: XeroBudgetsAuth,
+  budgetId: string,
+  window: PeriodWindow,
+): Promise<XeroBudgetDetail | null> {
+  const chunks = splitPeriodWindow(window)
+  if (chunks.length === 0) return null
+  let merged: XeroBudgetDetail | null = null
+  const byAccount = new Map<string, XeroBudgetLine>()
+  for (const chunk of chunks) {
+    const detail = await fetchBudgetChunk(auth, budgetId, chunk)
+    if (!detail) {
+      if (!merged) return null // the budget itself is missing
+      continue
+    }
+    if (!merged) merged = { ...detail, lines: [] }
+    for (const line of detail.lines) {
+      const key = line.accountId ?? line.accountCode ?? `#${byAccount.size}`
+      const existing = byAccount.get(key)
+      if (existing) {
+        for (const [k, v] of Object.entries(line.months)) existing.months[k] = (existing.months[k] ?? 0) + v
+      } else {
+        byAccount.set(key, { ...line, months: { ...line.months } })
+      }
+    }
+  }
+  if (!merged) return null
+  merged.lines = Array.from(byAccount.values())
+  return merged
 }

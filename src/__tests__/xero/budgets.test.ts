@@ -19,6 +19,8 @@ import {
   parseXeroBudgetDetail,
   budgetCoverage,
   monthKeyToDateBounds,
+  splitPeriodWindow,
+  XERO_BUDGET_MAX_WINDOW_MONTHS,
   listXeroBudgets,
   getXeroBudget,
   BudgetsScopeMissingError,
@@ -141,6 +143,27 @@ describe('budgetCoverage / monthKeyToDateBounds', () => {
   })
 })
 
+describe('splitPeriodWindow', () => {
+  it('leaves a window of up to 24 months as one chunk', () => {
+    expect(splitPeriodWindow({ from: '2026-07', to: '2027-06' })).toEqual([{ from: '2026-07', to: '2027-06' }])
+    expect(splitPeriodWindow({ from: '2026-07', to: '2028-06' })).toEqual([{ from: '2026-07', to: '2028-06' }])
+    expect(XERO_BUDGET_MAX_WINDOW_MONTHS).toBe(24)
+  })
+  it('splits a three-year window into 24 + 12 months (the live Xero cap)', () => {
+    expect(splitPeriodWindow({ from: '2026-07', to: '2029-06' })).toEqual([
+      { from: '2026-07', to: '2028-06' },
+      { from: '2028-07', to: '2029-06' },
+    ])
+  })
+  it('handles a single month, an inverted window and a custom cap', () => {
+    expect(splitPeriodWindow({ from: '2026-07', to: '2026-07' })).toEqual([{ from: '2026-07', to: '2026-07' }])
+    expect(splitPeriodWindow({ from: '2027-01', to: '2026-12' })).toEqual([])
+    expect(splitPeriodWindow({ from: '2026-11', to: '2027-03' }, 2)).toEqual([
+      { from: '2026-11', to: '2026-12' }, { from: '2027-01', to: '2027-02' }, { from: '2027-03', to: '2027-03' },
+    ])
+  })
+})
+
 describe('network wrappers', () => {
   // Block body on purpose: an arrow that RETURNS the mock hands vitest a
   // "cleanup" function, which it then calls after the test — with the throwing
@@ -164,6 +187,28 @@ describe('network wrappers', () => {
     const out = await getXeroBudget(auth, 'c1d195d4', { from: '2026-07', to: '2027-06' })
     expect(fetchMock.mock.calls[0][0]).toBe('https://api.xero.com/api.xro/2.0/Budgets/c1d195d4?DateFrom=2026-07-01&DateTo=2027-06-30')
     expect(out!.lines[0].months).toEqual({ '2026-07': 1000, '2026-08': 1150 })
+  })
+  it('getXeroBudget fetches a 36-month window as two ≤24-month requests and merges lines per account', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      const first = url.includes('DateFrom=2026-07-01&DateTo=2028-06-30')
+      const second = url.includes('DateFrom=2028-07-01&DateTo=2029-06-30')
+      if (!first && !second) throw new Error(`unexpected window in ${url}`)
+      return {
+        ok: true, status: 200, headers: {},
+        json: { Budgets: { BudgetID: 'b-3y', Type: 'OVERALL', Description: 'Three-year', BudgetLines: [
+          { AccountID: 'acc-200', AccountCode: '200', BudgetBalances: first
+            ? [{ Period: '2026-07', Amount: '100' }, { Period: '2028-06', Amount: '200' }]
+            : [{ Period: '2028-07', Amount: '300' }] },
+          ...(second ? [{ AccountID: 'acc-400', AccountCode: '400', BudgetBalances: [{ Period: '2029-06', Amount: '7' }] }] : []),
+        ] } },
+      }
+    })
+    const out = await getXeroBudget(auth, 'b-3y', { from: '2026-07', to: '2029-06' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(out!.name).toBe('Three-year')
+    expect(out!.lines).toHaveLength(2)
+    expect(out!.lines.find((l) => l.accountId === 'acc-200')!.months).toEqual({ '2026-07': 100, '2028-06': 200, '2028-07': 300 })
+    expect(out!.lines.find((l) => l.accountId === 'acc-400')!.months).toEqual({ '2029-06': 7 })
   })
   it('getXeroBudget returns null on 404 and propagates other errors', async () => {
     fetchMock.mockImplementationOnce(async () => { throw new XeroHttpError(404, 'tenant-1', 'not found') })
