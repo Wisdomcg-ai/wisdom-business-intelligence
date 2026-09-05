@@ -113,17 +113,27 @@ async function getHandler(request: Request) {
       connsByBiz.set(canonical, list)
     }
 
-    // Fleet = businesses with at least one connection row (locked decision).
-    const fleetIds = allowedIds.filter(id => (connsByBiz.get(id) ?? []).length > 0)
+    // Settings are needed BEFORE fleet assembly: badge-only clients join the
+    // fleet via board_manual_include, not via a connection row.
+    const { data: settingsRows, error: settingsError } = await supabase
+      .from('monthly_report_settings')
+      .select('business_id, report_due_day, bookkeeper_name, bookkeeper_email, hide_from_board, recon_ignored_accounts, board_manual_include, manual_tenant_key')
+      .in('business_id', allowedIds)
+    if (settingsError) throw new Error(`settings query failed: ${settingsError.message}`)
+    const settingsByBiz = new Map((settingsRows ?? []).map(s => [s.business_id, s]))
+
+    // Fleet = businesses with at least one connection row (locked decision),
+    // plus badge-only clients (board_manual_include — e.g. Distinct
+    // Directions, whose Xero org is at the connected-app limit, 5 Sep 2026).
+    // The manual flag is ignored once a real connection exists.
+    const fleetIds = allowedIds.filter(id =>
+      (connsByBiz.get(id) ?? []).length > 0 || settingsByBiz.get(id)?.board_manual_include === true,
+    )
     if (fleetIds.length === 0) {
       return NextResponse.json({ month, clients: [], hidden: [], stats: emptyStats() })
     }
 
-    const [settingsRes, cycleRes, checksRes, bucketsRes, syncClock, capturesRes] = await Promise.all([
-      supabase
-        .from('monthly_report_settings')
-        .select('business_id, report_due_day, bookkeeper_name, bookkeeper_email, hide_from_board, recon_ignored_accounts')
-        .in('business_id', fleetIds),
+    const [cycleRes, checksRes, bucketsRes, syncClock, capturesRes] = await Promise.all([
       supabase
         .from('cfo_report_status')
         .select('business_id, status, generated_at, approved_at, sent_at, discussed_at, manual_status_override')
@@ -148,7 +158,6 @@ async function getHandler(request: Request) {
         .limit(2000),
     ])
     for (const [label, res] of [
-      ['settings', settingsRes],
       ['cycle', cycleRes],
       ['checks', checksRes],
       ['buckets', bucketsRes],
@@ -158,7 +167,6 @@ async function getHandler(request: Request) {
       }
     }
 
-    const settingsByBiz = new Map((settingsRes.data ?? []).map(s => [s.business_id, s]))
     const cycleByBiz = new Map((cycleRes.data ?? []).map(c => [c.business_id, c]))
     const checksByBiz = groupBy(checksRes.data ?? [], r => r.business_id)
     const bucketsByBiz = groupBy(bucketsRes.data ?? [], r => r.business_id)
@@ -192,9 +200,25 @@ async function getHandler(request: Request) {
     const clients = visibleIds.map(businessId => {
       const biz = (businesses ?? []).find(b => b.id === businessId)
       const conns = connsByBiz.get(businessId) ?? []
-      const activeTenants = Array.from(
-        new Set(conns.filter(c => c.is_active && c.tenant_id).map(c => c.tenant_id)),
-      )
+      const settings = settingsByBiz.get(businessId)
+      // Badge-only client: on the board via the manual flag, no connection
+      // rows at all. No API data exists for it — the badge capture is its
+      // ONLY reconciliation source, and that absence is presented neutrally
+      // ('browser_only'), never as a broken connection.
+      const isBadgeOnly = conns.length === 0
+      const manualTenantKey = isBadgeOnly && typeof settings?.manual_tenant_key === 'string' && settings.manual_tenant_key.trim()
+        ? [settings.manual_tenant_key.trim()]
+        : null
+      // A badge-only client with NO configured key must read as never-
+      // captured. An empty expected list would make summariseDashboardCaptures
+      // count EVERY historical capture row under any old key as full coverage
+      // — a fresh zero under an abandoned key would render green. The
+      // unmatchable sentinel forces the summary to null instead (fail-closed).
+      const activeTenants = isBadgeOnly
+        ? (manualTenantKey ?? ['__manual-tenant-key-not-configured__'])
+        : Array.from(
+            new Set(conns.filter(c => c.is_active && c.tenant_id).map(c => c.tenant_id)),
+          )
 
       // Representative connection: active beats more-recently-updated dead.
       let best: ConnectionRow | null = null
@@ -207,8 +231,6 @@ async function getHandler(request: Request) {
         { lastSyncMs: freshest > 0 ? freshest : null, lookupOk: syncClock.ok },
         now,
       )
-
-      const settings = settingsByBiz.get(businessId)
       const cycle = cycleByBiz.get(businessId) ?? null
       const stage = deriveStage(cycle)
       const dueDate = dueDateForMonth(month, settings?.report_due_day ?? null)
@@ -235,7 +257,10 @@ async function getHandler(request: Request) {
       const section: BoardSection = deriveSection({
         stage,
         daysOverdue: overdue,
-        connectionNeedsAttention: needsAttention(classification.status),
+        // A badge-only client HAS no connection to need attention — its
+        // readiness verdict (never/stale until the round covers it) is the
+        // honest gate.
+        connectionNeedsAttention: isBadgeOnly ? false : needsAttention(classification.status),
         readiness: readiness.state,
       })
 
@@ -254,15 +279,23 @@ async function getHandler(request: Request) {
         due_day: settings?.report_due_day ?? null,
         due_date: dueDate,
         days_overdue: overdue,
-        connection: {
-          status: classification.status,
-          needs_attention: needsAttention(classification.status),
-          last_sync_at: classification.lastSyncAt,
-          tenant_count: activeTenants.length,
-          tenant_names: conns
-            .filter(c => c.is_active && c.tenant_name)
-            .map(c => c.tenant_name),
-        },
+        connection: isBadgeOnly
+          ? {
+              status: 'browser_only',
+              needs_attention: false,
+              last_sync_at: null,
+              tenant_count: activeTenants.length,
+              tenant_names: [],
+            }
+          : {
+              status: classification.status,
+              needs_attention: needsAttention(classification.status),
+              last_sync_at: classification.lastSyncAt,
+              tenant_count: activeTenants.length,
+              tenant_names: conns
+                .filter(c => c.is_active && c.tenant_name)
+                .map(c => c.tenant_name),
+            },
         recon,
         dashboard_capture,
         readiness,
