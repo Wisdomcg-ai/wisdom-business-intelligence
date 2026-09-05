@@ -397,6 +397,13 @@ export interface ForecastAssumptions {
   xeroOtherIncome?: number;
   /** Prior-FY Xero Other Expense total, carried flat into each forecast year (summary parity). */
   xeroOtherExpense?: number;
+
+  /**
+   * Where this forecast's starting numbers came from, when not typed in.
+   * Set once by a seed (today: the Xero budget seed) and never updated —
+   * the seed is one-shot. Drives the provenance banners in the wizard.
+   */
+  seedSource?: import('@/lib/services/xero-budget-seed-service').ForecastSeedSource;
 }
 
 // ============================================================
