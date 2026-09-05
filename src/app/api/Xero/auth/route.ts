@@ -33,6 +33,11 @@ const SCOPES = [
   'accounting.reports.read',
   'accounting.settings.read',
   'accounting.contacts.read',
+  // Xero Budget Manager budgets (read-only). Feeds the forecast wizard's
+  // opt-in "Start from Xero budget" seed (.planning/XERO-BUDGET-SEED-PLAN.md).
+  // Takes effect per org only after that org re-consents; which orgs have is
+  // recorded in xero_connections.granted_scopes (src/lib/xero/granted-scopes.ts).
+  'accounting.budgets.read',
   // NOTE: no finance.* scopes — Xero's Finance API is closed (lending
   // partners only). And no accounting.reports.bankstatement.read: the scope
   // grant is closed to this app — Xero API support confirmed (2 Sep 2026) it

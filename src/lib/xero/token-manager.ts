@@ -16,6 +16,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import * as Sentry from '@sentry/nextjs';
 import { encrypt, decrypt } from '@/lib/utils/encryption';
 import { getXeroClientCredentials } from './oauth-credentials';
+import { grantedScopesColumns, isMissingColumnError, resolveGrantedScopes } from './granted-scopes';
 
 // Standardized refresh threshold - refresh if token expires within 15 minutes.
 // Exported (53-04 F2) so cron consumers can infer still_valid vs refreshed
@@ -521,6 +522,12 @@ async function refreshTokenWithRetry(
       const encryptedAccessToken = encrypt(tokens.access_token);
       const encryptedRefreshToken = encrypt(tokens.refresh_token);
       const newExpiryIso = newExpiry.toISOString();
+      // A refreshed token carries the scopes the org consented to, so every
+      // 6-hourly refresh keeps xero_connections.granted_scopes current — and
+      // backfills rows that predate the column without anyone reconnecting.
+      let scopeColumns: Record<string, unknown> = grantedScopesColumns(
+        resolveGrantedScopes({ scope: tokens.scope, accessToken: tokens.access_token }),
+      );
 
       let updateError: unknown = null;
       for (let saveAttempt = 1; saveAttempt <= MAX_TOKEN_SAVE_ATTEMPTS; saveAttempt++) {
@@ -530,13 +537,34 @@ async function refreshTokenWithRetry(
             access_token: encryptedAccessToken,
             refresh_token: encryptedRefreshToken,
             expires_at: newExpiryIso,
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            ...scopeColumns,
           })
           .eq('id', connectionId);
 
         if (!error) {
           updateError = null;
           break;
+        }
+
+        // The migration adding granted_scopes may land AFTER this code (prod
+        // migrations are applied by hand post-merge), or PostgREST's schema
+        // cache may not have reloaded yet. Either way the token write itself
+        // is fine — drop the scope columns and write again immediately. This
+        // attempt does not count: losing the rotated refresh token over
+        // bookkeeping would deactivate a healthy connection.
+        if (Object.keys(scopeColumns).length > 0 && isMissingColumnError(error)) {
+          scopeColumns = {};
+          saveAttempt--;
+          try {
+            Sentry.captureMessage('xero_connections.granted_scopes unavailable — token saved without it', {
+              level: 'warning',
+              tags: { invariant: 'xero_granted_scopes_column_missing', connection_id: connectionId },
+            } as any);
+          } catch {
+            // Sentry outage must never change the save path.
+          }
+          continue;
         }
 
         updateError = error;
