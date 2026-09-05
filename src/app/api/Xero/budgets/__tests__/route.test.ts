@@ -26,7 +26,8 @@ vi.mock('@/lib/xero/budgets', async (importOriginal) => {
   return { ...actual, listXeroBudgets: (...a: unknown[]) => listMock(...a), getXeroBudget: (...a: unknown[]) => getMock(...a) }
 })
 
-import { GET, combineOrgStates } from '../route'
+import { GET } from '../route'
+import { combineOrgStates } from '@/lib/xero/budget-availability'
 import { BudgetsScopeMissingError } from '@/lib/xero/budgets'
 
 const req = (qs = 'business_id=biz-1&fiscal_year=2027') => new NextRequest(`http://localhost/api/Xero/budgets?${qs}`)

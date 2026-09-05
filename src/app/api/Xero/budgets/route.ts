@@ -33,9 +33,9 @@ import {
   getXeroBudget,
   budgetCoverage,
   BudgetsScopeMissingError,
-  type XeroBudgetType,
 } from '@/lib/xero/budgets'
 import { RateLimitDailyExceededError } from '@/lib/xero/xero-api-client'
+import { combineOrgStates, type BudgetAvailabilityOrg, type BudgetAvailabilityResponse } from '@/lib/xero/budget-availability'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,40 +45,6 @@ const GetQuerySchema = z
     fiscal_year: z.string().optional(),
   })
   .passthrough()
-
-export type BudgetAvailabilityState = 'available' | 'none' | 'scope_missing' | 'not_connected' | 'error'
-export type OrgBudgetState = 'available' | 'none' | 'scope_missing' | 'error'
-
-export interface BudgetAvailabilityOrg {
-  tenantId: string
-  orgName: string
-  functionalCurrency: string | null
-  state: OrgBudgetState
-  error?: string
-  budgets: Array<{
-    budgetId: string
-    name: string
-    type: XeroBudgetType
-    updatedAt: string | null
-    lineCount: number
-    coverage: { firstPeriod: string | null; lastPeriod: string | null; monthsInFY: number }
-  }>
-}
-
-export interface BudgetAvailabilityResponse {
-  state: BudgetAvailabilityState
-  fiscalYear: number
-  orgs: BudgetAvailabilityOrg[]
-}
-
-/** Combine per-org states into the one the empty state renders. Exported for tests. */
-export function combineOrgStates(orgs: Array<{ state: OrgBudgetState }>): BudgetAvailabilityState {
-  if (orgs.length === 0) return 'not_connected'
-  if (orgs.some((o) => o.state === 'available')) return 'available'
-  if (orgs.some((o) => o.state === 'scope_missing')) return 'scope_missing'
-  if (orgs.some((o) => o.state === 'error')) return 'error'
-  return 'none'
-}
 
 async function getHandler(request: NextRequest) {
   try {
