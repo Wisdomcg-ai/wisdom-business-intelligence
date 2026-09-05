@@ -36,6 +36,7 @@ import {
   monthlyToQuarterly,
   getRevenueLineYearTotal,
 } from './types';
+import { budgetedTotal } from '@/lib/forecast/budgeted-line';
 import { toast } from 'sonner';
 import { isCoveredByTeamStep, type TeamCoverage } from './utils/opex-classifier';
 import { getEffectiveSeasonality } from './utils/line-distribution';
@@ -1965,6 +1966,16 @@ export function useForecastWizard(
             // Expected annual amount (same each year)
             lineAmount = line.expectedAnnualAmount || 0;
             break;
+          case 'budgeted': {
+            // Explicit per-month amounts — the SAME projection the materialiser
+            // uses (src/lib/forecast/budgeted-line.ts), same growth fallback.
+            lineAmount = budgetedTotal(
+              line,
+              generateMonthKeys(state.fiscalYearStart + (yearNum - 1)),
+              line.annualIncreasePct ?? defaultIncrease,
+            );
+            break;
+          }
           case 'seasonal': {
             // Use prior year pattern with growth applied
             const priorTotal = line.priorYearAnnual || 0;
@@ -2218,7 +2229,9 @@ export function useForecastWizard(
       priorYearTotal: line.priorYearAnnual,
       costBehavior: line.costBehavior,
       monthlyAmount: line.costBehavior === 'fixed' ? line.monthlyAmount : undefined,
-      annualIncreasePct: line.costBehavior === 'fixed' ? line.annualIncreasePct : undefined,
+      annualIncreasePct:
+        line.costBehavior === 'fixed' || line.costBehavior === 'budgeted' ? line.annualIncreasePct : undefined,
+      budgetedMonthly: line.costBehavior === 'budgeted' ? line.budgetedMonthly : undefined,
       percentOfRevenue: line.costBehavior === 'variable' ? line.percentOfRevenue : undefined,
       seasonalGrowthPct: line.costBehavior === 'seasonal' ? line.seasonalGrowthPct : undefined,
       seasonalTargetAmount: line.costBehavior === 'seasonal' ? line.seasonalTargetAmount : undefined,

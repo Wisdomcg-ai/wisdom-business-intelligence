@@ -50,7 +50,11 @@ export interface XeroFieldFingerprint {
 }
 
 export type RevenuePattern = 'seasonal' | 'straight-line' | 'manual';
-export type CostBehavior = 'fixed' | 'variable' | 'adhoc' | 'seasonal';
+// 'budgeted' — an explicit amount per month (src/lib/forecast/budgeted-line.ts).
+// Added for the Xero budget seed (.planning/XERO-BUDGET-SEED-PLAN.md); also
+// selectable by hand. Projection lives in ONE helper used by the summary and
+// the materialiser, so the screen and the stored P&L cannot disagree.
+export type CostBehavior = 'fixed' | 'variable' | 'adhoc' | 'seasonal' | 'budgeted';
 
 // Business profile data from business_profiles table
 export interface BusinessProfile {
@@ -336,6 +340,11 @@ export interface OpExLine {
   // For ad-hoc costs:
   expectedAnnualAmount?: number;
   expectedMonths?: string[]; // Which months to spread across (e.g., ['2026-03', '2026-09'])
+  // For budgeted costs ('budgeted'): explicit amount per month, keyed "YYYY-MM".
+  // May span Y1–Y3; months beyond coverage roll forward by calendar month with
+  // annualIncreasePct (projectBudgetedMonths). Set by the Xero budget seed or
+  // the Step 5 month editor.
+  budgetedMonthly?: MonthlyData;
   // For seasonal costs:
   seasonalGrowthPct?: number; // Annual growth % to apply to the seasonal pattern
   seasonalTargetAmount?: number; // Target annual amount (alternative to growth %) — Y1

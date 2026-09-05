@@ -1239,9 +1239,10 @@ export function ForecastWizardV4({
                   accountId: string;
                   accountName: string;
                   priorYearTotal?: number;
-                  costBehavior?: 'fixed' | 'variable' | 'seasonal' | 'adhoc';
+                  costBehavior?: 'fixed' | 'variable' | 'seasonal' | 'adhoc' | 'budgeted';
                   monthlyAmount?: number;
                   annualIncreasePct?: number;
+                  budgetedMonthly?: Record<string, number>;
                   percentOfRevenue?: number;
                   seasonalGrowthPct?: number;
                   seasonalTargetAmount?: number;
@@ -1269,6 +1270,7 @@ export function ForecastWizardV4({
                   costBehavior: line.costBehavior || 'fixed',
                   monthlyAmount: line.monthlyAmount,
                   annualIncreasePct: line.annualIncreasePct,
+                  budgetedMonthly: line.budgetedMonthly,
                   percentOfRevenue: line.percentOfRevenue,
                   seasonalGrowthPct: line.seasonalGrowthPct,
                   seasonalTargetAmount: line.seasonalTargetAmount,
