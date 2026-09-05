@@ -115,18 +115,18 @@ describe('revenue and COGS lines', () => {
     expect(sales.growthPct).toBe(10)   // implied vs last year, for Step 3's display
   })
 
-  it('fills uncovered Y1 months explicitly (budgeted average when there are no actuals)', () => {
+  it('treats a blank month INSIDE the budget window as $0 — never invents last year\'s figure', () => {
     expect(other.year1Monthly?.['2026-12']).toBe(1_000)
-    expect(other.year1Monthly?.['2027-01']).toBe(1_000)  // filled from the covered average
-    expect(sum(other.year1Monthly, Y1)).toBe(12_000)
+    expect(other.year1Monthly?.['2027-01']).toBe(0)      // blank in Budget Manager = zero
+    expect(sum(other.year1Monthly, Y1)).toBe(6_000)
     expect(other.growthPct).toBeUndefined()               // no prior actuals → nothing to compare to
   })
 
   it('sets COGS as % of budgeted revenue and keeps the monthly grid', () => {
     expect(sum(cogs.year1Monthly, Y1)).toBe(48_000)
-    expect(cogs.percentOfRevenue).toBe(33.33)             // 48,000 / 144,000
+    expect(cogs.percentOfRevenue).toBe(34.78)             // 48,000 / 138,000
     expect(cogs.costBehavior).toBe('variable')
-    expect(a.cogs.overallCogsPct).toBe(33.33)
+    expect(a.cogs.overallCogsPct).toBe(34.78)
   })
 
   it('takes a fully covered Y2 verbatim and ignores a partial Y3 with a warning', () => {
@@ -143,17 +143,20 @@ describe('OpEx lines', () => {
   const adv = a.opex.lines.find((l) => l.accountId === '400')!
   const wages = a.opex.lines.find((l) => l.accountId === '477')!
 
-  it('are "as budgeted" with Y1 filled from last year\'s same calendar month where actuals exist', () => {
+  it('are "as budgeted"; a blank month inside the window is $0 even when last year had spend', () => {
     expect(adv.costBehavior).toBe('budgeted')
     expect(adv.budgetedMonthly?.['2026-12']).toBe(500)   // budgeted
-    expect(adv.budgetedMonthly?.['2027-01']).toBe(300)   // filled from Jan 2026 actual
-    expect(sum(adv.budgetedMonthly, Y1)).toBe(4_800)
+    expect(adv.budgetedMonthly?.['2027-01']).toBe(0)     // blank → zero (NOT last year's 300)
+    expect(sum(adv.budgetedMonthly, Y1)).toBe(3_000)
     expect(adv.priorYearTotal).toBe(3_600)
   })
 
-  it('carry explicit later-year months for the projection to use', () => {
+  it('carry a full later-year grid when the window spans that year (blanks as $0), none beyond it', () => {
     expect(adv.budgetedMonthly?.['2027-07']).toBe(600)
     expect(wages.budgetedMonthly?.['2027-07']).toBe(21_000)
+    const cleaning = a.opex.lines.find((l) => l.accountId === '999')!
+    expect(cleaning.budgetedMonthly?.['2027-07']).toBe(200)
+    expect(Object.keys(adv.budgetedMonthly ?? {}).some((k) => k >= '2028-07')).toBe(false) // Y3 not spanned
   })
 
   it('keep wages/super as budgeted lines (the wizard\'s coverage-aware rule decides) and report them', () => {
@@ -164,10 +167,12 @@ describe('OpEx lines', () => {
     expect(report.warnings.some((w) => w.includes('wages/super'))).toBe(true)
   })
 
-  it('counts every filled month-cell', () => {
-    // 260: 6 months, 400: 6 months
-    expect(report.coverage.monthsFilled).toBe(12)
+  it('counts blanks inside the window as zeroed, and fills nothing when the window spans the FY', () => {
+    // 260: 6 blank months, 400: 6 blank months — all inside Jul 2026 → Sep 2028
+    expect(report.coverage.monthsZeroed).toBe(12)
+    expect(report.coverage.monthsFilled).toBe(0)
     expect(report.coverage.monthsInFY).toBe(12)
+    expect(report.warnings.some((w) => w.includes('outside the budget'))).toBe(false)
   })
 })
 
@@ -175,8 +180,8 @@ describe('goals, seasonality, provenance', () => {
   const { assumptions: a, report } = seedForecastFromXeroBudget(input())
 
   it('pre-fills Step 1 goals from the budget\'s own totals (wages included, as the client set it)', () => {
-    // Y1: rev 144,000; cogs 48,000; opex 4,800 + 240,000 + 28,800 + 2,400 = 276,000; OI 1,200; OE 600
-    expect(a.goals?.year1).toEqual({ revenue: 144_000, grossProfitPct: 66.7, netProfitPct: -124.6 })
+    // Y1: rev 132,000 + 6,000 = 138,000; cogs 48,000; opex 3,000 + 240,000 + 28,800 + 2,400 = 274,200; OI 1,200; OE 600
+    expect(a.goals?.year1).toEqual({ revenue: 138_000, grossProfitPct: 65.2, netProfitPct: -133 })
     // Y2 fully covered → its own goals; other income/expense carried flat
     expect(a.goals?.year2).toEqual({ revenue: 156_000, grossProfitPct: 66.2, netProfitPct: -120.5 })
     expect(a.goals?.year3).toBeUndefined()
@@ -194,12 +199,33 @@ describe('goals, seasonality, provenance', () => {
       kind: 'xero_budget', tenantId: 'tenant-1', orgName: 'Acme Pty Ltd', budgetId: 'b-1', budgetName: 'FY27 Budget',
       budgetType: 'OVERALL', seededAt: '2026-09-05T02:00:00.000Z', teamCostBudgetTotal: 268_800, unclassifiedCount: 1,
     })
-    expect(a.seedSource?.coverage).toMatchObject({ firstPeriod: '2026-07', monthsInFY: 12, monthsFilled: 12 })
+    expect(a.seedSource?.coverage).toMatchObject({ firstPeriod: '2026-07', lastPeriod: '2028-09', monthsInFY: 12, monthsFilled: 0 })
     expect(a.team).toMatchObject({ existingTeam: [], plannedHires: [], superannuationPct: 12 })
     expect(a.capex.items).toEqual([])
     expect(a.opex.defaultIncreasePct).toBe(3)
     expect(a.fiscalYearStart).toBe('07')
     expect(a.revenue.lines[0].notes).toContain('FY27 Budget')
+  })
+})
+
+describe('a budget that does not extend to the whole year (window ends early)', () => {
+  const partial = [
+    line('id-200', '200', flat(Y1.slice(0, 6), 11_000)),   // Jul–Dec only, for EVERY line
+    line('id-400', '400', flat(Y1.slice(0, 6), 500)),
+  ]
+  const { assumptions: a, report } = seedForecastFromXeroBudget(input({
+    forecastDuration: 1,
+    budget: { budgetId: 'b', name: 'H1 budget', type: 'OVERALL', updatedAt: null, lines: partial },
+  }))
+
+  it('fills months OUTSIDE the window from last year\'s same month (else the budgeted average) and says so', () => {
+    const sales = a.revenue.lines[0]
+    expect(sales.year1Monthly?.['2026-12']).toBe(11_000)
+    expect(sales.year1Monthly?.['2027-01']).toBe(10_000)   // Jan 2026 actual
+    const adv = a.opex.lines[0]
+    expect(adv.budgetedMonthly?.['2027-03']).toBe(300)      // Mar 2026 actual
+    expect(report.coverage).toMatchObject({ firstPeriod: '2026-07', lastPeriod: '2026-12', monthsInFY: 6, monthsFilled: 12, monthsZeroed: 0 })
+    expect(report.warnings.some((w) => w.includes('outside the budget'))).toBe(true)
   })
 })
 

@@ -33,6 +33,7 @@ const convertMock = vi.fn((..._args: unknown[]) => [
 vi.mock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({ convertAssumptionsToPLLines: (...a: unknown[]) => convertMock(...a) }))
 const createClientMock = vi.fn()
 vi.mock('@/lib/supabase/server', () => ({ createRouteHandlerClient: (...a: unknown[]) => createClientMock(...a) }))
+vi.mock('@/lib/supabase/admin', () => ({ createServiceRoleClient: vi.fn(() => ({ from: vi.fn() })) }))
 
 import { POST } from '../route'
 import { BudgetsScopeMissingError } from '@/lib/xero/budgets'

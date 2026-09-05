@@ -25,6 +25,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import * as Sentry from '@sentry/nextjs'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
@@ -178,9 +179,16 @@ async function postHandler(request: Request) {
       return NextResponse.json({ error: 'Budget not found in Xero' }, { status: 404 })
     }
 
+    // Service-role reads for the reference data. Access to the business and the
+    // tenant has already been proven above; the chart-of-accounts RLS admits
+    // only the owner and the assigned coach, so a super-admin's own session
+    // reads an EMPTY catalog and every account falls back to the P&L mirror —
+    // accounts with no history then come back "unclassified" (Urban Road, 5 Sep
+    // 2026: Bank Revaluations, FX Gain/Loss, General Expenses).
+    const admin = createServiceRoleClient()
     const [catalog, actuals] = await Promise.all([
-      loadAccountsCatalog(supabase, tenantId),
-      loadAccountActuals(supabase, tenantId),
+      loadAccountsCatalog(admin, tenantId),
+      loadAccountActuals(admin, tenantId),
     ])
 
     // ── 7. Transform ─────────────────────────────────────────────────────────

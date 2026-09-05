@@ -2,11 +2,16 @@
 import { describe, it, expect, vi } from 'vitest'
 import { loadAccountsCatalog, loadAccountActuals } from '@/lib/services/xero-budget-seed-data'
 
+/** Chainable mock: from().select().eq().order().range(from, to) → one page of `rows`. */
 function supabaseReturning(rows: unknown, error: { message: string } | null = null) {
-  const eq = vi.fn(() => Promise.resolve({ data: rows, error }))
+  const all = Array.isArray(rows) ? rows : rows
+  const range = vi.fn((from: number, to: number) =>
+    Promise.resolve({ data: Array.isArray(all) ? all.slice(from, to + 1) : all, error }))
+  const order = vi.fn(() => ({ range }))
+  const eq = vi.fn(() => ({ order }))
   const select = vi.fn(() => ({ eq }))
   const from = vi.fn(() => ({ select }))
-  return { client: { from }, from, select, eq }
+  return { client: { from }, from, select, eq, order, range }
 }
 
 describe('loadAccountsCatalog', () => {
@@ -26,6 +31,16 @@ describe('loadAccountsCatalog', () => {
   it('throws on a read error instead of returning an empty catalog', async () => {
     const sb = supabaseReturning(null, { message: 'boom' })
     await expect(loadAccountsCatalog(sb.client, 't')).rejects.toThrow(/xero_accounts read failed: boom/)
+  })
+  it('reads in ordered pages so a PostgREST row cap cannot silently drop accounts', async () => {
+    const rows = Array.from({ length: 2345 }, (_, i) => ({
+      xero_account_id: `id-${i}`, account_code: String(1000 + i), account_name: `A${i}`, xero_type: 'EXPENSE', xero_status: 'ACTIVE',
+    }))
+    const sb = supabaseReturning(rows)
+    const out = await loadAccountsCatalog(sb.client, 'tenant-1')
+    expect(out).toHaveLength(2345)
+    expect(sb.order).toHaveBeenCalledWith('account_code', { ascending: true })
+    expect(sb.range.mock.calls.map((c) => c.slice(0, 2))).toEqual([[0, 999], [1000, 1999], [2000, 2999]])
   })
 })
 
