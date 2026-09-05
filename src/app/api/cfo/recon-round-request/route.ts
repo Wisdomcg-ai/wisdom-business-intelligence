@@ -20,14 +20,17 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
+// Next.js route files may only export route handlers/config, so these are
+// module-local. Keep in step with the page's PICKUP_WINDOW_MINUTES and the
+// watcher's RUN_TIMEOUT_MINUTES.
 /** A pending request older than this was never picked up — the watcher (or
  *  the next reader) treats it as expired rather than silently eternal. */
-export const PICKUP_WINDOW_MINUTES = 30
+const PICKUP_WINDOW_MINUTES = 30
 
 /** A 'running' row this old is a corpse (the watcher kills real runs at 40
  *  min) — retired server-side so a dead Mac can never wedge the queue
  *  against the one-live unique index. */
-export const SERVER_RUNNING_TIMEOUT_MINUTES = 60
+const SERVER_RUNNING_TIMEOUT_MINUTES = 60
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
