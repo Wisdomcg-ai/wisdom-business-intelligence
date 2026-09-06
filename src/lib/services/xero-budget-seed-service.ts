@@ -96,6 +96,14 @@ export interface XeroBudgetSeedReport {
   /** Team-cost accounts imported as budgeted OpEx (Step 4 supersedes them once payroll is imported). */
   teamCostBudget: { total: number; byKind: Record<'payroll' | 'contractor' | 'unmodelled', number>; lines: SeedLineNote[] }
   unclassified: SeedLineNote[]
+  /**
+   * Prior-year OpEx accounts the budget does not mention, imported as explicit
+   * $0 "As budgeted" lines. The wizard rebuilds its OpEx list from last year's
+   * accounts and MERGES the saved lines over it; without an explicit $0 line
+   * these accounts would come back valued at last year's spend (Urban Road,
+   * 7 Sep 2026: Internal Moving Costs, Bad Debts, Trade Shows… ~$90k).
+   */
+  zeroBudgetLines: SeedLineNote[]
   coverage: {
     firstPeriod: string | null
     lastPeriod: string | null
@@ -346,6 +354,35 @@ export function seedForecastFromXeroBudget(input: XeroBudgetSeedInput): XeroBudg
   }
   void teamCostAllYears
 
+  // ── 3b. Prior-year OpEx accounts the budget is silent about → explicit $0 ──
+  // The budget is the complete statement of what the client plans to spend.
+  // Any operating-expense account that had activity last year but no budget
+  // line is budgeted at zero, and the wizard needs that as a saved line —
+  // otherwise its Xero-seeded OpEx list re-introduces the account at last
+  // year's spend. Revenue and COGS are replaced (not merged) on open, so only
+  // OpEx needs this.
+  const budgetedCodes = new Set(resolved.map((l) => l.accountCode))
+  const zeroBudgetLines: SeedLineNote[] = []
+  for (const act of input.actuals ?? []) {
+    if (bucketFromStoredType(act.accountType) !== 'opex') continue
+    if (budgetedCodes.has(act.accountCode)) continue
+    const priorTotal = sumOver(act.monthly, priorKeys)
+    const zeros: Record<string, number> = {}
+    for (const k of y1Keys) zeros[k] = completed.has(k) ? round2(act.monthly[k] ?? 0) : 0
+    if (yearsFullyCovered.includes(2)) for (const k of y2Keys) zeros[k] = 0
+    if (yearsFullyCovered.includes(3)) for (const k of y3Keys) zeros[k] = 0
+    opexLines.push({
+      accountId: act.accountCode,
+      accountName: act.accountName,
+      accountCode: act.accountCode,
+      priorYearTotal: priorTotal,
+      costBehavior: 'budgeted',
+      budgetedMonthly: zeros,
+      notes: `Not in Xero budget "${input.budget.name}" — budgeted at $0`,
+    })
+    zeroBudgetLines.push({ accountCode: act.accountCode, accountName: act.accountName, total: priorTotal })
+  }
+
   // ── 4. Totals, COGS %, goals, seasonality ────────────────────────────────
   const totalFor = (lines: Array<{ year1Monthly?: Record<string, number>; year2Monthly?: Record<string, number>; year3Monthly?: Record<string, number> }>, year: 1 | 2 | 3) =>
     round2(lines.reduce((s, l) => {
@@ -386,6 +423,7 @@ export function seedForecastFromXeroBudget(input: XeroBudgetSeedInput): XeroBudg
   if (unclassified.length > 0) warnings.push(`${unclassified.length} budgeted account(s) could not be categorised and were left out — see the list in Step 5.`)
   if (monthsFilled > 0) warnings.push(`${monthsFilled} month-cell(s) fall outside the budget's window and were filled from last year's actuals or the budgeted average.`)
   if (teamCost.lines.length > 0) warnings.push(`${teamCost.lines.length} wages/super account(s) came in from the budget; Step 4 payroll replaces them once staff are imported.`)
+  if (zeroBudgetLines.length > 0) warnings.push(`${zeroBudgetLines.length} expense account(s) had spend last year but are not in the budget — imported at $0 so they do not fall back to last year's figures.`)
 
   // ── 5. Assemble ──────────────────────────────────────────────────────────
   const coverage = {
@@ -442,12 +480,13 @@ export function seedForecastFromXeroBudget(input: XeroBudgetSeedInput): XeroBudg
       counts: {
         revenue: revenueLines.length,
         cogs: cogsLines.length,
-        opex: opexLines.length,
+        opex: opexLines.length - zeroBudgetLines.length,
         otherIncome: resolved.filter((l) => l.bucket === 'other_income').length,
         otherExpense: resolved.filter((l) => l.bucket === 'other_expense').length,
       },
       teamCostBudget: teamCost,
       unclassified,
+      zeroBudgetLines,
       coverage,
       goals: goals.year1,
       warnings,

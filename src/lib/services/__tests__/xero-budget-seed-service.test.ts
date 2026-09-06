@@ -41,6 +41,10 @@ const ACTUALS: AccountActuals[] = [
   { accountCode: '200', accountName: 'Sales', accountType: 'revenue', monthly: flat(PRIOR, 10_000) },
   { accountCode: '400', accountName: 'Advertising', accountType: 'opex', monthly: flat(PRIOR, 300) },
   { accountCode: '999', accountName: 'Cleaning', accountType: 'opex', monthly: flat(PRIOR, 180) },
+  // Spent last year, NOT in the budget → must come through as an explicit $0 line.
+  { accountCode: '66200', accountName: 'Internal Moving Costs', accountType: 'opex', monthly: flat(PRIOR, 2_545) },
+  // Prior-year COGS account not in the budget → nothing (COGS is replaced, not merged, on open).
+  { accountCode: '51800', accountName: 'Commissions Agents', accountType: 'cogs', monthly: flat(PRIOR, 100) },
 ]
 
 const line = (accountId: string | null, accountCode: string, months: Record<string, number>): XeroBudgetLine =>
@@ -81,7 +85,7 @@ describe('classification', () => {
   it('places every budgeted account by catalog type, falling back to the synced P&L type', () => {
     expect(a.revenue.lines.map((l) => l.accountId).sort()).toEqual(['200', '260'])
     expect(a.cogs.lines.map((l) => l.accountId)).toEqual(['310'])
-    expect(a.opex.lines.map((l) => l.accountId).sort()).toEqual(['400', '477', '478', '999'])
+    expect(a.opex.lines.filter((l) => !l.notes?.includes('budgeted at $0')).map((l) => l.accountId).sort()).toEqual(['400', '477', '478', '999'])
     expect(a.opex.lines.find((l) => l.accountId === '999')?.accountName).toBe('Cleaning')
     expect(a.xeroOtherIncome).toBe(1_200)
     expect(a.xeroOtherExpense).toBe(600)
@@ -95,6 +99,21 @@ describe('classification', () => {
 
   it('flags an archived account rather than skipping it', () => {
     expect(report.warnings.some((w) => w.includes('Interest Expense') && w.includes('archived'))).toBe(true)
+  })
+
+  it('imports prior-year OpEx accounts the budget omits as explicit $0 lines (never last year\'s spend)', () => {
+    const moving = a.opex.lines.find((l) => l.accountId === '66200')!
+    expect(moving).toBeDefined()
+    expect(moving.costBehavior).toBe('budgeted')
+    expect(moving.priorYearTotal).toBe(30_540)
+    expect(Y1.every((k) => moving.budgetedMonthly?.[k] === 0)).toBe(true)
+    expect(Y2.every((k) => moving.budgetedMonthly?.[k] === 0)).toBe(true) // Y2 is spanned by the window
+    expect(moving.notes).toContain('budgeted at $0')
+    expect(report.zeroBudgetLines).toEqual([{ accountCode: '66200', accountName: 'Internal Moving Costs', total: 30_540 }])
+    expect(report.counts.opex).toBe(4)                       // budget-derived lines only
+    expect(report.warnings.some((w) => w.includes('not in the budget'))).toBe(true)
+    // COGS is replaced on open, so a prior-year-only COGS account is NOT added.
+    expect(a.cogs.lines.some((l) => l.accountId === '51800')).toBe(false)
   })
 
   it('uses the account CODE as accountId so stored lines carry the Xero code', () => {
