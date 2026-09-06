@@ -213,14 +213,42 @@ async function enumerateRoster() {
   return { roster, rosterWarning }
 }
 
-function runnerPrompt(roster) {
-  const rosterLines = roster.map(r =>
-    `- ${r.business} [business_id ${r.business_id}] — org "${r.tenant_name}" [tenant_id ${r.tenant_id}]` +
-    (r.short_code ? ` — shortcode ${r.short_code}` : ' — NO shortcode: use Xero\'s org switcher by name') +
-    (r.badge_only
-      ? ' — BADGE-ONLY client: no WisdomBI connection exists, so this name is the WisdomBI business name and the Xero header may differ slightly (e.g. a "Pty Ltd" suffix) — treat a close name match as the correct org'
-      : '')
-  ).join('\n')
+/** Account names from each tenant's LATEST capture — injected into the
+ *  prompt so runs keep names stable. Xero labels the SAME account differently
+ *  across screens (panel nickname vs Tasks list vs a PayPal login email —
+ *  Urban Road's dead feed appeared as three different names in three runs),
+ *  and name drift silently breaks recon_ignored_accounts matching. */
+async function priorAccountNames(roster) {
+  const byTenant = new Map()
+  const { data, error } = await supabase
+    .from('reconciliation_dashboard_captures')
+    .select('tenant_id, captured_at, accounts')
+    .in('tenant_id', roster.map(r => r.tenant_id))
+    .order('captured_at', { ascending: false })
+    .limit(400)
+  if (error) {
+    // Advisory data only — a failed read costs name stability, never the run.
+    console.error(`[watcher] prior-names read failed (continuing without): ${error.message}`)
+    return byTenant
+  }
+  for (const row of data ?? []) {
+    if (byTenant.has(row.tenant_id)) continue // rows are newest-first
+    const names = (row.accounts ?? []).map(a => a?.name).filter(n => typeof n === 'string' && n)
+    if (names.length > 0) byTenant.set(row.tenant_id, names)
+  }
+  return byTenant
+}
+
+function runnerPrompt(roster, priorNamesByTenant = new Map()) {
+  const rosterLines = roster.map(r => {
+    const prior = priorNamesByTenant.get(r.tenant_id)
+    return `- ${r.business} [business_id ${r.business_id}] — org "${r.tenant_name}" [tenant_id ${r.tenant_id}]` +
+      (r.short_code ? ` — shortcode ${r.short_code}` : ' — NO shortcode: use Xero\'s org switcher by name') +
+      (r.badge_only
+        ? ' — BADGE-ONLY client: no WisdomBI connection exists, so this name is the WisdomBI business name and the Xero header may differ slightly (e.g. a "Pty Ltd" suffix) — treat a close name match as the correct org'
+        : '') +
+      (prior ? ` — account names used by the last capture: ${prior.map(n => `"${n}"`).join(', ')}` : '')
+  }).join('\n')
   return `You are running UNATTENDED on Matt's Mac to refresh the CFO board's Xero badge counts.
 Run the full Xero recon round by following .claude/skills/xero-recon-round/SKILL.md (badge walk over
 every org, then the date pass, posting captures WITH per-account months histograms from a logged-in
@@ -231,6 +259,11 @@ ${rosterLines}
 2. HARD RULES: never log in anywhere and never touch credentials. If Xero or WisdomBI shows a login
    page, STOP and report it. A badge you could not read is a SKIPPED org, never a 0. Never invent a
    month bucket to make a histogram foot — omit months for that account and say so in notes.
+   NAME STABILITY: Xero shows the SAME account under different labels on different screens (panel
+   nickname, Tasks list, a PayPal login email). When an account is clearly the same one as an entry
+   in that org's "account names used by the last capture" list, POST it under that prior spelling
+   EXACTLY — ignore-lists and merges match on the name. Only use a new name when it is genuinely a
+   different or new account (say so in notes); when unsure, keep the name you see and note the doubt.
 3. POST INCREMENTALLY — this is mandatory. The moment you finish a business's badge read, POST its
    capture (without months). After you finish that business's date pass, POST it again with months.
    Never hold captures back to post in one batch at the end: you run under a hard ${RUN_TIMEOUT_MINUTES}-minute
@@ -350,6 +383,7 @@ async function tick() {
   // A misconfigured badge-only client must reach the stamped note, not just
   // the log — the board's result_note is what Matt actually sees.
   const withWarning = (note) => (rosterWarning ? `${note} — ${rosterWarning}` : note).slice(0, 990)
+  const priorNames = await priorAccountNames(roster)
   log(`claimed request ${pending.id} (source: ${pending.source}) — launching the round over ${roster.length} orgs`)
 
   const claimStartIso = new Date().toISOString()
@@ -363,7 +397,7 @@ async function tick() {
   const child = spawn(
     CLAUDE_BIN,
     [
-      '-p', runnerPrompt(roster),
+      '-p', runnerPrompt(roster, priorNames),
       // --chrome connects the Claude-in-Chrome extension to this headless
       // session (verified 5 Sep 2026) — without it the browser MCP is absent.
       '--chrome',
