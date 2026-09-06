@@ -774,6 +774,14 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
 
     // Classify each line based on its name and prior year data
     for (const line of linesToClassify) {
+      // An "As budgeted" line carries explicit per-month amounts (a Xero budget
+      // seed, or typed in). Name-based classification must never overwrite it —
+      // on the first Urban Road seed (7 Sep 2026) it re-typed every budgeted
+      // line from prior-year actuals the moment Step 6 opened.
+      if (line.costBehavior === 'budgeted') {
+        classifiedLinesRef.current.add(line.id);
+        continue;
+      }
       const result = classifyExpense(line.name, line.priorYearMonthly, industry);
 
       // Skip team costs - they shouldn't be in OpEx

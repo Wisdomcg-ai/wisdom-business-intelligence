@@ -128,6 +128,25 @@ function lastUpdate(actions: WizardActions): { id: string; updates: Partial<OpEx
   return { id, updates };
 }
 
+describe('Step 5 — As budgeted survives the first-visit auto-classification', () => {
+  it('does not re-type a budgeted line whose NAME would classify as variable (or anything else)', () => {
+    // "Marketing Digital Ad Spend" name-classifies as % of revenue; the seed set it "As budgeted".
+    const adSpend: OpExLine = { ...BUDGETED_LINE, id: 'opex-ads', name: 'Marketing Digital Ad Spend', accountCode: '64600' };
+    const rent: OpExLine = { ...BUDGETED_LINE, id: 'opex-rent-b', name: 'Rent - Office', accountCode: '66000' };
+    const { actions } = renderStep5([adSpend, rent]);
+    const calls = (actions.updateOpExLine as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const retyped = calls.filter(([, u]) => (u as Partial<OpExLine>).costBehavior !== undefined);
+    expect(retyped).toHaveLength(0);
+  });
+
+  it('still auto-classifies a plain Xero-seeded line (the existing behaviour)', () => {
+    const fresh: OpExLine = { id: 'opex-ads-2', name: 'Marketing Digital Ad Spend', priorYearAnnual: 289_956, costBehavior: 'fixed', monthlyAmount: 24_163 };
+    const { actions } = renderStep5([fresh]);
+    const calls = (actions.updateOpExLine as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.some(([id, u]) => id === 'opex-ads-2' && (u as Partial<OpExLine>).costBehavior === 'variable')).toBe(true);
+  });
+});
+
 describe('Step 5 — As budgeted', () => {
   it('offers the behaviour and shows the budgeted year total', () => {
     renderStep5([BUDGETED_LINE]);
