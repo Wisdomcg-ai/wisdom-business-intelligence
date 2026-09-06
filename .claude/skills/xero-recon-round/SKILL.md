@@ -97,6 +97,13 @@ routine feeds the badge side via `reconciliation_dashboard_captures`
    retry blindly (401 means Matt's WisdomBI session expired — ask him to log
    in there too).
 
+   **Keep account names stable across rounds.** Xero shows the SAME account
+   under different labels on different screens (panel nickname, Tasks list,
+   a PayPal login email — Urban Road's dead feed appeared as three names in
+   three runs, silently breaking `recon_ignored_accounts`). Before posting,
+   check the business's latest capture and reuse its exact spellings for the
+   same accounts; a new name is only for a genuinely new account.
+
    **Post incrementally, business by business** — badge read → POST (no
    months yet) → date pass → POST again with months → next business.
    Captures are append-only and latest-per-tenant wins, so re-posting is
