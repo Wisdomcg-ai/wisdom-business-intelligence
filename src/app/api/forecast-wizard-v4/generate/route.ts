@@ -1,6 +1,6 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
+import { convertAssumptionsToPLLines, findRetiredExistingLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 import { applyDraftPublishGuard } from '@/lib/forecast/draft-publish-guard'
@@ -141,8 +141,9 @@ async function postHandler(request: Request) {
     // choked on. Draft saves stay allowed — a mid-wizard draft is
     // legitimately incomplete.
     let generatedLines: ReturnType<typeof convertAssumptionsToPLLines> | null = null
+    // Hoisted: the post-RPC retire step needs the rows the converter was given.
+    let existingPLLines: Parameters<typeof convertAssumptionsToPLLines>[0]['existingLines'] = []
     if (assumptions && !isDraft) {
-      let existingPLLines: Parameters<typeof convertAssumptionsToPLLines>[0]['existingLines'] = []
       if (forecastId && !createNew) {
         const { data } = await supabase
           .from('forecast_pl_lines')
@@ -338,6 +339,7 @@ async function postHandler(request: Request) {
     // derived only on a final Generate; the D-18 freshness invariant is
     // log-only by default, and Generate recomputes computed_at.
     let plLinesGenerated = 0
+    let linesRetired = 0
     let computedAt: string | null = null
     if (assumptions && generatedLines && !isDraft) {
       // Lines were derived above (pre-write emptiness gate). For the update
@@ -392,6 +394,43 @@ async function postHandler(request: Request) {
       if (result) {
         plLinesGenerated = result.lines_count ?? generatedLines.length
         computedAt = result.computed_at ?? null
+      }
+
+      // ── Retire superseded rows ─────────────────────────────────────────────
+      //
+      // The RPC upserts by (forecast_id, account_code) and never deletes (the
+      // full-replace flag is deliberately off — D-44.1-06), so a derived row the
+      // converter stopped emitting stays in the table at its old value. Urban
+      // Road's first Generate after a Xero-budget seed (7 Sep 2026) kept the
+      // seed's wages/super/contractor and IT-software rows alongside the
+      // SYS-TEAM-* and SYS-SUBSCRIPTIONS lines that replaced them: the wizard
+      // showed NP $536k, the stored P&L read −$454k. Delete exactly the rows the
+      // converter's retire predicate superseded — never "everything absent from
+      // the payload". Manual rows are never touched (the predicate excludes them;
+      // the filter below belts-and-braces it).
+      const retired = findRetiredExistingLines(assumptions, existingPLLines, generatedLines)
+      if (retired.length > 0) {
+        const retiredIds = retired.map(r => r.id as string)
+        const { error: retireError } = await supabase
+          .from('forecast_pl_lines')
+          .delete()
+          .eq('forecast_id', resultForecastId)
+          .eq('is_manual', false)
+          .in('id', retiredIds)
+        if (retireError) {
+          // The publish itself succeeded; the stale rows are the pre-existing
+          // state, so report rather than fail — but never silently.
+          Sentry.captureException(retireError, {
+            tags: { route: 'forecast-wizard-v4/generate', invariant: 'forecast_pl_lines_retire_failed' },
+            extra: {
+              context: '[wizard-v4/generate] Superseded rows were not deleted after materialize',
+              forecastId: resultForecastId,
+              retired: retired.map(r => ({ id: r.id, code: r.account_code, name: r.account_name })),
+            },
+          } as any)
+        } else {
+          linesRetired = retiredIds.length
+        }
       }
 
       // ── Summary parity (WATCH MODE) ────────────────────────────────────────
@@ -523,6 +562,7 @@ async function postHandler(request: Request) {
       success: true,
       forecastId: resultForecastId,
       plLinesGenerated,
+      linesRetired,
       computed_at: computedAt,
     })
   } catch (error) {

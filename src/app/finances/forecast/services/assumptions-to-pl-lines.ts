@@ -9,6 +9,7 @@ import type { PLLine } from '../types'
 import { calendarMonthFromFiscalIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { getPlannedSpendPLBreakdown } from '../components/wizard-v4/types'
 import { projectBudgetedMonths } from '@/lib/forecast/budgeted-line'
+import { isCoveredByTeamStep, type TeamCoverage } from '../components/wizard-v4/utils/opex-classifier'
 import type {
   ForecastAssumptions,
   RevenueLineAssumption,
@@ -1031,6 +1032,116 @@ function convertParityBuckets(
 }
 
 // ---------------------------------------------------------------------------
+// Retiring superseded rows
+// ---------------------------------------------------------------------------
+
+/**
+ * What Step 4 generates, read from the SAVED assumptions. Server-side twin of
+ * the wizard's `deriveTeamCoverage` (which reads live wizard state): a member
+ * whose employmentType is not 'contractor' is an employee.
+ */
+export function teamCoverageFromAssumptions(
+  assumptions: Pick<ForecastAssumptions, 'team'> | null | undefined,
+): TeamCoverage {
+  const members: { employmentType?: string }[] = [
+    ...(assumptions?.team?.existingTeam ?? []),
+    ...(assumptions?.team?.plannedHires ?? []),
+  ]
+  return {
+    employees: members.some(m => m.employmentType !== 'contractor'),
+    contractors: members.some(m => m.employmentType === 'contractor'),
+  }
+}
+
+/**
+ * Which EXISTING derived rows the current payload supersedes.
+ *
+ * The RPC upsert only touches accounts present in the payload, so a stale row
+ * that is merely not re-emitted persists forever at its old value — every
+ * consumer summing forecast_pl_lines reads it on top of its replacement. The
+ * converter uses this predicate to keep such rows OUT of the pass-through, and
+ * the routes use findRetiredExistingLines to DELETE the same rows.
+ *
+ * Rules (is_manual rows are ALWAYS preserved — a coach override is intentional):
+ *   1. Code-less twins of generated lines (21 Aug 2026 audit, XVAL-1). Before
+ *      PR #350 team/depreciation lines carried a NULL account_code; NULLs never
+ *      match the (forecast_id, account_code) upsert key, so those rows could not
+ *      be updated OR replaced by the SYS-coded lines that superseded them.
+ *      Digital Bond's live FY2027 forecast carried $244,999.92 of wages +
+ *      $29,400 of super the wizard never planned this way.
+ *   2. RETIRED_LINE_NAMES — the phantom statutory on-costs PR-A removed (never
+ *      in the wizard summary; ~6.35% of payroll). Synthetic rows only: real
+ *      Xero accounts named "Payroll Tax" / "WorkCover Insurance" exist in client
+ *      charts (Just Digital Signage: opex-4 $279,850, opex-9 $91,132) and MUST
+ *      survive — the opex-classifier deliberately keeps them in OpEx.
+ *   3. Subscription-covered OpEx twins — their spend is carried by the
+ *      'Subscriptions (budgeted)' line.
+ *   4. Team-covered OpEx twins (7 Sep 2026, Urban Road budget seed) — a real
+ *      Xero wages / super / contractor account whose cost Step 4 now generates
+ *      (SYS-TEAM-WAGES is in the payload and the saved team actually holds the
+ *      matching kind of member). The wizard's export drops these lines via
+ *      shouldExcludeFromOpEx, so the stored P&L must drop them too; the first
+ *      Generate after a Xero-budget seed otherwise double-counts the whole
+ *      wages bill ($990,493 on Urban Road, NP +$536k on screen vs −$454k stored).
+ *      Statutory on-costs classify as 'unmodelled' and are never covered.
+ */
+export function buildRetirePredicate(
+  assumptions: Pick<ForecastAssumptions, 'team' | 'subscriptions'> | null | undefined,
+  generatedLines: PLLine[],
+): (line: PLLine) => boolean {
+  const coveredSubscriptionCodes = new Set(
+    (assumptions?.subscriptions?.vendors ?? [])
+      .flatMap(v => v.accountCodes ?? [])
+      .map(c => String(c).trim())
+      .filter(Boolean),
+  )
+  const generatedKeys = new Set(
+    generatedLines.map(
+      gl => `${(gl.category || '').toLowerCase()}|${gl.account_name.trim().toLowerCase()}`,
+    ),
+  )
+  const coverage = teamCoverageFromAssumptions(assumptions)
+  const teamReplacementPresent = generatedLines.some(gl => gl.account_code === SYS_CODES.wages)
+
+  return (line: PLLine): boolean => {
+    if (line.is_manual) return false
+    if (!line.account_code) {
+      const key = `${(line.category || '').toLowerCase()}|${line.account_name.trim().toLowerCase()}`
+      if (generatedKeys.has(key)) return true
+    }
+    const isSynthetic = !line.account_code || line.account_code.startsWith('SYS-')
+    if (isSynthetic && RETIRED_LINE_NAMES.has(line.account_name.trim().toLowerCase())) return true
+    if (line.account_code && coveredSubscriptionCodes.has(line.account_code)) return true
+    if (
+      teamReplacementPresent &&
+      !isSynthetic &&
+      (line.category || 'Operating Expenses') === 'Operating Expenses' &&
+      isCoveredByTeamStep(line.account_name, coverage)
+    ) {
+      return true
+    }
+    return false
+  }
+}
+
+/**
+ * The existing rows a Generate/recompute must DELETE after the RPC: derived
+ * (non-manual) rows the converter did not carry into `resultLines` because the
+ * retire predicate superseded them. Precise by construction — a row that is
+ * simply absent from the payload (e.g. a sub-converter threw, D-44.1-06) is
+ * never returned, so no category can vanish through this path.
+ */
+export function findRetiredExistingLines(
+  assumptions: Pick<ForecastAssumptions, 'team' | 'subscriptions'> | null | undefined,
+  existingLines: PLLine[],
+  resultLines: PLLine[],
+): PLLine[] {
+  const carried = new Set(resultLines.map(l => l.id).filter((id): id is string => !!id))
+  const isRetired = buildRetirePredicate(assumptions, resultLines)
+  return existingLines.filter(el => !!el.id && !carried.has(el.id) && isRetired(el))
+}
+
+// ---------------------------------------------------------------------------
 // Main converter
 // ---------------------------------------------------------------------------
 
@@ -1127,55 +1238,11 @@ export function convertAssumptionsToPLLines(ctx: ConvertContext): PLLine[] {
   const merged: PLLine[] = [...generatedLines]
 
   // Lines the wizard NO LONGER generates must not be resurrected by the
-  // pass-through below — the RPC upsert only touches accounts present in the
-  // payload, so a re-emitted stale row would persist forever at its old
-  // value. Two cases:
-  //   1. RETIRED_LINE_NAMES — the phantom statutory on-costs PR-A removed
-  //      (they were never in the wizard summary; ~6.35% of payroll).
-  //   2. Subscription-covered OpEx twins — their spend is now carried by the
-  //      'Subscriptions (budgeted)' line, so keeping the original Xero row
-  //      would double-count it.
-  // is_manual rows are ALWAYS preserved: a coach override is intentional.
-  const coveredSubscriptionCodes = new Set(
-    (assumptions.subscriptions?.vendors ?? [])
-      .flatMap(v => v.accountCodes ?? [])
-      .map(c => String(c).trim())
-      .filter(Boolean),
-  )
-  // 21 Aug 2026 audit (XVAL-1) — code-less twins of generated lines.
-  //
-  // Before PR #350 the converter emitted team/depreciation lines with a NULL
-  // account_code. NULLs never match in the (forecast_id, account_code) upsert
-  // key, so those rows could not be updated OR replaced by the SYS-coded lines
-  // that superseded them: they simply sat alongside forever. Digital Bond's
-  // live FY2027 forecast carried $244,999.92 of wages + $29,400 of super that
-  // the wizard never planned, on top of the $175,735 it did — every consumer
-  // summing forecast_pl_lines read the doubled figure.
-  //
-  // A non-manual, code-less line whose category+name the current payload also
-  // generates is by definition superseded, so it is retired here.
-  const generatedKeys = new Set(
-    generatedLines.map(
-      gl => `${(gl.category || '').toLowerCase()}|${gl.account_name.trim().toLowerCase()}`,
-    ),
-  )
-  const isRetired = (line: PLLine): boolean => {
-    if (line.is_manual) return false
-    if (!line.account_code) {
-      const key = `${(line.category || '').toLowerCase()}|${line.account_name.trim().toLowerCase()}`
-      if (generatedKeys.has(key)) return true
-    }
-    // Retired-name matching applies ONLY to rows this converter itself
-    // generated — historically with a NULL account_code, now with a SYS-*
-    // code. Real Xero accounts genuinely named "Payroll Tax" / "WorkCover
-    // Insurance" exist in client charts (Just Digital Signage carries both:
-    // opex-4 $279,850 and opex-9 $91,132) and MUST survive; the
-    // opex-classifier deliberately keeps them in OpEx.
-    const isSynthetic = !line.account_code || line.account_code.startsWith('SYS-')
-    if (isSynthetic && RETIRED_LINE_NAMES.has(line.account_name.trim().toLowerCase())) return true
-    if (line.account_code && coveredSubscriptionCodes.has(line.account_code)) return true
-    return false
-  }
+  // pass-through below. See buildRetirePredicate for the rules; the caller
+  // deletes the same rows via findRetiredExistingLines, because not re-emitting
+  // a row does NOT remove it — the RPC upsert only touches accounts present in
+  // the payload.
+  const isRetired = buildRetirePredicate(assumptions, generatedLines)
 
   for (const el of existingLines) {
     if (el.id && !matchedExistingIds.has(el.id) && !isRetired(el)) {
