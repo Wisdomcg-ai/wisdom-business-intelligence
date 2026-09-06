@@ -1,60 +1,55 @@
 #!/usr/bin/env node
 /**
- * Recon-round watcher — the Mac side of the CFO board's "Update from Xero"
- * button (and the weekday-morning schedule).
+ * Recon-round watcher — the runner-machine side of the CFO board's "Update
+ * from Xero" button. Cross-platform (macOS launchd / Windows Task Scheduler)
+ * and standalone: no npm dependencies, no repo secrets.
  *
- * The Xero badge counts can only be captured by Claude driving Matt's
- * logged-in Chrome (no API exposes the badge — Xero, 2 Sep 2026), so the web
- * app can only QUEUE a run (recon_round_requests). This script, invoked by
- * launchd, does the local half:
+ *   --tick               claim a pending request from the server and run the
+ *                        round (scheduler calls this every 60s; exits
+ *                        immediately when nothing to do)
+ *   --request [source]   queue a request manually
  *
- *   --tick               claim a pending request and run the round (launchd,
- *                        every 60s; exits immediately when nothing to do)
- *   --request [source]   queue a request (the 7am weekday launchd job uses
- *                        source 'schedule'); dedupes against live requests
+ * Configuration lives in ~/.wisdombi/recon-runner.env — BESIDE the sandbox
+ * dir, never inside the child's cwd (installer writes the template, a human
+ * fills the token — secrets never pass through Claude):
+ *   RECON_WATCHER_TOKEN=...        required — must match the Vercel env var
+ *   WISDOMBI_URL=https://www.wisdombi.ai   optional override
+ *   CLAUDE_BIN=...                 optional path to the claude CLI
  *
- * Install both launchd jobs with scripts/install-recon-watcher.sh.
+ * All queue/roster/verification logic lives SERVER-side behind
+ * /api/cfo/recon-round-worker (token-gated): this machine holds no database
+ * key, and a 'done' outcome is verified by the server against the captures
+ * actually written — a runner cannot attest its own success.
  *
- * Security model for the UNATTENDED child run (adversarial review, 5 Sep):
- * - The child gets NO database access. The watcher pre-enumerates the org
- *   roster and injects it into the prompt; the child reports its outcome by
- *   printing a RECON_RESULT line on stdout, which the watcher parses and
- *   stamps — and a 'done' claim is mechanically cross-checked against the
- *   captures actually written before it is believed.
- * - The child runs in ~/.wisdombi/recon-runner (built by the installer):
- *   only the skills are reachable (symlink), no .env.local, and the runner's
- *   own settings deny Bash/Write/env-file reads. Allowed tools are an
- *   explicit enumeration, not server-wide grants.
- * - A wall-clock watchdog SIGTERM→SIGKILLs the child at the timeout (Node's
- *   spawn timeout is monotonic and freezes during Mac sleep), so the tick
- *   always exits, launchd keeps ticking, and stale rows get retired.
- * - The child NEVER logs in and never sees credentials; an expired Xero
- *   session becomes a 'failed' run with an honest note, not a fake capture.
+ * The unattended child Claude (spawned per run) keeps the same security
+ * model as always: sandboxed runner dir, explicit tool list, no shell, no
+ * database, no token — it reports via a RECON_RESULT stdout line. It NEVER
+ * logs in and never sees credentials; an expired Xero session becomes a
+ * 'failed' run with an honest note, not a fake capture.
  */
 
-import { createClient } from '@supabase/supabase-js'
 import { spawn } from 'node:child_process'
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const RUNNER_DIR = join(process.env.HOME, '.wisdombi', 'recon-runner')
-const CLAUDE_BIN = process.env.CLAUDE_BIN || `${process.env.HOME}/.local/bin/claude`
-/** Must match PICKUP_WINDOW_MINUTES on the request route. */
-const PICKUP_WINDOW_MINUTES = 30
-/** Badge walk + date pass over 13 orgs took a fresh unattended session ~40+
- *  min on 5 Sep (killed mid-date-pass) — 60 gives honest headroom. The
- *  board's RUNNING_TIMEOUT_MINUTES (65) and the route's server janitor (75)
- *  must stay above this. */
+const IS_WINDOWS = process.platform === 'win32'
+const HOME = process.env.HOME || process.env.USERPROFILE
+const RUNNER_DIR = join(HOME, '.wisdombi', 'recon-runner')
+/** A full round over ~12 orgs runs 30-45 min. The server's pickup window
+ *  (30) and janitor (60/75) and the board's liveness bounds pair with this. */
 const RUN_TIMEOUT_MINUTES = 60
 
-function loadEnvLocal() {
+// Runner config lives BESIDE the sandbox dir, not inside it — the child's
+// cwd must never contain the token.
+const ENV_PATH = join(HOME, '.wisdombi', 'recon-runner.env')
+
+function loadRunnerEnv() {
+  const envPath = ENV_PATH
   let raw
   try {
-    raw = readFileSync(join(REPO_ROOT, '.env.local'), 'utf8')
+    raw = readFileSync(envPath, 'utf8')
   } catch {
-    console.error(`[watcher] cannot read ${join(REPO_ROOT, '.env.local')} — the watcher needs it for NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SECRET_KEY`)
+    console.error(`[watcher] cannot read ${envPath} — run the installer, then put RECON_WATCHER_TOKEN in it`)
     process.exit(1)
   }
   const env = {}
@@ -65,183 +60,47 @@ function loadEnvLocal() {
   return env
 }
 
-const env = loadEnvLocal()
-if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SECRET_KEY) {
-  console.error('[watcher] .env.local is missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SECRET_KEY')
+const cfg = loadRunnerEnv()
+if (!cfg.RECON_WATCHER_TOKEN) {
+  console.error(`[watcher] RECON_WATCHER_TOKEN missing from ${ENV_PATH}`)
   process.exit(1)
 }
-const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SECRET_KEY)
+const BASE_URL = (cfg.WISDOMBI_URL || 'https://www.wisdombi.ai').replace(/\/$/, '')
+
+function defaultClaudeBin() {
+  if (cfg.CLAUDE_BIN) return cfg.CLAUDE_BIN
+  const candidates = IS_WINDOWS
+    ? [join(HOME, '.local', 'bin', 'claude.exe'), join(HOME, 'AppData', 'Roaming', 'npm', 'claude.cmd'), 'claude.cmd']
+    : [join(HOME, '.local', 'bin', 'claude'), '/opt/homebrew/bin/claude', '/usr/local/bin/claude']
+  for (const c of candidates) {
+    if (c.includes('/') || c.includes('\\')) { if (existsSync(c)) return c } else return c
+  }
+  return candidates[candidates.length - 1]
+}
+const CLAUDE_BIN = defaultClaudeBin()
 
 const log = (msg) => console.log(`[watcher ${new Date().toISOString()}] ${msg}`)
-const logWriteError = (label, error) => {
-  // Janitor/stamp writes are the recovery path — a silent failure here means
-  // rows rot forever. Message only; never key material.
-  if (error) console.error(`[watcher] ${label} WRITE FAILED: ${error.message}`)
+
+async function worker(op, extra = {}) {
+  const res = await fetch(`${BASE_URL}/api/cfo/recon-round-worker`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${cfg.RECON_WATCHER_TOKEN}`,
+    },
+    body: JSON.stringify({ op, ...extra }),
+  })
+  const body = await res.json().catch(() => null)
+  if (!res.ok) {
+    const detail = body?.error ?? `HTTP ${res.status}`
+    throw new Error(`${op} failed: ${detail}${res.status === 401 ? ' — is RECON_WATCHER_TOKEN correct (and set in Vercel)?' : ''}`)
+  }
+  return body
 }
 
-async function requestRun(source) {
-  // Mirror the route's dedupe: 'running' at any age, 'pending' only inside
-  // the pickup window. The one-live unique index backstops races.
-  const windowStart = new Date(Date.now() - PICKUP_WINDOW_MINUTES * 60_000).toISOString()
-  const { data: existing, error: readError } = await supabase
-    .from('recon_round_requests')
-    .select('id, status')
-    .or(`status.eq.running,and(status.eq.pending,requested_at.gte.${windowStart})`)
-    .limit(1)
-    .maybeSingle()
-  if (readError) throw new Error(`request dedupe read failed: ${readError.message}`)
-  if (existing) {
-    log(`request skipped — live request ${existing.id} (${existing.status}) already exists`)
-    return
-  }
-  const { error } = await supabase.from('recon_round_requests').insert({ source })
-  if (error) {
-    if (error.code === '23505') {
-      log('request skipped — a concurrent request won the one-live index race')
-      return
-    }
-    throw new Error(`request insert failed: ${error.message}`)
-  }
-  log(`queued a recon round (source: ${source})`)
-}
-
-async function expireStaleRows() {
-  const pendingCutoff = new Date(Date.now() - PICKUP_WINDOW_MINUTES * 60_000).toISOString()
-  const { error: expireErr } = await supabase
-    .from('recon_round_requests')
-    .update({ status: 'expired', finished_at: new Date().toISOString(), result_note: `Not picked up within ${PICKUP_WINDOW_MINUTES} min (Mac asleep or watcher not running)` })
-    .eq('status', 'pending')
-    .lt('requested_at', pendingCutoff)
-  logWriteError('expire pending->expired', expireErr)
-  const runningCutoff = new Date(Date.now() - RUN_TIMEOUT_MINUTES * 60_000).toISOString()
-  const { error: timeoutErr } = await supabase
-    .from('recon_round_requests')
-    .update({ status: 'failed', finished_at: new Date().toISOString(), result_note: `Run did not complete within ${RUN_TIMEOUT_MINUTES} min (timed out, crashed, or the Mac slept)` })
-    .eq('status', 'running')
-    .lt('started_at', runningCutoff)
-  logWriteError('timeout running->failed', timeoutErr)
-}
-
-/** The org roster the child must cover — enumerated HERE so the child needs
- *  no database access. Live xero_connections is the source of truth, never
- *  the skill's cached shortcode list. Clients hidden from the board are
- *  excluded (Matt, 5 Sep 2026): the board doesn't show them, so the round
- *  doesn't spend time on them — restore a client to the board to include it. */
-async function enumerateRoster() {
-  const { data: allConns, error: connErr } = await supabase
-    .from('xero_connections')
-    .select('tenant_id, tenant_name, business_id')
-    .eq('is_active', true)
-  if (connErr || !allConns?.length) throw new Error(`roster enumeration failed: ${connErr?.message ?? 'no active connections'}`)
-  const { data: settingsRows, error: settingsErr } = await supabase
-    .from('monthly_report_settings')
-    .select('business_id, hide_from_board, board_manual_include, manual_xero_shortcode, manual_tenant_key')
-  // Fail closed the cheap way: if the settings read errors, run the FULL
-  // connected roster (extra coverage is harmless; silently skipping visible
-  // clients would not be). Badge-only clients need their settings row, so
-  // they drop out on error — the board shows them stale/never, never fake.
-  const hidden = new Set(
-    settingsErr ? [] : (settingsRows ?? []).filter(s => s.hide_from_board).map(s => s.business_id),
-  )
-  const conns = allConns.filter(c => !hidden.has(c.business_id))
-  if (allConns.length !== conns.length) {
-    log(`roster: skipping ${allConns.length - conns.length} org(s) belonging to board-hidden clients`)
-  }
-  // Badge-only clients (board_manual_include, e.g. Distinct Directions —
-  // Xero org at the connected-app limit): no connection row, so the round is
-  // their ONLY data source. Their capture tenant_id is the stored
-  // manual_tenant_key. The flag is inert once ANY connection row exists —
-  // active or dead, in either business-id space (matching the board's rule
-  // and the capture endpoint's legalTenantIds).
-  const { data: anyConnRows } = await supabase
-    .from('xero_connections')
-    .select('business_id')
-  const { data: profileRows } = await supabase
-    .from('business_profiles')
-    .select('id, business_id')
-  const profileToBiz = new Map((profileRows ?? []).map(p => [p.id, p.business_id]))
-  const connectedBiz = new Set(
-    (anyConnRows ?? []).map(r => profileToBiz.get(r.business_id) ?? r.business_id),
-  )
-  const flaggedManual = settingsErr ? [] : (settingsRows ?? []).filter(s =>
-    s.board_manual_include && !s.hide_from_board && !connectedBiz.has(s.business_id),
-  )
-  const manual = flaggedManual.filter(s => s.manual_tenant_key && s.manual_xero_shortcode)
-  const misconfigured = flaggedManual.filter(s => !s.manual_tenant_key || !s.manual_xero_shortcode)
-  let rosterWarning = null
-  if (misconfigured.length > 0) {
-    rosterWarning = `${misconfigured.length} badge-only client(s) flagged but NOT coverable: ${misconfigured
-      .map(m => `${m.business_id} (missing ${[!m.manual_tenant_key && 'manual_tenant_key', !m.manual_xero_shortcode && 'manual_xero_shortcode'].filter(Boolean).join(' + ')})`)
-      .join(', ')} — complete their settings row or the board shows them as never-captured forever`
-    log(`roster: ${rosterWarning}`)
-  }
-  if (!conns.length && !manual.length) throw new Error('roster enumeration failed: every client is hidden from the board')
-  const { data: bizzes } = await supabase
-    .from('businesses')
-    .select('id, name')
-    .in('id', [...new Set([...conns.map(c => c.business_id), ...manual.map(m => m.business_id)])])
-  const bizName = new Map((bizzes ?? []).map(b => [b.id, b.name]))
-  const { data: shortcodes } = await supabase
-    .from('bank_account_status')
-    .select('tenant_id, short_code')
-    .in('tenant_id', conns.map(c => c.tenant_id))
-  const codeByTenant = new Map()
-  for (const s of shortcodes ?? []) {
-    if (s.short_code && !codeByTenant.has(s.tenant_id)) codeByTenant.set(s.tenant_id, s.short_code)
-  }
-  const roster = [
-    ...conns.map(c => ({
-      business: bizName.get(c.business_id) ?? '(unknown business)',
-      business_id: c.business_id,
-      tenant_id: c.tenant_id,
-      tenant_name: c.tenant_name ?? '(unnamed org)',
-      short_code: codeByTenant.get(c.tenant_id) ?? null,
-      badge_only: false,
-    })),
-    ...manual.map(m => ({
-      business: bizName.get(m.business_id) ?? '(unknown business)',
-      business_id: m.business_id,
-      tenant_id: m.manual_tenant_key,
-      // WisdomBI's business name, NOT a Xero-sourced tenant name — the Xero
-      // header may differ slightly; the prompt marks these entries so the
-      // run treats a close name match as correct.
-      tenant_name: bizName.get(m.business_id) ?? '(unknown business)',
-      short_code: m.manual_xero_shortcode,
-      badge_only: true,
-    })),
-  ]
-  return { roster, rosterWarning }
-}
-
-/** Account names from each tenant's LATEST capture — injected into the
- *  prompt so runs keep names stable. Xero labels the SAME account differently
- *  across screens (panel nickname vs Tasks list vs a PayPal login email —
- *  Urban Road's dead feed appeared as three different names in three runs),
- *  and name drift silently breaks recon_ignored_accounts matching. */
-async function priorAccountNames(roster) {
-  const byTenant = new Map()
-  const { data, error } = await supabase
-    .from('reconciliation_dashboard_captures')
-    .select('tenant_id, captured_at, accounts')
-    .in('tenant_id', roster.map(r => r.tenant_id))
-    .order('captured_at', { ascending: false })
-    .limit(400)
-  if (error) {
-    // Advisory data only — a failed read costs name stability, never the run.
-    console.error(`[watcher] prior-names read failed (continuing without): ${error.message}`)
-    return byTenant
-  }
-  for (const row of data ?? []) {
-    if (byTenant.has(row.tenant_id)) continue // rows are newest-first
-    const names = (row.accounts ?? []).map(a => a?.name).filter(n => typeof n === 'string' && n)
-    if (names.length > 0) byTenant.set(row.tenant_id, names)
-  }
-  return byTenant
-}
-
-function runnerPrompt(roster, priorNamesByTenant = new Map()) {
-  const rosterLines = roster.map(r => {
-    const prior = priorNamesByTenant.get(r.tenant_id)
+function runnerPrompt(requestRoster, priorNamesByTenant) {
+  const rosterLines = requestRoster.map(r => {
+    const prior = priorNamesByTenant[r.tenant_id]
     return `- ${r.business} [business_id ${r.business_id}] — org "${r.tenant_name}" [tenant_id ${r.tenant_id}]` +
       (r.short_code ? ` — shortcode ${r.short_code}` : ' — NO shortcode: use Xero\'s org switcher by name') +
       (r.badge_only
@@ -249,10 +108,10 @@ function runnerPrompt(roster, priorNamesByTenant = new Map()) {
         : '') +
       (prior ? ` — account names used by the last capture: ${prior.map(n => `"${n}"`).join(', ')}` : '')
   }).join('\n')
-  return `You are running UNATTENDED on Matt's Mac to refresh the CFO board's Xero badge counts.
+  return `You are running UNATTENDED to refresh the CFO board's Xero badge counts.
 Run the full Xero recon round by following .claude/skills/xero-recon-round/SKILL.md (badge walk over
 every org, then the date pass, posting captures WITH per-account months histograms from a logged-in
-https://www.wisdombi.ai tab) — with these overrides for unattended mode:
+${BASE_URL} tab) — with these overrides for unattended mode:
 1. You have NO database access. Skip the skill's SQL enumeration and DB verification steps entirely.
    The round's org set is EXACTLY this live roster (use these business_id/tenant_id values in POSTs):
 ${rosterLines}
@@ -290,7 +149,8 @@ const CHILD_ALLOWED_TOOLS = [
   'mcp__claude-in-chrome__read_console_messages',
   'mcp__claude-in-chrome__read_network_requests',
   'mcp__claude-in-chrome__browser_batch',
-  'Read',
+  // Scoped: the child may read the skill files and NOTHING else on disk.
+  'Read(./.claude/skills/**)',
 ].join(',')
 const CHILD_DISALLOWED_TOOLS = [
   'mcp__claude-in-chrome__file_upload',
@@ -301,128 +161,76 @@ const CHILD_DISALLOWED_TOOLS = [
   'Bash', 'Write', 'Edit', 'NotebookEdit', 'WebFetch', 'WebSearch',
 ].join(',')
 
-/** A 'done' claim is only believed if fresh chrome_routine captures exist
- *  for EVERY roster tenant. Unverifiable (query error) is not verified. */
-async function verifyDoneClaim(roster, claimStartIso) {
-  const { data, error } = await supabase
-    .from('reconciliation_dashboard_captures')
-    .select('tenant_id')
-    .eq('method', 'chrome_routine')
-    .gte('captured_at', claimStartIso)
-  if (error) return `VERIFY: cross-check query failed — ${error.message}`
-  const captured = new Set((data ?? []).map(r => r.tenant_id))
-  const missing = roster.filter(r => !captured.has(r.tenant_id))
-  if (missing.length > 0) {
-    return `VERIFY: captures cover ${roster.length - missing.length}/${roster.length} orgs — missing: ${missing.map(m => m.tenant_name).join(', ')}`
+/** Minimal clean env for the child. Inherited CLAUDE_ or ANTHROPIC_ vars
+ *  from a parent Claude session break the child's OAuth (observed 5 Sep
+ *  2026); Windows needs its profile dirs for the CLI to find its config. */
+function childEnv() {
+  if (IS_WINDOWS) {
+    return {
+      USERPROFILE: process.env.USERPROFILE,
+      HOMEDRIVE: process.env.HOMEDRIVE,
+      HOMEPATH: process.env.HOMEPATH,
+      APPDATA: process.env.APPDATA,
+      LOCALAPPDATA: process.env.LOCALAPPDATA,
+      SYSTEMROOT: process.env.SYSTEMROOT,
+      COMSPEC: process.env.COMSPEC,
+      TEMP: process.env.TEMP,
+      TMP: process.env.TMP,
+      PATH: process.env.PATH,
+      USERNAME: process.env.USERNAME,
+    }
   }
-  return null
-}
-
-async function stampOutcome(id, status, note) {
-  // Guarded on status='running': if the watchdog/server already retired the
-  // row, its verdict is final and this stamp is a no-op.
-  const { data, error } = await supabase
-    .from('recon_round_requests')
-    .update({ status, finished_at: new Date().toISOString(), result_note: note })
-    .eq('id', id)
-    .eq('status', 'running')
-    .select('id')
-    .maybeSingle()
-  logWriteError(`stamp ${status}`, error)
-  if (!error && !data) log(`stamp skipped — row ${id} was already retired (watchdog/server verdict stands)`)
+  return {
+    HOME: process.env.HOME,
+    USER: process.env.USER,
+    PATH: `${HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`,
+  }
 }
 
 async function tick() {
-  await expireStaleRows()
+  const claim = await worker('claim')
+  if (!claim.claimed) return
+  const { claimed, roster, roster_warning, prior_names } = claim
+  const withWarning = (note) => (roster_warning ? `${note} — ${roster_warning}` : note).slice(0, 990)
+  log(`claimed request ${claimed.id} (source: ${claimed.source}) — launching the round over ${roster.length} orgs`)
 
-  const { data: running, error: runningErr } = await supabase
-    .from('recon_round_requests')
-    .select('id')
-    .eq('status', 'running')
-    .limit(1)
-    .maybeSingle()
-  if (runningErr) { console.error(`[watcher] running-check read failed: ${runningErr.message}`); return }
-  if (running) {
-    log(`round ${running.id} still running — nothing to do`)
-    return
-  }
-
-  const windowStart = new Date(Date.now() - PICKUP_WINDOW_MINUTES * 60_000).toISOString()
-  const { data: pending, error: pendingErr } = await supabase
-    .from('recon_round_requests')
-    .select('id, source, requested_at')
-    .eq('status', 'pending')
-    .gte('requested_at', windowStart)
-    .order('requested_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
-  if (pendingErr) { console.error(`[watcher] pending read failed: ${pendingErr.message}`); return }
-  if (!pending) return
-
-  // Atomic claim — a concurrent tick loses the update and does nothing.
-  const { data: claimed } = await supabase
-    .from('recon_round_requests')
-    .update({ status: 'running', started_at: new Date().toISOString() })
-    .eq('id', pending.id)
-    .eq('status', 'pending')
-    .select('id')
-    .maybeSingle()
-  if (!claimed) {
-    log(`request ${pending.id} was claimed by another tick`)
-    return
-  }
-
-  let roster
-  let rosterWarning = null
-  try {
-    ({ roster, rosterWarning } = await enumerateRoster())
-  } catch (err) {
-    await stampOutcome(pending.id, 'failed', `Could not enumerate the org roster: ${err.message}`)
-    return
-  }
-  // A misconfigured badge-only client must reach the stamped note, not just
-  // the log — the board's result_note is what Matt actually sees.
-  const withWarning = (note) => (rosterWarning ? `${note} — ${rosterWarning}` : note).slice(0, 990)
-  const priorNames = await priorAccountNames(roster)
-  log(`claimed request ${pending.id} (source: ${pending.source}) — launching the round over ${roster.length} orgs`)
-
-  const claimStartIso = new Date().toISOString()
   let spawnErr = null
   let stdout = ''
-  // Clean environment: a CLAUDE_*/ANTHROPIC_* var inherited from a parent
-  // Claude session breaks the child's OAuth (observed 5 Sep 2026). launchd
-  // is already clean; this keeps manual --tick runs identical. cwd is the
-  // sandboxed runner dir (installer-built): skills only, no .env.local, own
-  // deny-rules settings.
+  // The prompt goes via STDIN, never argv: it interpolates strings that
+  // originate from Xero pages and the database, and Node's shell:true does
+  // NOT quote argv (a metacharacter in a business name would execute as a
+  // command). Every remaining argv item is a static metacharacter-free
+  // literal. shell is needed only for npm's .cmd shim on Windows — Node
+  // refuses .cmd without it (CVE-2024-27980).
+  const prompt = runnerPrompt(roster, prior_names ?? {})
   const child = spawn(
     CLAUDE_BIN,
     [
-      '-p', runnerPrompt(roster, priorNames),
+      '-p',
       // --chrome connects the Claude-in-Chrome extension to this headless
-      // session (verified 5 Sep 2026) — without it the browser MCP is absent.
+      // session — without it the browser MCP is absent.
       '--chrome',
       '--allowedTools', CHILD_ALLOWED_TOOLS,
       '--disallowedTools', CHILD_DISALLOWED_TOOLS,
     ],
     {
       cwd: RUNNER_DIR,
-      stdio: ['ignore', 'pipe', 'inherit'],
-      env: {
-        HOME: process.env.HOME,
-        USER: process.env.USER,
-        PATH: `${process.env.HOME}/.local/bin:/opt/homebrew/bin:/usr/bin:/bin`,
-      },
+      stdio: ['pipe', 'pipe', 'inherit'],
+      env: childEnv(),
+      shell: IS_WINDOWS && CLAUDE_BIN.endsWith('.cmd'),
     },
   )
+  child.stdin.on('error', () => { /* child died before reading — close path handles it */ })
+  child.stdin.write(prompt)
+  child.stdin.end()
   child.stdout.on('data', chunk => {
     stdout += chunk
     process.stdout.write(chunk) // tee into the watcher log
   })
 
-  // Wall-clock watchdog with SIGKILL escalation: Node's spawn timeout is
-  // monotonic and freezes during Mac sleep, and SIGTERM can be trapped by a
-  // hung child — either would leave this tick holding the launchd label
-  // forever. Wall clock + SIGKILL guarantees the tick exits.
+  // Wall-clock watchdog with SIGKILL escalation: spawn's own timeout is
+  // monotonic and freezes during sleep, and SIGTERM can be trapped — either
+  // would leave this tick holding the scheduler slot forever.
   const startedMs = Date.now()
   const killAt = startedMs + RUN_TIMEOUT_MINUTES * 60_000
   let timedOut = false
@@ -442,45 +250,43 @@ async function tick() {
   })
   clearInterval(watchdog)
   const elapsedMin = Math.round((Date.now() - startedMs) / 60_000)
-  log(`claude run for ${pending.id} exited (code ${code}, signal ${signal ?? 'none'}) after ${elapsedMin} min`)
+  log(`claude run for ${claimed.id} exited (code ${code}, signal ${signal ?? 'none'}) after ${elapsedMin} min`)
 
-  // Outcome: the child reports via a RECON_RESULT stdout line; the watcher
-  // stamps. A 'done' claim is cross-checked against captures actually
-  // written before it is believed (self-attestation is not verification).
+  const stamp = async (status, note) => {
+    try {
+      const res = await worker('stamp', { request_id: claimed.id, claim_nonce: claimed.claim_nonce ?? '', status, note: withWarning(note) })
+      if (!res.stamped) log(`stamp skipped — ${res.reason ?? 'verdict already stands'}`)
+      else if (status === 'done' && res.status === 'failed') log('server verify downgraded the done claim — see result_note')
+    } catch (err) {
+      // The server janitor will retire the row if this never lands.
+      console.error(`[watcher] stamp failed: ${err.message}`)
+    }
+  }
+
   const resultMatch = /RECON_RESULT\s+(\{.*\})/.exec(stdout)
   if (resultMatch) {
     let parsed = null
     try { parsed = JSON.parse(resultMatch[1]) } catch { /* malformed — falls through */ }
     if (parsed && (parsed.status === 'done' || parsed.status === 'failed')) {
-      const note = String(parsed.note ?? '').slice(0, 900)
-      if (parsed.status === 'done') {
-        const verifyFailure = await verifyDoneClaim(roster, claimStartIso)
-        if (verifyFailure) {
-          await stampOutcome(pending.id, 'failed', withWarning(`${note} — ${verifyFailure}`))
-        } else {
-          await stampOutcome(pending.id, 'done', withWarning(note || `All ${roster.length} orgs captured`))
-        }
-      } else {
-        await stampOutcome(pending.id, 'failed', withWarning(note || 'Run reported failure with no detail'))
-      }
+      // The server re-verifies 'done' against captures actually written.
+      await stamp(parsed.status, String(parsed.note ?? '').slice(0, 900))
       return
     }
   }
 
-  // No (usable) RECON_RESULT — pick the honest note for how it died.
   let note
   if (spawnErr) {
-    note = `Could not start the claude CLI at ${CLAUDE_BIN}: ${spawnErr.message}`
+    note = `Could not start the claude CLI at ${CLAUDE_BIN}: ${spawnErr.message} — set CLAUDE_BIN in ${ENV_PATH}`
   } else if (timedOut || signal) {
     note = `Run killed after the ${RUN_TIMEOUT_MINUTES} min timeout (${signal ?? 'watchdog'}) — captures posted before the kill are kept`
   } else if (code !== 0 && elapsedMin < 2) {
-    note = `Claude run exited with code ${code} almost immediately — is the claude CLI logged in? Run \`claude\` once in a terminal`
+    note = `Claude run exited with code ${code} almost immediately — is the claude CLI logged in on this machine? Run \`claude\` once in a terminal`
   } else if (code !== 0) {
     note = `Claude run exited with code ${code} before reporting an outcome — check the watcher log`
   } else {
     note = 'Run ended without reporting an outcome — check the watcher log'
   }
-  await stampOutcome(pending.id, 'failed', withWarning(note))
+  await stamp('failed', note)
 }
 
 const mode = process.argv[2]
@@ -488,7 +294,8 @@ try {
   if (mode === '--tick') {
     await tick()
   } else if (mode === '--request') {
-    await requestRun(process.argv[3] || 'schedule')
+    const res = await worker('request', { source: process.argv[3] || 'schedule' })
+    log(res.existing ? 'request skipped — a live request already exists' : 'queued a recon round')
   } else {
     console.error('Usage: recon-round-watcher.mjs --tick | --request [source]')
     process.exit(1)

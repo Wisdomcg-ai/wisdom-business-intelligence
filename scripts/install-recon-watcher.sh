@@ -24,6 +24,21 @@ mkdir -p "$AGENTS_DIR" "$LOG_DIR"
 # (deny beats allow, whatever tool list the spawn passes).
 mkdir -p "$RUNNER_DIR/.claude"
 ln -sfn "$REPO_ROOT/.claude/skills" "$RUNNER_DIR/.claude/skills"
+
+# Runner config: the watcher talks to /api/cfo/recon-round-worker with this
+# token (no database key on runner machines). Template only — a HUMAN fills
+# in the token (it must match Vercel's RECON_WATCHER_TOKEN); never overwrite
+# an existing .env.
+ENV_FILE="$HOME/.wisdombi/recon-runner.env"
+if [ ! -f "$ENV_FILE" ]; then
+  cat > "$ENV_FILE" <<'ENVEOF'
+# Fill in and keep private. Must match the RECON_WATCHER_TOKEN env var in Vercel.
+RECON_WATCHER_TOKEN=
+WISDOMBI_URL=https://www.wisdombi.ai
+ENVEOF
+  chmod 600 "$ENV_FILE"
+  echo "created $ENV_FILE — put RECON_WATCHER_TOKEN in it"
+fi
 cat > "$RUNNER_DIR/.claude/settings.json" <<'EOF'
 {
   "permissions": {
@@ -35,6 +50,9 @@ cat > "$RUNNER_DIR/.claude/settings.json" <<'EOF'
       "WebFetch",
       "WebSearch",
       "Read(**/.env*)",
+      "Read(//**/.env*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
       "Read(**/*credentials*)",
       "Read(**/*.pem)",
       "Read(**/*.key)"
