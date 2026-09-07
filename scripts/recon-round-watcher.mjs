@@ -15,6 +15,12 @@
  *   RECON_WATCHER_TOKEN=...        required — must match the Vercel env var
  *   WISDOMBI_URL=https://www.wisdombi.ai   optional override
  *   CLAUDE_BIN=...                 optional path to the claude CLI
+ *   RUNNER_OWNER_EMAIL=...         optional — this machine's owner (their
+ *                                  WisdomBI login email). With it set, a
+ *                                  button press is routed to the presser's
+ *                                  own machine for its first 5 minutes;
+ *                                  without it this is a generic runner that
+ *                                  claims anything immediately.
  *
  * All queue/roster/verification logic lives SERVER-side behind
  * /api/cfo/recon-round-worker (token-gated): this machine holds no database
@@ -188,7 +194,7 @@ function childEnv() {
 }
 
 async function tick() {
-  const claim = await worker('claim')
+  const claim = await worker('claim', cfg.RUNNER_OWNER_EMAIL ? { runner_owner_email: cfg.RUNNER_OWNER_EMAIL } : {})
   if (!claim.claimed) return
   const { claimed, roster, roster_warning, prior_names } = claim
   const withWarning = (note) => (roster_warning ? `${note} — ${roster_warning}` : note).slice(0, 990)

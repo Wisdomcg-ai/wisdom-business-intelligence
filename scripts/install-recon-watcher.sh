@@ -35,6 +35,9 @@ if [ ! -f "$ENV_FILE" ]; then
 # Fill in and keep private. Must match the RECON_WATCHER_TOKEN env var in Vercel.
 RECON_WATCHER_TOKEN=
 WISDOMBI_URL=https://www.wisdombi.ai
+# This machine's owner (their WisdomBI login email). A button press runs on
+# the presser's own machine first; other machines wait 5 minutes.
+RUNNER_OWNER_EMAIL=
 ENVEOF
   chmod 600 "$ENV_FILE"
   echo "created $ENV_FILE — put RECON_WATCHER_TOKEN in it"

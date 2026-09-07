@@ -57,6 +57,9 @@ if (-not (Test-Path $EnvPath)) {
 # Fill in and keep private. Must match the RECON_WATCHER_TOKEN env var in Vercel.
 RECON_WATCHER_TOKEN=
 WISDOMBI_URL=https://www.wisdombi.ai
+# This machine's owner (their WisdomBI login email). A button press runs on
+# the presser's own machine first; other machines wait 5 minutes.
+RUNNER_OWNER_EMAIL=
 # Optional: full path to the claude CLI if it is not auto-detected.
 # CLAUDE_BIN=C:\Users\you\AppData\Roaming\npm\claude.cmd
 '@ | Set-Content -Encoding UTF8 $EnvPath

@@ -58,6 +58,16 @@ Silence (or "nothing pending") = healthy. A 401 = token mismatch. Then click
 **Update from Xero** on the board and watch `~/.wisdombi/logs` (Windows) or
 `~/Library/Logs/wisdombi-recon-watcher.log` (macOS).
 
+## Whose machine runs a click (press-affinity)
+
+Set `RUNNER_OWNER_EMAIL` in each machine's `recon-runner.env` to that
+machine's owner — their **WisdomBI login email**. Then a button press is
+reserved for the presser's own machine for its first **5 minutes** (their
+Chrome, their Xero session); if that machine doesn't pick it up in time, any
+other runner takes over so the run still happens. A machine with the value
+unset is a generic runner: it claims anything immediately — including other
+people's presses — so set it on EVERY machine once there is more than one.
+
 ## Day-to-day facts
 
 - The machine must be awake with Chrome running, Xero + WisdomBI logged in,
