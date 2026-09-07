@@ -58,6 +58,16 @@ Silence (or "nothing pending") = healthy. A 401 = token mismatch. Then click
 **Update from Xero** on the board and watch `~/.wisdombi/logs` (Windows) or
 `~/Library/Logs/wisdombi-recon-watcher.log` (macOS).
 
+## Whose machine runs a click (press-affinity)
+
+Set `RUNNER_OWNER_EMAIL` in each machine's `recon-runner.env` to that
+machine's owner — their **WisdomBI login email**. Then a button press is
+reserved for the presser's own machine for its first **5 minutes** (their
+Chrome, their Xero session); if that machine doesn't pick it up in time, any
+other runner takes over so the run still happens. A machine with the value
+unset is a generic runner: it claims anything immediately — including other
+people's presses — so set it on EVERY machine once there is more than one.
+
 ## Day-to-day facts
 
 - The machine must be awake with Chrome running, Xero + WisdomBI logged in,
@@ -65,5 +75,8 @@ Silence (or "nothing pending") = healthy. A 401 = token mismatch. Then click
   client from the first few minutes).
 - If nothing picks a queued run up within 30 minutes, the button says so and
   the request expires — no silent hangs.
-- After a `git pull` in the repo clone, re-run the installer to refresh the
-  skills copy (Windows copies; macOS symlinks pick changes up automatically).
+- After a `git pull` in the repo clone, re-run the installer — it refreshes
+  the skills copy (Windows copies; macOS symlinks pick changes up
+  automatically) and appends any newly introduced env keys. The watcher
+  script itself runs FROM the clone, so new watcher behavior (e.g.
+  press-affinity) needs the pull, not just the installer.

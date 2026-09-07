@@ -26,6 +26,7 @@ import { createClient } from '@supabase/supabase-js'
 import * as Sentry from '@sentry/nextjs'
 import { withSchema } from '@/lib/api/with-schema'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
+import { AFFINITY_WINDOW_MINUTES, affinityEligible } from '@/lib/cfo/claim-affinity'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -49,6 +50,7 @@ const PostBodySchema = z
     claim_nonce: z.string().max(100).optional(),
     note: z.string().max(2000).optional(),
     source: z.string().max(40).optional(),
+    runner_owner_email: z.string().max(200).optional(),
   })
   .passthrough()
 
@@ -179,6 +181,22 @@ async function priorAccountNames(tenantIds: string[]): Promise<Record<string, st
   return out
 }
 
+/**
+ * Resolve a request's presser to an email for press-affinity. Failure
+ * resolves to null (no affinity): a deleted user or an auth-API hiccup must
+ * route the run to whoever asks, never wedge the queue. Read-only, so the
+ * swallowed error needs no invariant capture.
+ */
+async function requesterEmail(userId: string | null): Promise<string | null> {
+  if (!userId) return null
+  try {
+    const { data } = await supabase.auth.admin.getUserById(userId)
+    return data?.user?.email ?? null
+  } catch {
+    return null
+  }
+}
+
 async function postHandler(request: Request) {
   try {
     // Fail-closed token gate (CRON_SECRET house pattern): a missing env var
@@ -230,15 +248,45 @@ async function postHandler(request: Request) {
       if (running) return NextResponse.json({ claimed: null, reason: 'a run is already in progress' })
 
       const windowStart = new Date(Date.now() - PICKUP_WINDOW_MINUTES * 60_000).toISOString()
-      const { data: pending } = await supabase
+      const { data: pendingRows } = await supabase
         .from('recon_round_requests')
-        .select('id, source, requested_at')
+        .select('id, source, requested_at, requested_by')
         .eq('status', 'pending')
         .gte('requested_at', windowStart)
         .order('requested_at', { ascending: true })
-        .limit(1)
-        .maybeSingle()
-      if (!pending) return NextResponse.json({ claimed: null, reason: 'nothing pending' })
+        .limit(5)
+      if (!pendingRows?.length) return NextResponse.json({ claimed: null, reason: 'nothing pending' })
+
+      // Press-affinity: for its first minutes a request is reserved for the
+      // presser's own machine (their Chrome, their Xero session); after the
+      // window any runner may take it so the run still happens. Requester
+      // emails are only resolved when the runner actually declares an owner.
+      const declaredOwner =
+        typeof body.runner_owner_email === 'string' && body.runner_owner_email.trim()
+          ? body.runner_owner_email.trim()
+          : null
+      const nowMs = Date.now()
+      let pending: (typeof pendingRows)[number] | null = null
+      for (const row of pendingRows) {
+        const email = declaredOwner ? await requesterEmail(row.requested_by ?? null) : null
+        if (affinityEligible({ declaredOwnerEmail: declaredOwner, requesterEmail: email, requestedAt: row.requested_at, nowMs })) {
+          pending = row
+          break
+        }
+      }
+      if (!pending) {
+        // Known, accepted trade-off: a token holder can distinguish this
+        // reason from 'nothing pending' and probe declared emails against the
+        // presser's until a claim succeeds — a login-email confirmation
+        // oracle. Accepted because the token already exposes the far more
+        // sensitive full client roster on any claim, the operator population
+        // is two known people, and this reason string is what makes a
+        // misdeclared RUNNER_OWNER_EMAIL diagnosable at all.
+        return NextResponse.json({
+          claimed: null,
+          reason: `pending run is reserved for the requester's own machine for its first ${AFFINITY_WINDOW_MINUTES} min`,
+        })
+      }
 
       // Atomic claim — a concurrent runner loses this update and gets null.
       // The nonce binds the eventual stamp to THIS claim: a token holder who

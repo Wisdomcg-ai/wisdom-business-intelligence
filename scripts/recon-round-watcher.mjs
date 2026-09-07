@@ -15,6 +15,12 @@
  *   RECON_WATCHER_TOKEN=...        required — must match the Vercel env var
  *   WISDOMBI_URL=https://www.wisdombi.ai   optional override
  *   CLAUDE_BIN=...                 optional path to the claude CLI
+ *   RUNNER_OWNER_EMAIL=...         optional — this machine's owner (their
+ *                                  WisdomBI login email). With it set, a
+ *                                  button press is routed to the presser's
+ *                                  own machine for its first 5 minutes;
+ *                                  without it this is a generic runner that
+ *                                  claims anything immediately.
  *
  * All queue/roster/verification logic lives SERVER-side behind
  * /api/cfo/recon-round-worker (token-gated): this machine holds no database
@@ -55,7 +61,7 @@ function loadRunnerEnv() {
   const env = {}
   for (const line of raw.split('\n')) {
     const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim())
-    if (m) env[m[1]] = m[2].replace(/^"|"$/g, '')
+    if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, '')
   }
   return env
 }
@@ -188,8 +194,17 @@ function childEnv() {
 }
 
 async function tick() {
-  const claim = await worker('claim')
-  if (!claim.claimed) return
+  const claim = await worker('claim', cfg.RUNNER_OWNER_EMAIL ? { runner_owner_email: cfg.RUNNER_OWNER_EMAIL } : {})
+  if (!claim.claimed) {
+    // Surface WHY nothing was claimed, except the two quiet-by-design cases
+    // (idle tick; another machine mid-run). Without this, a misdeclared
+    // RUNNER_OWNER_EMAIL is indistinguishable from health — the reserved
+    // reason is the only signal that affinity is refusing this machine.
+    if (claim.reason && claim.reason !== 'nothing pending' && claim.reason !== 'a run is already in progress') {
+      log(`claim declined: ${claim.reason}`)
+    }
+    return
+  }
   const { claimed, roster, roster_warning, prior_names } = claim
   const withWarning = (note) => (roster_warning ? `${note} — ${roster_warning}` : note).slice(0, 990)
   log(`claimed request ${claimed.id} (source: ${claimed.source}) — launching the round over ${roster.length} orgs`)

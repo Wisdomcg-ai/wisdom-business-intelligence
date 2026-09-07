@@ -86,6 +86,23 @@ async function postHandler(_request: Request) {
       .limit(1)
       .maybeSingle()
     if (existing) {
+      // Re-target press-affinity to the LATEST presser: a deduped press must
+      // not leave the run reserved for an earlier presser's (possibly asleep)
+      // machine — the person pressing now is the one at their desk. Pending
+      // rows only; a running row is already on a machine.
+      if (existing.status === 'pending') {
+        const { error: retargetErr } = await supabase
+          .from('recon_round_requests')
+          .update({ requested_by: user.id })
+          .eq('id', existing.id)
+          .eq('status', 'pending')
+        if (retargetErr) {
+          Sentry.captureException(retargetErr, {
+            tags: { route: 'cfo/recon-round-request', invariant: 'recon_request_retarget_failed' },
+            extra: { context: '[Recon Request] press-affinity re-target write failed' },
+          } as any)
+        }
+      }
       return NextResponse.json({ success: true, request: existing, existing: true })
     }
 
