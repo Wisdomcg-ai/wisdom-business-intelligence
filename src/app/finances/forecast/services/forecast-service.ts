@@ -220,13 +220,14 @@ export class ForecastService {
             isRolling: periods.is_rolling
           })
 
+          // The period columns are maintenance (rolling forecasts move their
+          // windows); the NAME is the operator's. This sync used to rewrite it
+          // to the default on every visit — "FY2026 Forecast (Apr 2026)" became
+          // "FY2026 Financial Forecast" just by opening the page (8 Sep 2026).
           const { error: updateError} = await this.supabase
             .from('financial_forecasts')
             .update({
               fiscal_year: fiscalYear,
-              name: periods.is_rolling
-                ? `FY${fiscalYear} Forecast (${new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })})`
-                : `FY${fiscalYear} Financial Forecast`,
               baseline_start_month: periods.baseline_start_month,
               baseline_end_month: periods.baseline_end_month,
               actual_start_month: periods.actual_start_month,
@@ -240,11 +241,8 @@ export class ForecastService {
           if (updateError) {
             console.error('[Forecast] Error updating forecast:', updateError)
           } else {
-            // Return updated forecast
+            // Return updated forecast (name untouched — see above)
             forecast.fiscal_year = fiscalYear
-            forecast.name = periods.is_rolling
-              ? `FY${fiscalYear} Forecast (${new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })})`
-              : `FY${fiscalYear} Financial Forecast`
             forecast.baseline_start_month = periods.baseline_start_month
             forecast.baseline_end_month = periods.baseline_end_month
             forecast.actual_start_month = periods.actual_start_month

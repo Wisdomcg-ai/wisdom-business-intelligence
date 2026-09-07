@@ -3,6 +3,8 @@
 import { useState, useCallback } from 'react'
 import { usePathname } from 'next/navigation'
 import { toast } from 'sonner'
+import { createClient } from '@/lib/supabase/client'
+import { setActiveForecastVersion } from '../services/set-active-version'
 import type { FinancialForecast } from '../types'
 
 interface UseVersionManagerOptions {
@@ -18,6 +20,8 @@ interface UseVersionManagerReturn {
   setHasUnsavedChanges: (hasChanges: boolean) => void
   loadVersions: (businessId: string, fiscalYear: number) => Promise<void>
   handleSelectVersion: (version: FinancialForecast) => void
+  /** Make a version the active one (what reports read), then view it. */
+  handleSetActiveVersion: (version: FinancialForecast) => Promise<void>
   handleSaveAsNewVersion: (versionName: string) => Promise<void>
   handleOverwriteVersion: () => Promise<void>
 }
@@ -51,6 +55,29 @@ export function useVersionManager({
     if (version.id === forecast?.id) return // Already on this version
     window.location.href = `${basePath}?id=${version.id}`
   }, [forecast?.id, basePath])
+
+  // "View this version" only changes what is on screen; THIS changes which
+  // version the reports, dashboard and monthly report read. The two used to
+  // share one label ("Switch to this version") and be confused for each other.
+  const handleSetActiveVersion = useCallback(async (version: FinancialForecast) => {
+    if (!businessId || !version.fiscal_year) return
+    const supabase = createClient()
+    const { error } = await setActiveForecastVersion(supabase, {
+      businessId,
+      fiscalYear: version.fiscal_year,
+      forecastId: version.id as string,
+    })
+    if (error) {
+      console.error('Error setting active forecast version:', error)
+      toast.error('Failed to set the active version')
+      return
+    }
+    toast.success(`"${version.name}" is now the active forecast`)
+    await loadVersions(businessId, version.fiscal_year)
+    if (version.id !== forecast?.id) {
+      window.location.href = `${basePath}?id=${version.id}`
+    }
+  }, [businessId, forecast?.id, basePath, loadVersions])
 
   const handleSaveAsNewVersion = useCallback(async (versionName: string) => {
     if (!forecast?.id || !businessId) {
@@ -100,6 +127,7 @@ export function useVersionManager({
     setHasUnsavedChanges,
     loadVersions,
     handleSelectVersion,
+    handleSetActiveVersion,
     handleSaveAsNewVersion,
     handleOverwriteVersion
   }
