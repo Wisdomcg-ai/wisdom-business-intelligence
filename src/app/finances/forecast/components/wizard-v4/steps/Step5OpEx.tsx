@@ -9,6 +9,7 @@
 
 import { Fragment, useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Plus, Trash2, HelpCircle, X, Info, AlertTriangle, Users } from 'lucide-react';
+import { XeroBudgetSeedBanner, XeroBudgetChip, isXeroBudgetSeed } from '../XeroBudgetSeedBanner';
 import { ForecastWizardState, WizardActions, formatCurrency, CostBehavior, OpExLine, SUPER_RATE, calculateNewSalary, InputMode } from '../types';
 import { classifyExpense, getSuggestedValue, isTeamCost } from '../utils/opex-classifier';
 import { getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH, generateFiscalMonthKeys } from '@/lib/utils/fiscal-year-utils';
@@ -1351,6 +1352,15 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
 
   return (
     <div className="space-y-6">
+      <XeroBudgetSeedBanner seedSource={state.seedSource}>
+        Expense lines came in from Xero budget <strong>“{state.seedSource?.budgetName}”</strong> as{' '}
+        <strong>As budgeted</strong> — every month is the budget&apos;s own figure, so the totals below match it.
+        Change a line&apos;s type only if you want the wizard to model it differently.
+        {(state.seedSource?.unclassifiedCount ?? 0) > 0 ? (
+          <> {state.seedSource?.unclassifiedCount} account{state.seedSource?.unclassifiedCount === 1 ? '' : 's'} had no category in Xero and {state.seedSource?.unclassifiedCount === 1 ? 'was' : 'were'} left for you to place.</>
+        ) : null}
+      </XeroBudgetSeedBanner>
+
       {/* Budget Framework
           Hotfix (Issue 2): pin to top of viewport while operator scrolls
           the OpEx table below. The wrapper uses sticky positioning + a
@@ -1846,6 +1856,7 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
                             <option key={b.value} value={b.value}>{b.label}</option>
                           ))}
                         </select>
+                        {line.costBehavior === 'budgeted' && isXeroBudgetSeed(state.seedSource) && <XeroBudgetChip />}
                         <button
                           type="button"
                           aria-label="What does each option mean?"

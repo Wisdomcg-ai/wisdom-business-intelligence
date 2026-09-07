@@ -207,9 +207,13 @@ async function postHandler(request: Request) {
     })
 
     // ── 8. Persist (same shape as seed-from-prior) ───────────────────────────
+    // draft_assumptions is cleared here: the wizard opens on
+    // `draft_assumptions ?? assumptions`, so a stale draft left on an empty
+    // forecast would shadow the seed the operator just asked for (Urban Road,
+    // 7 Sep 2026 — the previous walkthrough's draft came back instead).
     const { error: durErr } = await supabase
       .from('financial_forecasts')
-      .update({ forecast_duration: forecastDuration })
+      .update({ forecast_duration: forecastDuration, draft_assumptions: null })
       .eq('id', targetForecast.id)
     if (durErr) {
       Sentry.captureException(durErr, { tags: { route: ROUTE, invariant: 'forecast_duration_write_failed' }, extra: { context: 'forecast_duration update failed' } } as any)

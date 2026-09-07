@@ -1140,6 +1140,12 @@ export function ForecastWizardV4({
           // If editing an existing forecast, restore saved user data (new hires, departures, etc.)
           if (savedAssumptions) {
             console.log('[ForecastWizardV4] Restoring saved assumptions:', savedAssumptions);
+            // Budget-seed provenance drives the Step 1/4/6/Review banners and
+            // the Step 2 refresh warning. Anything else (hand-built, prior-year
+            // seed) clears it.
+            actionsRef.current.setSeedSource(
+              savedAssumptions.seedSource?.kind === 'xero_budget' ? savedAssumptions.seedSource : null,
+            );
             // P0-3: Suppress autosave until the restore chain finishes. The
             // forEach restorers below run synchronously (planned hires, departures,
             // bonuses, commissions, capex) but the goals/revenue/cogs/opex/

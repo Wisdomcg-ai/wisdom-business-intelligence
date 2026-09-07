@@ -196,9 +196,12 @@ async function postHandler(request: Request) {
     // but we still write it so the target row reflects the prior horizon
     // explicitly. The UPDATE fires once on every success path — tests pin this
     // contract (Group F spy assertion).
+    // draft_assumptions is cleared with it: the wizard opens on
+    // `draft_assumptions ?? assumptions`, so a stale draft on the empty target
+    // would shadow the seed (see seed-from-xero-budget, 7 Sep 2026).
     const { error: durErr } = await supabase
       .from('financial_forecasts')
-      .update({ forecast_duration: forecastDuration })
+      .update({ forecast_duration: forecastDuration, draft_assumptions: null })
       .eq('id', targetForecast.id)
 
     if (durErr) {

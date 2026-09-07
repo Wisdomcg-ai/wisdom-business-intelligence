@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef, memo } from 'react';
 import { Plus, Trash2, HelpCircle, ChevronDown, ChevronUp, Info, Calendar, Sparkles, X, Briefcase, UserCheck, Loader2, Users, UserPlus, TrendingUp, DollarSign, Target, Lightbulb, ArrowRight, DownloadCloud, RefreshCw, AlertTriangle } from 'lucide-react';
+import { XeroBudgetSeedBanner } from '../XeroBudgetSeedBanner';
 import {
   ForecastWizardState,
   WizardActions,
@@ -4339,6 +4340,27 @@ export function Step4Team({ state, actions, fiscalYear, forecastDuration = 1 }: 
           </div>
         </div>
       )}
+
+      {/* Budget-vs-payroll gap: the seed left wages/super/contractors to this
+          step (payroll is the source of truth), so show what the budget held
+          against what Step 4 now totals. Informational only — never adjusts. */}
+      {state.seedSource?.kind === 'xero_budget' && (() => {
+        const budgeted = state.seedSource.teamCostBudgetTotal || 0;
+        const current = employeeTotals.total + contractorTotals.total;
+        const diff = current - budgeted;
+        return (
+          <XeroBudgetSeedBanner seedSource={state.seedSource} className="mb-4">
+            Your Xero budget <strong>“{state.seedSource.budgetName}”</strong> holds <strong>{formatCurrency(budgeted)}</strong> for
+            wages, super and contractors. Step 4 currently totals <strong>{formatCurrency(current)}</strong> from payroll
+            {Math.abs(diff) >= 1 ? (
+              <> — <strong>{formatCurrency(Math.abs(diff))} {diff > 0 ? 'above' : 'below'}</strong> the budget.</>
+            ) : (
+              <> — matching the budget.</>
+            )}{' '}
+            Payroll is the source of truth here; the budget figure is for comparison only.
+          </XeroBudgetSeedBanner>
+        );
+      })()}
 
       {/* Grand Total */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-24">

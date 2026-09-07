@@ -177,7 +177,9 @@ describe('success', () => {
     expect(body.report.goals.revenue).toBe(10_000 * monthsAhead)
 
     expect(updateSpy).toHaveBeenCalledTimes(1)
-    expect(updateSpy).toHaveBeenCalledWith({ forecast_duration: 1 })
+    // draft_assumptions is cleared with it — a stale draft would otherwise
+    // shadow the seed when the wizard opens (draft_assumptions ?? assumptions).
+    expect(updateSpy).toHaveBeenCalledWith({ forecast_duration: 1, draft_assumptions: null })
 
     expect(convertMock).toHaveBeenCalledTimes(1)
     const convertArg = (convertMock.mock.calls[0] as unknown[])[0] as { assumptions: any; existingLines: unknown[]; fiscalYear: number }

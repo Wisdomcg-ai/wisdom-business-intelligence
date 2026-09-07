@@ -800,6 +800,15 @@ export interface ForecastWizardState {
    */
   forecastId?: string | null;
 
+  /**
+   * Where this forecast's numbers came from, when it was seeded from a Xero
+   * budget (PR 4 of the budget-seed work, Sep 2026). Restored from the saved
+   * assumptions on open and written back by buildAssumptions, so the
+   * provenance survives autosaves and the banners keyed on it stay put.
+   * `null`/absent = built by hand or seeded from a prior year.
+   */
+  seedSource?: import('@/lib/services/xero-budget-seed-service').ForecastSeedSource | null;
+
   // Phase 56 (P1 B2): when present, indicates the draft was loaded from a
   // localStorage entry written by an older WIZARD_VERSION. Carries the prior
   // version number so debug tooling can trace which fields fell through to
@@ -958,6 +967,8 @@ export interface WizardActions {
   setPlanPeriod: (period: PlanPeriod | null) => void;
   /** Record which forecast the local draft belongs to (see state.forecastId). */
   setForecastIdentity: (id: string | null) => void;
+  /** Restore the seed provenance from saved assumptions (see state.seedSource). */
+  setSeedSource: (source: import('@/lib/services/xero-budget-seed-service').ForecastSeedSource | null) => void;
   /** Restore a SAVED duration, bypassing durationLocked (not an operator edit). */
   hydrateForecastDuration: (duration: ForecastDuration) => void;
   /**
