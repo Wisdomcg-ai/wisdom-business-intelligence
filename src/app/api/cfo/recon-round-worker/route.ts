@@ -275,6 +275,13 @@ async function postHandler(request: Request) {
         }
       }
       if (!pending) {
+        // Known, accepted trade-off: a token holder can distinguish this
+        // reason from 'nothing pending' and probe declared emails against the
+        // presser's until a claim succeeds — a login-email confirmation
+        // oracle. Accepted because the token already exposes the far more
+        // sensitive full client roster on any claim, the operator population
+        // is two known people, and this reason string is what makes a
+        // misdeclared RUNNER_OWNER_EMAIL diagnosable at all.
         return NextResponse.json({
           claimed: null,
           reason: `pending run is reserved for the requester's own machine for its first ${AFFINITY_WINDOW_MINUTES} min`,

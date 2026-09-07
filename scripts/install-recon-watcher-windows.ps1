@@ -66,6 +66,17 @@ RUNNER_OWNER_EMAIL=
   Write-Host "created $EnvPath - put RECON_WATCHER_TOKEN in it"
 }
 
+# Existing env files predate press-affinity: append the new key (never touch
+# the token line) so re-running the installer migrates the machine.
+if (-not (Select-String -Path $EnvPath -Pattern '^RUNNER_OWNER_EMAIL=' -Quiet)) {
+  Add-Content -Encoding UTF8 -Path $EnvPath -Value @'
+# This machine's owner (their WisdomBI login email). A button press runs on
+# the presser's own machine first; other machines wait 5 minutes.
+RUNNER_OWNER_EMAIL=
+'@
+  Write-Host "added RUNNER_OWNER_EMAIL to $EnvPath - fill it in (this machine's owner's WisdomBI login email)"
+}
+
 $NodeBin = (Get-Command node -ErrorAction Stop).Source
 $Watcher = Join-Path $RepoRoot 'scripts\recon-round-watcher.mjs'
 $LogFile = Join-Path $LogDir 'recon-watcher.log'

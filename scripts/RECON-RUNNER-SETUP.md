@@ -75,5 +75,8 @@ people's presses — so set it on EVERY machine once there is more than one.
   client from the first few minutes).
 - If nothing picks a queued run up within 30 minutes, the button says so and
   the request expires — no silent hangs.
-- After a `git pull` in the repo clone, re-run the installer to refresh the
-  skills copy (Windows copies; macOS symlinks pick changes up automatically).
+- After a `git pull` in the repo clone, re-run the installer — it refreshes
+  the skills copy (Windows copies; macOS symlinks pick changes up
+  automatically) and appends any newly introduced env keys. The watcher
+  script itself runs FROM the clone, so new watcher behavior (e.g.
+  press-affinity) needs the pull, not just the installer.

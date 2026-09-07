@@ -5,6 +5,12 @@ const NOW = Date.parse('2026-09-08T06:00:00.000Z')
 const justQueued = new Date(NOW - 60_000).toISOString()
 const pastWindow = new Date(NOW - (AFFINITY_WINDOW_MINUTES + 1) * 60_000).toISOString()
 
+describe('AFFINITY_WINDOW_MINUTES', () => {
+  it('stays well below the 30-min pickup window so a reserved row always falls open before it expires', () => {
+    expect(AFFINITY_WINDOW_MINUTES).toBeLessThan(30)
+  })
+})
+
 describe('affinityEligible', () => {
   it('lets the requester’s own machine claim immediately', () => {
     expect(

@@ -7,6 +7,13 @@
  * boundary (the token already authorizes claiming), so every ambiguity here
  * resolves toward "the run still happens".
  */
+/**
+ * MUST stay well below the queue's 30-min pickup window (PICKUP_WINDOW_MINUTES
+ * in the recon-round routes): the fall-open-to-any-runner path only exists
+ * while the row is still pending, so an affinity window >= the pickup window
+ * would let a mismatched press expire without ever falling open — permanent
+ * starvation for a presser whose own machine is down. Pinned by a test.
+ */
 export const AFFINITY_WINDOW_MINUTES = 5
 
 export function affinityEligible(params: {

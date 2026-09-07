@@ -644,7 +644,7 @@ function ReconRoundButton({ request, busy, requestError, onRequest }: {
       <button
         onClick={onRequest}
         disabled={busy || inFlight}
-        title="Runs the Xero recon round on your Mac (Claude reading the badges in your logged-in Chrome) — refreshes every count on this table"
+        title="Runs the Xero recon round on a runner machine — yours first if you have one set up, otherwise whichever is on — and refreshes every count on this table"
         className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-brand-navy hover:bg-brand-navy-800 rounded-lg disabled:opacity-60"
       >
         {busy || inFlight ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}

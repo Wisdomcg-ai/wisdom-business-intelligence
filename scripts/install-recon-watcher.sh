@@ -42,6 +42,17 @@ ENVEOF
   chmod 600 "$ENV_FILE"
   echo "created $ENV_FILE — put RECON_WATCHER_TOKEN in it"
 fi
+
+# Existing env files predate press-affinity: append the new key (never touch
+# the token line) so re-running the installer migrates the machine.
+if ! grep -q '^RUNNER_OWNER_EMAIL=' "$ENV_FILE"; then
+  {
+    echo "# This machine's owner (their WisdomBI login email). A button press runs on"
+    echo "# the presser's own machine first; other machines wait 5 minutes."
+    echo "RUNNER_OWNER_EMAIL="
+  } >> "$ENV_FILE"
+  echo "added RUNNER_OWNER_EMAIL to $ENV_FILE — fill it in (this machine's owner's WisdomBI login email)"
+fi
 cat > "$RUNNER_DIR/.claude/settings.json" <<'EOF'
 {
   "permissions": {
