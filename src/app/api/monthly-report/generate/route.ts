@@ -6,6 +6,7 @@ import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -73,14 +74,14 @@ async function postHandler(request: Request) {
       )
     }
 
-    // Verify user owns or coaches this business
-    const { data: bizAccess } = await authSupabase
-      .from('businesses')
-      .select('id')
-      .eq('id', business_id)
-      .or(`owner_id.eq.${user.id},assigned_coach_id.eq.${user.id}`)
-      .maybeSingle()
-    if (!bizAccess) {
+    // Verify the user may see this business. Use the canonical helper: the
+    // inline owner/assigned-coach check this replaces admitted neither
+    // super_admins nor business_users members, so generating a client's
+    // monthly report 403'd for anyone but that client's own coach (found on
+    // Urban Road, 8 Sep 2026 — the platform owner could not run the report).
+    // The helper also handles the dual-ID space.
+    const hasAccess = await verifyBusinessAccess(user.id, business_id)
+    if (!hasAccess) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 

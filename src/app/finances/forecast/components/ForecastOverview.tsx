@@ -56,6 +56,7 @@ import {
   isCOGSLine as isCOGS,
   isOpExLine as isOpEx,
 } from '../utils/pl-line-categories'
+import { deriveActualSeries } from '../utils/dashboard-actual-series'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FY mode — determines copy / visuals per selected FY tab
@@ -359,6 +360,49 @@ export default function ForecastOverview({
     [plLines, monthKeys, expectedLastActualIndex],
   )
 
+  // Xero-supplemented actuals, fetched ONCE for the whole dashboard: the KPI
+  // strip and the trajectory chart used to disagree because only the chart
+  // asked for them (see utils/dashboard-actual-series).
+  const [xeroMonths, setXeroMonths] = useState<DashboardActualsMonth[] | null>(null)
+  const [xeroActualsLoading, setXeroActualsLoading] = useState(true)
+  const [xeroActualsError, setXeroActualsError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!businessId) return
+    let cancelled = false
+    setXeroActualsLoading(true)
+    setXeroActualsError(null)
+
+    const url = `/api/forecast/dashboard-actuals?businessId=${encodeURIComponent(
+      businessId,
+    )}&fiscalYear=${fiscalYear}&yearStartMonth=${yearStartMonth}`
+
+    fetch(url)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return (await res.json()) as DashboardActualsResponse
+      })
+      .then((json) => {
+        if (cancelled) return
+        setXeroMonths(json.data?.months ?? [])
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        console.error('[ForecastOverview] dashboard-actuals fetch failed', err)
+        // Fail open: the strip falls back to the stored lines rather than
+        // printing zeros, and the chart says it could not load.
+        setXeroMonths(null)
+        setXeroActualsError(err instanceof Error ? err.message : 'Failed to load trajectory data')
+      })
+      .finally(() => {
+        if (!cancelled) setXeroActualsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [businessId, fiscalYear, yearStartMonth])
+
   // Per-FY mode — drives copy / traffic-light visibility for KPI strip,
   // scorecard, and insights. Computed once per fiscalYear/yearStartMonth pair.
   const fyMode = useMemo<FYMode>(
@@ -488,6 +532,7 @@ export default function ForecastOverview({
       })()}
       <KpiStrip
         totals={totals}
+        xeroMonths={xeroMonths}
         revenuePlan={revenuePlan}
         grossPlan={grossPlan}
         netPlan={netPlan}
@@ -498,9 +543,9 @@ export default function ForecastOverview({
         fyMode={fyMode}
       />
       <TrajectoryCard
-        businessId={businessId}
-        fiscalYear={fiscalYear}
-        yearStartMonth={yearStartMonth}
+        months={xeroMonths}
+        isLoading={xeroActualsLoading}
+        error={xeroActualsError}
         monthLabels={monthLabelsWithYear}
         revenuePlan={revenuePlan}
         grossPlan={grossPlan}
@@ -550,6 +595,13 @@ export default function ForecastOverview({
 
 interface KpiStripProps {
   totals: MonthlyTotals
+  /**
+   * Xero-supplemented actuals from /api/forecast/dashboard-actuals. Since
+   * Phase 44 nothing populates forecast_pl_lines.actual_months, so without
+   * these the strip reports YTD $0 and calls the first month of the year
+   * "this month" (see utils/dashboard-actual-series).
+   */
+  xeroMonths: DashboardActualsMonth[] | null
   revenuePlan: number
   grossPlan: number
   netPlan: number
@@ -565,6 +617,7 @@ interface KpiStripProps {
 
 function KpiStrip({
   totals,
+  xeroMonths,
   revenuePlan,
   grossPlan,
   netPlan,
@@ -579,7 +632,10 @@ function KpiStrip({
   // and understate YTD totals. The calendar-floor lastActualIndex is reserved
   // for the monthly trend table / trajectory chart where the column label
   // ("Apr 26") needs to read as actual even when data hasn't synced yet.
-  const dataIdx = totals.dataLastActualIndex
+  // Actuals come from Xero when available, falling back to whatever the stored
+  // lines carry — so a failed fetch degrades to the old behaviour, never to $0.
+  const series = deriveActualSeries(totals, xeroMonths)
+  const dataIdx = series.dataLastActualIndex
   const monthsElapsed = dataIdx + 1 // number of months with actuals so far
   const ytdProrate = (annualPlan: number) =>
     monthsElapsed > 0 ? Math.round((annualPlan / 12) * monthsElapsed) : 0
@@ -661,9 +717,9 @@ function KpiStrip({
   }
 
   const cards: KpiCardProps[] = [
-    buildKpiCard('Revenue', totals.revenue, revenuePlan, 'navy'),
-    buildKpiCard('Gross Profit', totals.grossProfit, grossPlan, 'teal'),
-    buildKpiCard('Net Profit', totals.netProfit, netPlan, 'orange'),
+    buildKpiCard('Revenue', series.revenue, revenuePlan, 'navy'),
+    buildKpiCard('Gross Profit', series.grossProfit, grossPlan, 'teal'),
+    buildKpiCard('Net Profit', series.netProfit, netPlan, 'orange'),
     {
       label: 'Cash Position',
       kind: 'cash',
@@ -1098,9 +1154,10 @@ interface DashboardActualsResponse {
 }
 
 interface TrajectoryProps {
-  businessId: string
-  fiscalYear: number
-  yearStartMonth: number
+  /** Fetched once by the parent so the KPI strip reads the same actuals. */
+  months: DashboardActualsMonth[] | null
+  isLoading: boolean
+  error: string | null
   monthLabels: string[]
   revenuePlan: number
   grossPlan: number
@@ -1108,50 +1165,15 @@ interface TrajectoryProps {
 }
 
 function TrajectoryCard({
-  businessId,
-  fiscalYear,
-  yearStartMonth,
+  months,
+  isLoading,
+  error,
   monthLabels,
   revenuePlan,
   grossPlan,
   netPlan,
 }: TrajectoryProps) {
   const [metric, setMetric] = useState<Metric>('revenue')
-  const [months, setMonths] = useState<DashboardActualsMonth[] | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    setIsLoading(true)
-    setError(null)
-
-    const url = `/api/forecast/dashboard-actuals?businessId=${encodeURIComponent(
-      businessId,
-    )}&fiscalYear=${fiscalYear}&yearStartMonth=${yearStartMonth}`
-
-    fetch(url)
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return (await res.json()) as DashboardActualsResponse
-      })
-      .then((json) => {
-        if (cancelled) return
-        setMonths(json.data?.months ?? [])
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        console.error('[ForecastOverview] dashboard-actuals fetch failed', err)
-        setError(err instanceof Error ? err.message : 'Failed to load trajectory data')
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [businessId, fiscalYear, yearStartMonth])
 
   const annualPlan = metric === 'revenue' ? revenuePlan : metric === 'gp' ? grossPlan : netPlan
   const planMonthly = annualPlan > 0 ? annualPlan / 12 : 0
