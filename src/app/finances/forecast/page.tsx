@@ -971,6 +971,8 @@ function FinancialForecastPageInner() {
             assumptions={parsedAssumptions}
             forecast={forecast}
             plLines={plLines}
+            yearStartMonth={fiscalYearStart}
+            isEstimatedMode={isEstimatedMode}
           />
         )}
 
