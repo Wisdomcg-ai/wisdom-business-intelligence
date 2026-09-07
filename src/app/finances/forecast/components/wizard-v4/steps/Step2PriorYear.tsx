@@ -484,8 +484,14 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleRefreshFromXero = useCallback(async () => {
+    // A budget seed is one-shot: this refresh rebuilds Steps 3 and 6 from
+    // prior-year ACTUALS, so the imported budget lines would be gone for good.
+    // Name the seed so the operator knows exactly what they are giving up.
+    const seeded = state.seedSource?.kind === 'xero_budget' ? state.seedSource : null;
     const confirmed = window.confirm(
-      'Refresh will reset your line-level customizations in Steps 3, 5, and 6 to match current Xero.\n\nStep 4 (Team) and Step 5 (Subscriptions) will not be affected.\n\nContinue?'
+      seeded
+        ? `This replaces the lines imported from your Xero budget “${seeded.budgetName}” with last year's actuals from Xero. The budget cannot be re-imported into this forecast.\n\nSteps 3 (Revenue & COGS) and 6 (OpEx) will be rebuilt from prior-year figures. Step 4 (Team) and Step 5 (Subscriptions) will not be affected.\n\nContinue?`
+        : 'Refresh will reset your line-level customizations in Steps 3, 5, and 6 to match current Xero.\n\nStep 4 (Team) and Step 5 (Subscriptions) will not be affected.\n\nContinue?'
     );
     if (!confirmed) return;
 
@@ -592,7 +598,7 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
     } finally {
       setIsRefreshing(false);
     }
-  }, [businessId, fiscalYear, actions, priorYear]);
+  }, [businessId, fiscalYear, actions, priorYear, state.seedSource]);
 
   // Hotfix Part 2 — reconciliation drift banner.
   //

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { XeroBudgetSeedBanner } from '../XeroBudgetSeedBanner';
+import { formatSeedDate } from '@/lib/forecast/xero-budget-seed-client';
 import {
   TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Lightbulb,
   ChevronRight, ChevronDown, Users, Building2, Receipt, Wallet,
@@ -815,6 +817,13 @@ export function Step8Review({ state, actions, summary, fiscalYear, onGenerate, i
 
   return (
     <div className="space-y-6">
+
+      <XeroBudgetSeedBanner seedSource={state.seedSource}>
+        Started from Xero budget <strong>“{state.seedSource?.budgetName}”</strong>
+        {state.seedSource?.orgName ? <> ({state.seedSource.orgName})</> : null}
+        {state.seedSource?.seededAt ? <> on {formatSeedDate(state.seedSource.seededAt)}</> : null}. Team costs come from payroll and
+        subscriptions from your vendor budgets; everything else is the budget&apos;s own figures unless you changed it.
+      </XeroBudgetSeedBanner>
 
       {/* ── Layer 1: Draft Status Banner ── */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">

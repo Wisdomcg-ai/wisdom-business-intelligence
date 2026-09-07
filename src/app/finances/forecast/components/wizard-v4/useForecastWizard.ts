@@ -214,6 +214,7 @@ const createInitialState = (fiscalYearStart: number, businessId: string): Foreca
   // resolves. Populated from /api/subscription-budgets?business_id=... on
   // wizard mount. T07 (B2) will read this for the rollup.
   subscriptions: [],
+  seedSource: null,
   // Phase 57 (T03/T04, B3): operator starts at step 1. Advanced by
   // `nextStep`/`goToStep` (T04). Soft-migration carries this forward for
   // legacy v10 drafts so visited steps remain clickable post-swap.
@@ -1225,6 +1226,12 @@ export function useForecastWizard(
       ...prev,
       needsAccountCodeRefresh: needsRefresh,
     }));
+  }, []);
+
+  // Seed provenance (Xero budget). Restored on open; buildAssumptions writes
+  // it back so the first autosave does not erase where the numbers came from.
+  const setSeedSource = useCallback((source: ForecastWizardState['seedSource']) => {
+    setState((prev) => ({ ...prev, seedSource: source ?? null }));
   }, []);
 
   const updateOpExLine = useCallback((lineId: string, updates: Partial<OpExLine>) => {
@@ -2388,6 +2395,9 @@ export function useForecastWizard(
       plannedSpends: state.plannedSpends,
       // Phase 57 (T09): at-save-time snapshot of active vendor budgets.
       subscriptions: subscriptionsSnapshot,
+      // Budget-seed provenance travels with every save (the seed wrote it; the
+      // wizard used to drop it on the first autosave — Urban Road, 7 Sep 2026).
+      ...(state.seedSource ? { seedSource: state.seedSource } : {}),
       // PR-A materializer fidelity: buckets the summary nets off that must
       // reach the stored P&L (converter emits matching lines).
       xeroOtherIncome: state.priorYear?.otherIncome?.total ?? 0,
@@ -2560,6 +2570,7 @@ export function useForecastWizard(
     addOpExLine,
     removeOpExLine,
     setNeedsAccountCodeRefresh,
+    setSeedSource,
     addCapExItem,
     updateCapExItem,
     removeCapExItem,
@@ -2585,7 +2596,7 @@ export function useForecastWizard(
     addDeparture, removeDeparture, addBonus, updateBonus, removeBonus,
     addCommission, updateCommission, removeCommission, setDefaultPayFrequency,
     setDefaultOpExIncreasePct, setOpExLines, mergeSavedOpExLines, updateOpExLine, addOpExLine,
-    removeOpExLine, setNeedsAccountCodeRefresh, addCapExItem, updateCapExItem,
+    removeOpExLine, setNeedsAccountCodeRefresh, setSeedSource, addCapExItem, updateCapExItem,
     removeCapExItem, addInvestment, updateInvestment, removeInvestment,
     addPlannedSpend, updatePlannedSpend, removePlannedSpend, setPlannedSpends,
     setSubscriptions,

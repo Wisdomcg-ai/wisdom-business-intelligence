@@ -51,6 +51,8 @@ import { isPlanningSeasonActive, getAvailableFiscalYears, getCurrentFiscalYear, 
 import { getMonthsUntilYearEnd } from '@/lib/utils/fiscal-year-utils'
 import { FYSelectorTabs } from './components/FYSelectorTabs'
 import { PlanningSeasonBanner } from './components/PlanningSeasonBanner'
+import { describeSeedReport } from '@/lib/forecast/xero-budget-seed-client'
+import type { XeroBudgetSeedReport } from '@/lib/services/xero-budget-seed-service'
 // Note: Coach view is at /coach/clients/[id]/forecast
 
 function FinancialForecastPageInner() {
@@ -110,6 +112,7 @@ function FinancialForecastPageInner() {
   const [wizardStartStep, setWizardStartStep] = useState<number | undefined>(undefined)
   const [wizardStartFresh, setWizardStartFresh] = useState(false)
   const [isSeedingForecast, setIsSeedingForecast] = useState(false)
+  const [isSeedingFromBudget, setIsSeedingFromBudget] = useState(false)
 
   // FY selector state
   const [selectedFiscalYear, setSelectedFiscalYear] = useState<number | null>(null)
@@ -568,6 +571,62 @@ function FinancialForecastPageInner() {
     }
   }, [businessId, selectedFiscalYear, forecast?.fiscal_year])
 
+  // "Start from Xero budget" (budget-seed PR 4, Sep 2026). Mirrors
+  // handleSeedForecast: POST, then open the wizard on Step 1 with startFresh so
+  // the seeded assumptions (goals pre-filled, "As budgeted" OpEx) are the
+  // source of truth. Opt-in and one-shot — the operator chose the (org, budget).
+  const handleSeedFromXeroBudget = useCallback(
+    async (choice: { tenantId: string; budgetId: string; budgetName: string }) => {
+      if (!businessId) return
+      const targetFY = selectedFiscalYear || forecast?.fiscal_year
+      if (!targetFY) {
+        toast.error('No target fiscal year selected')
+        return
+      }
+      setIsSeedingFromBudget(true)
+      try {
+        const res = await fetch('/api/forecast/seed-from-xero-budget', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            businessId,
+            targetFiscalYear: targetFY,
+            tenantId: choice.tenantId,
+            budgetId: choice.budgetId,
+          }),
+        })
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({ error: 'Import failed' }))
+          if (payload?.code === 'xero_budget_scope_missing') {
+            toast.error('Reconnect Xero to import budgets', {
+              description: 'This connection predates budget access. Reconnect the organisation from Integrations, then try again.',
+            })
+          } else if (res.status === 409) {
+            toast.error('This forecast already has data', {
+              description: 'A budget can only seed an empty forecast. Save a new version first if you want to start over.',
+            })
+          } else {
+            toast.error(payload?.error || 'Import failed')
+          }
+          return
+        }
+        const { forecastId, report } = (await res.json()) as { forecastId: string; report?: XeroBudgetSeedReport }
+        if (report) {
+          const { title, detail } = describeSeedReport(report, choice.budgetName)
+          toast.success(title, detail ? { description: detail, duration: 12_000 } : undefined)
+        }
+        setSelectedForecastId(forecastId)
+        setSelectedForecastName(null)
+        setWizardStartStep(1)
+        setWizardStartFresh(true)
+        setShowWizardV4(true)
+      } finally {
+        setIsSeedingFromBudget(false)
+      }
+    },
+    [businessId, selectedFiscalYear, forecast?.fiscal_year],
+  )
+
   // Full-screen spinner ONLY before the first paint. It used to gate on
   // `isLoading` alone, so every FY tab click — which sets isLoading(true) via the
   // load effect — tore the entire page down to a centred spinner, header, tabs
@@ -683,6 +742,8 @@ function FinancialForecastPageInner() {
           }}
           onSeedForecast={handleSeedForecast}
           isSeedingForecast={isSeedingForecast}
+          onSeedFromXeroBudget={handleSeedFromXeroBudget}
+          isSeedingFromBudget={isSeedingFromBudget}
         />
       </div>
     )
@@ -733,7 +794,11 @@ function FinancialForecastPageInner() {
         <PageHeader
           variant="banner"
           title="Financial Forecast"
-          subtitle={`${getFiscalYearLabel(selectedFiscalYear || forecast.fiscal_year, fiscalYearStart)}${forecast.name ? ` — ${forecast.name}` : ''}`}
+          subtitle={`${getFiscalYearLabel(selectedFiscalYear || forecast.fiscal_year, fiscalYearStart)}${forecast.name ? ` — ${forecast.name}` : ''}${
+            (forecast.assumptions as ForecastAssumptions | null | undefined)?.seedSource?.kind === 'xero_budget'
+              ? ` · from Xero budget “${(forecast.assumptions as ForecastAssumptions).seedSource?.budgetName}”`
+              : ''
+          }`}
           icon={TrendingUp}
           actions={
             <>

@@ -607,7 +607,7 @@ describe('F: Success path', () => {
     // updateSpy should have been called exactly once
     expect(updateSpy).toHaveBeenCalledTimes(1)
     const updateArg = updateSpy.mock.calls[0][0]
-    expect(updateArg).toEqual({ forecast_duration: 1 })
+    expect(updateArg).toEqual({ forecast_duration: 1, draft_assumptions: null })
   })
 
   it('calls financial_forecasts UPDATE unconditionally when prior duration = 2', async () => {
@@ -618,7 +618,7 @@ describe('F: Success path', () => {
 
     expect(updateSpy).toHaveBeenCalledTimes(1)
     const updateArg = updateSpy.mock.calls[0][0]
-    expect(updateArg).toEqual({ forecast_duration: 2 })
+    expect(updateArg).toEqual({ forecast_duration: 2, draft_assumptions: null })
   })
 
   it('subscription_budgets is NEVER touched on success path', async () => {
