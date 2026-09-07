@@ -153,7 +153,8 @@ function FinancialForecastPageInner() {
     loadVersions,
     handleSelectVersion,
     handleSaveAsNewVersion,
-    handleOverwriteVersion
+    handleOverwriteVersion,
+    handleSetActiveVersion,
   } = useVersionManager({
     forecast,
     businessId
@@ -1055,6 +1056,7 @@ function FinancialForecastPageInner() {
             versions={versions}
             currentVersion={forecast}
             onSelectVersion={handleSelectVersion}
+            onSetActive={handleSetActiveVersion}
             onSaveAsNew={handleSaveAsNewVersion}
             onOverwrite={handleOverwriteVersion}
           />

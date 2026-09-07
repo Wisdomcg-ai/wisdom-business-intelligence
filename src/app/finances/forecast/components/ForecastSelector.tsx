@@ -24,6 +24,7 @@ import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileIds';
 import { useBudgetAvailability } from './xero-budget/useBudgetAvailability';
+import { setActiveForecastVersion } from '../services/set-active-version';
 import { XeroBudgetStart, integrationsHrefFor, type XeroBudgetSeedChoice } from './xero-budget/XeroBudgetStart';
 
 interface ForecastVersion {
@@ -245,28 +246,8 @@ export function ForecastSelector({
   const handleSetActive = async (forecast: ForecastVersion) => {
     setShowMenu(null);
     try {
-      // financial_forecasts is keyed by business_profiles.id — resolve the
-      // profile id so the deactivate-others filter actually matches the rows
-      // (mirrors loadForecasts above). Filtering by businesses.id is a no-op,
-      // which then collides with unique_active_forecast_per_fy on activate.
-      const profileBusinessId = await resolveBusinessProfileId(supabase, businessId);
-      if (!profileBusinessId) {
-        throw new Error('Could not resolve business profile for forecast');
-      }
-
-      // Deactivate all other forecasts
-      await supabase
-        .from('financial_forecasts')
-        .update({ is_active: false })
-        .eq('business_id', profileBusinessId)
-        .eq('fiscal_year', fiscalYear);
-
-      // Activate this one
-      const { error } = await supabase
-        .from('financial_forecasts')
-        .update({ is_active: true })
-        .eq('id', forecast.id);
-
+      // Shared with the Versions tab — see services/set-active-version.ts.
+      const { error } = await setActiveForecastVersion(supabase, { businessId, fiscalYear, forecastId: forecast.id });
       if (error) throw error;
 
       toast.success(`"${forecast.name}" is now the active forecast`);
