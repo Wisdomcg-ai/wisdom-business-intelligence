@@ -41,6 +41,17 @@ describe('listBudgetChoices', () => {
     expect(listBudgetChoices(null)).toEqual([])
     expect(listBudgetChoices({ state: 'not_connected', fiscalYear: 2027, orgs: [] })).toEqual([])
   })
+  it('skips budgets with nothing in this FY even if the route offered them', () => {
+    const resp: BudgetAvailabilityResponse = {
+      state: 'available', fiscalYear: 2028,
+      orgs: [{ tenantId: 't', orgName: 'Acme', functionalCurrency: 'AUD', state: 'available', budgets: [
+        { ...budget('b-zero', 'Overall Budget'), coverage: cov(0) },
+        { ...budget('b-empty', '400k Budget', 'TRACKING'), lineCount: 0 },
+        budget('b-ok', 'FY28 Budget'),
+      ] }],
+    }
+    expect(listBudgetChoices(resp).map((c) => c.budgetId)).toEqual(['b-ok'])
+  })
 })
 
 describe('pickDefaultBudget', () => {

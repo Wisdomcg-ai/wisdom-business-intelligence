@@ -576,7 +576,7 @@ function FinancialForecastPageInner() {
   // the seeded assumptions (goals pre-filled, "As budgeted" OpEx) are the
   // source of truth. Opt-in and one-shot — the operator chose the (org, budget).
   const handleSeedFromXeroBudget = useCallback(
-    async (choice: { tenantId: string; budgetId: string; budgetName: string }) => {
+    async (choice: { tenantId: string; budgetId: string; budgetName: string; forecastId?: string }) => {
       if (!businessId) return
       const targetFY = selectedFiscalYear || forecast?.fiscal_year
       if (!targetFY) {
@@ -593,6 +593,11 @@ function FinancialForecastPageInner() {
             targetFiscalYear: targetFY,
             tenantId: choice.tenantId,
             budgetId: choice.budgetId,
+            // Target the forecast the surface named (selector: the empty
+            // version) or the one on screen — not "the most recently updated
+            // row for this FY", which differs once there are several versions.
+            forecastId:
+              choice.forecastId ?? (forecast && forecast.fiscal_year === targetFY ? forecast.id : undefined),
           }),
         })
         if (!res.ok) {
@@ -619,12 +624,13 @@ function FinancialForecastPageInner() {
         setSelectedForecastName(null)
         setWizardStartStep(1)
         setWizardStartFresh(true)
+        setShowForecastSelector(false)
         setShowWizardV4(true)
       } finally {
         setIsSeedingFromBudget(false)
       }
     },
-    [businessId, selectedFiscalYear, forecast?.fiscal_year],
+    [businessId, selectedFiscalYear, forecast?.fiscal_year, forecast?.id],
   )
 
   // Full-screen spinner ONLY before the first paint. It used to gate on
@@ -1143,6 +1149,8 @@ function FinancialForecastPageInner() {
             setShowWizardV4(true)
           }}
           onClose={() => setShowForecastSelector(false)}
+          onSeedFromXeroBudget={handleSeedFromXeroBudget}
+          isSeedingFromBudget={isSeedingFromBudget}
         />
       )}
 

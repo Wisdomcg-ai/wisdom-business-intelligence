@@ -48,6 +48,12 @@ const PostSchema = z
     targetFiscalYear: z.number(),
     tenantId: z.string(),
     budgetId: z.string(),
+    /**
+     * The forecast on screen. Without it the route falls back to the most
+     * recently updated row for the FY, which is the wrong one as soon as a
+     * business has more than one version (Urban Road, 7 Sep 2026).
+     */
+    forecastId: z.string().optional(),
   })
   .passthrough()
 
@@ -64,8 +70,8 @@ async function postHandler(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}))
-    const { businessId, targetFiscalYear, tenantId, budgetId } = body as {
-      businessId?: string; targetFiscalYear?: number; tenantId?: string; budgetId?: string
+    const { businessId, targetFiscalYear, tenantId, budgetId, forecastId } = body as {
+      businessId?: string; targetFiscalYear?: number; tenantId?: string; budgetId?: string; forecastId?: string
     }
     if (!businessId || !targetFiscalYear || !tenantId || !budgetId) {
       return NextResponse.json(
@@ -118,11 +124,15 @@ async function postHandler(request: Request) {
 
     // ── 4. Target forecast row (forecasts are business_profiles-space) ───────
     const ids = await resolveBusinessProfileIds(supabase, businessId)
-    const { data: targetForecast } = await supabase
+    // Prefer the forecast the operator is looking at; the business + FY
+    // filters stay on so a foreign id cannot be seeded through this business.
+    let targetQuery = supabase
       .from('financial_forecasts')
       .select('id, assumptions, forecast_start_month, forecast_end_month, forecast_duration')
       .in('business_id', ids.all)
       .eq('fiscal_year', targetFiscalYear)
+    if (forecastId) targetQuery = targetQuery.eq('id', forecastId)
+    const { data: targetForecast } = await targetQuery
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle()
