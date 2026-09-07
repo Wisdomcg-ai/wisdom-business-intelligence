@@ -51,6 +51,11 @@ import {
   getFiscalYearEndDate,
 } from '@/lib/utils/fiscal-year-utils'
 import { getCurrentFiscalYear } from '../utils/fiscal-year'
+import {
+  isRevenueLine as isRevenue,
+  isCOGSLine as isCOGS,
+  isOpExLine as isOpEx,
+} from '../utils/pl-line-categories'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FY mode — determines copy / visuals per selected FY tab
@@ -105,8 +110,8 @@ export interface ForecastOverviewProps {
 // category line (convertParityBuckets). Wizard-materialized rows have a NULL
 // account_type, so the account_type escape hatch below cannot catch them —
 // without the category entry the line leaks into OpEx and reduces Net Profit.
-const REVENUE_CATEGORIES = ['revenue', 'trading revenue', 'other revenue', 'other income']
-const COGS_CATEGORIES = ['cost of sales', 'cogs', 'direct costs', 'cost of goods sold']
+// Revenue / COGS / OpEx bucketing now lives in utils/pl-line-categories so the
+// KPI cards above this dashboard use the identical rule (8 Sep 2026).
 // Team / wages haystack — drives both the Monthly P&L "Team" row and the
 // Wages % scorecard card. Includes the full team-cost taxonomy: wages/salary,
 // statutory on-costs (super, payroll tax, workcover), and variable comp
@@ -118,34 +123,6 @@ const TEAM_HINTS = [
   'bonus', 'commission', 'contractor',
 ]
 const SUBS_HINTS = ['subscription', 'software', 'saas', 'licence', 'license']
-
-function isRevenue(line: Pick<PLLine, 'category' | 'account_type'>): boolean {
-  const t = line.account_type?.toLowerCase()
-  // Phase 65: prior-FY actuals from xero_pl_lines carry account_type but no
-  // category. 'other_income' belongs above the bottom line (Total Income in
-  // Xero) so it joins the revenue bucket here — otherwise it leaks into
-  // OpEx and silently *reduces* Net Profit.
-  if (t === 'revenue' || t === 'other_income') return true
-  if (!line.category) return false
-  return REVENUE_CATEGORIES.includes(line.category.toLowerCase())
-}
-
-function isCOGS(line: Pick<PLLine, 'category' | 'account_type'>): boolean {
-  // Phase 65: same root cause as isRevenue — actuals-only rows lack
-  // category. Fall back to account_type so COGS doesn't leak into OpEx
-  // (which collapses Gross Profit to Revenue).
-  if (line.account_type?.toLowerCase() === 'cogs') return true
-  if (!line.category) return false
-  return COGS_CATEGORIES.includes(line.category.toLowerCase())
-}
-
-function isOpEx(line: Pick<PLLine, 'category' | 'account_type'>): boolean {
-  if (isRevenue(line) || isCOGS(line)) return false
-  const cat = (line.category || '').toLowerCase()
-  // Treat anything that isn't classed as revenue/COGS as OpEx for this tab
-  if (cat.includes('other income')) return false
-  return true
-}
 
 type RowGroup = 'team' | 'opex' | 'subs' | 'other'
 
