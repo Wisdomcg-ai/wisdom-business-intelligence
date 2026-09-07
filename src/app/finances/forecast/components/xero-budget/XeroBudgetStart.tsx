@@ -27,6 +27,8 @@ export interface XeroBudgetSeedChoice {
   budgetName: string
   /** The empty forecast to seed when the surface knows it (selector); else the page decides. */
   forecastId?: string
+  /** That forecast's current name, so the wizard keeps it rather than defaulting on Generate. */
+  forecastName?: string | null
 }
 
 export interface XeroBudgetStartProps {
@@ -134,6 +136,17 @@ export function XeroBudgetAvailabilityLine({
         <button type="button" onClick={retry} className="inline-flex items-center gap-1 font-medium underline">
           <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Retry
         </button>
+      </p>
+    )
+  }
+  if (state === 'checking') {
+    // The check round-trips to Xero for every budget the org has (4–8s on
+    // Urban Road). Without this line the button simply appears late and the
+    // operator has no idea anything is happening.
+    return (
+      <p className={`${base} text-gray-400 inline-flex items-center gap-1.5`} data-testid="budget-availability" aria-live="polite">
+        <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        Checking Xero for a budget…
       </p>
     )
   }

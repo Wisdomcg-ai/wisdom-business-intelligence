@@ -166,6 +166,22 @@ describe('scope_missing', () => {
   })
 })
 
+describe('checking', () => {
+  it('says the check is running while the Xero round-trips are in flight (4–8s on a real org)', async () => {
+    fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/Xero/pl-summary')) return okJson({ summary: { has_xero_data: false } })
+      if (url.includes('/api/Xero/budgets')) return new Promise(() => {}) // never resolves
+      return okJson({}, 404)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderState()
+    const line = await screen.findByTestId('budget-availability')
+    expect(line).toHaveTextContent(/Checking Xero for a budget/)
+    expect(screen.queryByRole('button', { name: /Start from Xero budget/ })).toBeNull()
+  })
+})
+
 describe('none / error / not_connected', () => {
   it('none: a quiet sentence and no budget button — the blank start is the single CTA', async () => {
     stubFetch({ state: 'none', fiscalYear: 2027, orgs: [org({ state: 'none', budgets: [] })] })
