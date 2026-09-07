@@ -26,6 +26,7 @@ import { WIZARD_STEPS, PriorYearData, TeamMember, Goals } from './types';
 // _xeroImportedAt, _xeroFingerprint) flow through every entry path.
 import { enrichWizardMemberFromXeroEmployee } from './utils/xero-payroll-mapping';
 import { resolvePriorYearSecondary } from './utils/resolve-prior-year-secondaries';
+import { mergeSavedTeamMembers, keepHandAddedMembers, savedMemberToTeamMember, normaliseName, type SavedTeamMember } from './utils/merge-saved-team';
 
 interface ForecastWizardV4Props {
   businessId: string;
@@ -264,6 +265,7 @@ export function ForecastWizardV4({
           // Refresh team members if they were missing from cache
           if (needsTeam) {
             let teamLoaded = false;
+            const xeroNamesLoaded = new Set<string>();
             // Try Xero employees first
             if (teamRes?.ok) {
               const teamData = await teamRes.json();
@@ -284,6 +286,7 @@ export function ForecastWizardV4({
                     salary = emp.hourly_rate * (emp.hours_per_week || defaultHours) * 52;
                   }
                   if (!salary) salary = 80000;
+                  xeroNamesLoaded.add(normaliseName(emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`));
                   actionsRef.current.addTeamMember({
                     ...enriched,
                     name: emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown',
@@ -298,21 +301,34 @@ export function ForecastWizardV4({
                 teamLoaded = true;
               }
             }
-            // Fallback: restore from saved forecast assumptions
-            if (!teamLoaded && forecastRes?.ok) {
+            // Saved team: the whole team when Xero returned nobody, otherwise
+            // only the members the operator added by hand (contractors paid
+            // through bills etc.) — Xero payroll never lists those, and the
+            // old `Xero ?? saved` rule silently dropped them.
+            if (forecastRes?.ok) {
               const forecastData = await forecastRes.json();
               const savedAssumptions = pickWizardAssumptions(forecastData?.forecast);
-              if (savedAssumptions?.team?.existingTeam?.length > 0) {
-                console.log('[ForecastWizardV4] Refreshing team from saved assumptions:', savedAssumptions.team.existingTeam.length, 'members');
-                for (const emp of savedAssumptions.team.existingTeam) {
+              const savedExistingTeam: SavedTeamMember[] = savedAssumptions?.team?.existingTeam ?? [];
+              if (savedExistingTeam.length > 0) {
+                const toAdd = teamLoaded
+                  ? savedExistingTeam.filter(
+                      (emp) => emp.isFromXero === false && !xeroNamesLoaded.has(normaliseName(emp.name)),
+                    )
+                  : savedExistingTeam;
+                if (toAdd.length > 0) {
+                  console.log('[ForecastWizardV4] Refreshing team from saved assumptions:', toAdd.length, teamLoaded ? 'hand-added member(s)' : 'members');
+                }
+                for (const emp of toAdd) {
+                  const member = savedMemberToTeamMember(emp);
                   actionsRef.current.addTeamMember({
-                    name: emp.name,
-                    role: emp.role,
-                    type: (emp.employmentType as 'full-time' | 'part-time' | 'casual' | 'contractor') || 'full-time',
-                    hoursPerWeek: emp.hoursPerWeek || 38,
-                    currentSalary: emp.currentSalary,
-                    increasePct: emp.salaryIncreasePct || 3,
-                    isFromXero: emp.isFromXero ?? false,
+                    name: member.name,
+                    role: member.role,
+                    type: member.type,
+                    contractorType: member.contractorType,
+                    hoursPerWeek: member.hoursPerWeek,
+                    currentSalary: member.currentSalary,
+                    increasePct: member.increasePct,
+                    isFromXero: member.isFromXero,
                   });
                 }
               }
@@ -1023,10 +1039,14 @@ export function ForecastWizardV4({
                 : Array(12).fill(100 / 12),
           };
 
-          // Build team - prefer fresh Xero data, fall back to saved assumptions
-          let team: TeamMember[] = [];
+          // Build team — fresh Xero payroll for the people Xero knows, MERGED
+          // with the saved team so hand-added members (contractors paid
+          // through bills, a director on no payroll) survive a reopen. The old
+          // `Xero ?? saved` rule dropped Urban Road's 13 contractors and their
+          // bonus every time the forecast was opened (7 Sep 2026).
+          let xeroTeam: TeamMember[] = [];
           if (teamData.employees?.length > 0) {
-            team = teamData.employees.map(
+            xeroTeam = teamData.employees.map(
               (emp: any) => {
                 // Phase 52 (XERO-S4-01..04): single canonical mapper. See Site 1
                 // comment above (around line ~175) for rationale. Site-specific
@@ -1058,30 +1078,14 @@ export function ForecastWizardV4({
                 };
               }
             );
-          } else if (savedAssumptions?.team?.existingTeam?.length > 0) {
-            // Fall back to saved existing team when Xero data unavailable
+          }
+          const savedExistingTeam = savedAssumptions?.team?.existingTeam ?? [];
+          if (xeroTeam.length === 0 && savedExistingTeam.length > 0) {
             console.log('[ForecastWizardV4] No Xero employees, reconstructing from saved assumptions');
-            team = savedAssumptions.team.existingTeam.map((emp: {
-              employeeId: string;
-              name: string;
-              role: string;
-              employmentType: string;
-              currentSalary: number;
-              hoursPerWeek?: number;
-              salaryIncreasePct?: number;
-              isFromXero?: boolean;
-            }) => ({
-              id: emp.employeeId,
-              name: emp.name,
-              role: emp.role,
-              type: (emp.employmentType as 'full-time' | 'part-time' | 'casual' | 'contractor') || 'full-time',
-              hoursPerWeek: emp.hoursPerWeek || 38,
-              currentSalary: emp.currentSalary,
-              increasePct: emp.salaryIncreasePct || 3,
-              newSalary: 0,
-              superAmount: 0,
-              isFromXero: emp.isFromXero ?? false,
-            }));
+          }
+          const team: TeamMember[] = mergeSavedTeamMembers(xeroTeam, savedExistingTeam);
+          if (xeroTeam.length > 0 && team.length > xeroTeam.length) {
+            console.log('[ForecastWizardV4] Kept', team.length - xeroTeam.length, 'hand-added team member(s) from saved assumptions');
           }
 
           const goals: Goals | undefined = goalsData.goals
@@ -1623,8 +1627,9 @@ export function ForecastWizardV4({
       state.revenueLines.length > 0 || state.cogsLines.length > 0 || state.opexLines.length > 0;
     if (hasOperatorWork && typeof window !== 'undefined') {
       const proceed = window.confirm(
-        'Refresh from Xero rebuilds your revenue, COGS, OpEx and team lines from scratch.\n\n' +
+        'Refresh from Xero rebuilds your revenue, COGS and OpEx lines from scratch and re-imports your team from Xero payroll.\n\n' +
         'Any cost-behaviour choices, monthly overrides and per-line seasonality you have set will be lost. ' +
+        'People you added by hand (contractors, anyone not on Xero payroll) are kept. ' +
         'Locked actual months are always kept.\n\nContinue?',
       );
       if (!proceed) return;
@@ -1837,7 +1842,15 @@ export function ForecastWizardV4({
 
             // Update wizard state with refreshed data
             // Phase 44.3: pass goals so manual sync refresh also honors Year 1 target.
-            actionsRef.current.initializeFromXero({ priorYear, team, goals: state.goals, currentYTD });
+            // Xero's people are re-imported; the operator's hand-added members
+            // (contractors, anyone not on payroll) ride along — a refresh to fix
+            // one employee must not delete thirteen contractors.
+            actionsRef.current.initializeFromXero({
+              priorYear,
+              team: keepHandAddedMembers(team, state.teamMembers),
+              goals: state.goals,
+              currentYTD,
+            });
             toast.success('Xero data refreshed successfully!');
           } else {
             toast.success('Sync complete - no new data found');
