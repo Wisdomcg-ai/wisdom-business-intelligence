@@ -100,7 +100,9 @@ describe('ForecastSelector — Start from Xero budget', () => {
     await screen.findByText('FY2027 from Xero budget')
     const cta = await screen.findByRole('button', { name: /Start from Xero budget/ })
     fireEvent.click(cta)
-    expect(onSeedFromXeroBudget).toHaveBeenCalledWith({ tenantId: 't-1', budgetId: 'b-1', budgetName: 'Overall Budget', forecastId: 'f-empty' })
+    // The version's id AND name travel with the choice, so the wizard keeps the
+    // name instead of letting Generate default it.
+    expect(onSeedFromXeroBudget).toHaveBeenCalledWith({ tenantId: 't-1', budgetId: 'b-1', budgetName: 'Overall Budget', forecastId: 'f-empty', forecastName: 'FY2027 from Xero budget' })
   })
 
   it('a populated version offers no budget start — a budget can only start an empty forecast', async () => {

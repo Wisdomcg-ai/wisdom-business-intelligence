@@ -372,6 +372,41 @@ describe('Save and Materialize (atomic RPC)', () => {
     ).toHaveLength(1)
   })
 
+  it('name — an update without forecastName keeps the row\'s existing name; with one, sets it (7 Sep 2026: seeded versions were renamed to the default)', async () => {
+    const rpcOk = async (fn: string, args: any) =>
+      fn === 'save_assumptions_and_materialize'
+        ? { data: { forecast_id: args.p_forecast_id, computed_at: 'x', lines_count: 1 }, error: null }
+        : { data: null, error: null }
+
+    const captureUpdates = () => {
+      const payloads: Record<string, unknown>[] = []
+      const origFrom = supabaseMock.from as unknown as (t: string) => any
+      supabaseMock.from = vi.fn((table: string) => {
+        const chain = origFrom(table)
+        if (table === 'financial_forecasts') {
+          const origUpdate = chain.update
+          chain.update = vi.fn((payload: Record<string, unknown>) => { payloads.push(payload); return origUpdate(payload) })
+        }
+        return chain
+      }) as any
+      return payloads
+    }
+
+    supabaseMock = buildSupabaseMock(rpcOk)
+    let payloads = captureUpdates()
+    let { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    expect((await POST(makeRequest({ ...VALID_BODY, forecastName: undefined }))).status).toBe(200)
+    expect(payloads.length).toBeGreaterThan(0)
+    for (const p of payloads) expect(p).not.toHaveProperty('name')
+
+    vi.resetModules()
+    supabaseMock = buildSupabaseMock(rpcOk)
+    payloads = captureUpdates()
+    ;({ POST } = await import('@/app/api/forecast-wizard-v4/generate/route'))
+    expect((await POST(makeRequest({ ...VALID_BODY, forecastName: 'Best case' }))).status).toBe(200)
+    expect(payloads.some((p) => p.name === 'Best case')).toBe(true)
+  })
+
   it('retire — nothing superseded means no direct write to forecast_pl_lines at all', async () => {
     supabaseMock = buildSupabaseMock(async (fn: string, args: any) => {
       if (fn === 'save_assumptions_and_materialize') {

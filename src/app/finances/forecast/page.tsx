@@ -555,7 +555,9 @@ function FinancialForecastPageInner() {
       }
       const { forecastId } = await res.json()
       setSelectedForecastId(forecastId)
-      setSelectedForecastName(null)
+      // Keep the version's own name — Generate defaults the name when the
+      // wizard opens without one, which renamed seeded versions (7 Sep 2026).
+      setSelectedForecastName(forecastId === forecast?.id ? forecast?.name ?? null : null)
       // Critical decision 2 (2026-05-11): wizard opens on Step 1 (Goals) after
       // seed, NOT Step 3. Goals were intentionally stripped from the seed so the
       // operator sets new-year goals BEFORE reviewing seeded revenue/COGS/etc.
@@ -569,14 +571,16 @@ function FinancialForecastPageInner() {
     } finally {
       setIsSeedingForecast(false)
     }
-  }, [businessId, selectedFiscalYear, forecast?.fiscal_year])
+  }, [businessId, selectedFiscalYear, forecast?.fiscal_year, forecast?.id, forecast?.name])
 
   // "Start from Xero budget" (budget-seed PR 4, Sep 2026). Mirrors
   // handleSeedForecast: POST, then open the wizard on Step 1 with startFresh so
   // the seeded assumptions (goals pre-filled, "As budgeted" OpEx) are the
   // source of truth. Opt-in and one-shot — the operator chose the (org, budget).
+  const forecastOnScreenId = forecast?.id
+  const forecastOnScreenName = forecast?.name ?? null
   const handleSeedFromXeroBudget = useCallback(
-    async (choice: { tenantId: string; budgetId: string; budgetName: string; forecastId?: string }) => {
+    async (choice: { tenantId: string; budgetId: string; budgetName: string; forecastId?: string; forecastName?: string | null }) => {
       if (!businessId) return
       const targetFY = selectedFiscalYear || forecast?.fiscal_year
       if (!targetFY) {
@@ -597,7 +601,7 @@ function FinancialForecastPageInner() {
             // version) or the one on screen — not "the most recently updated
             // row for this FY", which differs once there are several versions.
             forecastId:
-              choice.forecastId ?? (forecast && forecast.fiscal_year === targetFY ? forecast.id : undefined),
+              choice.forecastId ?? (forecast?.fiscal_year === targetFY ? forecastOnScreenId : undefined),
           }),
         })
         if (!res.ok) {
@@ -621,7 +625,11 @@ function FinancialForecastPageInner() {
           toast.success(title, detail ? { description: detail, duration: 12_000 } : undefined)
         }
         setSelectedForecastId(forecastId)
-        setSelectedForecastName(null)
+        // Keep the version's own name (the selector names the empty version it
+        // seeded; otherwise the forecast on screen) so Generate does not rename it.
+        setSelectedForecastName(
+          choice.forecastName ?? (forecastId === forecastOnScreenId ? forecastOnScreenName : null),
+        )
         setWizardStartStep(1)
         setWizardStartFresh(true)
         setShowForecastSelector(false)
@@ -630,7 +638,7 @@ function FinancialForecastPageInner() {
         setIsSeedingFromBudget(false)
       }
     },
-    [businessId, selectedFiscalYear, forecast?.fiscal_year, forecast?.id],
+    [businessId, selectedFiscalYear, forecast?.fiscal_year, forecastOnScreenId, forecastOnScreenName],
   )
 
   // Full-screen spinner ONLY before the first paint. It used to gate on

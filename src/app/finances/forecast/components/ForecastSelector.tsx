@@ -446,7 +446,7 @@ export function ForecastSelector({
               <XeroBudgetStart
                 availability={budget}
                 fiscalYear={fiscalYear}
-                onSeed={(c) => onSeedFromXeroBudget({ ...c, forecastId: emptyTarget.id })}
+                onSeed={(c) => onSeedFromXeroBudget({ ...c, forecastId: emptyTarget.id, forecastName: emptyTarget.name })}
                 busy={isSeedingFromBudget}
                 integrationsHref={integrationsHref}
                 size="md"

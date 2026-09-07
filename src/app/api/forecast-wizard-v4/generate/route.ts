@@ -131,6 +131,14 @@ async function postHandler(request: Request) {
       forecastData.completed_at = new Date().toISOString()
     }
 
+    // An UPDATE with no name supplied keeps the row's existing name. The
+    // default above is for brand-new rows only — applying it on update renamed
+    // every version the wizard opened without a name (the budget-seed flow,
+    // 7 Sep 2026: "FY2027 from Xero budget" became "FY2027 Forecast (Sep 2026)").
+    if (!forecastName && forecastId && !createNew) {
+      delete forecastData.name
+    }
+
     // ── Phase A (CFO-only clients) — refuse to finalize an EMPTY forecast ──
     //
     // Derive the P&L lines BEFORE any row is created or activated. A final
