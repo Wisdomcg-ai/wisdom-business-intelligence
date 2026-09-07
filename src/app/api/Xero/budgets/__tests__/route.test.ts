@@ -90,6 +90,32 @@ describe('GET /api/Xero/budgets', () => {
     expect(getMock.mock.calls[0][2]).toEqual({ from: '2026-07', to: '2029-06' })
   })
 
+  it('a budget with no cell in this FY is not offered, and an org with only such budgets is none', async () => {
+    // Urban Road, 7 Sep 2026: the FY28 check returned `available` on a
+    // FY27-only "Overall Budget" and an empty "400k Budget" tracking budget.
+    resolveConnectionsMock.mockResolvedValue({ connectionBusinessId: 'biz-1', connections: [conn('t-1')] })
+    listMock.mockResolvedValue([
+      { budgetId: 'b-overall', name: 'Overall Budget', type: 'OVERALL', updatedAt: null, tracking: [] },
+      { budgetId: 'b-empty', name: '400k Budget', type: 'TRACKING', updatedAt: null, tracking: [] },
+      { budgetId: 'b-in-fy', name: 'FY28 Budget', type: 'OVERALL', updatedAt: null, tracking: [] },
+    ])
+    getMock.mockImplementation(async (_auth: unknown, budgetId: string) => {
+      if (budgetId === 'b-overall') return { budgetId, name: 'Overall Budget', type: 'OVERALL', updatedAt: null, tracking: [], lines: [{ accountId: 'a', accountCode: '200', months: { '2026-07': 1 } }] } // prior FY only
+      if (budgetId === 'b-empty') return { budgetId, name: '400k Budget', type: 'TRACKING', updatedAt: null, tracking: [], lines: [] }
+      return { budgetId, name: 'FY28 Budget', type: 'OVERALL', updatedAt: null, tracking: [], lines: [{ accountId: 'a', accountCode: '200', months: { '2027-07': 5, '2027-08': 5 } }] }
+    })
+    const body = await (await GET(req('business_id=biz-1&fiscal_year=2028'))).json()
+    expect(body.state).toBe('available')
+    expect(body.orgs[0].budgets.map((b: { budgetId: string }) => b.budgetId)).toEqual(['b-in-fy'])
+    expect(body.orgs[0].budgets[0].coverage.monthsInFY).toBe(2)
+
+    // Only out-of-FY / empty budgets → none, not available.
+    listMock.mockResolvedValue([{ budgetId: 'b-overall', name: 'Overall Budget', type: 'OVERALL', updatedAt: null, tracking: [] }])
+    const none = await (await GET(req('business_id=biz-1&fiscal_year=2028'))).json()
+    expect(none.state).toBe('none')
+    expect(none.orgs[0]).toMatchObject({ state: 'none', budgets: [] })
+  })
+
   it('scope_missing when no org has granted the scope (never "none")', async () => {
     resolveConnectionsMock.mockResolvedValue({ connectionBusinessId: 'biz-1', connections: [conn('t-1')] })
     listMock.mockRejectedValue(new BudgetsScopeMissingError('t-1'))

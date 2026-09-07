@@ -28,6 +28,9 @@ export function listBudgetChoices(response: BudgetAvailabilityResponse | null | 
   for (const org of response.orgs) {
     if (org.state !== 'available') continue
     for (const b of org.budgets) {
+      // Belt and braces with the route: a budget with nothing in this FY
+      // cannot seed it.
+      if (b.coverage.monthsInFY <= 0 || b.lineCount <= 0) continue
       out.push({
         tenantId: org.tenantId,
         orgName: org.orgName,

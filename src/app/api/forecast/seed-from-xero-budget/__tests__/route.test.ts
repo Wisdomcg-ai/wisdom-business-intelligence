@@ -53,6 +53,12 @@ const CONNECTION = { id: 'conn-1', tenant_id: 'tenant-1', tenant_name: 'Acme', d
 
 let updateSpy: ReturnType<typeof vi.fn>
 let rpcSpy: ReturnType<typeof vi.fn>
+/**
+ * The FIRST financial_forecasts builder of a request — the target lookup
+ * (the second is the duration/draft update). Lets tests read the filters the
+ * route applied. Reset to null before each POST that inspects it.
+ */
+let lastForecastBuilder: Record<string, unknown> | null = null
 
 function thenable(result: unknown) {
   const b: Record<string, unknown> = {}
@@ -82,7 +88,7 @@ function makeSupabase(over: {
   const from = vi.fn((table: string) => {
     let b: Record<string, unknown>
     if (table === 'businesses') b = thenable({ data: business, error: null })
-    else if (table === 'financial_forecasts') b = thenable({ data: targetForecast, error: null })
+    else if (table === 'financial_forecasts') { b = thenable({ data: targetForecast, error: null }); if (!lastForecastBuilder) lastForecastBuilder = b }
     else if (table === 'forecast_pl_lines') b = thenable({ data: null, error: null, count: plLineCount })
     else b = thenable({ data: null, error: null })
     b.update = updateSpy
@@ -193,6 +199,20 @@ describe('success', () => {
     expect(rpcArgs[0]).toBe('save_assumptions_and_materialize')
     expect((rpcArgs[1] as any).p_forecast_id).toBe('target-1')
     expect((rpcArgs[1] as any).p_pl_lines[0]).toMatchObject({ account_name: 'Sales', account_code: '200', forecast_months: { '2026-07': 1000 } })
+  })
+  it('targets the forecast the caller names (still scoped to the business + FY); falls back to most-recent otherwise', async () => {
+    lastForecastBuilder = null
+    await POST(request({ businessId: 'biz-1', targetFiscalYear: 2027, tenantId: 'tenant-1', budgetId: 'b-1', forecastId: 'target-1' }))
+    const eqCalls = (lastForecastBuilder!.eq as ReturnType<typeof vi.fn>).mock.calls
+    expect(eqCalls).toContainEqual(['fiscal_year', 2027])
+    expect(eqCalls).toContainEqual(['id', 'target-1'])
+    expect((lastForecastBuilder!.in as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe('business_id')
+
+    lastForecastBuilder = null
+    await POST(request())
+    const eqCallsDefault = (lastForecastBuilder!.eq as ReturnType<typeof vi.fn>).mock.calls
+    expect(eqCallsDefault.some(([col]: unknown[]) => col === 'id')).toBe(false)
+    expect((lastForecastBuilder!.order as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe('updated_at')
   })
   it('500 when the atomic save fails (nothing reported as success)', async () => {
     createClientMock.mockResolvedValue(makeSupabase({ rpcError: { message: 'rpc down', code: 'P0001' } }))

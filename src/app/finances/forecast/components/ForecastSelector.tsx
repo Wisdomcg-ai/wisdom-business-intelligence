@@ -20,14 +20,19 @@ import {
   Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileIds';
+import { useBudgetAvailability } from './xero-budget/useBudgetAvailability';
+import { XeroBudgetStart, integrationsHrefFor, type XeroBudgetSeedChoice } from './xero-budget/XeroBudgetStart';
 
 interface ForecastVersion {
   id: string;
   name: string;
   fiscal_year: number;
   is_active: boolean;
+  /** Null until a wizard/seed has written to it — the cue that a version is still empty. */
+  assumptions?: unknown | null;
   is_completed: boolean;
   is_locked?: boolean;
   status?: string;
@@ -46,6 +51,14 @@ interface ForecastSelectorProps {
   onSelectForecast: (forecastId: string, forecastName: string) => void;
   onCreateNew: () => void;
   onClose: () => void;
+  /**
+   * Budget-seed entry point (Sep 2026). A current-FY business with Xero
+   * actuals never sees the forecast empty state (the page renders the
+   * estimated dashboard instead), so this modal is where they start a
+   * forecast — and where "Start from Xero budget" must also be offered.
+   */
+  onSeedFromXeroBudget?: (choice: XeroBudgetSeedChoice) => void;
+  isSeedingFromBudget?: boolean;
 }
 
 export function ForecastSelector({
@@ -55,7 +68,11 @@ export function ForecastSelector({
   onSelectForecast,
   onCreateNew,
   onClose,
+  onSeedFromXeroBudget,
+  isSeedingFromBudget = false,
 }: ForecastSelectorProps) {
+  const integrationsHref = integrationsHrefFor(usePathname());
+  const budget = useBudgetAvailability(businessId, fiscalYear, !!onSeedFromXeroBudget);
   const [forecasts, setForecasts] = useState<ForecastVersion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showMenu, setShowMenu] = useState<string | null>(null);
@@ -67,6 +84,12 @@ export function ForecastSelector({
   // so an explicit confirm step is required before the API call fires.
   const [pendingDelete, setPendingDelete] = useState<ForecastVersion | null>(null);
   const supabase = createClient();
+  // A listed version with no wizard data yet (e.g. a fresh "Save as New
+  // Version" copy) is a valid seed target; prefer the active one.
+  const emptyTarget =
+    forecasts.find((f) => f.is_active && f.assumptions == null) ??
+    forecasts.find((f) => f.assumptions == null) ??
+    null;
 
   useEffect(() => {
     loadForecasts();
@@ -326,13 +349,27 @@ export function ForecastSelector({
               <p className="text-gray-500 mb-6 max-w-sm mx-auto">
                 Create your first FY{fiscalYear} forecast to start planning your business finances.
               </p>
-              <button
-                onClick={onCreateNew}
-                className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-              >
-                <Plus className="w-5 h-5" />
-                Create New Forecast
-              </button>
+              <div className="flex flex-col sm:flex-row flex-wrap gap-3 justify-center">
+                <button
+                  onClick={onCreateNew}
+                  disabled={isSeedingFromBudget}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-60"
+                >
+                  <Plus className="w-5 h-5" />
+                  Create New Forecast
+                </button>
+                {onSeedFromXeroBudget && (
+                  <XeroBudgetStart
+                    availability={budget}
+                    fiscalYear={fiscalYear}
+                    onSeed={onSeedFromXeroBudget}
+                    busy={isSeedingFromBudget}
+                    integrationsHref={integrationsHref}
+                    size="md"
+                    className="basis-full order-last"
+                  />
+                )}
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -392,13 +429,31 @@ export function ForecastSelector({
 
         {/* Footer */}
         <div className="flex-shrink-0 px-6 py-4 bg-gray-50 border-t border-gray-200">
-          <button
-            onClick={onCreateNew}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-          >
-            <Plus className="w-5 h-5" />
-            Create New Forecast
-          </button>
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3">
+            <button
+              onClick={onCreateNew}
+              disabled={isSeedingFromBudget}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-60"
+            >
+              <Plus className="w-5 h-5" />
+              Create New Forecast
+            </button>
+            {/* A budget can only start an EMPTY forecast (one-shot). With no
+                forecasts the block above already offers it; here it is offered
+                when a listed version is still empty (no wizard data) — e.g. a
+                fresh "Save as New Version" copy — and seeds THAT version. */}
+            {onSeedFromXeroBudget && forecasts.length > 0 && emptyTarget && (
+              <XeroBudgetStart
+                availability={budget}
+                fiscalYear={fiscalYear}
+                onSeed={(c) => onSeedFromXeroBudget({ ...c, forecastId: emptyTarget.id })}
+                busy={isSeedingFromBudget}
+                integrationsHref={integrationsHref}
+                size="md"
+                className="basis-full"
+              />
+            )}
+          </div>
         </div>
       </div>
 

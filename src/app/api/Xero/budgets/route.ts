@@ -101,6 +101,11 @@ async function getHandler(request: NextRequest) {
           const detail = await getXeroBudget(auth, s.budgetId, window)
           if (!detail) continue
           const cov = budgetCoverage(detail.lines, fyKeys)
+          // A budget with no cell in this FY is not "available" for it — Xero
+          // lists every budget the org has ever set up, so Urban Road's FY28
+          // check came back `available` on a FY27-only budget and an empty
+          // tracking budget (7 Sep 2026). Nothing to import → not offered.
+          if (cov.monthsInFY <= 0 || detail.lines.length === 0) continue
           org.budgets.push({
             budgetId: s.budgetId,
             name: s.name,
