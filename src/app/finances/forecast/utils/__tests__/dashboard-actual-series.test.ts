@@ -7,7 +7,11 @@
  * forecast generated since Phase 44.
  */
 import { describe, it, expect } from 'vitest'
-import { deriveActualSeries, type DashboardActualMonth } from '../dashboard-actual-series'
+import {
+  buildTrajectoryRows,
+  deriveActualSeries,
+  type DashboardActualMonth,
+} from '../dashboard-actual-series'
 
 const PLAN = {
   //                     Jul      Aug      Sep      Oct      Nov
@@ -126,5 +130,53 @@ describe('deriveActualSeries', () => {
     expect(s.dataLastActualIndex).toBe(1)
     expect(s.revenue).toHaveLength(PLAN.revenue.length)
     expect(s.revenue[4]).toBe(800_000)
+  })
+})
+
+describe('buildTrajectoryRows', () => {
+  const LABELS = ['Jul 26', 'Aug 26', 'Sep 26', 'Oct 26', 'Nov 26']
+  // Same months, now carrying the plan the API returns alongside the actuals.
+  const WITH_PLAN: DashboardActualMonth[] = XERO.map((m, i) => ({
+    ...m,
+    revenueForecast: PLAN.revenue[i],
+    gpForecast: PLAN.grossProfit[i],
+    npForecast: PLAN.netProfit[i],
+  }))
+
+  it('draws the month in progress as plan, not as a stubby actual bar', () => {
+    const rows = buildTrajectoryRows(LABELS, WITH_PLAN, 'revenue', 1)
+    expect(rows.map((r) => r.isForecast)).toEqual([false, false, true, true, true])
+    expect(rows[2]).toEqual({ month: 'Sep 26', value: 450_018, isForecast: true })
+  })
+
+  it("its year-end agrees with the KPI strip's", () => {
+    const rows = buildTrajectoryRows(LABELS, WITH_PLAN, 'revenue', 1)
+    const chartYearEnd = rows.reduce((a, r) => a + r.value, 0)
+    const stripYearEnd = deriveActualSeries(PLAN, XERO, 1).revenue.reduce((a, b) => a + b, 0)
+    expect(chartYearEnd).toBe(stripYearEnd)
+  })
+
+  it('uncapped, the two still agree with each other', () => {
+    const rows = buildTrajectoryRows(LABELS, WITH_PLAN, 'revenue')
+    expect(rows.reduce((a, r) => a + r.value, 0)).toBe(
+      deriveActualSeries(PLAN, XERO).revenue.reduce((a, b) => a + b, 0),
+    )
+    expect(rows[2].isForecast).toBe(false)
+  })
+
+  it('reads the requested metric', () => {
+    expect(buildTrajectoryRows(LABELS, WITH_PLAN, 'gp', 1)[1].value).toBe(307_086)
+    expect(buildTrajectoryRows(LABELS, WITH_PLAN, 'np', 1)[1].value).toBe(145_494)
+  })
+
+  it('a month with neither actual nor plan is an empty bar, not a forecast one', () => {
+    const rows = buildTrajectoryRows(LABELS, XERO, 'revenue', 1) // no *Forecast fields
+    expect(rows[2]).toEqual({ month: 'Sep 26', value: 0, isForecast: false })
+  })
+
+  it('renders a label row even with no data at all', () => {
+    const rows = buildTrajectoryRows(LABELS, null, 'revenue', 1)
+    expect(rows).toHaveLength(5)
+    expect(rows.every((r) => r.value === 0 && !r.isForecast)).toBe(true)
   })
 })
