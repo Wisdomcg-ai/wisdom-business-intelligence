@@ -38,10 +38,17 @@ let tables: Record<string, any[]> = {}
  * harness, with `.limit()` returning a chainable rather than a promise (this
  * route does `.limit(1).maybeSingle()`).
  */
+/**
+ * Every operator the harness understands. Widen this whenever the code under
+ * test starts filtering on a new one — a filter the harness quietly ignores is
+ * worse than no harness, because the assertion still passes.
+ */
+type FilterOp = 'eq' | 'in' | 'not-is' | 'neq' | 'lte' | 'gt'
+
 function serviceClient() {
   const build = (
     table: string,
-    filters: Array<[string, unknown, 'eq' | 'in']> = [],
+    filters: Array<[string, unknown, FilterOp]> = [],
     ordered: { col: string; ascending: boolean } | null = null,
   ): any => {
     const run = () => {
