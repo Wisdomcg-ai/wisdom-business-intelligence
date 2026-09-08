@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import { forecastBelongsToBusiness } from '@/lib/budgets/owned-forecast'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -218,6 +220,28 @@ async function postHandler(request: Request) {
     const _hasAccess = await verifyBusinessAccess(user.id, business_id)
     if (!_hasAccess) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // A pinned budget forecast is a capability: everything that later reads it
+    // (generate, full-year, subscription-detail) does so on the service-role
+    // client, which bypasses RLS. Writing an unvalidated id here would persist
+    // a cross-tenant read — this route's own business_id gate does not cover
+    // the forecast. Rejected rather than silently dropped: a coach who picked
+    // the wrong thing should be told, not quietly ignored.
+    if (budget_forecast_id) {
+      const ids = await resolveBusinessProfileIds(supabase, business_id)
+      const owned = await forecastBelongsToBusiness(supabase, budget_forecast_id, ids.all)
+      if (!owned) {
+        Sentry.captureMessage('[Monthly Report Settings] rejected a budget_forecast_id from another business', {
+          level: 'warning' as any,
+          tags: { invariant: 'forecast-id-not-owned', route: 'monthly-report/settings' },
+          extra: { business_id, user_id: user.id, requestedForecastId: budget_forecast_id },
+        } as any)
+        return NextResponse.json(
+          { error: 'That forecast does not belong to this business', code: 'FORECAST_NOT_OWNED' },
+          { status: 403 },
+        )
+      }
     }
 
     // Merge provided sections with defaults (so partial updates work)

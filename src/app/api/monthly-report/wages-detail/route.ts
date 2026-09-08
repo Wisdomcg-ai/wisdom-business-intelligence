@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import { forecastBelongsToBusiness } from '@/lib/budgets/owned-forecast'
 import { buildFuzzyLookup, isAccountMatch } from '@/lib/utils/account-matching'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
@@ -142,7 +143,27 @@ async function postHandler(request: Request) {
     // ===== 1. Resolve dual business IDs and forecast ID =====
     const ids = await resolveBusinessProfileIds(supabase, business_id)
 
-    let forecastId = budget_forecast_id
+    // The pin arrives in the REQUEST BODY, and everything below runs on the
+    // service-role client, which bypasses RLS. Without this check a caller with
+    // access to one business could name another tenant's forecast and read its
+    // budget and its named salaries. Validated against ids.all because
+    // financial_forecasts.business_id is business_profiles-space.
+    let forecastId: string | undefined
+    if (budget_forecast_id) {
+      const owned = await forecastBelongsToBusiness(supabase, budget_forecast_id, ids.all)
+      if (owned) {
+        forecastId = budget_forecast_id
+      } else {
+        // Ignore it and fall through to this business's own active forecast:
+        // the caller gets their own data rather than an error, and the attempt
+        // is recorded.
+        Sentry.captureMessage('[WagesDetail] budget_forecast_id does not belong to this business — ignoring', {
+          level: 'warning' as any,
+          tags: { invariant: 'forecast-id-not-owned', route: 'monthly-report/wages-detail' },
+          extra: { business_id, user_id: user.id, requestedForecastId: budget_forecast_id },
+        } as any)
+      }
+    }
     if (!forecastId) {
       const { data: forecast } = await supabase
         .from('financial_forecasts')
