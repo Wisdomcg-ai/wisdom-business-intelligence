@@ -161,13 +161,66 @@ function sumOver(months: Record<string, number>, keys: readonly string[]): numbe
   return round2(s)
 }
 
-interface ResolvedLine {
+export interface ResolvedLine {
   accountId: string | null
   accountCode: string
   accountName: string
   bucket: PLBucket | null
   months: Record<string, number>
   priorMonthly: Record<string, number>
+}
+
+/**
+ * Give every Xero budget line an identity and a P&L bucket.
+ *
+ * Extracted verbatim from the seed so the budget IMPORT classifies exactly the
+ * way the seed does. Two consumers deriving this separately is how the same
+ * account ends up in Revenue on one screen and Operating Expenses on another —
+ * and the expense bucket flips the variance sign, silently, because the
+ * fallback is a push rather than a throw.
+ *
+ * Identity comes from the chart of accounts (by AccountID, then AccountCode);
+ * Xero's Budgets API returns no account name at all. The bucket comes from the
+ * catalog's Xero type, falling back to whatever type the account's own P&L
+ * history was stored under — which is what rescues accounts a super-admin's
+ * session cannot read the catalog for.
+ */
+export function resolveBudgetLineIdentities(input: {
+  budgetLines: XeroBudgetSeedInput['budget']['lines']
+  catalog: readonly CatalogAccount[]
+  actuals?: readonly AccountActuals[]
+}): { lines: ResolvedLine[]; warnings: string[] } {
+  const catalogById = new Map(input.catalog.map((a) => [a.accountId, a]))
+  const catalogByCode = new Map(
+    input.catalog.filter((a) => a.accountCode).map((a) => [a.accountCode as string, a]),
+  )
+  const actualsByCode = new Map((input.actuals ?? []).map((a) => [a.accountCode, a]))
+
+  const lines: ResolvedLine[] = []
+  const warnings: string[] = []
+
+  for (const bl of input.budgetLines) {
+    const cat = (bl.accountId && catalogById.get(bl.accountId)) || (bl.accountCode && catalogByCode.get(bl.accountCode)) || null
+    const code = cat?.accountCode ?? bl.accountCode ?? bl.accountId ?? null
+    if (!code) continue
+    const act = actualsByCode.get(code)
+    const bucket =
+      (classifyByXeroType(cat?.xeroType) as PLBucket | null) ??
+      bucketFromStoredType(act?.accountType)
+    lines.push({
+      accountId: bl.accountId ?? cat?.accountId ?? null,
+      accountCode: code,
+      accountName: cat?.accountName ?? act?.accountName ?? `Account ${code}`,
+      bucket,
+      months: bl.months,
+      priorMonthly: act?.monthly ?? {},
+    })
+    if (cat?.status && cat.status.toUpperCase() === 'ARCHIVED') {
+      warnings.push(`${cat.accountName} (${code}) is archived in Xero but budgeted — imported and flagged.`)
+    }
+  }
+
+  return { lines, warnings }
 }
 
 export function seedForecastFromXeroBudget(input: XeroBudgetSeedInput): XeroBudgetSeedResult {
@@ -182,34 +235,15 @@ export function seedForecastFromXeroBudget(input: XeroBudgetSeedInput): XeroBudg
   const completed = new Set(input.completedMonthKeys ?? [])
   const warnings: string[] = []
 
-  const catalogById = new Map(input.catalog.map((a) => [a.accountId, a]))
-  const catalogByCode = new Map(
-    input.catalog.filter((a) => a.accountCode).map((a) => [a.accountCode as string, a]),
-  )
-  const actualsByCode = new Map((input.actuals ?? []).map((a) => [a.accountCode, a]))
-
   // ── 1. Resolve identity + bucket for every budget line ────────────────────
-  const resolved: ResolvedLine[] = []
-  for (const bl of input.budget.lines) {
-    const cat = (bl.accountId && catalogById.get(bl.accountId)) || (bl.accountCode && catalogByCode.get(bl.accountCode)) || null
-    const code = cat?.accountCode ?? bl.accountCode ?? bl.accountId ?? null
-    if (!code) continue
-    const act = actualsByCode.get(code)
-    const bucket =
-      (classifyByXeroType(cat?.xeroType) as PLBucket | null) ??
-      bucketFromStoredType(act?.accountType)
-    resolved.push({
-      accountId: bl.accountId ?? cat?.accountId ?? null,
-      accountCode: code,
-      accountName: cat?.accountName ?? act?.accountName ?? `Account ${code}`,
-      bucket,
-      months: bl.months,
-      priorMonthly: act?.monthly ?? {},
-    })
-    if (cat?.status && cat.status.toUpperCase() === 'ARCHIVED') {
-      warnings.push(`${cat.accountName} (${code}) is archived in Xero but budgeted — imported and flagged.`)
-    }
-  }
+  // Shared with the budget import route so the two classify identically.
+  const identities = resolveBudgetLineIdentities({
+    budgetLines: input.budget.lines,
+    catalog: input.catalog,
+    actuals: input.actuals,
+  })
+  const resolved: ResolvedLine[] = identities.lines
+  warnings.push(...identities.warnings)
 
   // ── 2. Coverage window + Y1 fill rule ────────────────────────────────────
   // The budget's overall window is what Xero returned any cell for. Inside it,
