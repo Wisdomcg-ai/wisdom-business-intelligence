@@ -26,13 +26,14 @@ import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileI
 import { useBudgetAvailability } from './xero-budget/useBudgetAvailability';
 import { setActiveForecastVersion } from '../services/set-active-version';
 import { XeroBudgetStart, integrationsHrefFor, type XeroBudgetSeedChoice } from './xero-budget/XeroBudgetStart';
+import { pickSeedTarget } from './xero-budget/seed-target';
 
 interface ForecastVersion {
   id: string;
   name: string;
   fiscal_year: number;
   is_active: boolean;
-  /** Null until a wizard/seed has written to it — the cue that a version is still empty. */
+  /** Empty (null or `{}`) until a wizard/seed has written to it — see seed-target. */
   assumptions?: unknown | null;
   is_completed: boolean;
   is_locked?: boolean;
@@ -86,11 +87,9 @@ export function ForecastSelector({
   const [pendingDelete, setPendingDelete] = useState<ForecastVersion | null>(null);
   const supabase = createClient();
   // A listed version with no wizard data yet (e.g. a fresh "Save as New
-  // Version" copy) is a valid seed target; prefer the active one.
-  const emptyTarget =
-    forecasts.find((f) => f.is_active && f.assumptions == null) ??
-    forecasts.find((f) => f.assumptions == null) ??
-    null;
+  // Version" copy) is a valid seed target; prefer the active one. "No wizard
+  // data" has to admit `{}` as well as null — see xero-budget/seed-target.
+  const emptyTarget = pickSeedTarget(forecasts);
 
   useEffect(() => {
     loadForecasts();
