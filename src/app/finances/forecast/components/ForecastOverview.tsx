@@ -533,6 +533,7 @@ export default function ForecastOverview({
       <KpiStrip
         totals={totals}
         xeroMonths={xeroMonths}
+        lastClosedIndex={expectedLastActualIndex}
         revenuePlan={revenuePlan}
         grossPlan={grossPlan}
         netPlan={netPlan}
@@ -602,6 +603,12 @@ interface KpiStripProps {
    * "this month" (see utils/dashboard-actual-series).
    */
   xeroMonths: DashboardActualsMonth[] | null
+  /**
+   * Last month whose calendar month-end has passed. Xero carries the month in
+   * progress; counting a part month as an actual understates YTD against a
+   * whole-month plan and drags the year-end projection down with it.
+   */
+  lastClosedIndex: number
   revenuePlan: number
   grossPlan: number
   netPlan: number
@@ -618,6 +625,7 @@ interface KpiStripProps {
 function KpiStrip({
   totals,
   xeroMonths,
+  lastClosedIndex,
   revenuePlan,
   grossPlan,
   netPlan,
@@ -634,7 +642,8 @@ function KpiStrip({
   // ("Apr 26") needs to read as actual even when data hasn't synced yet.
   // Actuals come from Xero when available, falling back to whatever the stored
   // lines carry — so a failed fetch degrades to the old behaviour, never to $0.
-  const series = deriveActualSeries(totals, xeroMonths)
+  // Capped at the last CLOSED month: the month in progress is not an actual.
+  const series = deriveActualSeries(totals, xeroMonths, lastClosedIndex)
   const dataIdx = series.dataLastActualIndex
   const monthsElapsed = dataIdx + 1 // number of months with actuals so far
   const ytdProrate = (annualPlan: number) =>

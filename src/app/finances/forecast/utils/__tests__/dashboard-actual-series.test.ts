@@ -92,6 +92,35 @@ describe('deriveActualSeries', () => {
     expect(s.revenue[2]).toBe(111_311)
   })
 
+  it('ignores the month in progress — only closed months are actuals', () => {
+    // 8 Sep 2026: August (index 1) is the last closed month. September is eight
+    // days old, so its $111k must not stand against a whole $450k month.
+    const s = deriveActualSeries(PLAN, XERO, 1)
+    expect(s.dataLastActualIndex).toBe(1)
+    expect(s.revenue.slice(0, 2)).toEqual([495_275, 537_512])
+    expect(s.revenue[2]).toBe(450_018) // September back to plan
+    const ytd = s.revenue.slice(0, s.dataLastActualIndex + 1).reduce((a, b) => a + b, 0)
+    expect(ytd).toBe(1_032_787)
+    // Year-end no longer loses the rest of September.
+    expect(s.revenue.reduce((a, b) => a + b, 0)).toBe(1_032_787 + 450_018 + 450_000 + 800_000)
+  })
+
+  it('applies no cap when the caller omits one', () => {
+    expect(deriveActualSeries(PLAN, XERO).dataLastActualIndex).toBe(2)
+  })
+
+  it('a closed FY admits every month it has', () => {
+    // Viewing a finished year: the cap sits past the end of the series.
+    const s = deriveActualSeries(PLAN, XERO, 11)
+    expect(s.dataLastActualIndex).toBe(2)
+  })
+
+  it('a future FY admits nothing', () => {
+    const s = deriveActualSeries(PLAN, XERO, -1)
+    expect(s.fromXero).toBe(false)
+    expect(s.revenue).toBe(PLAN.revenue)
+  })
+
   it('tolerates a shorter Xero array than the plan', () => {
     const s = deriveActualSeries(PLAN, XERO.slice(0, 2))
     expect(s.dataLastActualIndex).toBe(1)
