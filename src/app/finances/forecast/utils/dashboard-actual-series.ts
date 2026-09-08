@@ -12,6 +12,15 @@
  *
  * This derives the strip's series from that same API response, so the two
  * halves of the dashboard answer "how are we tracking" identically.
+ *
+ * One rule the API response does NOT carry: only a CLOSED month is an actual.
+ * xero_pl_lines holds the month in progress too, and on 8 Sep 2026 Urban Road's
+ * September was eight days old — $111k of revenue against a $450k month, with
+ * most of its bills not yet entered. Counted as a third actual it read
+ * "Behind, 76% of plan" for a client running +0.4% on the two closed months,
+ * and pulled the year-end projection $334k under. So the caller passes the
+ * calendar cutoff (getExpectedLastActualIndex) and everything after it keeps
+ * the plan.
  */
 
 /** One month of /api/forecast/dashboard-actuals, in fiscal-year order. */
@@ -51,10 +60,16 @@ interface PlanTotals {
  *
  * With no usable Xero data the caller's existing totals are returned untouched,
  * so a failed or empty fetch degrades to today's behaviour instead of zeros.
+ *
+ * `lastClosedIndex` is the last month whose calendar month-end has passed
+ * (`getExpectedLastActualIndex`). Xero data beyond it belongs to the month in
+ * progress and is ignored — a part month is not an actual. Omit it and no cap
+ * is applied; -1 caps everything out, which is right for a future FY.
  */
 export function deriveActualSeries(
   totals: PlanTotals,
   xeroMonths: DashboardActualMonth[] | null | undefined,
+  lastClosedIndex: number = Number.POSITIVE_INFINITY,
 ): ActualSeries {
   const fallback: ActualSeries = {
     revenue: totals.revenue,
@@ -65,7 +80,7 @@ export function deriveActualSeries(
   }
   if (!xeroMonths || xeroMonths.length === 0) return fallback
 
-  const n = totals.revenue.length
+  const n = Math.min(totals.revenue.length, lastClosedIndex + 1)
   let lastActual = -1
   for (let i = 0; i < Math.min(n, xeroMonths.length); i += 1) {
     if (xeroMonths[i]?.revenueActual != null) lastActual = i
