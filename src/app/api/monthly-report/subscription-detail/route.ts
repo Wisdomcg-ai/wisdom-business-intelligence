@@ -447,10 +447,17 @@ async function postHandler(request: Request) {
         .filter((name): name is string => !!name)
 
       if (accountNames.length > 0) {
+        // xero_pl_lines_wide_compat is business_profiles-space — all 969 rows in
+        // prod, none in businesses-space. `business_id` arrives from the request
+        // body in businesses-space, so filtering on it directly matched NOTHING
+        // for every client: plActuals stayed empty and every account subtotal
+        // silently fell through to the vendor-sum fallback below. The forecast
+        // read further down already resolves both spaces; this one did not.
+        const plIds = await resolveBusinessProfileIds(supabase, business_id)
         const { data: plLines } = await supabase
           .from('xero_pl_lines_wide_compat')
           .select('account_name, monthly_values')
-          .eq('business_id', business_id)
+          .in('business_id', plIds.all)
           .in('account_name', accountNames)
 
         for (const pl of (plLines || [])) {
