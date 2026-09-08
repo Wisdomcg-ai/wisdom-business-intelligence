@@ -55,6 +55,14 @@ export interface ResolvedBudgetLine {
   forecast_months: Record<string, number>
 }
 
+export type NoBudgetReason =
+  | 'no_version_in_force'
+  | 'version_not_yet_effective'
+  | 'multiple_versions_in_force'
+  | 'version_has_no_lines'
+  | 'budget_read_failed'
+  | 'invalid_report_month'
+
 export interface ResolvedBudget {
   /**
    * 'none' means there is no budget. A source that resolved an object but
@@ -72,6 +80,12 @@ export interface ResolvedBudget {
    * finalised month was measured against.
    */
   forecastId: string | null
+  /**
+   * Why there is no budget, when the client is on the budget store. Null on the
+   * legacy path. The banner names it rather than showing a blank column, which
+   * a reader takes for $0.
+   */
+  noBudgetReason: NoBudgetReason | null
   /** The forecast's name / the version's label. */
   label: string | null
   lines: ResolvedBudgetLine[]
@@ -90,8 +104,18 @@ export interface ResolveBudgetArgs {
    */
   profileId: string | null
   fiscalYear: number | string
+  /**
+   * 'YYYY-MM'. Effective-dating compares month keys as TEXT, so '2026-8' would
+   * sort before '2026-10' and silently pick the wrong version — the shape is
+   * validated here rather than trusted.
+   */
+  reportMonth: string
+  /**
+   * monthly_report_settings.budget_source. Read POSITIVELY: 19 of 31 businesses
+   * have no settings row, so this arrives undefined rather than 'forecast'.
+   */
+  budgetSource: 'forecast' | 'budget_version'
   pin: {
-    budgetVersionId?: string | null
     budgetForecastId?: string | null
   }
 }
@@ -103,7 +127,15 @@ const NONE: ResolvedBudget = {
   label: null,
   lines: [],
   monthsCovered: 0,
+  noBudgetReason: null,
 }
+
+/** 'none', but able to say why — only ever used on the budget-store path. */
+function noneBecause(reason: NoBudgetReason): ResolvedBudget {
+  return { ...NONE, noBudgetReason: reason }
+}
+
+const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/
 
 function countMonths(lines: readonly ResolvedBudgetLine[]): number {
   const months = new Set<string>()
@@ -123,15 +155,20 @@ function countMonths(lines: readonly ResolvedBudgetLine[]): number {
  */
 export async function resolveBudget(
   supabase: SupabaseClient,
-  { businessId, profileId, fiscalYear, pin }: ResolveBudgetArgs,
+  { businessId, profileId, fiscalYear, reportMonth, budgetSource, pin }: ResolveBudgetArgs,
 ): Promise<ResolvedBudget> {
-  // ── Tier V: a pinned budget version ────────────────────────────────────────
-  // Inert until something sets the pin. Skipped entirely when absent, so the
-  // new tables are not touched at all in the window between this code
-  // deploying and the migration being applied by hand.
-  if (pin.budgetVersionId) {
-    const version = await readBudgetVersion(supabase, pin.budgetVersionId, businessId, fiscalYear)
-    if (version) return version
+  // ── Tier V: the budget store ───────────────────────────────────────────────
+  // The gate is on the QUERY, not the tier order: with 'forecast' the budget
+  // tables are not touched at all, so every business that has not been switched
+  // over is byte-identical to before — and the window between this code
+  // deploying and the migration being applied by hand is safe.
+  //
+  // FAIL-CLOSED once a client is on the store. Falling back to the forecast
+  // here would silently measure them against the moving yardstick this whole
+  // design exists to get away from, so every miss ends at 'none' carrying a
+  // reason the banner can state.
+  if (budgetSource === 'budget_version') {
+    return await resolveInForceVersion(supabase, businessId, fiscalYear, reportMonth)
   }
 
   // ── Tier F1: the pinned forecast ───────────────────────────────────────────
@@ -217,46 +254,90 @@ export async function resolveBudget(
     label: selected.name ?? null,
     lines,
     monthsCovered: countMonths(lines),
+    noBudgetReason: null,
   }
 }
 
 /**
- * Read a pinned budget version and its lines.
+ * The budget version in force for a report month.
  *
- * Scoped by business and fiscal year, unlike the forecast pin it sits above:
- * that one is unscoped today and tightening it would change behaviour for a
- * mis-pinned client, so it stays as-is until its own PR. A version pin is new,
- * so it starts correct.
+ * Effective-dating, not a pin: a version carries the month it becomes the
+ * baseline, and the report asks "which one was in force in August?" rather than
+ * "which one is currently selected?". That is what stops a revision imported in
+ * December from restating August, and it is why there is no budget_version_id
+ * on settings — a single FY-agnostic pointer is the shape that produced the
+ * budget-fy-mismatch guard on the forecast path.
  *
- * Returns null — never throws — when the pin misses, the tables do not exist
- * yet, or the version has no lines. Code deploys before migrations are applied
- * by hand here, so a missing relation has to read as "no version" rather than
- * a 500 on every client's report.
+ * ONE in-force version only, for now. A single report reads four different
+ * month windows out of one budget map — the report month, YTD, the annual
+ * total and next month — while carrying one version id. Stitching a v2 across
+ * those windows month by month is a separate piece of work; until it exists,
+ * two in-force versions is refused rather than answered wrongly. The same
+ * refusal keeps multi-org businesses (Dragon 2 orgs, IICT 3) out, without
+ * inventing an FX rule for summing their budgets.
+ *
+ * Never throws: code deploys before migrations are applied by hand here, so a
+ * missing relation reads as "could not read the budget", not a 500 on every
+ * client's report.
  */
-async function readBudgetVersion(
+async function resolveInForceVersion(
   supabase: SupabaseClient,
-  versionId: string,
   businessId: string,
   fiscalYear: number | string,
-): Promise<ResolvedBudget | null> {
+  reportMonth: string,
+): Promise<ResolvedBudget> {
+  // A malformed month would compare lexically against effective_from and could
+  // pick the wrong version silently. Refuse instead.
+  if (!MONTH_KEY.test(reportMonth || '')) return noneBecause('invalid_report_month')
+
   try {
-    const { data: version, error } = await supabase
+    const { data: versions, error } = await supabase
       .from('budget_versions')
-      .select('id, label, business_id, fiscal_year, locked_at')
-      .eq('id', versionId)
+      .select('id, label, effective_from, version_number')
       .eq('business_id', businessId)
       .eq('fiscal_year', fiscalYear)
       .not('locked_at', 'is', null)
-      .maybeSingle()
+      .lte('effective_from', reportMonth)
+      .order('effective_from', { ascending: false })
 
-    if (error || !version) return null
+    if (error) return noneBecause('budget_read_failed')
+    if (!versions || versions.length === 0) {
+      // Distinguish "nothing imported" from "imported, but not yet in force" —
+      // reporting July against a version effective from September is a real
+      // state with a different answer for the reader.
+      const { data: future } = await supabase
+        .from('budget_versions')
+        .select('id')
+        .eq('business_id', businessId)
+        .eq('fiscal_year', fiscalYear)
+        .not('locked_at', 'is', null)
+        .gt('effective_from', reportMonth)
+        .limit(1)
+      return noneBecause(future && future.length > 0 ? 'version_not_yet_effective' : 'no_version_in_force')
+    }
+
+    // Everything sharing the newest effective_from is genuinely ambiguous;
+    // an older one is simply superseded.
+    const newest = versions[0].effective_from
+    const inForce = versions.filter((v: { effective_from: string }) => v.effective_from === newest)
+    if (inForce.length > 1) {
+      Sentry.captureMessage('[Report Generate] More than one budget version in force — refusing to choose', {
+        level: 'warning' as any,
+        tags: { invariant: 'budget-multiple-versions-in-force' },
+        extra: { business_id: businessId, fiscalYear, reportMonth, effective_from: newest, versionIds: inForce.map((v: { id: string }) => v.id) },
+      } as any)
+      return noneBecause('multiple_versions_in_force')
+    }
+
+    const version = inForce[0] as { id: string; label: string | null }
 
     const { data: rows, error: linesError } = await supabase
       .from('budget_lines')
       .select('id, account_name, category, month, amount')
       .eq('budget_version_id', version.id)
 
-    if (linesError || !rows || rows.length === 0) return null
+    if (linesError) return noneBecause('budget_read_failed')
+    if (!rows || rows.length === 0) return noneBecause('version_has_no_lines')
 
     // budget_lines is one row per account per month; the report wants one line
     // per account carrying a month map.
@@ -268,19 +349,15 @@ async function readBudgetVersion(
       month: string
       amount: number | string
     }>) {
-      const key = row.account_name
-      let line = byAccount.get(key)
+      let line = byAccount.get(row.account_name)
       if (!line) {
         line = { id: row.id, account_name: row.account_name, category: row.category, forecast_months: {} }
-        byAccount.set(key, line)
+        byAccount.set(row.account_name, line)
       }
-      const amount = Number(row.amount) || 0
-      line.forecast_months[row.month] = (line.forecast_months[row.month] ?? 0) + amount
+      line.forecast_months[row.month] = (line.forecast_months[row.month] ?? 0) + (Number(row.amount) || 0)
     }
 
     const lines = Array.from(byAccount.values())
-    if (lines.length === 0) return null
-
     return {
       source: 'budget_version',
       versionId: version.id,
@@ -288,10 +365,9 @@ async function readBudgetVersion(
       label: version.label ?? null,
       lines,
       monthsCovered: countMonths(lines),
+      noBudgetReason: null,
     }
   } catch {
-    // Missing relation, stale PostgREST cache, anything: fall through to the
-    // forecast tier rather than failing the report.
-    return null
+    return noneBecause('budget_read_failed')
   }
 }

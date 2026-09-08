@@ -67,6 +67,11 @@ export interface MonthlyReportSettings {
   show_budget_next_month: boolean
   show_budget_annual_total: boolean
   budget_forecast_id?: string | null
+  /**
+   * Where the budget column comes from. Absent on the 19 businesses with no
+   * settings row, so read it positively — `=== 'budget_version'`.
+   */
+  budget_source?: 'forecast' | 'budget_version'
   subscription_account_codes?: string[]
   wages_account_names?: string[]
   pdf_layout?: import('./types/pdf-layout').PDFLayout | null

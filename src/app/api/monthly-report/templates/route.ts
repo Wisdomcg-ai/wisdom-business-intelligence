@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { forecastBelongsToBusiness } from '@/lib/budgets/owned-forecast'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
@@ -131,6 +133,28 @@ async function postHandler(request: Request) {
     const denied = await requireBusinessAccess(business_id)
     if (denied) return denied
 
+    // A stored forecast id is a capability, and requireBusinessAccess proves
+    // access to the TEMPLATE's business, not to the forecast. The FK proves the
+    // row exists, not who owns it, and this module's client is service-role, so
+    // RLS does not apply. #488 closed the same hole on settings and deliberately
+    // left this one; a foreign id stored here is a replayable poison pill that
+    // would 403 the coach's own Save Settings on their own business.
+    if (budget_forecast_id) {
+      const ids = await resolveBusinessProfileIds(supabase, business_id)
+      const owned = await forecastBelongsToBusiness(supabase, budget_forecast_id, ids.all)
+      if (!owned) {
+        Sentry.captureMessage('[Monthly Report Templates] rejected a budget_forecast_id from another business', {
+          level: 'warning' as any,
+          tags: { invariant: 'forecast-id-not-owned', route: 'monthly-report/templates' },
+          extra: { business_id, requestedForecastId: budget_forecast_id },
+        } as any)
+        return NextResponse.json(
+          { error: 'That forecast does not belong to this business', code: 'FORECAST_NOT_OWNED' },
+          { status: 403 },
+        )
+      }
+    }
+
     // If this template is the new default, clear the existing default first
     if (is_default) {
       await supabase
@@ -200,6 +224,29 @@ async function putHandler(request: Request) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
     }
 
+    // A stored forecast id is a capability, and requireBusinessAccess proves
+    // access to the TEMPLATE's business, not to the forecast. The FK proves the
+    // row exists, not who owns it, and this module's client is service-role, so
+    // RLS does not apply. #488 closed the same hole on settings and deliberately
+    // left this one; a foreign id stored here is a replayable poison pill that
+    // would 403 the coach's own Save Settings on their own business.
+    const putForecastId = fields.budget_forecast_id as string | null | undefined
+    if (putForecastId) {
+      const ids = await resolveBusinessProfileIds(supabase, business_id)
+      const owned = await forecastBelongsToBusiness(supabase, putForecastId, ids.all)
+      if (!owned) {
+        Sentry.captureMessage('[Monthly Report Templates] rejected a budget_forecast_id from another business', {
+          level: 'warning' as any,
+          tags: { invariant: 'forecast-id-not-owned', route: 'monthly-report/templates' },
+          extra: { business_id, requestedForecastId: putForecastId },
+        } as any)
+        return NextResponse.json(
+          { error: 'That forecast does not belong to this business', code: 'FORECAST_NOT_OWNED' },
+          { status: 403 },
+        )
+      }
+    }
+
     // If setting as default, clear the existing default first
     if (fields.is_default === true) {
       await supabase
@@ -211,6 +258,10 @@ async function putHandler(request: Request) {
     }
 
     const updateData: Record<string, unknown> = {}
+    // budget_source is deliberately NOT here. A template carries presentation;
+    // applying one must never change which budget a client is measured against
+    // — and the default template auto-applies on page load, which would turn a
+    // per-client accounting decision into a side effect of opening the page.
     const allowed = ['name', 'is_default', 'sections', 'column_settings', 'budget_forecast_id', 'subscription_account_codes', 'wages_account_names', 'pdf_layout']
     for (const key of allowed) {
       if (key in fields) {
