@@ -56,7 +56,7 @@ import {
   isCOGSLine as isCOGS,
   isOpExLine as isOpEx,
 } from '../utils/pl-line-categories'
-import { deriveActualSeries } from '../utils/dashboard-actual-series'
+import { buildTrajectoryRows, deriveActualSeries } from '../utils/dashboard-actual-series'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FY mode — determines copy / visuals per selected FY tab
@@ -545,6 +545,7 @@ export default function ForecastOverview({
       />
       <TrajectoryCard
         months={xeroMonths}
+        lastClosedIndex={expectedLastActualIndex}
         isLoading={xeroActualsLoading}
         error={xeroActualsError}
         monthLabels={monthLabelsWithYear}
@@ -1165,6 +1166,12 @@ interface DashboardActualsResponse {
 interface TrajectoryProps {
   /** Fetched once by the parent so the KPI strip reads the same actuals. */
   months: DashboardActualsMonth[] | null
+  /**
+   * Last month whose calendar month-end has passed. The API hands back the
+   * month in progress as an actual; drawn as one it makes the chart's verdict
+   * disagree with the KPI strip above by the unbilled remainder of the month.
+   */
+  lastClosedIndex: number
   isLoading: boolean
   error: string | null
   monthLabels: string[]
@@ -1175,6 +1182,7 @@ interface TrajectoryProps {
 
 function TrajectoryCard({
   months,
+  lastClosedIndex,
   isLoading,
   error,
   monthLabels,
@@ -1188,29 +1196,12 @@ function TrajectoryCard({
   const planMonthly = annualPlan > 0 ? annualPlan / 12 : 0
   const style = METRIC_STYLE[metric]
 
-  const chartData = useMemo(() => {
-    const safeMonths = months ?? []
-    return monthLabels.map((label, i) => {
-      const row = safeMonths[i]
-      const actualVal =
-        metric === 'revenue' ? row?.revenueActual : metric === 'gp' ? row?.gpActual : row?.npActual
-      const forecastVal =
-        metric === 'revenue'
-          ? row?.revenueForecast
-          : metric === 'gp'
-          ? row?.gpForecast
-          : row?.npForecast
-      const actualNum = actualVal == null ? 0 : actualVal
-      const forecastNum = forecastVal == null ? 0 : forecastVal
-      // Display value: prefer actual when present
-      const isForecast = actualVal == null && forecastVal != null
-      return {
-        month: label,
-        value: actualVal != null ? actualNum : forecastNum,
-        isForecast,
-      }
-    })
-  }, [months, monthLabels, metric])
+  // Bars come from the same module as the KPI strip's series, capped at the
+  // same closed month, so the chart's verdict can't contradict the card above.
+  const chartData = useMemo(
+    () => buildTrajectoryRows(monthLabels, months, metric, lastClosedIndex),
+    [months, monthLabels, metric, lastClosedIndex],
+  )
 
   const yearEnd = sum(chartData.map((r) => r.value))
   const variance = yearEnd - annualPlan

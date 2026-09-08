@@ -29,6 +29,10 @@ export interface DashboardActualMonth {
   revenueActual: number | null
   gpActual: number | null
   npActual: number | null
+  /** Present on the API response; only the trajectory chart reads them. */
+  revenueForecast?: number | null
+  gpForecast?: number | null
+  npForecast?: number | null
 }
 
 export interface ActualSeries {
@@ -103,4 +107,52 @@ export function deriveActualSeries(
     dataLastActualIndex: lastActual,
     fromXero: true,
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type TrajectoryMetric = 'revenue' | 'gp' | 'np'
+
+/** One bar of the trajectory chart. */
+export interface TrajectoryRow {
+  month: string
+  value: number
+  isForecast: boolean
+}
+
+const METRIC_FIELDS: Record<TrajectoryMetric, { actual: keyof DashboardActualMonth; forecast: keyof DashboardActualMonth }> = {
+  revenue: { actual: 'revenueActual', forecast: 'revenueForecast' },
+  gp: { actual: 'gpActual', forecast: 'gpForecast' },
+  np: { actual: 'npActual', forecast: 'npForecast' },
+}
+
+/**
+ * The trajectory chart's bars: actual where the month has closed and Xero has
+ * it, plan everywhere else.
+ *
+ * Shares `lastClosedIndex` with deriveActualSeries so the chart's verdict
+ * ("you'll miss plan by $X") and the KPI strip above it can't disagree. They
+ * did: on 8 Sep 2026 the chart drew a $111k part-month September as an actual
+ * and announced a $334k miss, directly under a card reading "on track".
+ */
+export function buildTrajectoryRows(
+  monthLabels: readonly string[],
+  months: DashboardActualMonth[] | null | undefined,
+  metric: TrajectoryMetric,
+  lastClosedIndex: number = Number.POSITIVE_INFINITY,
+): TrajectoryRow[] {
+  const safeMonths = months ?? []
+  const { actual: actualKey, forecast: forecastKey } = METRIC_FIELDS[metric]
+
+  return monthLabels.map((label, i) => {
+    const row = safeMonths[i]
+    const actualVal = i <= lastClosedIndex ? (row?.[actualKey] as number | null | undefined) : null
+    const forecastVal = row?.[forecastKey] as number | null | undefined
+
+    return {
+      month: label,
+      value: actualVal != null ? actualVal : forecastVal ?? 0,
+      isForecast: actualVal == null && forecastVal != null,
+    }
+  })
 }
