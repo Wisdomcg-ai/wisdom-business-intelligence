@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
+import { resolveBudget } from '@/lib/budgets/resolve-budget'
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
@@ -141,14 +142,16 @@ async function postHandler(request: Request) {
       )
     }
 
-    // 3. Determine budget forecast
-    // financial_forecasts.business_id references business_profiles.id, not businesses.id
-    // So we need to resolve the profile ID first
-    let budgetForecast: any = null
-    let budgetPLLines: any[] = []
-    let budgetForecastName: string | undefined
+    // 3. Determine the budget.
+    //
+    // The source lives behind resolveBudget() so it can become a real budget
+    // object (budget_versions/budget_lines) without this route noticing. Today
+    // it still resolves a forecast, by exactly the cascade that used to be
+    // inline here — see src/lib/budgets/resolve-budget.ts and
+    // .planning/BUDGET-STORE-PLAN.md.
 
-    // Always fetch fiscal_year_start for parameterized FY range calculation
+    // Fetched here, not in the resolver: this same row supplies yearStartMonth
+    // below, and two reads could disagree.
     const { data: profile } = await supabase
       .from('business_profiles')
       .select('id, fiscal_year_start')
@@ -157,74 +160,20 @@ async function postHandler(request: Request) {
 
     const yearStartMonth: number = profile?.fiscal_year_start ?? DEFAULT_YEAR_START_MONTH
 
-    if (settings.budget_forecast_id) {
-      const { data: fc } = await supabase
-        .from('financial_forecasts')
-        .select('id, name, fiscal_year')
-        .eq('id', settings.budget_forecast_id)
-        .single()
+    const resolvedBudget = await resolveBudget(supabase, {
+      businessId: business_id,
+      profileId: profile?.id ?? null,
+      fiscalYear: fiscal_year,
+      // No version pin until the import route exists; the version tier is
+      // skipped entirely, so the new tables are not read at all.
+      pin: { budgetForecastId: settings.budget_forecast_id },
+    })
 
-      // `monthly_report_settings` has ONE row per business and no fiscal_year
-      // column, so `budget_forecast_id` is a single FY-agnostic pin. Honouring it
-      // for every year would vary a FY2026 report against a FY2027 budget once
-      // the coach pinned next year's plan — every line wrong, silently. Only use
-      // the pin for the year it actually belongs to; otherwise fall through to
-      // the FY-aware resolution below.
-      if (fc && fc.fiscal_year != null && Number(fc.fiscal_year) !== Number(fiscal_year)) {
-        Sentry.captureMessage('[Report Generate] Pinned budget belongs to another fiscal year — falling back', {
-          level: 'warning' as any,
-          tags: { invariant: 'budget-fy-mismatch' },
-          extra: { business_id, pinnedForecastId: fc.id, pinnedFY: fc.fiscal_year, reportFY: fiscal_year },
-        } as any)
-      } else {
-        budgetForecast = fc
-      }
-    }
-
-    if (!budgetForecast) {
-      // Try both profile ID and direct business_id to handle both FK patterns.
-      // Also filter by fiscal_year — businesses can have multiple is_active=true
-      // forecasts spanning different FYs; without this filter, the latest-created
-      // wins regardless of which FY the report is for.
-      const idsToTry = profile?.id ? [profile.id, business_id] : [business_id]
-
-      for (const id of idsToTry) {
-        const { data: fc } = await supabase
-          .from('financial_forecasts')
-          .select('id, name')
-          .eq('business_id', id)
-          .eq('is_active', true)
-          .eq('fiscal_year', fiscal_year)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        if (fc) {
-          budgetForecast = fc
-          break
-        }
-      }
-    }
-
-    if (budgetForecast) {
-      budgetForecastName = budgetForecast.name
-      const { data: bLines } = await supabase
-        .from('forecast_pl_lines')
-        .select('id, account_name, category, forecast_months')
-        .eq('forecast_id', budgetForecast.id)
-      budgetPLLines = bLines || []
-
-      // Phase A (CFO-only clients): a forecast with ZERO materialized lines is
-      // not a budget. The wizard used to activate empty-shell forecasts
-      // (failed-seed trap), and this route would silently render $0 budgets
-      // against them on every row. Treat 0 lines as "no budget" so the
-      // existing no-budget banner explains the state honestly.
-      if (budgetPLLines.length === 0) {
-        budgetForecast = null
-        budgetForecastName = undefined
-      }
-    }
-
-    const hasBudget = !!budgetForecast
+    const budgetPLLines: any[] = resolvedBudget.lines
+    // 'none' is the only no-budget state, and it already covers "resolved a
+    // forecast that had zero lines" — the honest no-budget banner depends on it.
+    const hasBudget = resolvedBudget.source !== 'none'
+    const budgetForecastName: string | undefined = resolvedBudget.label ?? undefined
 
     // 4. Load xero_pl_lines (actuals).
     //    Phase 44 D-13 — route through ForecastReadService when an active forecast
@@ -601,7 +550,7 @@ async function postHandler(request: Request) {
       unreconciled_count: 0,
       has_budget: hasBudget,
       budget_forecast_name: budgetForecastName,
-      budget_forecast_id: budgetForecast?.id ?? null,
+      budget_forecast_id: resolvedBudget.forecastId,
     }
 
     return NextResponse.json({
