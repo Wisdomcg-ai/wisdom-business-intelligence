@@ -122,6 +122,7 @@ async function postHandler(request: Request) {
       show_budget_next_month: true,
       show_budget_annual_total: true,
       budget_forecast_id: null,
+      budget_source: 'forecast',
     }
 
     // 2. Load account mappings
@@ -164,8 +165,11 @@ async function postHandler(request: Request) {
       businessId: business_id,
       profileId: profile?.id ?? null,
       fiscalYear: fiscal_year,
-      // No version pin until the import route exists; the version tier is
-      // skipped entirely, so the new tables are not read at all.
+      reportMonth: report_month,
+      // Read positively. Most businesses have no settings row at all, so this
+      // arrives undefined rather than 'forecast'; a `!== 'forecast'` test would
+      // switch every one of them onto the budget store.
+      budgetSource: settings.budget_source === 'budget_version' ? 'budget_version' : 'forecast',
       pin: { budgetForecastId: settings.budget_forecast_id },
     })
 
@@ -551,6 +555,12 @@ async function postHandler(request: Request) {
       has_budget: hasBudget,
       budget_forecast_name: budgetForecastName,
       budget_forecast_id: resolvedBudget.forecastId,
+      // Provenance: which budget version produced these variances, and — when
+      // there are none — why, so the banner can say it instead of leaving a
+      // blank column that reads as $0.
+      budget_version_id: resolvedBudget.versionId,
+      budget_source: resolvedBudget.source,
+      no_budget_reason: resolvedBudget.noBudgetReason,
     }
 
     return NextResponse.json({

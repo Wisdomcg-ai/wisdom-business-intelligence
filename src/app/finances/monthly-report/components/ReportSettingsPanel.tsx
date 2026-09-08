@@ -93,6 +93,15 @@ const COLUMN_LABELS = {
   show_budget_annual_total: 'Budget Annual Total',
 }
 
+/** A locked budget version, as offered in the source picker. */
+interface BudgetVersionOption {
+  id: string
+  label: string | null
+  effective_from: string | null
+  months_covered: number | null
+  fiscal_year: number
+}
+
 export default function ReportSettingsPanel({
   isOpen,
   onClose,
@@ -110,6 +119,7 @@ export default function ReportSettingsPanel({
   onSaveTemplate,
 }: ReportSettingsPanelProps) {
   const [localSettings, setLocalSettings] = useState<MonthlyReportSettings>(settings)
+  const [budgetVersions, setBudgetVersions] = useState<BudgetVersionOption[]>([])
   const [forecasts, setForecasts] = useState<ForecastOption[]>([])
   const [expenseAccounts, setExpenseAccounts] = useState<AccountMapping[]>([])
   const [wagesAccountOptions, setWagesAccountOptions] = useState<string[]>([])
@@ -124,6 +134,15 @@ export default function ReportSettingsPanel({
   useEffect(() => {
     async function loadData() {
       const supabase = createClient()
+      // budget_versions.business_id is businesses-space ONLY — unlike the
+      // forecast query below, which deliberately spans both id-spaces.
+      const versionRes = await supabase
+        .from('budget_versions')
+        .select('id, label, effective_from, months_covered, fiscal_year, locked_at')
+        .eq('business_id', businessId)
+        .not('locked_at', 'is', null)
+        .order('effective_from', { ascending: false })
+      setBudgetVersions((versionRes.data as BudgetVersionOption[]) ?? [])
       // Resolve business_profiles.id from businesses.id
       const ids = await resolveBusinessProfileIds(supabase, businessId)
       const forecastRes = await supabase
@@ -199,6 +218,7 @@ export default function ReportSettingsPanel({
           show_budget_next_month: localSettings.show_budget_next_month,
           show_budget_annual_total: localSettings.show_budget_annual_total,
           budget_forecast_id: localSettings.budget_forecast_id,
+          budget_source: localSettings.budget_source ?? 'forecast',
           subscription_account_codes: localSettings.subscription_account_codes,
           wages_account_names: localSettings.wages_account_names,
           // WD.3 — standing "refer to …" commentary lines (empty rows dropped).
@@ -305,10 +325,43 @@ export default function ReportSettingsPanel({
             </div>
           )}
 
-          {/* Budget Forecast Selection */}
+          {/* Where the budget column comes from. Two questions, kept apart: this
+              one is "is this client on the budget store yet"; which VERSION
+              applies to a given month is decided by its effective date. */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-2">Budget Forecast</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">Budget source</h3>
             <select
+              value={localSettings.budget_source ?? 'forecast'}
+              onChange={(e) => setLocalSettings(prev => ({ ...prev, budget_source: e.target.value as 'forecast' | 'budget_version' }))}
+              disabled={budgetVersions.length !== 1}
+              className="w-full rounded-lg border-gray-300 text-sm focus:border-brand-orange focus:ring-brand-orange disabled:bg-gray-50 disabled:text-gray-500"
+            >
+              <option value="forecast">Forecast — re-cut as the year runs</option>
+              <option value="budget_version">
+                {budgetVersions.length === 1
+                  ? `Xero budget — ${budgetVersions[0].label ?? 'imported'}${budgetVersions[0].effective_from ? ` · effective ${budgetVersions[0].effective_from}` : ''}${budgetVersions[0].months_covered != null ? ` · ${budgetVersions[0].months_covered} of 12 months` : ''}`
+                  : 'Xero budget'}
+              </option>
+            </select>
+            {/* Three states, never two. */}
+            {budgetVersions.length === 0 && (
+              <p className="mt-1 text-xs text-gray-500">No budget imported for this business yet.</p>
+            )}
+            {budgetVersions.length > 1 && (
+              <p className="mt-1 text-xs text-amber-700">
+                More than one budget version for this business — the report cannot yet choose between them.
+              </p>
+            )}
+          </div>
+
+          {/* Budget Forecast Selection */}
+          <div className={localSettings.budget_source === 'budget_version' ? 'opacity-50' : undefined}>
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">Budget Forecast</h3>
+            {localSettings.budget_source === 'budget_version' && (
+              <p className="mb-1 text-xs text-gray-500">Not used while the budget source is the Xero budget.</p>
+            )}
+            <select
+              disabled={localSettings.budget_source === 'budget_version'}
               value={localSettings.budget_forecast_id || ''}
               onChange={(e) => setLocalSettings(prev => ({ ...prev, budget_forecast_id: e.target.value || null }))}
               className="w-full rounded-lg border-gray-300 text-sm focus:border-brand-orange focus:ring-brand-orange"

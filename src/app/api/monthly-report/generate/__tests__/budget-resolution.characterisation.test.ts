@@ -38,16 +38,28 @@ let tables: Record<string, any[]> = {}
  * harness, with `.limit()` returning a chainable rather than a promise (this
  * route does `.limit(1).maybeSingle()`).
  */
+/**
+ * Every operator the harness understands. Widen this whenever the code under
+ * test starts filtering on a new one — a filter the harness quietly ignores is
+ * worse than no harness, because the assertion still passes.
+ */
+type FilterOp = 'eq' | 'in' | 'not-is' | 'neq' | 'lte' | 'gt'
+
 function serviceClient() {
   const build = (
     table: string,
-    filters: Array<[string, unknown, 'eq' | 'in']> = [],
+    filters: Array<[string, unknown, FilterOp]> = [],
     ordered: { col: string; ascending: boolean } | null = null,
   ): any => {
     const run = () => {
       let out = (tables[table] ?? []).filter((row) =>
         filters.every(([col, val, op]) =>
-          op === 'in' ? Array.isArray(val) && val.includes(row[col]) : row[col] === val,
+          op === 'in' ? Array.isArray(val) && val.includes(row[col])
+          : op === 'not-is' ? (val === null ? row[col] != null : row[col] !== val)
+          : op === 'neq' ? row[col] !== val
+          : op === 'lte' ? row[col] != null && row[col] <= (val as never)
+          : op === 'gt' ? row[col] != null && row[col] > (val as never)
+          : row[col] === val,
         ),
       )
       if (ordered) {
@@ -60,7 +72,16 @@ function serviceClient() {
       select: () => self,
       eq: (col: string, val: unknown) => build(table, [...filters, [col, val, 'eq']], ordered),
       in: (col: string, val: unknown[]) => build(table, [...filters, [col, val, 'in']], ordered),
-      not: () => self,
+      // A real `not`, `lte` and `gt` — NOT no-ops. The budget-version tier
+      // filters on `.not('locked_at','is',null)`, `.lte('effective_from', month)`
+      // and `.gt(...)`. With a pass-through `not` an unlocked version would
+      // resolve, and a missing `lte` would throw inside the tier's own try and
+      // be swallowed as "no version" — a fallback assertion would then pass for
+      // entirely the wrong reason.
+      not: (col: string, op: string, val: unknown) =>
+        build(table, [...filters, [col, val, op === 'is' ? 'not-is' : 'neq']], ordered),
+      lte: (col: string, val: unknown) => build(table, [...filters, [col, val, 'lte']], ordered),
+      gt: (col: string, val: unknown) => build(table, [...filters, [col, val, 'gt']], ordered),
       order: (col: string, opts?: { ascending?: boolean }) =>
         build(table, filters, { col, ascending: opts?.ascending ?? true }),
       limit: (n: number) => {
@@ -163,6 +184,8 @@ function baseTables(over: Partial<Record<string, any[]>> = {}) {
     forecast_pl_lines: [],
     xero_pl_lines_wide_compat: [],
     monthly_report_snapshots: [],
+    budget_versions: [],
+    budget_lines: [],
     ...over,
   } as Record<string, any[]>
 }
@@ -375,5 +398,154 @@ describe('monthly-report/generate — how the budget is resolved', () => {
     const line = revenue.lines.find((l: any) => l.account_name === REVENUE)
     expect(line.budget).toBe(0)
     expect(line.actual).toBe(200)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The budget store. Everything above pins the LEGACY path and must keep passing
+// unedited — that is the proof the gate is a gate.
+
+const version = (
+  id: string,
+  effective_from: string,
+  over: { locked?: boolean; label?: string; fiscal_year?: number } = {},
+) => ({
+  id,
+  business_id: BIZ,
+  fiscal_year: over.fiscal_year ?? 2027,
+  label: over.label ?? 'Overall Budget',
+  effective_from,
+  version_number: 1,
+  locked_at: over.locked === false ? null : '2026-09-09T00:00:00Z',
+})
+
+const budgetLine = (id: string, versionId: string, month: string, amount: number) => ({
+  id,
+  budget_version_id: versionId,
+  business_id: BIZ,
+  account_name: REVENUE,
+  category: 'Revenue',
+  month,
+  amount,
+})
+
+/** Settings that put the client on the budget store. */
+const onStore = { business_id: BIZ, budget_source: 'budget_version', sections: {} }
+
+describe('monthly-report/generate — the budget store', () => {
+  beforeEach(() => {
+    captureMessage.mockClear()
+    compositeRows = [{ account_name: REVENUE, account_type: 'revenue', monthly_values: { '2026-07': 100, '2026-08': 200 } }]
+    tables = baseTables()
+  })
+
+  it('a client not switched over never touches the budget tables', async () => {
+    // The gate is on the QUERY. A locked, in-force version exists and is
+    // ignored, because budget_source is absent — which is the state 19 of the
+    // 31 businesses are in (no settings row at all).
+    tables = baseTables({
+      financial_forecasts: [forecast('active', 'Active FY27', { active: true })],
+      forecast_pl_lines: [plLine('bl-1', 'active', REVENUE, { '2026-08': 500 })],
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [budgetLine('l-1', 'v1', '2026-08', 999)],
+    })
+
+    const r = await resolution()
+    expect(r.hasBudget).toBe(true)
+    expect(r.forecastId).toBe('active')
+    expect(r.report.budget_source).toBe('forecast')
+    expect(r.report.budget_version_id).toBeNull()
+  })
+
+  it('a switched client reads the version in force for the report month', async () => {
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [budgetLine('l-1', 'v1', '2026-08', 405521), budgetLine('l-2', 'v1', '2026-09', 551975)],
+    })
+
+    const r = await resolution()
+    expect(r.hasBudget).toBe(true)
+    expect(r.report.budget_source).toBe('budget_version')
+    expect(r.report.budget_version_id).toBe('v1')
+    expect(r.report.no_budget_reason).toBeNull()
+    expect(r.forecastId).toBeNull()
+  })
+
+  it('a revision applies prospectively — August keeps the version it was reported against', async () => {
+    // v2 arrives in October. Reporting August must still resolve v1: this is
+    // the whole reason effective-dating exists instead of a single pin.
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [version('v1', '2026-07'), version('v2', '2026-10', { label: 'Revised' })],
+      budget_lines: [budgetLine('l-1', 'v1', '2026-08', 405521), budgetLine('l-2', 'v2', '2026-08', 1)],
+    })
+
+    const r = await resolution()
+    expect(r.report.budget_version_id).toBe('v1')
+    expect(r.report.budget_forecast_name).toBe('Overall Budget')
+  })
+
+  it('fails CLOSED when the only version is not yet effective — it does not fall back to the forecast', async () => {
+    // An active forecast WITH lines is sitting right there. Using it would
+    // silently measure the client against the moving yardstick.
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      financial_forecasts: [forecast('active', 'Active FY27', { active: true })],
+      forecast_pl_lines: [plLine('bl-1', 'active', REVENUE, { '2026-08': 500 })],
+      budget_versions: [version('v1', '2026-09')],
+      budget_lines: [budgetLine('l-1', 'v1', '2026-09', 551975)],
+    })
+
+    const r = await resolution()
+    expect(r.hasBudget).toBe(false)
+    expect(r.report.no_budget_reason).toBe('version_not_yet_effective')
+    expect(r.forecastId).toBeNull()
+  })
+
+  it('distinguishes "nothing imported" from "not yet effective"', async () => {
+    tables = baseTables({ monthly_report_settings: [onStore] })
+    expect((await resolution()).report.no_budget_reason).toBe('no_version_in_force')
+  })
+
+  it('refuses to choose between two versions in force, and says so in Sentry', async () => {
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [version('v1', '2026-07'), version('v2', '2026-07', { label: 'Other org' })],
+      budget_lines: [budgetLine('l-1', 'v1', '2026-08', 1), budgetLine('l-2', 'v2', '2026-08', 2)],
+    })
+
+    const r = await resolution()
+    expect(r.hasBudget).toBe(false)
+    expect(r.report.no_budget_reason).toBe('multiple_versions_in_force')
+    expect(
+      captureMessage.mock.calls.filter((c) => c[1]?.tags?.invariant === 'budget-multiple-versions-in-force'),
+    ).toHaveLength(1)
+  })
+
+  it('an unlocked version is not a budget — a half-written import stays invisible', async () => {
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [version('v1', '2026-07', { locked: false })],
+      budget_lines: [budgetLine('l-1', 'v1', '2026-08', 405521)],
+    })
+    expect((await resolution()).report.no_budget_reason).toBe('no_version_in_force')
+  })
+
+  it('a locked version with no lines is not a budget either', async () => {
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [version('v1', '2026-07')],
+    })
+    expect((await resolution()).report.no_budget_reason).toBe('version_has_no_lines')
+  })
+
+  it("another year's version is not in force", async () => {
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [version('v1', '2025-07', { fiscal_year: 2026 })],
+      budget_lines: [budgetLine('l-1', 'v1', '2026-08', 1)],
+    })
+    expect((await resolution()).report.no_budget_reason).toBe('no_version_in_force')
   })
 })

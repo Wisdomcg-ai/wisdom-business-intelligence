@@ -28,6 +28,7 @@ const SettingsPostSchema = z.object({
   show_budget_next_month: z.boolean().optional(),
   show_budget_annual_total: z.boolean().optional(),
   budget_forecast_id: z.string().nullable().optional(),
+  budget_source: z.enum(['forecast', 'budget_version']).optional(),
   subscription_account_codes: z.array(z.string()).optional(),
   wages_account_names: z.array(z.string()).optional(),
   pdf_layout: z.any().optional(),
@@ -70,6 +71,7 @@ const DEFAULT_SETTINGS = {
   show_budget_next_month: true,
   show_budget_annual_total: true,
   budget_forecast_id: null,
+  budget_source: 'forecast',
   subscription_account_codes: [],
   wages_account_names: [],
 }
@@ -182,6 +184,7 @@ async function postHandler(request: Request) {
       show_budget_next_month,
       show_budget_annual_total,
       budget_forecast_id,
+      budget_source,
       subscription_account_codes,
       wages_account_names,
       pdf_layout,
@@ -244,6 +247,39 @@ async function postHandler(request: Request) {
       }
     }
 
+    // Switching a client ONTO the budget store is the moment their baseline
+    // changes, so it is guarded rather than merely recorded.
+    if (budget_source === 'budget_version') {
+      const { data: anyVersion } = await supabase
+        .from('budget_versions')
+        .select('id')
+        .eq('business_id', business_id)
+        .not('locked_at', 'is', null)
+        .limit(1)
+      if (!anyVersion || anyVersion.length === 0) {
+        return NextResponse.json(
+          { error: 'Import a budget from Xero before switching this client to the budget store', code: 'NO_BUDGET_VERSION' },
+          { status: 400 },
+        )
+      }
+
+      // One cheap check on a rare write, instead of a per-report tenant check:
+      // a multi-org business (Dragon 2 orgs, IICT 3) needs its per-tenant
+      // budgets summed, and summing HKD into AUD is not something to arrive at
+      // by accident. Kept out until that exists.
+      const { count: orgCount } = await supabase
+        .from('xero_connections')
+        .select('id', { count: 'exact', head: true })
+        .eq('business_id', business_id)
+        .eq('is_active', true)
+      if ((orgCount ?? 0) > 1) {
+        return NextResponse.json(
+          { error: 'This business has more than one Xero organisation; the budget store cannot combine their budgets yet', code: 'MULTI_ORG_BUDGET_UNSUPPORTED' },
+          { status: 400 },
+        )
+      }
+    }
+
     // Merge provided sections with defaults (so partial updates work)
     const mergedSections = sections
       ? { ...DEFAULT_SECTIONS, ...sections }
@@ -272,6 +308,14 @@ async function postHandler(request: Request) {
     if (standing_commentary !== undefined) {
       baseData.standing_commentary = standing_commentary
     }
+    // Same omit-unless-provided semantics, and for a sharper reason: every key
+    // in baseData above is rewritten with a default when absent, and both UI
+    // writers post fixed key sets. Putting budget_source there would mean a
+    // coach dragging a page in the PDF layout editor silently reverted the
+    // client to the forecast.
+    if (budget_source !== undefined) {
+      baseData.budget_source = budget_source
+    }
 
     let { data: settings, error } = await supabase
       .from('monthly_report_settings')
@@ -282,20 +326,35 @@ async function postHandler(request: Request) {
       .select()
       .single()
 
-    // If the error is about pdf_layout column not existing, retry without it
-    if (error && pdf_layout !== undefined && error.message?.includes('pdf_layout')) {
-      Sentry.captureMessage('[Monthly Report Settings] pdf_layout column not found, retrying without it', 'warning' as any)
-      delete baseData.pdf_layout
-      const retry = await supabase
-        .from('monthly_report_settings')
-        .upsert(baseData, {
-          onConflict: 'business_id',
-          ignoreDuplicates: false,
-        })
-        .select()
-        .single()
-      settings = retry.data
-      error = retry.error
+    // Code deploys before migrations are applied by hand here, so a column the
+    // schema does not have yet must not fail the whole save. Keyed on the
+    // Postgres/PostgREST codes rather than a substring of one column's name —
+    // the old test only matched 'pdf_layout', and only when pdf_layout was sent.
+    const droppedColumns: string[] = []
+    if (error && (error.code === '42703' || error.code === 'PGRST204')) {
+      for (const col of ['budget_source', 'pdf_layout']) {
+        if (col in baseData && error.message?.includes(col)) {
+          delete baseData[col]
+          droppedColumns.push(col)
+        }
+      }
+      if (droppedColumns.length > 0) {
+        Sentry.captureMessage('[Monthly Report Settings] retrying without columns the schema does not have yet', {
+          level: 'warning' as any,
+          tags: { invariant: 'settings-missing-column' },
+          extra: { business_id, dropped: droppedColumns, message: error.message },
+        } as any)
+        const retry = await supabase
+          .from('monthly_report_settings')
+          .upsert(baseData, {
+            onConflict: 'business_id',
+            ignoreDuplicates: false,
+          })
+          .select()
+          .single()
+        settings = retry.data
+        error = retry.error
+      }
     }
 
     if (error) {
@@ -321,7 +380,14 @@ async function postHandler(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, settings })
+    // Never report a bare success when budget_source was dropped: that would
+    // tell the coach the client is on the budget store while the database still
+    // says 'forecast'. Three states, not two — value / empty / could-not-save.
+    return NextResponse.json({
+      success: true,
+      settings,
+      ...(droppedColumns.includes('budget_source') ? { budget_source_not_persisted: true } : {}),
+    })
 
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'monthly-report/settings' }, extra: { context: "Error in POST /api/monthly-report/settings" } } as any)
