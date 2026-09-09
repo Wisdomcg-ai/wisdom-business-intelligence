@@ -111,6 +111,16 @@ export interface ResolveBudgetArgs {
    */
   reportMonth: string
   /**
+   * Every fiscal month the caller will read out of the budget, in FY order.
+   * The monthly report reads four different windows out of one budget map —
+   * the report month, YTD, the annual total and next month — so resolving a
+   * single version for the anchor month and applying it to all four would let a
+   * revision restate the months before it took effect, inside the very totals
+   * that are meant to be settled. Each month gets the version in force FOR THAT
+   * MONTH. Defaults to [reportMonth].
+   */
+  months?: readonly string[]
+  /**
    * monthly_report_settings.budget_source. Read POSITIVELY: 19 of 31 businesses
    * have no settings row, so this arrives undefined rather than 'forecast'.
    */
@@ -155,7 +165,7 @@ function countMonths(lines: readonly ResolvedBudgetLine[]): number {
  */
 export async function resolveBudget(
   supabase: SupabaseClient,
-  { businessId, profileId, fiscalYear, reportMonth, budgetSource, pin }: ResolveBudgetArgs,
+  { businessId, profileId, fiscalYear, reportMonth, months, budgetSource, pin }: ResolveBudgetArgs,
 ): Promise<ResolvedBudget> {
   // ── Tier V: the budget store ───────────────────────────────────────────────
   // The gate is on the QUERY, not the tier order: with 'forecast' the budget
@@ -168,7 +178,7 @@ export async function resolveBudget(
   // design exists to get away from, so every miss ends at 'none' carrying a
   // reason the banner can state.
   if (budgetSource === 'budget_version') {
-    return await resolveInForceVersion(supabase, businessId, fiscalYear, reportMonth)
+    return await resolveInForceVersion(supabase, businessId, fiscalYear, reportMonth, months)
   }
 
   // ── Tier F1: the pinned forecast ───────────────────────────────────────────
@@ -285,62 +295,98 @@ async function resolveInForceVersion(
   businessId: string,
   fiscalYear: number | string,
   reportMonth: string,
+  months?: readonly string[],
 ): Promise<ResolvedBudget> {
   // A malformed month would compare lexically against effective_from and could
   // pick the wrong version silently. Refuse instead.
   if (!MONTH_KEY.test(reportMonth || '')) return noneBecause('invalid_report_month')
+  const wanted = (months && months.length > 0 ? months : [reportMonth]).filter((m) => MONTH_KEY.test(m))
+  if (wanted.length === 0) return noneBecause('invalid_report_month')
 
   try {
+    // Every locked version for the year, not just those already in force for
+    // the anchor month: a later month may be governed by a version the anchor
+    // month predates.
     const { data: versions, error } = await supabase
       .from('budget_versions')
-      .select('id, label, effective_from, version_number')
+      .select('id, label, effective_from, version_number, tenant_id')
       .eq('business_id', businessId)
       .eq('fiscal_year', fiscalYear)
       .not('locked_at', 'is', null)
-      .lte('effective_from', reportMonth)
       .order('effective_from', { ascending: false })
 
     if (error) return noneBecause('budget_read_failed')
-    if (!versions || versions.length === 0) {
-      // Distinguish "nothing imported" from "imported, but not yet in force" —
-      // reporting July against a version effective from September is a real
-      // state with a different answer for the reader.
-      const { data: future } = await supabase
-        .from('budget_versions')
-        .select('id')
-        .eq('business_id', businessId)
-        .eq('fiscal_year', fiscalYear)
-        .not('locked_at', 'is', null)
-        .gt('effective_from', reportMonth)
-        .limit(1)
-      return noneBecause(future && future.length > 0 ? 'version_not_yet_effective' : 'no_version_in_force')
+
+    const all = (versions ?? []) as Array<{
+      id: string
+      label: string | null
+      effective_from: string
+      tenant_id: string | null
+    }>
+
+    if (all.length === 0) return noneBecause('no_version_in_force')
+
+    // ── Which version governs each month ─────────────────────────────────────
+    const versionForMonth = new Map<string, string>()
+    const chosen = new Map<string, { id: string; label: string | null; tenant_id: string | null }>()
+    let ambiguousAt: { month: string; effectiveFrom: string; ids: string[] } | null = null
+
+    for (const month of wanted) {
+      const eligible = all.filter((v) => v.effective_from <= month)
+      if (eligible.length === 0) continue
+      const newest = eligible[0].effective_from
+      const tied = eligible.filter((v) => v.effective_from === newest)
+      if (tied.length > 1) {
+        // Refused for the WHOLE year, not just this month: dropping one month
+        // from the annual total would understate the yardstick silently, which
+        // is worse than declining to answer.
+        ambiguousAt = { month, effectiveFrom: newest, ids: tied.map((v) => v.id) }
+        break
+      }
+      versionForMonth.set(month, tied[0].id)
+      chosen.set(tied[0].id, tied[0])
     }
 
-    // Everything sharing the newest effective_from is genuinely ambiguous;
-    // an older one is simply superseded.
-    const newest = versions[0].effective_from
-    const inForce = versions.filter((v: { effective_from: string }) => v.effective_from === newest)
-    if (inForce.length > 1) {
+    if (ambiguousAt) {
       Sentry.captureMessage('[Report Generate] More than one budget version in force — refusing to choose', {
         level: 'warning' as any,
         tags: { invariant: 'budget-multiple-versions-in-force' },
-        extra: { business_id: businessId, fiscalYear, reportMonth, effective_from: newest, versionIds: inForce.map((v: { id: string }) => v.id) },
+        extra: { business_id: businessId, fiscalYear, ...ambiguousAt },
       } as any)
       return noneBecause('multiple_versions_in_force')
     }
 
-    const version = inForce[0] as { id: string; label: string | null }
+    // The report month is the primary window; a budget that does not govern it
+    // cannot answer the question being asked, even if it governs later months.
+    // Reporting July against a version effective from September is a real state
+    // with its own answer, and it is not "fall back to the forecast".
+    if (!versionForMonth.has(reportMonth)) return noneBecause('version_not_yet_effective')
+
+    // Summing two Xero orgs' budgets would need an FX rule this does not have,
+    // and the settings flip already refuses multi-org businesses. Belt and
+    // braces, because the flip guard lives in a different route.
+    const tenants = new Set(Array.from(chosen.values()).map((v) => v.tenant_id ?? ''))
+    if (tenants.size > 1) {
+      Sentry.captureMessage('[Report Generate] Budget versions span more than one Xero org — refusing to sum', {
+        level: 'warning' as any,
+        tags: { invariant: 'budget-multiple-tenants-in-force' },
+        extra: { business_id: businessId, fiscalYear, tenants: Array.from(tenants) },
+      } as any)
+      return noneBecause('multiple_versions_in_force')
+    }
 
     const { data: rows, error: linesError } = await supabase
       .from('budget_lines')
-      .select('id, account_name, category, month, amount')
-      .eq('budget_version_id', version.id)
+      .select('id, account_name, category, month, amount, budget_version_id')
+      .in('budget_version_id', Array.from(chosen.keys()))
 
     if (linesError) return noneBecause('budget_read_failed')
     if (!rows || rows.length === 0) return noneBecause('version_has_no_lines')
 
     // budget_lines is one row per account per month; the report wants one line
-    // per account carrying a month map.
+    // per account carrying a month map. A row counts only when its version is
+    // the one governing its own month — that is what keeps a superseded
+    // version's July out of the total once a revision takes over in October.
     const byAccount = new Map<string, ResolvedBudgetLine>()
     for (const row of rows as Array<{
       id: string
@@ -348,7 +394,9 @@ async function resolveInForceVersion(
       category: string | null
       month: string
       amount: number | string
+      budget_version_id: string
     }>) {
+      if (versionForMonth.get(row.month) !== row.budget_version_id) continue
       let line = byAccount.get(row.account_name)
       if (!line) {
         line = { id: row.id, account_name: row.account_name, category: row.category, forecast_months: {} }
@@ -358,11 +406,18 @@ async function resolveInForceVersion(
     }
 
     const lines = Array.from(byAccount.values())
+    if (lines.length === 0) return noneBecause('version_has_no_lines')
+
+    // Provenance is the version governing the ANCHOR month, so the report keeps
+    // emitting a single version id. A page spanning several versions names them
+    // in its own header rather than overloading this field.
+    const anchor = chosen.get(versionForMonth.get(reportMonth)!)!
+
     return {
       source: 'budget_version',
-      versionId: version.id,
+      versionId: anchor.id,
       forecastId: null,
-      label: version.label ?? null,
+      label: anchor.label ?? null,
       lines,
       monthsCovered: countMonths(lines),
       noBudgetReason: null,

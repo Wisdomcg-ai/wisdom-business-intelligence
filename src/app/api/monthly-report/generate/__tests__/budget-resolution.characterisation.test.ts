@@ -549,3 +549,95 @@ describe('monthly-report/generate — the budget store', () => {
     expect((await resolution()).report.no_budget_reason).toBe('no_version_in_force')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A revision applies PROSPECTIVELY. The report reads four windows out of one
+// budget map — the month, YTD, the annual total, next month — so a version
+// resolved once for the anchor month and applied to all four would let a
+// revision imported in October restate July, inside the totals that are meant
+// to be settled. Each month takes the version in force for THAT month.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The Revenue subtotal, where the stitched windows show up. */
+function revenueSubtotal(report: any) {
+  const section = (report.sections ?? []).find((s: any) => s.category === 'Revenue')
+  return section?.subtotal
+}
+
+describe('monthly-report/generate — a revision does not restate earlier months', () => {
+  beforeEach(() => {
+    captureMessage.mockClear()
+  })
+
+  it('stitches per month: July keeps v1 even though v2 governs the report month', async () => {
+    // v1 from the start of the year, v2 from October. Reporting November.
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [version('v1', '2026-07'), version('v2', '2026-10', { label: 'Overall Budget v2' })],
+      budget_lines: [
+        budgetLine('l-1', 'v1', '2026-07', 100),
+        budgetLine('l-2', 'v1', '2026-11', 999),   // superseded — must NOT count
+        budgetLine('l-3', 'v2', '2026-11', 300),
+        budgetLine('l-4', 'v2', '2026-07', 888),   // not yet effective — must NOT count
+      ],
+    })
+
+    const { status, body } = await (async () => {
+      const { POST } = await import('../route')
+      const res = await POST(new Request('http://localhost/api/monthly-report/generate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_id: BIZ, report_month: '2026-11', fiscal_year: FY }),
+      }) as any)
+      return { status: res.status, body: (await res.json()) as any }
+    })()
+
+    expect(status).toBe(200)
+    expect(body.report.has_budget).toBe(true)
+    // Provenance is the version governing the ANCHOR month.
+    expect(body.report.budget_version_id).toBe('v2')
+
+    const sub = revenueSubtotal(body.report)
+    expect(sub.budget).toBe(300)        // November from v2, not v1's 999
+    expect(sub.ytd_budget).toBe(400)    // July 100 (v1) + November 300 (v2); v2's July 888 excluded
+  })
+
+  it('refuses the whole year when two versions tie on a later month', async () => {
+    // The tie is in October — after the August report month. Dropping just that
+    // month would understate the annual total silently.
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [version('v1', '2026-07'), version('v2', '2026-10'), version('v3', '2026-10')],
+      budget_lines: [budgetLine('l-1', 'v1', '2026-08', 405521)],
+    })
+
+    const r = await resolution()
+    expect(r.hasBudget).toBe(false)
+    expect(r.report.no_budget_reason).toBe('multiple_versions_in_force')
+    expect(r.forecastId).toBeNull()
+    expect(
+      captureMessage.mock.calls.filter((c: any[]) => c[1]?.tags?.invariant === 'budget-multiple-versions-in-force'),
+    ).toHaveLength(1)
+  })
+
+  it('refuses to sum budgets from two Xero orgs', async () => {
+    // Summing two orgs needs an FX rule this does not have. The settings flip
+    // already refuses multi-org businesses; this is the resolver's own guard,
+    // because that one lives in a different route.
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [
+        { ...version('v1', '2026-07'), tenant_id: 'tenant-a' },
+        { ...version('v2', '2026-08'), tenant_id: 'tenant-b' },
+      ],
+      budget_lines: [budgetLine('l-1', 'v1', '2026-07', 100), budgetLine('l-2', 'v2', '2026-08', 200)],
+    })
+
+    const r = await resolution()
+    expect(r.hasBudget).toBe(false)
+    expect(r.report.no_budget_reason).toBe('multiple_versions_in_force')
+    expect(
+      captureMessage.mock.calls.filter((c: any[]) => c[1]?.tags?.invariant === 'budget-multiple-tenants-in-force'),
+    ).toHaveLength(1)
+  })
+})
+
