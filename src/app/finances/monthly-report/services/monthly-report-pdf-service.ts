@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import * as Sentry from '@sentry/nextjs'
 import type { GeneratedReport, ReportSection, ReportLine, MonthlyReportSettings, ReportSections, VarianceCommentary, FullYearReport, SubscriptionDetailData, WagesDetailData } from '../types'
 import type { CashflowForecastData } from '@/app/finances/forecast/types'
 import { transformCashflowToChartData, CASHFLOW_CHART_COLORS, CASHFLOW_CHART_SERIES } from '@/app/finances/forecast/utils/cashflow-chart-data'
@@ -23,6 +24,8 @@ import type { PDFLayout, WidgetType, WidgetBoundingBox } from '../types/pdf-layo
 import { GRID_CONFIG } from '../types/pdf-layout'
 import { calculateBoundingBox, normalizeLayoutPlacements } from '../utils/grid-helpers'
 import { WIDGET_METHOD_MAP } from './widget-renderer'
+import { assessBalanceSheetForPdf, type BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
+import type { BalanceSheetCompare, BalanceSheetData } from '../types'
 
 interface PDFOptions {
   commentary?: VarianceCommentary
@@ -40,6 +43,13 @@ interface PDFOptions {
   moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
   /** WD.6 — the consolidated report (per-entity columns) for consolidation parents. */
   consolidated?: import('../utils/consolidated-rows').ConsolidatedReportVM
+  /**
+   * WG.1 — the balance sheet, keyed by comparison mode. Two entries because
+   * the endpoint answers one comparison at a time; a placed widget reads the
+   * one its config.compare names. An entry with `data: null` still carries a
+   * `reason`, and the page prints that reason instead of the table.
+   */
+  balanceSheets?: BalanceSheetPdfSources
   /** WF.4 — true when this month's budget was back-filled from actuals: the
    *  cover must say so, because a ~0% variance is an echo, not performance. */
   budgetBackfilled?: boolean
@@ -125,6 +135,20 @@ export class MonthlyReportPDFService {
         try {
           return this.generateFromLayout(this.options.pdfLayout)
         } catch (err) {
+          // This fallback is silent by construction: it discards the layout,
+          // rebuilds the doc, and runs the hard-coded legacy page order. The
+          // coach gets a complete, plausible PDF in the WRONG order and is
+          // told nothing — one bad widget and a pack ships that nobody knows
+          // is off-spec. Keep the fallback (a PDF beats no PDF), but never let
+          // it be the only record that it happened.
+          Sentry.captureException(err, {
+            tags: { invariant: 'pdf-layout-fallback' },
+            extra: {
+              context: '[PDF] Layout-driven generation failed — fell back to the legacy page order',
+              reportMonth: this.report?.report_month,
+              pageCount: this.options.pdfLayout?.pages?.length,
+            },
+          } as any)
           console.error('[PDF] Layout-driven generation failed, falling back to default:', err)
           // Reset the doc for default generation
           this.doc = new jsPDF('portrait', 'mm', 'a4')
@@ -560,6 +584,163 @@ export class MonthlyReportPDFService {
 
   renderConsolidatedPL(box: WidgetBoundingBox): void {
     this.renderWithSkipPage(this.addConsolidatedPLPage, box)
+  }
+
+  // =====================================================================
+  // Balance Sheet (WG.1, PORTRAIT) — Calxa pages 19-22
+  // =====================================================================
+  // Two placements of ONE widget: config.compare = 'mom' (vs prior month) or
+  // 'yoy' (vs same month last year). The rows come straight off
+  // /api/Xero/balance-sheet in the order the route emits them, so the page
+  // carries whatever section grouping Xero gives — including the sections a
+  // client hasn't mapped, which is the "New unmapped Asset / Liability" block
+  // Calxa prints. Grouping, subtotal set, ordering and sign conventions are
+  // NOT re-derived here: BalanceSheetTab renders the same array the same way,
+  // and a PDF page that disagrees with the tab above it is the defect this
+  // widget was written to avoid.
+  private addBalanceSheetPage(compare: BalanceSheetCompare): void {
+    const verdict = assessBalanceSheetForPdf(this.options.balanceSheets?.[compare], compare)
+    this.addPage('portrait')
+
+    const heading = compare === 'mom' ? 'vs Prior Month' : 'vs Same Month Last Year'
+    this.doc.setFontSize(14)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.text(
+      `Balance Sheet ${heading} — ${this.formatMonth(this.report.report_month)}`,
+      this.margin, this.yPosition,
+    )
+    this.yPosition += 8
+
+    if (!verdict.ok) {
+      // The honest card, same shape as Where Did Our Money Go. A balance sheet
+      // that can't be proved to balance is not a balance sheet, so it never
+      // gets printed as a half-table or a column of zeros — the page says what
+      // went wrong and stops.
+      this.drawReasonCard(`This page couldn't be produced: ${verdict.reason}.`)
+      return
+    }
+
+    const bs = verdict.data
+    this.renderBalanceSheetTable(bs)
+
+    const y = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 6
+    this.doc.setFontSize(7.5)
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setTextColor(107, 114, 128)
+    this.doc.text(
+      'Sourced from Xero · Negatives shown in (brackets) · % Variance is N/A when the prior period is zero',
+      this.margin, y,
+    )
+    this.doc.setTextColor(0, 0, 0)
+  }
+
+  /**
+   * The amber "couldn't check" card. A page that cannot be produced must still
+   * be a page, and must say why in words the owner can act on.
+   */
+  private drawReasonCard(message: string): void {
+    const width = this.pageWidth - this.margin * 2
+    this.doc.setFillColor(251, 243, 228)
+    this.doc.setDrawColor(224, 174, 92)
+    this.doc.roundedRect(this.margin, this.yPosition, width, 26, 2, 2, 'FD')
+    this.doc.setFontSize(10)
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setTextColor(138, 94, 18)
+    const lines: string[] = this.doc.splitTextToSize(message, width - 10)
+    this.doc.text(lines, this.margin + 5, this.yPosition + 8)
+    this.doc.setTextColor(0, 0, 0)
+    this.yPosition += 32
+  }
+
+  /** Formatting mirrors BalanceSheetTab: no currency symbol, no decimals,
+   *  negatives in (brackets). Calxa prints the same. */
+  private fmtBsAmount(value: number | null): string {
+    if (value === null) return '—'
+    const abs = Math.abs(value)
+    const formatted = abs.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+    return value < 0 ? `(${formatted})` : formatted
+  }
+
+  private fmtBsPct(value: number | null): string {
+    if (value === null) return 'N/A'
+    const formatted = `${Math.round(Math.abs(value))}%`
+    return value < 0 ? `(${formatted})` : formatted
+  }
+
+  private renderBalanceSheetTable(bs: BalanceSheetData): void {
+    // autoTable can't see row semantics, so carry them alongside: didParseCell
+    // reads this by row index rather than sniffing the rendered label text.
+    const kinds = bs.rows.map(r => r.type)
+
+    const body = bs.rows.map((r) => {
+      if (r.type === 'section_header') return [r.label, '', '', '', '']
+      return [
+        r.label,
+        this.fmtBsAmount(r.current),
+        this.fmtBsAmount(r.prior),
+        this.fmtBsAmount(r.variance),
+        this.fmtBsPct(r.variance_pct),
+      ]
+    })
+
+    autoTable(this.doc, {
+      startY: this.yPosition,
+      head: [
+        ['', bs.current_label, bs.prior_label || '—', 'Variance', '% Variance'],
+        ['', 'Actuals', 'Actuals', '', ''],
+      ],
+      body,
+      theme: 'grid',
+      headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold', fontSize: 7.5, halign: 'right' },
+      bodyStyles: { fontSize: 8 },
+      columnStyles: {
+        0: { cellWidth: 70, halign: 'left' },
+        1: { halign: 'right' },
+        2: { halign: 'right' },
+        3: { halign: 'right' },
+        4: { halign: 'right' },
+      },
+      margin: { left: this.margin, right: this.margin },
+      didParseCell: (data) => {
+        if (data.section === 'head') {
+          if (data.column.index === 0) data.cell.styles.halign = 'left'
+          if (data.row.index === 1) data.cell.styles.fontStyle = 'normal'
+          return
+        }
+        const kind = kinds[data.row.index]
+        if (kind === 'section_header') {
+          data.cell.styles.fontStyle = 'italic'
+          data.cell.styles.textColor = [150, 150, 150]
+        } else if (kind === 'subtotal') {
+          data.cell.styles.fontStyle = 'bold'
+          data.cell.styles.fillColor = [243, 244, 246]
+        } else if (kind === 'net_assets') {
+          data.cell.styles.fontStyle = 'bold'
+          data.cell.styles.fillColor = GP_BLUE
+        } else if (data.column.index === 0) {
+          // Line items sit under their section header, as in the web tab.
+          data.cell.styles.cellPadding = { top: 1, right: 2, bottom: 1, left: 4 }
+        }
+        // Red for genuinely negative figures only — '—' and 'N/A' are neither
+        // negative nor zero, and must not be tinted as if they were.
+        const text = String(data.cell.raw ?? '')
+        if (data.column.index > 0 && text.startsWith('(')) {
+          data.cell.styles.textColor = [185, 28, 28]
+        }
+      },
+    })
+  }
+
+  /**
+   * WG.1 — layout-mode dispatch. config.compare picks the comparison column;
+   * a widget with no config (the one syncLayoutWithSettings auto-adds when the
+   * balance-sheet section is switched on) is the prior-month page, which is
+   * the first of the two in the Calxa pack.
+   */
+  renderBalanceSheet(box: WidgetBoundingBox, widget?: import('../types/pdf-layout').LayoutWidget): void {
+    const compare: BalanceSheetCompare = widget?.config?.compare === 'yoy' ? 'yoy' : 'mom'
+    this.renderWithSkipPage(() => this.addBalanceSheetPage(compare), box)
   }
 
   // =====================================================================
@@ -2856,6 +3037,14 @@ export class MonthlyReportPDFService {
         // Present even when not comparable — the renderer draws the honest
         // "couldn't check" card with the reason instead of a blank page.
         return !!this.options.moneyFlow
+      case 'balance_sheet':
+        // Always "available", for the same reason money_flow is: the grey
+        // "Data not available" placeholder is the least honest of the three
+        // states — it can't say whether Xero refused, whether there is no
+        // comparison period, or whether the sheet failed to balance. The
+        // renderer names the reason on the page instead. Returning false here
+        // would silently swallow all three.
+        return true
       default:
         return true
     }
