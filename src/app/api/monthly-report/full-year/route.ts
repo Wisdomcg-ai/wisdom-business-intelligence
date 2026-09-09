@@ -357,7 +357,7 @@ async function postHandler(request: Request) {
     // yardstick column. A client still on 'forecast' does no extra query and
     // gets byte-identical output.
     const onBudgetStore = settingsRow?.budget_source === 'budget_version'
-    let approvedLines: Array<{ id: string; account_name: string; forecast_months: Record<string, number> }> = []
+    let approvedLines: Array<{ id: string; account_name: string; category: string | null; forecast_months: Record<string, number> }> = []
     let approvedLabel: string | null = null
     let approvedNoBudgetReason: string | null = null
     if (onBudgetStore) {
@@ -378,6 +378,8 @@ async function postHandler(request: Request) {
     }
     const findApprovedByName = buildFuzzyLookup(approvedLines, (bl) => bl.account_name)
     const claimedApprovedIds = new Set<string>()
+    /** Names already on the page, so an approved-only account is not added twice. */
+    const renderedNames = new Set<string>()
 
     // Resolved, and actually produced a budget. A client on the store whose
     // version is not yet in force (or is ambiguous) has NO approved budget —
@@ -490,6 +492,7 @@ async function postHandler(request: Request) {
         variance_percent: variancePercent,
       }
 
+      renderedNames.add(xero.account_name.toLowerCase())
       if (categoryLines[category]) {
         categoryLines[category].push(line)
       } else {
@@ -548,10 +551,65 @@ async function postHandler(request: Request) {
         variance_percent: variancePercent,
       }
 
+      renderedNames.add(bl.account_name.toLowerCase())
       if (categoryLines[category]) {
         categoryLines[category].push(line)
       } else {
         categoryLines['Operating Expenses'].push(line)
+      }
+    }
+
+    // 7b. Add APPROVED-BUDGET-only lines.
+    //
+    // The two passes above build rows from Xero actuals and then from the
+    // forecast. An account the approved budget covers but which has neither —
+    // no transactions this year and no forecast line — got no row at all, so
+    // its budget was silently dropped from the page. Distinct Directions, FY27:
+    // ORANGE: Behavioural Assessment Income and DUBBO: Behavioural Assessment
+    // are budgeted for $2,868,240 and $795,179 and have never been posted to,
+    // so the Full Year revenue budget read $3,310,549 instead of $6,973,968 —
+    // and a total that is 47% of the truth looks like a number, not a gap.
+    if (approvedAvailable) {
+      for (const al of approvedLines) {
+        if (claimedApprovedIds.has(al.id)) continue
+        const nameLower = al.account_name.toLowerCase()
+        if (renderedNames.has(nameLower)) continue
+        renderedNames.add(nameLower)
+
+        const approvedTotal = allFYMonths.reduce((sum, m) => sum + (al.forecast_months[m] ?? 0), 0)
+        if (approvedTotal === 0) continue
+
+        const category = al.category || 'Operating Expenses'
+        const months: FullYearMonthData[] = allFYMonths.map((m) => ({
+          month: m,
+          actual: 0,
+          // No forecast for this account — the projection genuinely has nothing
+          // to say about it, and 0 is the honest answer rather than the budget.
+          budget: 0,
+          approved_budget: al.forecast_months[m] ?? 0,
+          prior_year: 0,
+          source: (m <= lastActualMonth ? 'actual' : 'forecast') as 'actual' | 'forecast',
+        }))
+
+        const line: FullYearLine = {
+          account_name: al.account_name,
+          category,
+          months,
+          projected_total: 0,
+          annual_budget: 0,
+          approved_annual_budget: approvedTotal,
+          // Variance here is projection-vs-forecast, and this row has neither.
+          // Reporting the approved budget as a variance would read as a $2.8M
+          // shortfall on an account nobody has posted to yet.
+          variance_amount: 0,
+          variance_percent: 0,
+        }
+
+        if (categoryLines[category]) {
+          categoryLines[category].push(line)
+        } else {
+          categoryLines['Operating Expenses'].push(line)
+        }
       }
     }
 
