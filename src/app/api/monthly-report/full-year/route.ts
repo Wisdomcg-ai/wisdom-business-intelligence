@@ -279,6 +279,19 @@ async function postHandler(request: Request) {
       }
     }
 
+    // Whether the FORECAST side of this page has anything behind it.
+    //
+    // Every `budget`, `annual_budget` and variance below is projection-vs-
+    // forecast. With no active forecast for the year they all compute to 0 —
+    // and 0 is not the answer, it is the absence of one. Left as a number the
+    // page prints Forecast $0 and a variance equal to the whole projection,
+    // tinted favourable, because beating a budget of nothing always is.
+    // Distinct Directions' only FY2027 forecast is is_active = false, so this
+    // is their August pack, not a hypothetical. The renderers key their third
+    // state off this flag; the numbers stay as computed so nothing downstream
+    // has to defend against null arithmetic.
+    const forecastAvailable = budgetForecast != null
+
     // 4. Load xero_pl_lines (actuals).
     //    Phase 44 D-13 — route through ForecastReadService when an active forecast
     //    exists for (business_id, fiscal_year). The service does long→wide
@@ -832,6 +845,10 @@ async function postHandler(request: Request) {
       // version that failed to resolve — whenever there is no approved budget,
       // because the renderer keys the whole column off that.
       approved_budget_label: approvedAvailable ? approvedLabel : null,
+      // Said positively, once, by the only code that knows: a page that cannot
+      // tell "no forecast" from "a forecast of zero" renders a missing number
+      // as a favourable variance.
+      forecast_available: forecastAvailable,
     }
 
     return NextResponse.json({

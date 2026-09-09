@@ -25,7 +25,13 @@ import { GRID_CONFIG } from '../types/pdf-layout'
 import { calculateBoundingBox, normalizeLayoutPlacements } from '../utils/grid-helpers'
 import { WIDGET_METHOD_MAP } from './widget-renderer'
 import { assessBalanceSheetForPdf, type BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
-import { hasApprovedBudget, formatApprovedAnnual } from '../utils/full-year-approved'
+import {
+  hasApprovedBudget,
+  formatApprovedAnnual,
+  hasForecastBudget,
+  formatForecastValue,
+  forecastAbsentNote,
+} from '../utils/full-year-approved'
 import type { BalanceSheetCompare, BalanceSheetData } from '../types'
 
 interface PDFOptions {
@@ -2037,15 +2043,33 @@ export class MonthlyReportPDFService {
     // budget cell is read as zero.
     const showApproved = hasApprovedBudget(fy)
 
+    // Every variance column on this page is projection-vs-FORECAST — the
+    // headers say "Var vs Fcst" — so the subtitle must not claim the page is
+    // "measured against" the approved version, which is a second yardstick
+    // shown beside them and not the one they are computed from. The browser tab
+    // states it neutrally; two surfaces of one page do not get to describe it
+    // differently.
+    const showForecast = hasForecastBudget(fy)
+
     this.doc.setFontSize(8)
     this.doc.setFont('helvetica', 'normal')
-    this.doc.text(
-      showApproved
-        ? `Actuals through ${this.formatMonth(fy.last_actual_month)}, then forecast — measured against ${fy.approved_budget_label || 'the approved budget'}`
-        : `Actuals through ${this.formatMonth(fy.last_actual_month)}, then budget forecast`,
-      this.margin, this.yPosition
-    )
+    const through = `Actuals through ${this.formatMonth(fy.last_actual_month)}`
+    const trailer = showForecast ? (showApproved ? ', then forecast' : ', then budget forecast') : ''
+    const approvedNote = showApproved
+      ? ` · Approved budget: ${fy.approved_budget_label || 'unnamed version'}`
+      : ''
+    this.doc.text(`${through}${trailer}${approvedNote}`, this.margin, this.yPosition)
     this.yPosition += 6
+
+    // Dashes down two columns with nothing explaining them get an explanation
+    // supplied by the reader, and it is usually the wrong one.
+    const absentNote = forecastAbsentNote(fy)
+    if (absentNote) {
+      this.doc.setTextColor(146, 96, 20)
+      this.doc.text(absentNote, this.margin, this.yPosition)
+      this.doc.setTextColor(0, 0, 0)
+      this.yPosition += 6
+    }
 
     const monthLabels = fy.gross_profit.months.map(m => {
       const d = new Date(m.month + '-01')
@@ -2075,6 +2099,12 @@ export class MonthlyReportPDFService {
       'Other Expenses': [107, 114, 128],
     }
 
+    // A forecast cell, or the absent mark. Only a month that has NOT closed and
+    // the forecast-derived totals go through this; actuals are unaffected.
+    const fcst = (v: number) => formatForecastValue(v, showForecast, (n) => this.fmtCurrency(n))
+    const fcstVar = (v: number) => formatForecastValue(v, showForecast, (n) => this.fmtVariance(n))
+    const fcstPct = (v: number) => formatForecastValue(v, showForecast, (n) => this.fmtPct(n))
+
     for (const section of fy.sections) {
       specialRowIndices.add(currentBodyIdx)
       tableData.push([{
@@ -2092,13 +2122,13 @@ export class MonthlyReportPDFService {
       for (const line of section.lines) {
         const row: any[] = [line.account_name]
         for (const md of line.months) {
-          row.push(this.fmtCurrency(md.source === 'actual' ? md.actual : md.budget))
+          row.push(md.source === 'actual' ? this.fmtCurrency(md.actual) : fcst(md.budget))
         }
         row.push(this.fmtCurrency(line.projected_total))
-        row.push(this.fmtCurrency(line.annual_budget))
+        row.push(fcst(line.annual_budget))
         if (showApproved) row.push(formatApprovedAnnual(line, (n) => this.fmtCurrency(n)))
-        row.push(this.fmtVariance(line.variance_amount))
-        row.push(this.fmtPct(line.variance_percent))
+        row.push(fcstVar(line.variance_amount))
+        row.push(fcstPct(line.variance_percent))
         tableData.push(row)
         currentBodyIdx++
       }
@@ -2107,13 +2137,13 @@ export class MonthlyReportPDFService {
       const st = section.subtotal
       const stRow: any[] = [{ content: st.account_name, styles: { fontStyle: 'bold' } }]
       for (const md of st.months) {
-        stRow.push({ content: this.fmtCurrency(md.source === 'actual' ? md.actual : md.budget), styles: { fontStyle: 'bold' } })
+        stRow.push({ content: md.source === 'actual' ? this.fmtCurrency(md.actual) : fcst(md.budget), styles: { fontStyle: 'bold' } })
       }
       stRow.push({ content: this.fmtCurrency(st.projected_total), styles: { fontStyle: 'bold' } })
-      stRow.push({ content: this.fmtCurrency(st.annual_budget), styles: { fontStyle: 'bold' } })
+      stRow.push({ content: fcst(st.annual_budget), styles: { fontStyle: 'bold' } })
       if (showApproved) stRow.push({ content: formatApprovedAnnual(st, (n) => this.fmtCurrency(n)), styles: { fontStyle: 'bold' } })
-      stRow.push({ content: this.fmtVariance(st.variance_amount), styles: { fontStyle: 'bold' } })
-      stRow.push({ content: this.fmtPct(st.variance_percent), styles: { fontStyle: 'bold' } })
+      stRow.push({ content: fcstVar(st.variance_amount), styles: { fontStyle: 'bold' } })
+      stRow.push({ content: fcstPct(st.variance_percent), styles: { fontStyle: 'bold' } })
       tableData.push(stRow)
       currentBodyIdx++
 
@@ -2123,13 +2153,13 @@ export class MonthlyReportPDFService {
         const gpLine = fy.gross_profit
         const gpRow: any[] = [{ content: 'Gross Profit', styles: { fontStyle: 'bold', fillColor: GP_BLUE } }]
         for (const md of gpLine.months) {
-          gpRow.push({ content: this.fmtCurrency(md.source === 'actual' ? md.actual : md.budget), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
+          gpRow.push({ content: md.source === 'actual' ? this.fmtCurrency(md.actual) : fcst(md.budget), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
         }
         gpRow.push({ content: this.fmtCurrency(gpLine.projected_total), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
-        gpRow.push({ content: this.fmtCurrency(gpLine.annual_budget), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
+        gpRow.push({ content: fcst(gpLine.annual_budget), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
         if (showApproved) gpRow.push({ content: formatApprovedAnnual(gpLine, (n) => this.fmtCurrency(n)), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
-        gpRow.push({ content: this.fmtVariance(gpLine.variance_amount), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
-        gpRow.push({ content: this.fmtPct(gpLine.variance_percent), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
+        gpRow.push({ content: fcstVar(gpLine.variance_amount), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
+        gpRow.push({ content: fcstPct(gpLine.variance_percent), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
         tableData.push(gpRow)
         currentBodyIdx++
       }
@@ -2141,13 +2171,13 @@ export class MonthlyReportPDFService {
     const npStyle = { fillColor: NAVY as number[], textColor: [255, 255, 255] as number[], fontStyle: 'bold' as const }
     const npRow: any[] = [{ content: 'Net Profit', styles: npStyle }]
     for (const md of np.months) {
-      npRow.push({ content: this.fmtCurrency(md.source === 'actual' ? md.actual : md.budget), styles: npStyle })
+      npRow.push({ content: md.source === 'actual' ? this.fmtCurrency(md.actual) : fcst(md.budget), styles: npStyle })
     }
     npRow.push({ content: this.fmtCurrency(np.projected_total), styles: npStyle })
-    npRow.push({ content: this.fmtCurrency(np.annual_budget), styles: npStyle })
+    npRow.push({ content: fcst(np.annual_budget), styles: npStyle })
     if (showApproved) npRow.push({ content: formatApprovedAnnual(np, (n) => this.fmtCurrency(n)), styles: npStyle })
-    npRow.push({ content: this.fmtVariance(np.variance_amount), styles: npStyle })
-    npRow.push({ content: this.fmtPct(np.variance_percent), styles: npStyle })
+    npRow.push({ content: fcstVar(np.variance_amount), styles: npStyle })
+    npRow.push({ content: fcstPct(np.variance_percent), styles: npStyle })
     tableData.push(npRow)
 
     autoTable(this.doc, {
@@ -2163,8 +2193,10 @@ export class MonthlyReportPDFService {
         if (data.column.index > 0 && data.section !== 'head') {
           data.cell.styles.halign = 'right'
         }
-        // Variance tinting for normal data rows
-        if (data.section === 'body' && !specialRowIndices.has(data.row.index) && varianceCols.includes(data.column.index)) {
+        // Variance tinting for normal data rows. Skipped entirely with no
+        // forecast: the cells hold a mark, and tinting a mark green would be
+        // the same false claim in colour that the number was in figures.
+        if (showForecast && data.section === 'body' && !specialRowIndices.has(data.row.index) && varianceCols.includes(data.column.index)) {
           this.applyVarianceTint(data)
         }
       },

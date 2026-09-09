@@ -432,3 +432,59 @@ describe('full-year — the approved budget is matched on the account code', () 
     expect(section.subtotal.approved_annual_budget).toBe(8000)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// "No forecast" and "a forecast of zero" are different answers.
+//
+// Distinct Directions has an is_active = false FY2027 forecast and an
+// is_active = true FY2026 one, so a FY2027 report resolves no forecast at all
+// and every annual_budget below comes out 0. The route says so in one field
+// rather than leaving the page to guess from the zeros.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('full-year — whether a forecast exists at all', () => {
+  beforeEach(() => {
+    captureMessage.mockClear()
+    compositeRows = [
+      { account_name: REVENUE, account_type: 'revenue', section: 'Revenue', monthly_values: { '2026-07': 900 } },
+    ]
+  })
+
+  it('is false when the only forecast for the year is inactive', async () => {
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      financial_forecasts: [
+        { id: 'fc-27', business_id: PROFILE, name: 'FY2027 Financial Forecast', is_active: false, fiscal_year: FY },
+        { id: 'fc-26', business_id: PROFILE, name: 'FY2026 Forecast', is_active: true, fiscal_year: 2026 },
+      ],
+      forecast_pl_lines: [],
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [budgetLine('bl-1', 'v1', '2026-07', 5000)],
+    })
+
+    const { status, body } = await fullYear()
+    expect(status).toBe(200)
+    expect(body.report.forecast_available).toBe(false)
+    // The approved budget is still there — it is the only yardstick left.
+    expect(body.report.approved_budget_label).toBe('Overall Budget')
+    const line = revenueLine(body)
+    expect(line.approved_annual_budget).toBe(5000)
+    // The zeros are still zeros in the payload; the flag is what stops the
+    // page rendering them as a favourable variance.
+    expect(line.annual_budget).toBe(0)
+  })
+
+  it('is false when the forecast exists but has no materialised lines', async () => {
+    // The empty-shell wizard trap: an active forecast the route already
+    // demotes. It must demote the flag with it.
+    tables = baseTables({ forecast_pl_lines: [] })
+    const { body } = await fullYear()
+    expect(body.report.forecast_available).toBe(false)
+  })
+
+  it('is true whenever a forecast actually backs the columns', async () => {
+    tables = baseTables()
+    const { body } = await fullYear()
+    expect(body.report.forecast_available).toBe(true)
+  })
+})

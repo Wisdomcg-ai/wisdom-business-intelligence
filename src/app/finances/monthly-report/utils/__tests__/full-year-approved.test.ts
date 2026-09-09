@@ -19,7 +19,14 @@
  * income 6,973,968 / cost of sales 10,800 / expense 4,849,983.
  */
 import { describe, it, expect } from 'vitest'
-import { hasApprovedBudget, formatApprovedAnnual, APPROVED_ABSENT } from '../full-year-approved'
+import {
+  hasApprovedBudget,
+  formatApprovedAnnual,
+  hasForecastBudget,
+  formatForecastValue,
+  forecastAbsentNote,
+  VALUE_ABSENT,
+} from '../full-year-approved'
 import type { FullYearReport, FullYearLine, FullYearMonthData } from '../../types'
 
 const MONTHS = [
@@ -124,7 +131,7 @@ describe('formatApprovedAnnual', () => {
   })
 
   it('renders an absent budget as a mark, never as $0', () => {
-    expect(formatApprovedAnnual(line('Anything', null), fmt)).toBe(APPROVED_ABSENT)
+    expect(formatApprovedAnnual(line('Anything', null), fmt)).toBe(VALUE_ABSENT)
     expect(formatApprovedAnnual(line('Anything', null), fmt)).not.toBe('$0')
   })
 
@@ -134,5 +141,78 @@ describe('formatApprovedAnnual', () => {
 
   it('uses the passed-in formatter, so the column cannot round differently from its neighbour', () => {
     expect(formatApprovedAnnual(line('Revenue', 6973968), (n) => `[${n}]`)).toBe('[6973968]')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The forecast side of the same page.
+//
+// Every variance column here is projection-vs-FORECAST. With no active forecast
+// for the year the route computes 0 for all of them, and 0 is not the answer —
+// it is the absence of one. Rendered as a number, Distinct Directions' August
+// revenue reads Projected $992,932 | Forecast $0 | Var +$992,932 in green |
+// +0.0%, beside a real $6,973,968 approved budget: a missing number printed as
+// a triumph. Their only FY2027 forecast is is_active = false, so this is the
+// August pack and not a hypothetical.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('hasForecastBudget', () => {
+  it('trusts the route when the route said so', () => {
+    expect(hasForecastBudget(report({ forecast_available: true }))).toBe(true)
+    expect(hasForecastBudget(report({ forecast_available: false }))).toBe(false)
+  })
+
+  it('reads the evidence for a payload frozen before the flag existed', () => {
+    // No flag, no forecast money anywhere: that IS the no-forecast state, in
+    // every number this page can show.
+    expect(hasForecastBudget(report())).toBe(false)
+
+    const withForecast = report({
+      net_profit: line('Net Profit', 2113185, 1_800_000),
+    })
+    expect(hasForecastBudget(withForecast)).toBe(true)
+  })
+
+  it('is false for a missing report rather than throwing', () => {
+    expect(hasForecastBudget(null)).toBe(false)
+    expect(hasForecastBudget(undefined)).toBe(false)
+  })
+})
+
+describe('formatForecastValue', () => {
+  const fmt = (n: number) => `$${Math.round(n).toLocaleString('en-AU')}`
+
+  it('renders the absent marker when there is no forecast, never $0', () => {
+    expect(formatForecastValue(0, false, fmt)).toBe(VALUE_ABSENT)
+    expect(formatForecastValue(992932, false, fmt)).toBe(VALUE_ABSENT)
+  })
+
+  it('renders a real forecast of nothing as $0', () => {
+    // A forecast that genuinely budgets nothing for an account is a decision,
+    // and $0 is the honest rendering of a decision.
+    expect(formatForecastValue(0, true, fmt)).toBe('$0')
+  })
+})
+
+describe('forecastAbsentNote', () => {
+  it('says nothing when there is a forecast', () => {
+    expect(forecastAbsentNote(report({ forecast_available: true }))).toBeNull()
+  })
+
+  it('names the year and the remaining yardstick', () => {
+    const note = forecastAbsentNote(report({ forecast_available: false }))
+    expect(note).toContain('FY2027')
+    expect(note).toContain('approved budget')
+  })
+
+  it('says there is no yardstick at all when there is no approved budget either', () => {
+    const neither = report({
+      forecast_available: false,
+      sections: report().sections.map((s) => ({ ...s, subtotal: line(s.subtotal.account_name, null) })),
+      gross_profit: line('Gross Profit', null),
+      net_profit: line('Net Profit', null),
+      approved_budget_label: null,
+    })
+    expect(forecastAbsentNote(neither)).toContain('no yardstick')
   })
 })

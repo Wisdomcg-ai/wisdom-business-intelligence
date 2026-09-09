@@ -2,7 +2,13 @@
 
 import React from 'react'
 import type { FullYearReport, FullYearLine, FullYearSection } from '../types'
-import { hasApprovedBudget, formatApprovedAnnual } from '../utils/full-year-approved'
+import {
+  hasApprovedBudget,
+  formatApprovedAnnual,
+  hasForecastBudget,
+  formatForecastValue,
+  forecastAbsentNote,
+} from '../utils/full-year-approved'
 
 interface FullYearProjectionTableProps {
   report: FullYearReport
@@ -31,7 +37,15 @@ const sectionStyles: Record<string, { header: string; subtotalBg: string; subtot
   'Other Expenses': { header: 'bg-gray-100 text-gray-800', subtotalBg: 'bg-gray-100', subtotalText: 'text-gray-800' },
 }
 
-function MonthCell({ value, source }: { value: number; source: 'actual' | 'forecast' }) {
+function MonthCell({
+  value,
+  source,
+  hasForecast,
+}: {
+  value: number
+  source: 'actual' | 'forecast'
+  hasForecast: boolean
+}) {
   const isForecast = source === 'forecast'
   return (
     <td
@@ -39,12 +53,25 @@ function MonthCell({ value, source }: { value: number; source: 'actual' | 'forec
         isForecast ? 'italic bg-gray-50 text-gray-500' : 'text-gray-900'
       }`}
     >
-      {fmt(value)}
+      {/* A month that has not closed is a forecast cell; with no forecast
+          behind it there is no figure, and 0 would read as "we expect
+          nothing". Closed months are actuals and are unaffected. */}
+      {isForecast ? formatForecastValue(value, hasForecast, fmt) : fmt(value)}
     </td>
   )
 }
 
-function LineRow({ line, lastActualMonth, showApproved }: { line: FullYearLine; lastActualMonth: string; showApproved: boolean }) {
+function LineRow({
+  line,
+  lastActualMonth,
+  showApproved,
+  hasForecast,
+}: {
+  line: FullYearLine
+  lastActualMonth: string
+  showApproved: boolean
+  hasForecast: boolean
+}) {
   return (
     <tr className="border-b border-gray-100 hover:bg-gray-50">
       <td className="px-3 py-2 text-sm text-gray-900 whitespace-nowrap sticky left-0 bg-white z-10 min-w-[180px]">
@@ -55,28 +82,35 @@ function LineRow({ line, lastActualMonth, showApproved }: { line: FullYearLine; 
           key={md.month}
           value={md.source === 'actual' ? md.actual : md.budget}
           source={md.source}
+          hasForecast={hasForecast}
         />
       ))}
       <td className="px-2 py-2 text-xs text-right font-semibold text-gray-900 whitespace-nowrap">
         {fmt(line.projected_total)}
       </td>
       <td className="px-2 py-2 text-xs text-right text-gray-600 whitespace-nowrap">
-        {fmt(line.annual_budget)}
+        {formatForecastValue(line.annual_budget, hasForecast, fmt)}
       </td>
       {showApproved && (
         <td className="px-2 py-2 text-xs text-right text-gray-900 font-medium bg-slate-50 whitespace-nowrap">
           {formatApprovedAnnual(line, fmt)}
         </td>
       )}
+      {/*
+        With no forecast there is nothing to be a variance TO. Printed as a
+        number it comes out as the whole projection in green, because beating a
+        budget of nothing is always favourable — so the tint goes with the
+        number, not just the number.
+      */}
       <td className={`px-2 py-2 text-xs text-right whitespace-nowrap ${
-        line.variance_amount >= 0 ? 'text-green-700' : 'text-red-600'
+        !hasForecast ? 'text-gray-400' : line.variance_amount >= 0 ? 'text-green-700' : 'text-red-600'
       }`}>
-        {fmt(line.variance_amount)}
+        {formatForecastValue(line.variance_amount, hasForecast, fmt)}
       </td>
       <td className={`px-2 py-2 text-xs text-right whitespace-nowrap ${
-        line.variance_amount >= 0 ? 'text-green-700' : 'text-red-600'
+        !hasForecast ? 'text-gray-400' : line.variance_amount >= 0 ? 'text-green-700' : 'text-red-600'
       }`}>
-        {fmtPct(line.variance_percent)}
+        {formatForecastValue(line.variance_percent, hasForecast, fmtPct)}
       </td>
     </tr>
   )
@@ -87,11 +121,13 @@ function SubtotalRow({
   bgClass,
   textClass,
   showApproved,
+  hasForecast,
 }: {
   line: FullYearLine
   bgClass: string
   textClass: string
   showApproved: boolean
+  hasForecast: boolean
 }) {
   return (
     <tr className={`${bgClass} font-semibold`}>
@@ -100,14 +136,16 @@ function SubtotalRow({
       </td>
       {line.months.map((md) => (
         <td key={md.month} className={`px-2 py-2 text-xs text-right ${textClass} whitespace-nowrap`}>
-          {fmt(md.source === 'actual' ? md.actual : md.budget)}
+          {md.source === 'actual'
+            ? fmt(md.actual)
+            : formatForecastValue(md.budget, hasForecast, fmt)}
         </td>
       ))}
       <td className={`px-2 py-2 text-xs text-right ${textClass} whitespace-nowrap`}>
         {fmt(line.projected_total)}
       </td>
       <td className={`px-2 py-2 text-xs text-right ${textClass} whitespace-nowrap`}>
-        {fmt(line.annual_budget)}
+        {formatForecastValue(line.annual_budget, hasForecast, fmt)}
       </td>
       {showApproved && (
         <td className={`px-2 py-2 text-xs text-right ${textClass} whitespace-nowrap`}>
@@ -115,10 +153,10 @@ function SubtotalRow({
         </td>
       )}
       <td className={`px-2 py-2 text-xs text-right ${textClass} whitespace-nowrap`}>
-        {fmt(line.variance_amount)}
+        {formatForecastValue(line.variance_amount, hasForecast, fmt)}
       </td>
       <td className={`px-2 py-2 text-xs text-right ${textClass} whitespace-nowrap`}>
-        {fmtPct(line.variance_percent)}
+        {formatForecastValue(line.variance_percent, hasForecast, fmtPct)}
       </td>
     </tr>
   )
@@ -133,6 +171,14 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
   // cell in as zero, and then reads the whole page as a rout.
   const showApproved = hasApprovedBudget(report)
 
+  // The other half of the same question. There are three states per column,
+  // not two: a value, a real zero, and "there is nothing here to compute it
+  // from". The forecast columns fall into the third whenever no active
+  // forecast exists for the year, and the note below says so — dashes with no
+  // explanation get one supplied by the reader.
+  const hasForecast = hasForecastBudget(report)
+  const absentNote = forecastAbsentNote(report)
+
   // account + months + projected + forecast + [approved] + var$ + var%
   const colCount = 1 + monthHeaders.length + (showApproved ? 5 : 4)
 
@@ -142,8 +188,8 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
         <div>
           <h3 className="text-sm font-semibold text-gray-900">Full Year Projection — FY{report.fiscal_year}</h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            Actuals through {getMonthLabel(report.last_actual_month)} {report.last_actual_month.split('-')[0]},
-            {showApproved ? ' then forecast' : ' then budget forecast'}
+            Actuals through {getMonthLabel(report.last_actual_month)} {report.last_actual_month.split('-')[0]}
+            {hasForecast ? (showApproved ? ', then forecast' : ', then budget forecast') : ''}
             {showApproved && (
               <>
                 {' · Approved budget: '}
@@ -153,6 +199,9 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
               </>
             )}
           </p>
+          {absentNote && (
+            <p role="note" className="text-xs text-amber-700 mt-1">{absentNote}</p>
+          )}
         </div>
         <div className="flex items-center gap-3 text-xs text-gray-500">
           <span className="flex items-center gap-1">
@@ -212,6 +261,7 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
                       line={line}
                       lastActualMonth={report.last_actual_month}
                       showApproved={showApproved}
+                      hasForecast={hasForecast}
                     />
                   ))}
                   {/* Subtotal */}
@@ -220,6 +270,7 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
                     bgClass={style.subtotalBg}
                     textClass={style.subtotalText}
                     showApproved={showApproved}
+                    hasForecast={hasForecast}
                   />
 
                   {/* Gross Profit after Cost of Sales */}
@@ -229,6 +280,7 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
                       bgClass="bg-blue-50"
                       textClass="text-blue-900"
                       showApproved={showApproved}
+                      hasForecast={hasForecast}
                     />
                   )}
                 </React.Fragment>
@@ -241,6 +293,7 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
               bgClass="bg-brand-navy"
               textClass="text-white"
               showApproved={showApproved}
+              hasForecast={hasForecast}
             />
           </tbody>
         </table>

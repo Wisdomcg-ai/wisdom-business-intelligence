@@ -361,6 +361,15 @@ export interface FullYearReport {
    * column. Null whenever there is no approved budget.
    */
   approved_budget_label?: string | null
+  /**
+   * Did an active forecast exist for this fiscal year at all?
+   *
+   * False is not "the forecast is zero" — it is "there is no forecast", and the
+   * Forecast and variance columns must render a mark rather than a number.
+   * Optional because a snapshot frozen before the route emitted it carries no
+   * value; hasForecastBudget reads the evidence in that case.
+   */
+  forecast_available?: boolean
 }
 
 // ============================================

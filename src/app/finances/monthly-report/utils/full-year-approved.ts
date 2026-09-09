@@ -13,12 +13,13 @@ import type { FullYearReport, FullYearLine } from '../types'
  * because the forecast's closed months were overwritten with actuals by the
  * seeder while the approved budget still says 450,000.
  *
- * This module holds the one predicate both surfaces ask, so the browser tab and
- * the PDF can never disagree about whether the column is there.
+ * This module holds the predicates both surfaces ask — one per yardstick — so
+ * the browser tab and the PDF can never disagree about which of them the page
+ * is holding a client to, or about whether it is there at all.
  */
 
 /** Rendered in place of a number that does not exist. Not "$0" — see below. */
-export const APPROVED_ABSENT = '—'
+export const VALUE_ABSENT = '—'
 
 /**
  * Does this report carry an approved budget at all?
@@ -53,5 +54,65 @@ export function hasApprovedBudget(report: FullYearReport | null | undefined): bo
  */
 export function formatApprovedAnnual(line: FullYearLine, fmt: (n: number) => string): string {
   const value = line.approved_annual_budget
-  return value == null ? APPROVED_ABSENT : fmt(value)
+  return value == null ? VALUE_ABSENT : fmt(value)
+}
+
+/**
+ * Is there a forecast behind this page's Forecast and variance columns?
+ *
+ * The Full Year page's variances are projection-vs-FORECAST, and when no active
+ * forecast exists for the fiscal year the route has nothing to put in them. It
+ * used to send 0 anyway: every row's annual_budget was 0, the percentage guard
+ * `annualBudget !== 0 ? … : 0` rendered an uncomputable variance as 0.0%, and
+ * the variance amount came out as the whole projection — tinted green, because
+ * beating a budget of nothing is favourable. Distinct Directions is in exactly
+ * that state (their only FY2027 forecast is is_active = false), so their August
+ * revenue would have read Forecast $0, Var +$992,932, +0.0%, beside a real
+ * $6,973,968 approved budget. A missing number printed as a triumph.
+ *
+ * Derived from the payload rather than trusted from one field, for the same
+ * reason hasApprovedBudget is: a snapshot frozen before the route said so
+ * carries no flag. The evidence is exact rather than heuristic — the route
+ * already demotes a forecast with no materialised lines to "no forecast", so a
+ * report in which no line budgets anything in any month IS the no-forecast
+ * state, in every number this page can show.
+ */
+export function hasForecastBudget(report: FullYearReport | null | undefined): boolean {
+  if (!report) return false
+  if (typeof report.forecast_available === 'boolean') return report.forecast_available
+
+  const lines: FullYearLine[] = [
+    ...(report.sections ?? []).flatMap((s) => [...(s.lines ?? []), s.subtotal]),
+    report.gross_profit,
+    report.net_profit,
+  ].filter(Boolean) as FullYearLine[]
+  if (lines.length === 0) return false
+  return lines.some((l) => l.annual_budget !== 0 || (l.months ?? []).some((m) => m.budget !== 0))
+}
+
+/**
+ * Format a forecast-side number, or the absent marker when there is no
+ * forecast. A real forecast that budgets nothing for an account is a decision
+ * and still prints $0; only the absence of a forecast prints a mark.
+ */
+export function formatForecastValue(
+  value: number,
+  forecastAvailable: boolean,
+  fmt: (n: number) => string,
+): string {
+  return forecastAvailable ? fmt(value) : VALUE_ABSENT
+}
+
+/**
+ * The one line the page says when its forecast columns are empty, or null when
+ * there is a forecast. A column of dashes with nothing explaining them is the
+ * empty-state-as-instruction trap: the reader supplies their own explanation,
+ * and it is usually "the system is broken" or "we budgeted nothing".
+ */
+export function forecastAbsentNote(report: FullYearReport | null | undefined): string | null {
+  if (!report || hasForecastBudget(report)) return null
+  const fy = report.fiscal_year ? `FY${report.fiscal_year}` : 'this fiscal year'
+  return hasApprovedBudget(report)
+    ? `No forecast exists for ${fy}; the approved budget is the only yardstick on this page, and Projected is actuals to date.`
+    : `No forecast exists for ${fy}, so this page has no yardstick to measure against and Projected is actuals to date.`
 }
