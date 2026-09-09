@@ -342,3 +342,93 @@ describe('full-year — an approved budget with no actuals and no forecast', () 
   })
 })
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// One page renders both surfaces, so both must resolve an account the same way.
+//
+// The resolver groups budget_lines on budgetLineKey — the account CODE, falling
+// back to the name only for a line that has none. This route used to match
+// those same lines by name alone, so an account a bookkeeper renamed on one
+// side only (Urban Road's P&L says "Foreign Currency Gains and Losses" where
+// its budget says "Foreign Currency Loss/Gain", code 62700) split into two rows
+// here while the monthly Budget vs Actual page showed one. Same client, same
+// pack, two different account lists, and no way for a reader to reconcile
+// either of them to Xero.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('full-year — the approved budget is matched on the account code', () => {
+  const XERO_NAME = 'Foreign Currency Gains and Losses'
+  const BUDGET_NAME = 'Foreign Currency Loss/Gain'
+  const CODE = '62700'
+
+  beforeEach(() => {
+    captureMessage.mockClear()
+  })
+
+  /** The budget and the actuals share a code and disagree about the name. */
+  function renamedAccount() {
+    compositeRows = [
+      { account_code: CODE, account_name: XERO_NAME, account_type: 'opex', section: '', monthly_values: { '2026-07': 900 } },
+    ]
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      account_mappings: [{ business_id: BIZ, xero_account_name: XERO_NAME, report_category: 'Operating Expenses' }],
+      forecast_pl_lines: [],
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [
+        { ...budgetLine('bl-1', 'v1', '2026-07', 5000), account_code: CODE, account_name: BUDGET_NAME, category: 'Operating Expenses' },
+      ],
+    })
+  }
+
+  it('emits ONE row for an account renamed on one side only', async () => {
+    renamedAccount()
+    const { status, body } = await fullYear()
+    expect(status).toBe(200)
+    const section = (body.report?.sections ?? []).find((s: any) => s.category === 'Operating Expenses')
+
+    expect(section.lines).toHaveLength(1)
+    expect(section.lines[0].account_name).toBe(XERO_NAME)
+    expect(section.lines[0].approved_annual_budget).toBe(5000)
+    // The budget landed on the row that carries the actual, so the subtotal is
+    // the budget once — not once on each of two half-rows.
+    expect(section.subtotal.approved_annual_budget).toBe(5000)
+  })
+
+  it('falls back to the name when the actuals row carries no code', async () => {
+    // Xero's synthetic report-only lines arrive with a blank code and can be
+    // given one nowhere else, so the name tier has to keep working.
+    renamedAccount()
+    compositeRows = [
+      { account_code: null, account_name: BUDGET_NAME, account_type: 'opex', section: '', monthly_values: { '2026-07': 900 } },
+    ]
+    tables.account_mappings = [{ business_id: BIZ, xero_account_name: BUDGET_NAME, report_category: 'Operating Expenses' }]
+
+    const { body } = await fullYear()
+    const section = (body.report?.sections ?? []).find((s: any) => s.category === 'Operating Expenses')
+    expect(section.lines).toHaveLength(1)
+    expect(section.lines[0].approved_annual_budget).toBe(5000)
+  })
+
+  it('keeps two accounts that share a name but carry different codes', async () => {
+    // The mirror-image failure: suppressing by name deletes the second
+    // account's whole annual budget from the page, which is worse than the
+    // duplicate row it was meant to remove.
+    compositeRows = []
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      account_mappings: [],
+      forecast_pl_lines: [],
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [
+        { ...budgetLine('bl-1', 'v1', '2026-07', 5000), account_code: '41000', account_name: 'Sales' },
+        { ...budgetLine('bl-2', 'v1', '2026-07', 3000), account_code: '41001', account_name: 'Sales' },
+      ],
+    })
+
+    const { body } = await fullYear()
+    const section = (body.report?.sections ?? []).find((s: any) => s.category === 'Revenue')
+    expect(section.lines).toHaveLength(2)
+    expect(section.subtotal.approved_annual_budget).toBe(8000)
+  })
+})

@@ -6,7 +6,7 @@ import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
-import { resolveBudget } from '@/lib/budgets/resolve-budget'
+import { resolveBudget, budgetLineKey } from '@/lib/budgets/resolve-budget'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import { getPriorYearMonth } from '@/lib/monthly-report/shared'
 import * as Sentry from '@sentry/nextjs'
@@ -307,6 +307,11 @@ async function postHandler(request: Request) {
       // D-13 path. D-18 invariant violations propagate to the outer catch.
       const composite = await createForecastReadService(supabase).getMonthlyComposite(actualsForecast.id)
       xeroLines = composite.rows.map(r => ({
+        // Null on the multi-currency branch — the consolidation engine groups
+        // on its own alignment key and drops the code. That is a MISSING key,
+        // not a coded account whose code is blank, and the match cascade below
+        // falls through to the name tiers exactly as it always did.
+        account_code: r.account_code ?? null,
         account_name: r.account_name,
         account_type: r.account_type,
         section: '',
@@ -319,7 +324,7 @@ async function postHandler(request: Request) {
     } else {
       const { data: rawXeroLines, error: xeroErr } = await supabase
         .from('xero_pl_lines_wide_compat')
-        .select('account_name, account_type, section, monthly_values')
+        .select('account_code, account_name, account_type, section, monthly_values')
         .in('business_id', ids.all)
 
       if (xeroErr) {
@@ -333,8 +338,14 @@ async function postHandler(request: Request) {
         const existing = xeroDedup.get(row.account_name)
         if (existing) {
           existing.monthly_values = { ...existing.monthly_values, ...row.monthly_values }
+          // This legacy path collapses on the NAME, so a merged row can be two
+          // different Xero accounts. Whichever code arrived first would then
+          // claim the merged row's whole budget. Drop the code instead: an
+          // account we cannot identify falls through to the name tiers, which
+          // is what this path did before codes existed. Do not "pick one".
+          if ((existing.account_code ?? null) !== (row.account_code ?? null)) existing.account_code = null
         } else {
-          xeroDedup.set(row.account_name, { ...row })
+          xeroDedup.set(row.account_name, { ...row, account_code: row.account_code ?? null })
         }
       }
       xeroLines = Array.from(xeroDedup.values())
@@ -357,7 +368,7 @@ async function postHandler(request: Request) {
     // yardstick column. A client still on 'forecast' does no extra query and
     // gets byte-identical output.
     const onBudgetStore = settingsRow?.budget_source === 'budget_version'
-    let approvedLines: Array<{ id: string; account_name: string; category: string | null; forecast_months: Record<string, number> }> = []
+    let approvedLines: Array<{ id: string; account_code?: string | null; account_name: string; category: string | null; forecast_months: Record<string, number> }> = []
     let approvedLabel: string | null = null
     let approvedNoBudgetReason: string | null = null
     if (onBudgetStore) {
@@ -377,9 +388,33 @@ async function postHandler(request: Request) {
       approvedNoBudgetReason = approved.noBudgetReason
     }
     const findApprovedByName = buildFuzzyLookup(approvedLines, (bl) => bl.account_name)
+
+    // The approved lines DO carry account codes — the resolver selects
+    // budget_lines.account_code and groups on it — so unlike the forecast
+    // lookup below this tier is live for every client on the budget store.
+    // It has to be: the resolver groups by code while this page used to match
+    // by name, and an account renamed on one side only then split into two
+    // rows here while the monthly page showed one. Same resolver, same client,
+    // same pack, two different account lists.
+    // First writer wins, mirroring buildFuzzyLookup, so a duplicated code
+    // cannot flip which line is matched depending on read order.
+    const approvedByCode = new Map<string, typeof approvedLines[number]>()
+    for (const al of approvedLines) {
+      const code = String(al.account_code ?? '').trim().toLowerCase()
+      if (!code) continue
+      if (!approvedByCode.has(code)) approvedByCode.set(code, al)
+    }
+
     const claimedApprovedIds = new Set<string>()
-    /** Names already on the page, so an approved-only account is not added twice. */
-    const renderedNames = new Set<string>()
+    /**
+     * Account IDENTITIES already on the page — the code, or the name when
+     * there is none (budgetLineKey) — so an approved-only account is not added
+     * twice. Identity rather than name, and the SAME key the resolver grouped
+     * on: keyed on the name while the resolver groups on the code, two
+     * accounts that share a name are collapsed into one and the second's whole
+     * annual budget disappears from the page.
+     */
+    const renderedKeys = new Set<string>()
 
     // Resolved, and actually produced a budget. A client on the store whose
     // version is not yet in force (or is ambiguous) has NO approved budget —
@@ -388,10 +423,20 @@ async function postHandler(request: Request) {
     // a reader takes $0 for a decision.
     const approvedAvailable = onBudgetStore && approvedNoBudgetReason === null && approvedLines.length > 0
 
-    /** The approved months for one Xero account, or null when there is no approved budget. */
-    const approvedMonthsFor = (accountName: string): Record<string, number> | null => {
+    /**
+     * The approved months for one account, or null when there is no approved
+     * budget at all.
+     *
+     * Code first, name second, and the claim is what stops one budget line
+     * being counted against two accounts — a second caller reaching the same
+     * line gets an empty map, not a duplicate of its budget.
+     */
+    const approvedMonthsFor = (
+      account: { account_code?: string | null; account_name: string },
+    ): Record<string, number> | null => {
       if (!approvedAvailable) return null
-      const hit = findApprovedByName(accountName)
+      const code = String(account.account_code ?? '').trim().toLowerCase()
+      const hit = (code ? approvedByCode.get(code) : undefined) ?? findApprovedByName(account.account_name)
       if (!hit || claimedApprovedIds.has(hit.id)) return {}
       claimedApprovedIds.add(hit.id)
       return hit.forecast_months || {}
@@ -409,8 +454,27 @@ async function postHandler(request: Request) {
     }
     const findBudgetByName = buildFuzzyLookup(budgetPLLines, (bl) => bl.account_name)
 
+    // Forecast lines by Xero account code. EMPTY today, because the select
+    // above does not ask for forecast_pl_lines.account_code — the column
+    // exists, and this route deliberately reads the same fields
+    // generate/route.ts reads on the forecast path so the two cannot diverge.
+    // The tier is written out rather than left implicit so that adding the
+    // column to one route's select and not the other's is a visible change
+    // instead of a silent one.
+    const budgetByCode = new Map<string, any>()
+    for (const bl of budgetPLLines) {
+      const code = String(bl.account_code ?? '').trim().toLowerCase()
+      if (!code) continue
+      if (!budgetByCode.has(code)) budgetByCode.set(code, bl)
+    }
+
     const matchedBudgetLineIds = new Set<string>()
-    const matchedBudgetLineNames = new Set<string>()
+    /**
+     * The IDENTITY of each matched forecast line — its code, or its name when
+     * it has none. Must be the same key the resolver grouped on; see
+     * renderedKeys above for what drifting apart costs.
+     */
+    const matchedBudgetLineKeys = new Set<string>()
     // Prevent same budget line from being counted for multiple Xero accounts
     const claimedBudgetLineIds = new Set<string>()
 
@@ -428,10 +492,26 @@ async function postHandler(request: Request) {
       const category = mapping?.report_category || mapTypeToCategory(xero.account_type)
       const monthlyValues: Record<string, number> = xero.monthly_values || {}
 
-      // Find matching budget line
+      // The actuals row's own code is the FACT — what Xero posted — while
+      // account_mappings carries a copy, so where the two can disagree the
+      // fact wins. The mapping is consulted only when the row has no code at
+      // all, which is the real state of Xero's synthetic report-only lines:
+      // they arrive with a blank code and can be given one nowhere else.
+      const xeroCode = String(xero.account_code ?? mapping?.xero_account_code ?? '').trim().toLowerCase()
+
+      // Find matching budget line.
+      // Tiers: the coach's pin → the account code → the names. The pin is a
+      // human saying which budget line this account IS; the code is an
+      // identity the two sides happen to share; the name match is a guess.
+      // Same order as generate/route.ts — the Monthly and Full Year tabs are
+      // one pack, and a pack that resolves the same account two ways prints
+      // two different account lists for one client.
       let budgetLine: any = null
       if (mapping?.forecast_pl_line_id) {
         budgetLine = budgetById.get(mapping.forecast_pl_line_id)
+      }
+      if (!budgetLine && xeroCode) {
+        budgetLine = budgetByCode.get(xeroCode)
       }
       if (!budgetLine && mapping?.forecast_pl_line_name) {
         budgetLine = findBudgetByName(mapping.forecast_pl_line_name)
@@ -442,7 +522,7 @@ async function postHandler(request: Request) {
 
       if (budgetLine) {
         matchedBudgetLineIds.add(budgetLine.id)
-        matchedBudgetLineNames.add(budgetLine.account_name.toLowerCase())
+        matchedBudgetLineKeys.add(budgetLineKey(budgetLine))
       }
 
       // Prevent double-counting: only the first Xero account to claim a budget line gets its values
@@ -452,7 +532,7 @@ async function postHandler(request: Request) {
       }
       const budgetMonths: Record<string, number> = (budgetLine && !budgetAlreadyClaimed) ? (budgetLine.forecast_months || {}) : {}
 
-      const approvedMonths = approvedMonthsFor(xero.account_name)
+      const approvedMonths = approvedMonthsFor({ account_code: xeroCode || null, account_name: xero.account_name })
 
       // Build 12 month entries
       const months: FullYearMonthData[] = allFYMonths.map(m => {
@@ -492,7 +572,7 @@ async function postHandler(request: Request) {
         variance_percent: variancePercent,
       }
 
-      renderedNames.add(xero.account_name.toLowerCase())
+      renderedKeys.add(budgetLineKey({ account_code: xeroCode || null, account_name: xero.account_name }))
       if (categoryLines[category]) {
         categoryLines[category].push(line)
       } else {
@@ -500,17 +580,18 @@ async function postHandler(request: Request) {
       }
     }
 
-    // 7. Add budget-only lines (skip duplicates by name)
-    const addedBudgetOnlyNames = new Set<string>()
+    // 7. Add forecast-only lines, tracked by IDENTITY — the account code, or
+    // the name when there is none — so two rows for one account cannot both
+    // add their budget, and two accounts that merely share a name are not
+    // collapsed into one.
+    const addedBudgetOnlyKeys = new Set<string>()
     for (const bl of budgetPLLines) {
       if (matchedBudgetLineIds.has(bl.id)) continue
 
-      // Skip if a forecast line with this name was already matched to a Xero account
-      // or already added as budget-only (handles duplicate forecast_pl_lines rows)
-      const blNameLower = bl.account_name.toLowerCase()
-      if (matchedBudgetLineNames.has(blNameLower)) continue
-      if (addedBudgetOnlyNames.has(blNameLower)) continue
-      addedBudgetOnlyNames.add(blNameLower)
+      const blKey = budgetLineKey(bl)
+      if (matchedBudgetLineKeys.has(blKey)) continue
+      if (addedBudgetOnlyKeys.has(blKey)) continue
+      addedBudgetOnlyKeys.add(blKey)
 
       const budgetMonths: Record<string, number> = bl.forecast_months || {}
       const category = bl.category || 'Operating Expenses'
@@ -519,7 +600,7 @@ async function postHandler(request: Request) {
       const annualBudget = allFYMonths.reduce((s, m) => s + (budgetMonths[m] || 0), 0)
       if (annualBudget === 0) continue
 
-      const approvedMonths = approvedMonthsFor(bl.account_name)
+      const approvedMonths = approvedMonthsFor(bl)
       const months: FullYearMonthData[] = allFYMonths.map(m => ({
         month: m,
         actual: 0,
@@ -551,7 +632,7 @@ async function postHandler(request: Request) {
         variance_percent: variancePercent,
       }
 
-      renderedNames.add(bl.account_name.toLowerCase())
+      renderedKeys.add(blKey)
       if (categoryLines[category]) {
         categoryLines[category].push(line)
       } else {
@@ -571,10 +652,14 @@ async function postHandler(request: Request) {
     // and a total that is 47% of the truth looks like a number, not a gap.
     if (approvedAvailable) {
       for (const al of approvedLines) {
+        // The claim is the load-bearing check: an approved line whose budget
+        // is already carried on a row above is claimed there, so it cannot be
+        // emitted a second time. The identity check below is belt and braces
+        // for a row that reached the page some other way.
         if (claimedApprovedIds.has(al.id)) continue
-        const nameLower = al.account_name.toLowerCase()
-        if (renderedNames.has(nameLower)) continue
-        renderedNames.add(nameLower)
+        const alKey = budgetLineKey(al)
+        if (renderedKeys.has(alKey)) continue
+        renderedKeys.add(alKey)
 
         const approvedTotal = allFYMonths.reduce((sum, m) => sum + (al.forecast_months[m] ?? 0), 0)
         if (approvedTotal === 0) continue
