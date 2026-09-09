@@ -11,11 +11,17 @@
  * object; this module is the seam that lets the source change underneath the
  * report without the report noticing.
  *
- * THIS FILE CHANGES NO BEHAVIOUR. Every branch below is lifted verbatim from
- * generate/route.ts, including the things that look like bugs — the FY guard's
- * null-tolerance, the sequential id loop, the unordered line read whose row
- * order decides which duplicate account name wins downstream. The budget-version
- * tier is inert until a caller passes a pin, which nothing does yet.
+ * The FORECAST tiers below still change no behaviour: every branch is lifted
+ * verbatim from generate/route.ts, including the things that look like bugs —
+ * the FY guard's null-tolerance, the sequential id loop, the unordered line
+ * read whose row order decides which duplicate account name wins downstream.
+ * Leave them alone; the characterisation suite exists to catch anyone who
+ * doesn't.
+ *
+ * The BUDGET-VERSION tier does not share that constraint, because it has no
+ * legacy to be faithful to. It carries budget_lines.account_code through and
+ * groups on it — see budgetLineKey below for why grouping on the name alone
+ * was quietly summing distinct accounts together.
  *
  * See .planning/BUDGET-STORE-PLAN.md.
  */
@@ -37,6 +43,23 @@ import * as Sentry from '@sentry/nextjs'
  */
 export interface ResolvedBudgetLine {
   id: string
+  /**
+   * Xero's account code — the one key that is the same string on the budget
+   * side and the actuals side, and the reason this field exists at all. Name
+   * matching is a heuristic that loses on any account a bookkeeper renamed on
+   * one side only: Urban Road's P&L says "Foreign Currency Gains and Losses"
+   * where its budget says "Foreign Currency Loss/Gain", which normalise to
+   * nothing in common, so the report printed the account TWICE — once with the
+   * actual and a $0 budget, once budget-only with a $0 actual — and both
+   * Operating Expenses subtotals were wrong.
+   *
+   * OPTIONAL, not `string | null`: the forecast path never selects it, so on
+   * that path the property is absent rather than present-and-null, and the
+   * resolved line is byte-identical to what it was before this field existed.
+   * Everything downstream must therefore treat a missing code as "this source
+   * has no codes", never as "this account has no code".
+   */
+  account_code?: string | null
   account_name: string
   /**
    * Report display vocabulary: 'Revenue' | 'Cost of Sales' |
@@ -146,6 +169,30 @@ function noneBecause(reason: NoBudgetReason): ResolvedBudget {
 }
 
 const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/
+
+/**
+ * The identity of a budget account: its code when it has one, its name when it
+ * does not.
+ *
+ * Two things have to agree on this or money goes missing. The resolver groups
+ * budget_lines by it (one row per account per month collapses into one line
+ * carrying a month map), and the report's budget-only pass suppresses by it
+ * (a budget account already shown against an actual must not be re-emitted as
+ * a second, budget-only row). Key those two on DIFFERENT things — grouping on
+ * code, suppressing on name — and a pair of same-named accounts splits into
+ * two lines of which only one survives the suppression: the other's whole
+ * annual budget silently disappears from the subtotal. Grouping on name alone,
+ * which is what this replaced, had the mirror-image failure: the two accounts
+ * merged and their budgets were summed into whichever row won.
+ *
+ * The `code:` / `name:` prefixes keep the two namespaces apart, so an account
+ * code that happens to read like another account's name cannot collide with it.
+ */
+export function budgetLineKey(line: { account_code?: string | null; account_name?: string | null }): string {
+  const code = (line.account_code ?? '').trim().toLowerCase()
+  if (code) return `code:${code}`
+  return `name:${(line.account_name ?? '').trim().toLowerCase()}`
+}
 
 function countMonths(lines: readonly ResolvedBudgetLine[]): number {
   const months = new Set<string>()
@@ -377,7 +424,7 @@ async function resolveInForceVersion(
 
     const { data: rows, error: linesError } = await supabase
       .from('budget_lines')
-      .select('id, account_name, category, month, amount, budget_version_id')
+      .select('id, account_code, account_name, category, month, amount, budget_version_id')
       .in('budget_version_id', Array.from(chosen.keys()))
 
     if (linesError) return noneBecause('budget_read_failed')
@@ -387,9 +434,17 @@ async function resolveInForceVersion(
     // per account carrying a month map. A row counts only when its version is
     // the one governing its own month — that is what keeps a superseded
     // version's July out of the total once a revision takes over in October.
+    //
+    // Grouped on the ACCOUNT CODE, falling back to the name only for a line
+    // that has none. Keyed on the name alone — which is what this used to do —
+    // two distinct Xero accounts that happen to share a name (a real shape in
+    // a chart of accounts that carries per-location duplicates) were merged
+    // into one line and their budgets summed, and the merge was invisible in
+    // the report because the row it produced looked perfectly ordinary.
     const byAccount = new Map<string, ResolvedBudgetLine>()
     for (const row of rows as Array<{
       id: string
+      account_code: string | null
       account_name: string
       category: string | null
       month: string
@@ -397,10 +452,17 @@ async function resolveInForceVersion(
       budget_version_id: string
     }>) {
       if (versionForMonth.get(row.month) !== row.budget_version_id) continue
-      let line = byAccount.get(row.account_name)
+      const key = budgetLineKey(row)
+      let line = byAccount.get(key)
       if (!line) {
-        line = { id: row.id, account_name: row.account_name, category: row.category, forecast_months: {} }
-        byAccount.set(row.account_name, line)
+        line = {
+          id: row.id,
+          account_code: row.account_code ?? null,
+          account_name: row.account_name,
+          category: row.category,
+          forecast_months: {},
+        }
+        byAccount.set(key, line)
       }
       line.forecast_months[row.month] = (line.forecast_months[row.month] ?? 0) + (Number(row.amount) || 0)
     }
