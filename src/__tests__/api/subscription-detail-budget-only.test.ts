@@ -92,6 +92,25 @@ vi.mock('@/lib/utils/verify-business-access', () => ({
 type TableData = { rows?: any[]; single?: any | null; error?: any | null }
 let tableFixtures: Record<string, TableData> = {}
 
+/**
+ * Which business_id values each table was filtered by.
+ *
+ * The mock below deliberately ignores filter ARGUMENTS when returning rows —
+ * fixtures are per-table — but a mock that discards them entirely cannot see a
+ * dual-ID bug, which is this codebase's most recurring incident class. The P&L
+ * read filtered on the raw businesses-space id against a table that is entirely
+ * business_profiles-space, so it matched nothing for every client and every
+ * account subtotal silently fell through to the vendor-sum fallback. Recording
+ * the values is what makes that assertable.
+ */
+let businessIdFilters: Record<string, string[]> = {}
+
+function recordBusinessIdFilter(table: string, col: string, val: unknown) {
+  if (col !== 'business_id') return
+  const values = Array.isArray(val) ? val.map(String) : [String(val)]
+  businessIdFilters[table] = [...(businessIdFilters[table] ?? []), ...values]
+}
+
 function chainable(table: string): any {
   const fx = tableFixtures[table] ?? { rows: [], single: null }
   const rows = fx.rows ?? []
@@ -99,8 +118,8 @@ function chainable(table: string): any {
   const error = fx.error ?? null
 
   const c: any = {
-    eq: () => c,
-    in: () => c,
+    eq: (col: string, val: unknown) => { recordBusinessIdFilter(table, col, val); return c },
+    in: (col: string, val: unknown) => { recordBusinessIdFilter(table, col, val); return c },
     or: () => c,
     is: () => c,
     order: () => c,
@@ -113,6 +132,16 @@ function chainable(table: string): any {
   }
   return c
 }
+
+// The resolver has its own tests; stubbing it here keeps this test about the
+// ROUTE — does it filter by the resolved id-set, or by the raw request id?
+vi.mock('@/lib/business/resolveBusinessProfileIds', () => ({
+  resolveBusinessProfileIds: vi.fn(async (_c: unknown, id: string) => ({
+    businessId: id,
+    profileId: 'profile-1',
+    all: [id, 'profile-1'],
+  })),
+}))
 
 vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(() => ({
@@ -201,6 +230,7 @@ function makeRequest(body: any): NextRequest {
 }
 
 beforeEach(() => {
+  businessIdFilters = {}
   bankTxnCallCount = 0
   billsCallCount = 0
   tableFixtures = {}
@@ -491,5 +521,32 @@ describe('S2 — subscription-detail budget-only vendor visibility', () => {
     const v = acc.vendors.find((x: any) => x.vendor_name === 'Vultr.com')
     expect(v.prior_month_actual).toBe(750)
     expect(v.actual).toBe(0)
+  })
+})
+
+describe('subscription-detail — the P&L actuals read is dual-ID aware', () => {
+  it('filters xero_pl_lines_wide_compat by BOTH id-spaces, not the raw businesses id', async () => {
+    // xero_pl_lines_wide_compat is business_profiles-space: all 969 rows in prod
+    // sit there and none in businesses-space. Filtering on the request body's
+    // businesses-space id matched nothing for every client, so plActuals stayed
+    // empty and every account subtotal fell through to the vendor-sum fallback.
+    tableFixtures['subscription_budgets'] = {
+      rows: [{ vendor_key: 'zoho', vendor_name: 'Zoho', monthly_budget: 100, frequency: 'monthly', is_active: true, account_codes: ['415'] }],
+    }
+    tableFixtures['account_mappings'] = {
+      rows: [{ xero_account_code: '415', xero_account_name: 'Subscriptions — Software' }],
+    }
+
+    const res = await POST(makeRequest({
+      business_id: 'biz-1',
+      report_month: '2026-04',
+      account_codes: ['415'],
+    }))
+    expect(res.status).toBe(200)
+
+    const filtered = businessIdFilters['xero_pl_lines_wide_compat'] ?? []
+    // The resolver echoes both spaces; the profile id must be among them.
+    expect(filtered).toContain('profile-1')
+    expect(filtered.length).toBeGreaterThan(1)
   })
 })
