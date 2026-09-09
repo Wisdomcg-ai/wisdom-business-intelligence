@@ -6,6 +6,7 @@ import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { resolveBudget } from '@/lib/budgets/resolve-budget'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import { getPriorYearMonth } from '@/lib/monthly-report/shared'
 import * as Sentry from '@sentry/nextjs'
@@ -57,7 +58,20 @@ function mapTypeToCategory(accountType: string): string {
 interface FullYearMonthData {
   month: string
   actual: number
+  /**
+   * The FORECAST for this month. It is what the italic cells render and what
+   * projected_total uses for months that have not closed — "where will we
+   * land". Deliberately not renamed: swapping its source would silently turn
+   * the projection into "what we approved in July", which the budget-store plan
+   * lists as a non-goal.
+   */
   budget: number
+  /**
+   * The approved BUDGET for this month, from budget_versions/budget_lines —
+   * "what were we held to". Null unless the client is on the budget store, so
+   * nothing changes for a client still measured against their forecast.
+   */
+  approved_budget: number | null
   prior_year: number
   source: 'actual' | 'forecast'
 }
@@ -68,8 +82,21 @@ interface FullYearLine {
   months: FullYearMonthData[]
   projected_total: number
   annual_budget: number
+  /** Sum of approved_budget across the year; null when not on the budget store. */
+  approved_annual_budget: number | null
   variance_amount: number
   variance_percent: number
+}
+
+/**
+ * Sum the approved budget across lines for one month, or null when none of them
+ * carry one. Null is deliberate: a subtotal of "no approved budget" must not
+ * read as $0, which a reader takes for a real budget of nothing.
+ */
+function sumApproved(lines: FullYearLine[], i: number): number | null {
+  const present = lines.filter((l) => l.months[i]?.approved_budget !== null && l.months[i]?.approved_budget !== undefined)
+  if (present.length === 0) return null
+  return present.reduce((s, l) => s + (l.months[i].approved_budget ?? 0), 0)
 }
 
 function buildFullYearSubtotal(lines: FullYearLine[], label: string, category: string, allMonths: string[]): FullYearLine {
@@ -77,6 +104,7 @@ function buildFullYearSubtotal(lines: FullYearLine[], label: string, category: s
     month: m,
     actual: lines.reduce((s, l) => s + l.months[i].actual, 0),
     budget: lines.reduce((s, l) => s + l.months[i].budget, 0),
+    approved_budget: sumApproved(lines, i),
     prior_year: lines.reduce((s, l) => s + (l.months[i].prior_year || 0), 0),
     source: lines.length > 0 ? lines[0].months[i].source : 'forecast' as const,
   }))
@@ -92,6 +120,9 @@ function buildFullYearSubtotal(lines: FullYearLine[], label: string, category: s
     months,
     projected_total: projectedTotal,
     annual_budget: annualBudget,
+    approved_annual_budget: months.some((md) => md.approved_budget !== null)
+      ? months.reduce((sum, md) => sum + (md.approved_budget ?? 0), 0)
+      : null,
     variance_amount: varianceAmount,
     variance_percent: variancePercent,
   }
@@ -319,6 +350,51 @@ async function postHandler(request: Request) {
       }
     }
 
+    // 4b. The approved budget, for a client on the budget store.
+    //
+    // Resolved SEPARATELY from the forecast above, not instead of it: the
+    // forecast keeps feeding the forward projection, and this feeds the
+    // yardstick column. A client still on 'forecast' does no extra query and
+    // gets byte-identical output.
+    const onBudgetStore = settingsRow?.budget_source === 'budget_version'
+    let approvedLines: Array<{ id: string; account_name: string; forecast_months: Record<string, number> }> = []
+    let approvedLabel: string | null = null
+    let approvedNoBudgetReason: string | null = null
+    if (onBudgetStore) {
+      const approved = await resolveBudget(supabase, {
+        businessId: business_id,
+        profileId: ids.profileId ?? null,
+        fiscalYear: fiscal_year,
+        // The anchor only decides which version supplies the label; `months`
+        // is what the stitching actually walks.
+        reportMonth: lastActualMonth,
+        months: allFYMonths,
+        budgetSource: 'budget_version',
+        pin: {},
+      })
+      approvedLines = approved.lines as typeof approvedLines
+      approvedLabel = approved.label
+      approvedNoBudgetReason = approved.noBudgetReason
+    }
+    const findApprovedByName = buildFuzzyLookup(approvedLines, (bl) => bl.account_name)
+    const claimedApprovedIds = new Set<string>()
+
+    // Resolved, and actually produced a budget. A client on the store whose
+    // version is not yet in force (or is ambiguous) has NO approved budget —
+    // distinct from an account the budget simply does not mention, which is a
+    // real 0. Collapsing the two would print a $0 budget for a whole year and
+    // a reader takes $0 for a decision.
+    const approvedAvailable = onBudgetStore && approvedNoBudgetReason === null && approvedLines.length > 0
+
+    /** The approved months for one Xero account, or null when there is no approved budget. */
+    const approvedMonthsFor = (accountName: string): Record<string, number> | null => {
+      if (!approvedAvailable) return null
+      const hit = findApprovedByName(accountName)
+      if (!hit || claimedApprovedIds.has(hit.id)) return {}
+      claimedApprovedIds.add(hit.id)
+      return hit.forecast_months || {}
+    }
+
     // 5. Build lookup maps
     const mappingByXeroName = new Map<string, any>()
     for (const m of (mappings || [])) {
@@ -374,6 +450,8 @@ async function postHandler(request: Request) {
       }
       const budgetMonths: Record<string, number> = (budgetLine && !budgetAlreadyClaimed) ? (budgetLine.forecast_months || {}) : {}
 
+      const approvedMonths = approvedMonthsFor(xero.account_name)
+
       // Build 12 month entries
       const months: FullYearMonthData[] = allFYMonths.map(m => {
         const isActualMonth = m <= lastActualMonth && m >= fyStart
@@ -382,6 +460,7 @@ async function postHandler(request: Request) {
           month: m,
           actual: isActualMonth ? (monthlyValues[m] || 0) : 0,
           budget: budgetMonths[m] || 0,
+          approved_budget: approvedMonths ? (approvedMonths[m] ?? 0) : null,
           prior_year: monthlyValues[pyMonthKey] || 0,
           source: isActualMonth ? 'actual' as const : 'forecast' as const,
         }
@@ -404,6 +483,9 @@ async function postHandler(request: Request) {
         months,
         projected_total: projectedTotal,
         annual_budget: annualBudget,
+        approved_annual_budget: months.some((md) => md.approved_budget !== null)
+          ? months.reduce((sum, md) => sum + (md.approved_budget ?? 0), 0)
+          : null,
         variance_amount: varianceAmount,
         variance_percent: variancePercent,
       }
@@ -434,10 +516,12 @@ async function postHandler(request: Request) {
       const annualBudget = allFYMonths.reduce((s, m) => s + (budgetMonths[m] || 0), 0)
       if (annualBudget === 0) continue
 
+      const approvedMonths = approvedMonthsFor(bl.account_name)
       const months: FullYearMonthData[] = allFYMonths.map(m => ({
         month: m,
         actual: 0,
         budget: budgetMonths[m] || 0,
+        approved_budget: approvedMonths ? (approvedMonths[m] ?? 0) : null,
         prior_year: 0, // budget-only lines have no prior-year actuals by definition
         source: (m <= lastActualMonth ? 'actual' : 'forecast') as 'actual' | 'forecast',
       }))
@@ -457,6 +541,9 @@ async function postHandler(request: Request) {
         months,
         projected_total: projectedTotal,
         annual_budget: annualBudget,
+        approved_annual_budget: months.some((md) => md.approved_budget !== null)
+          ? months.reduce((sum, md) => sum + (md.approved_budget ?? 0), 0)
+          : null,
         variance_amount: varianceAmount,
         variance_percent: variancePercent,
       }
@@ -505,11 +592,18 @@ async function postHandler(request: Request) {
       const cogsActual = cogsSection?.subtotal.months[i].actual || 0
       const cogsBudget = cogsSection?.subtotal.months[i].budget || 0
       const cogsPY = cogsSection?.subtotal.months[i].prior_year || 0
+      const revApproved = revSection?.subtotal.months[i].approved_budget ?? null
+      const cogsApproved = cogsSection?.subtotal.months[i].approved_budget ?? null
       const source = revSection?.subtotal.months[i].source || 'forecast' as const
       return {
         month: m,
         actual: revActual - cogsActual,
         budget: revBudget - cogsBudget,
+        // Null unless at least one side has one — a derived row must not invent
+        // an approved budget out of two absences.
+        approved_budget: revApproved === null && cogsApproved === null
+          ? null
+          : (revApproved ?? 0) - (cogsApproved ?? 0),
         prior_year: revPY - cogsPY,
         source,
       }
@@ -525,6 +619,9 @@ async function postHandler(request: Request) {
       months: gpMonths,
       projected_total: gpProjected,
       annual_budget: gpAnnualBudget,
+      approved_annual_budget: gpMonths.some((md) => md.approved_budget !== null)
+        ? gpMonths.reduce((sum, md) => sum + (md.approved_budget ?? 0), 0)
+        : null,
       variance_amount: gpProjected - gpAnnualBudget,
       variance_percent: gpAnnualBudget !== 0 ? ((gpProjected - gpAnnualBudget) / Math.abs(gpAnnualBudget)) * 100 : 0,
     }
@@ -545,10 +642,18 @@ async function postHandler(request: Request) {
       const oeActual = otherExpSection?.subtotal.months[i].actual || 0
       const oeBudget = otherExpSection?.subtotal.months[i].budget || 0
       const oePY = otherExpSection?.subtotal.months[i].prior_year || 0
+      const gpApproved = gpMonths[i].approved_budget
+      const opexApproved = opexSection?.subtotal.months[i].approved_budget ?? null
+      const oiApproved = otherIncSection?.subtotal.months[i].approved_budget ?? null
+      const oeApproved = otherExpSection?.subtotal.months[i].approved_budget ?? null
+      const anyApproved = [gpApproved, opexApproved, oiApproved, oeApproved].some((v) => v !== null)
       return {
         month: m,
         actual: gpActual - opexActual + oiActual - oeActual,
         budget: gpBudget - opexBudget + oiBudget - oeBudget,
+        approved_budget: anyApproved
+          ? (gpApproved ?? 0) - (opexApproved ?? 0) + (oiApproved ?? 0) - (oeApproved ?? 0)
+          : null,
         prior_year: gpPY - opexPY + oiPY - oePY,
         source: gpMonths[i].source,
       }
@@ -564,6 +669,9 @@ async function postHandler(request: Request) {
       months: npMonths,
       projected_total: npProjected,
       annual_budget: npAnnualBudget,
+      approved_annual_budget: npMonths.some((md) => md.approved_budget !== null)
+        ? npMonths.reduce((sum, md) => sum + (md.approved_budget ?? 0), 0)
+        : null,
       variance_amount: npProjected - npAnnualBudget,
       variance_percent: npAnnualBudget !== 0 ? ((npProjected - npAnnualBudget) / Math.abs(npAnnualBudget)) * 100 : 0,
     }
