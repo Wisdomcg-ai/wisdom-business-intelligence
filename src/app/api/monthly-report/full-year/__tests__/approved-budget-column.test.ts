@@ -244,3 +244,74 @@ describe('full-year — the approved budget column', () => {
     expect(line.months.every((m: any) => m.approved_budget === null)).toBe(true)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// An account the approved budget covers but which has no actuals and no
+// forecast line still needs a row, or its budget vanishes from the page.
+// Distinct Directions FY27: two of its three clinic income accounts have never
+// been posted to, and the Full Year revenue budget read 47% of the truth.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('full-year — an approved budget with no actuals and no forecast', () => {
+  const UNPOSTED = 'ORANGE: Behavioural Assessment Income'
+
+  beforeEach(() => {
+    captureMessage.mockClear()
+    compositeRows = [
+      { account_name: REVENUE, account_type: 'revenue', section: 'Revenue', monthly_values: { '2026-07': 900 } },
+    ]
+  })
+
+  it('gets its own row rather than being dropped from the total', async () => {
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [
+        budgetLine('bl-1', 'v1', '2026-07', 5000),
+        // Budgeted, never posted to, and absent from the forecast.
+        { ...budgetLine('bl-2', 'v1', '2026-07', 2000), account_name: UNPOSTED },
+        { ...budgetLine('bl-3', 'v1', '2026-08', 3000), account_name: UNPOSTED },
+      ],
+    })
+
+    const { status, body } = await fullYear()
+    expect(status).toBe(200)
+    const section = (body.report?.sections ?? []).find((s: any) => s.category === 'Revenue')
+
+    const unposted = section.lines.find((l: any) => l.account_name === UNPOSTED)
+    expect(unposted, 'the budgeted-but-unposted account needs a row').toBeTruthy()
+    expect(unposted.approved_annual_budget).toBe(5000)
+    // It has no forecast, so the projection says nothing about it — 0, not the budget.
+    expect(unposted.annual_budget).toBe(0)
+    expect(unposted.projected_total).toBe(0)
+    expect(unposted.variance_amount).toBe(0)
+
+    // And the subtotal carries BOTH accounts.
+    expect(section.subtotal.approved_annual_budget).toBe(10000)
+  })
+
+  it('does not duplicate an account that already has a row', async () => {
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [budgetLine('bl-1', 'v1', '2026-07', 5000)],
+    })
+
+    const { body } = await fullYear()
+    const section = (body.report?.sections ?? []).find((s: any) => s.category === 'Revenue')
+    expect(section.lines.filter((l: any) => l.account_name === REVENUE)).toHaveLength(1)
+    expect(section.subtotal.approved_annual_budget).toBe(5000)
+  })
+
+  it('adds nothing for a client not on the budget store', async () => {
+    tables = baseTables({
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [{ ...budgetLine('bl-2', 'v1', '2026-07', 2000), account_name: UNPOSTED }],
+    })
+
+    const { body } = await fullYear()
+    const section = (body.report?.sections ?? []).find((s: any) => s.category === 'Revenue')
+    expect(section.lines.find((l: any) => l.account_name === UNPOSTED)).toBeUndefined()
+  })
+})
+
