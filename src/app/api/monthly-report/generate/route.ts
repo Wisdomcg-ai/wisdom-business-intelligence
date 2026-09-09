@@ -160,12 +160,17 @@ async function postHandler(request: Request) {
       .maybeSingle()
 
     const yearStartMonth: number = profile?.fiscal_year_start ?? DEFAULT_YEAR_START_MONTH
+    // Hoisted above resolveBudget: the report reads four windows out of the
+    // budget (the month, YTD, the annual total, next month), so the resolver
+    // needs every month it will be asked about — not just the anchor.
+    const allFYMonths = generateFiscalMonthKeys(fiscal_year, yearStartMonth)
 
     const resolvedBudget = await resolveBudget(supabase, {
       businessId: business_id,
       profileId: profile?.id ?? null,
       fiscalYear: fiscal_year,
       reportMonth: report_month,
+      months: allFYMonths,
       // Read positively. Most businesses have no settings row at all, so this
       // arrives undefined rather than 'forecast'; a `!== 'forecast'` test would
       // switch every one of them onto the budget store.
@@ -269,8 +274,8 @@ async function postHandler(request: Request) {
     // Fuzzy lookup handles "Wages & Salaries" vs "Salaries & Wages" etc.
     const findBudgetByName = buildFuzzyLookup(budgetPLLines, (bl) => bl.account_name)
 
-    // FY range — parameterized by business fiscal_year_start
-    const allFYMonths = generateFiscalMonthKeys(fiscal_year, yearStartMonth)
+    // FY range — parameterized by business fiscal_year_start (computed above,
+    // because resolveBudget needs the same list).
     const fyStart = allFYMonths[0]
     const fyEnd = allFYMonths[allFYMonths.length - 1]
     const ytdMonths = getMonthRange(fyStart, report_month)
