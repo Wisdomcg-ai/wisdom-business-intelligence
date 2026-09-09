@@ -228,6 +228,33 @@ describe('full-year — the approved budget column', () => {
     expect(line.approved_annual_budget).toBe(5000)
   })
 
+  it('names the version the column came from, so the page is not printing an anonymous second money column', async () => {
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [budgetLine('bl-1', 'v1', '2026-07', 5000)],
+    })
+
+    const { body } = await fullYear()
+    expect(body.report.approved_budget_label).toBe('Overall Budget')
+  })
+
+  it('leaves the label null whenever there is no approved budget, because the column is keyed off it', async () => {
+    // Both halves: never switched over, and switched over but unresolvable. A
+    // label without a budget would put a header over an empty column, and an
+    // empty budget column is read as zero.
+    const { body: never } = await fullYear()
+    expect(never.report.approved_budget_label).toBeNull()
+
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [version('v1', '2027-06')],
+      budget_lines: [budgetLine('bl-1', 'v1', '2027-06', 5000)],
+    })
+    const { body: notInForce } = await fullYear()
+    expect(notInForce.report.approved_budget_label).toBeNull()
+  })
+
   it('a switched client whose version is not yet in force gets null, not the forecast', async () => {
     // Fail-closed: the budget must never quietly become the forecast for a
     // client who was deliberately moved off it.

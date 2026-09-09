@@ -28,6 +28,12 @@ export type WidgetType =
   // Entity Actual[/Budget/Var] | Eliminations | Group. Renders only for
   // consolidation parents with a loaded consolidated report.
   | 'consolidated_pl'
+  // WG.1 — the balance sheet, Calxa pages 19-22. ONE type placed TWICE:
+  // config.compare picks 'mom' (vs prior month) or 'yoy' (vs same month last
+  // year). Two placements rather than two types because the only difference is
+  // which comparison column Xero fills — the grouping, subtotals and sign
+  // conventions are identical, and WC.1 config exists precisely for this.
+  | 'balance_sheet'
   // P&L Charts
   // WD.1 — one renderer serves all three; the type carries the section, and
   // widget.config.section may override it (WC.1). Three types rather than one

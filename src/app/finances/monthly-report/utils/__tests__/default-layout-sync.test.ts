@@ -7,7 +7,7 @@
  * Now sync removes only types SECTION_WIDGET_MAP manages.
  */
 import { describe, it, expect } from 'vitest'
-import { syncLayoutWithSettings } from '../default-layout'
+import { generateDefaultLayout, syncLayoutWithSettings } from '../default-layout'
 import { WIDGET_DEFINITIONS } from '../../constants/widget-registry'
 import { WIDGET_METHOD_MAP } from '../../services/widget-renderer'
 import { DEFAULT_SECTIONS, type ReportSections } from '../../types'
@@ -70,6 +70,58 @@ describe('WE.1b — manually-placed widgets survive settings sync', () => {
   })
 })
 
+describe('WG.1 — the balance sheet is placed twice and stays that way', () => {
+  const withBs: ReportSections = { ...DEFAULT_SECTIONS, balance_sheet: true }
+
+  it('the default layout carries both comparison pages, prior month first', () => {
+    const widgets = generateDefaultLayout(withBs).pages
+      .flatMap((p) => p.widgets)
+      .filter((w) => w.type === 'balance_sheet')
+    expect(widgets.map((w) => w.config?.compare)).toEqual(['mom', 'yoy'])
+  })
+
+  it('neither page is generated when the balance-sheet section is off', () => {
+    const placed = generateDefaultLayout(DEFAULT_SECTIONS).pages
+      .flatMap((p) => p.widgets)
+      .map((w) => w.type)
+    expect(placed).not.toContain('balance_sheet')
+  })
+
+  it('sync does not duplicate or drop the second copy while the section is on', () => {
+    // The trap: sync reasons about TYPES. A naive "this type is enabled but I
+    // only see it once" would add a third page; a naive per-widget filter
+    // would delete the hand-placed yoy copy on the next settings save.
+    const layout = generateDefaultLayout(withBs)
+    const { layout: synced, added, removed } = syncLayoutWithSettings(layout, withBs)
+    expect(added).not.toContain('balance_sheet')
+    expect(removed).not.toContain('balance_sheet')
+    const compares = synced.pages
+      .flatMap((p) => p.widgets)
+      .filter((w) => w.type === 'balance_sheet')
+      .map((w) => w.config?.compare)
+    expect(compares).toEqual(['mom', 'yoy'])
+  })
+
+  it('turning the section off removes both copies', () => {
+    const layout = generateDefaultLayout(withBs)
+    const { layout: synced, removed } = syncLayoutWithSettings(layout, {
+      ...DEFAULT_SECTIONS,
+      balance_sheet: false,
+    })
+    expect(removed).toContain('balance_sheet')
+    const placed = synced.pages.flatMap((p) => p.widgets.map((w) => w.type))
+    expect(placed).not.toContain('balance_sheet')
+  })
+
+  it('turning the section on adds a page to a layout that had none', () => {
+    const layout = layoutWith(['executive_summary'])
+    const { layout: synced, added } = syncLayoutWithSettings(layout, withBs)
+    expect(added).toContain('balance_sheet')
+    const placed = synced.pages.flatMap((p) => p.widgets.map((w) => w.type))
+    expect(placed).toContain('balance_sheet')
+  })
+})
+
 describe('WE.1b — widget registration coherence', () => {
   it('external_metric is registered as a full-row table with a renderer', () => {
     const def = WIDGET_DEFINITIONS.external_metric
@@ -79,5 +131,16 @@ describe('WE.1b — widget registration coherence', () => {
     // No dataDependency: palette availability can't know per-business series.
     expect(def.dataDependency).toBeUndefined()
     expect(WIDGET_METHOD_MAP.external_metric).toBe('renderExternalMetric')
+  })
+
+  it('balance_sheet is registered as a full-row portrait table with a renderer', () => {
+    const def = WIDGET_DEFINITIONS.balance_sheet
+    expect(def).toBeTruthy()
+    expect(def.category).toBe('tables')
+    expect(def.fullRow).toBe(true)
+    // No dataDependency: unavailability is stated on the page, not swapped for
+    // the grey "Data not available" placeholder.
+    expect(def.dataDependency).toBeUndefined()
+    expect(WIDGET_METHOD_MAP.balance_sheet).toBe('renderBalanceSheet')
   })
 })

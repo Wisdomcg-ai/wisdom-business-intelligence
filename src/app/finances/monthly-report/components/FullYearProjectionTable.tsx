@@ -2,6 +2,7 @@
 
 import React from 'react'
 import type { FullYearReport, FullYearLine, FullYearSection } from '../types'
+import { hasApprovedBudget, formatApprovedAnnual } from '../utils/full-year-approved'
 
 interface FullYearProjectionTableProps {
   report: FullYearReport
@@ -43,7 +44,7 @@ function MonthCell({ value, source }: { value: number; source: 'actual' | 'forec
   )
 }
 
-function LineRow({ line, lastActualMonth }: { line: FullYearLine; lastActualMonth: string }) {
+function LineRow({ line, lastActualMonth, showApproved }: { line: FullYearLine; lastActualMonth: string; showApproved: boolean }) {
   return (
     <tr className="border-b border-gray-100 hover:bg-gray-50">
       <td className="px-3 py-2 text-sm text-gray-900 whitespace-nowrap sticky left-0 bg-white z-10 min-w-[180px]">
@@ -62,6 +63,11 @@ function LineRow({ line, lastActualMonth }: { line: FullYearLine; lastActualMont
       <td className="px-2 py-2 text-xs text-right text-gray-600 whitespace-nowrap">
         {fmt(line.annual_budget)}
       </td>
+      {showApproved && (
+        <td className="px-2 py-2 text-xs text-right text-gray-900 font-medium bg-slate-50 whitespace-nowrap">
+          {formatApprovedAnnual(line, fmt)}
+        </td>
+      )}
       <td className={`px-2 py-2 text-xs text-right whitespace-nowrap ${
         line.variance_amount >= 0 ? 'text-green-700' : 'text-red-600'
       }`}>
@@ -80,10 +86,12 @@ function SubtotalRow({
   line,
   bgClass,
   textClass,
+  showApproved,
 }: {
   line: FullYearLine
   bgClass: string
   textClass: string
+  showApproved: boolean
 }) {
   return (
     <tr className={`${bgClass} font-semibold`}>
@@ -101,6 +109,11 @@ function SubtotalRow({
       <td className={`px-2 py-2 text-xs text-right ${textClass} whitespace-nowrap`}>
         {fmt(line.annual_budget)}
       </td>
+      {showApproved && (
+        <td className={`px-2 py-2 text-xs text-right ${textClass} whitespace-nowrap`}>
+          {formatApprovedAnnual(line, fmt)}
+        </td>
+      )}
       <td className={`px-2 py-2 text-xs text-right ${textClass} whitespace-nowrap`}>
         {fmt(line.variance_amount)}
       </td>
@@ -115,7 +128,13 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
   const monthHeaders = report.sections[0]?.lines[0]?.months.map(m => m.month) ||
     report.gross_profit.months.map(m => m.month)
 
-  const colCount = 1 + monthHeaders.length + 4 // account + months + projected + annual + var$ + var%
+  // Only when the budget store actually answered. An approved column that is
+  // present but empty is worse than no column: a reader fills a blank budget
+  // cell in as zero, and then reads the whole page as a rout.
+  const showApproved = hasApprovedBudget(report)
+
+  // account + months + projected + forecast + [approved] + var$ + var%
+  const colCount = 1 + monthHeaders.length + (showApproved ? 5 : 4)
 
   return (
     <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -123,7 +142,16 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
         <div>
           <h3 className="text-sm font-semibold text-gray-900">Full Year Projection — FY{report.fiscal_year}</h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            Actuals through {getMonthLabel(report.last_actual_month)} {report.last_actual_month.split('-')[0]}, then budget forecast
+            Actuals through {getMonthLabel(report.last_actual_month)} {report.last_actual_month.split('-')[0]},
+            {showApproved ? ' then forecast' : ' then budget forecast'}
+            {showApproved && (
+              <>
+                {' · Approved budget: '}
+                <span className="font-medium text-gray-700">
+                  {report.approved_budget_label || 'unnamed version'}
+                </span>
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-3 text-xs text-gray-500">
@@ -149,9 +177,20 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
                 </th>
               ))}
               <th className="px-2 py-3 text-right font-semibold whitespace-nowrap">Projected</th>
-              <th className="px-2 py-3 text-right font-semibold whitespace-nowrap">Budget</th>
-              <th className="px-2 py-3 text-right font-semibold whitespace-nowrap">Var ($)</th>
-              <th className="px-2 py-3 text-right font-semibold whitespace-nowrap">Var (%)</th>
+              {/*
+                With two money columns in play the old "Budget" heading no
+                longer identifies either of them, so it becomes "Forecast" —
+                the prediction — and the yardstick gets its own name. The
+                variance headings say what they are measured against for the
+                same reason: sitting next to "Approved Budget" they would
+                otherwise be read as a variance to it, which they are not.
+              */}
+              <th className="px-2 py-3 text-right font-semibold whitespace-nowrap">{showApproved ? 'Forecast' : 'Budget'}</th>
+              {showApproved && (
+                <th className="px-2 py-3 text-right font-semibold whitespace-nowrap">Approved Budget</th>
+              )}
+              <th className="px-2 py-3 text-right font-semibold whitespace-nowrap">{showApproved ? 'Var vs Fcst ($)' : 'Var ($)'}</th>
+              <th className="px-2 py-3 text-right font-semibold whitespace-nowrap">{showApproved ? 'Var vs Fcst (%)' : 'Var (%)'}</th>
             </tr>
           </thead>
           <tbody>
@@ -172,6 +211,7 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
                       key={`${section.category}-${idx}`}
                       line={line}
                       lastActualMonth={report.last_actual_month}
+                      showApproved={showApproved}
                     />
                   ))}
                   {/* Subtotal */}
@@ -179,6 +219,7 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
                     line={section.subtotal}
                     bgClass={style.subtotalBg}
                     textClass={style.subtotalText}
+                    showApproved={showApproved}
                   />
 
                   {/* Gross Profit after Cost of Sales */}
@@ -187,6 +228,7 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
                       line={report.gross_profit}
                       bgClass="bg-blue-50"
                       textClass="text-blue-900"
+                      showApproved={showApproved}
                     />
                   )}
                 </React.Fragment>
@@ -198,6 +240,7 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
               line={report.net_profit}
               bgClass="bg-brand-navy"
               textClass="text-white"
+              showApproved={showApproved}
             />
           </tbody>
         </table>

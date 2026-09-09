@@ -16,6 +16,11 @@ const SECTION_WIDGET_MAP: { sectionKey: keyof ReportSections | null; type: Widge
   { sectionKey: 'subscription_detail', type: 'subscription_detail' },
   { sectionKey: 'payroll_detail', type: 'wages_detail' },
   { sectionKey: 'cashflow', type: 'cashflow_forecast_table' },
+  // WG.1 — the balance-sheet pages ride the SAME flag that already gates the
+  // web Balance Sheet tab, so turning the tab on turns the pages on. Note this
+  // is a TYPE-level gate: both placements (vs prior month, vs last year) come
+  // and go together, which is what "show me the balance sheet" means.
+  { sectionKey: 'balance_sheet', type: 'balance_sheet' },
   // Charts
   // WD.1 — the A/B/PY analysis trio rides the trend_charts flag.
   { sectionKey: 'trend_charts', type: 'analysis_chart_income' },
@@ -51,7 +56,11 @@ function getEnabledWidgets(sections?: ReportSections): WidgetType[] {
 export function generateDefaultLayout(sections?: ReportSections): PDFLayout {
   const pages: LayoutPage[] = []
 
-  function addFullPage(type: WidgetType, orientation: 'portrait' | 'landscape' = 'portrait') {
+  function addFullPage(
+    type: WidgetType,
+    orientation: 'portrait' | 'landscape' = 'portrait',
+    config?: Record<string, unknown>,
+  ) {
     const def = WIDGET_DEFINITIONS[type]
     pages.push({
       id: generateId(),
@@ -62,6 +71,7 @@ export function generateDefaultLayout(sections?: ReportSections): PDFLayout {
         col: 0, row: 0,
         colSpan: def.defaultColSpan,
         rowSpan: def.defaultRowSpan,
+        ...(config ? { config } : {}),
       }],
     })
   }
@@ -96,6 +106,17 @@ export function generateDefaultLayout(sections?: ReportSections): PDFLayout {
 
   // ── Full year projection ──
   addFullPage('full_year_projection', 'landscape')
+
+  // ── WG.1: the two balance sheets (Calxa pages 19-22) ──
+  // Prior month first, then same month last year — the order the Calxa pack
+  // uses. Both are the same widget type; only config.compare differs, which is
+  // why syncLayoutWithSettings (which reasons about TYPES) can add the pair
+  // but never duplicates or splits them. Drag them elsewhere in the layout
+  // editor if the pack wants them in another position.
+  if (sections?.balance_sheet) {
+    addFullPage('balance_sheet', 'portrait', { compare: 'mom' })
+    addFullPage('balance_sheet', 'portrait', { compare: 'yoy' })
+  }
 
   // ── WD.1: Actual / Budget / Last-Year analysis charts (Calxa's core chart,
   //    one landscape page per section) ──
@@ -157,6 +178,14 @@ export function syncLayoutWithSettings(
   // Manually-placed widgets with no section toggle (external_metric) must
   // survive a settings save; without this guard the sync would silently
   // delete them as "no longer enabled".
+  //
+  // WG.1 — the other half of that rule, for types placed more than once
+  // (balance_sheet: one page vs prior month, one vs last year). Both sides
+  // below reason about TYPES, never about individual placements: `toAdd` only
+  // fires for a type that appears NOWHERE, so a second hand-placed copy is
+  // never duplicated, and `toRemove` only fires when the section is switched
+  // off, in which case both copies going is the intent. Anything that starts
+  // filtering per-widget here must keep that property.
   const managedTypes = new Set(SECTION_WIDGET_MAP.map(e => e.type))
 
   // Find all widget types currently in the layout

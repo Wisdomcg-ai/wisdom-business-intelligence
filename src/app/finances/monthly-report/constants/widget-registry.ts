@@ -91,6 +91,21 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     defaultColSpan: 3, defaultRowSpan: 3,
     minColSpan: 3, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
   },
+  balance_sheet: {
+    type: 'balance_sheet',
+    label: 'Balance Sheet (vs prior period)',
+    category: 'tables',
+    fullRow: true,
+    icon: 'Scale',
+    // Portrait: five columns (Account, two actuals, Variance, % Variance) sit
+    // comfortably in 180mm, and a balance sheet reads down, not across —
+    // the same grain as ytd_summary rather than the wide landscape tables.
+    defaultColSpan: 2, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+    // No dataDependency: the palette can't know whether Xero will answer, and
+    // a placement that can't be produced renders the stated reason (see
+    // assessBalanceSheetForPdf) rather than a grey "Data not available" box.
+  },
   money_flow: {
     type: 'money_flow',
     label: 'Where Did Our Money Go',
