@@ -310,7 +310,22 @@ export interface ForecastPLLine {
 export interface FullYearMonthData {
   month: string           // 'YYYY-MM'
   actual: number
+  /**
+   * The FORECAST for this month — "where will we land". Kept as `budget`
+   * because that is what the API has always called it; renaming it here would
+   * only move the confusion, and the approved budget now sits beside it under
+   * its own name.
+   */
   budget: number
+  /**
+   * The APPROVED budget for this month, out of budget_versions/budget_lines —
+   * "what were we held to". Null, never 0, when the client is not on the budget
+   * store or the store could not answer: a zero in a budget column reads as a
+   * deliberate decision to spend nothing, and every variance measured off it
+   * comes out favourable. An account the budget genuinely does not mention is a
+   * real 0 and the route sends 0 for it — the two cases are not the same.
+   */
+  approved_budget: number | null
   prior_year: number      // actual value from same month one year earlier (Phase 26)
   source: 'actual' | 'forecast'
 }
@@ -320,8 +335,10 @@ export interface FullYearLine {
   category: string
   months: FullYearMonthData[]    // 12 entries
   projected_total: number        // actuals + remaining forecast
-  annual_budget: number          // full year budget
-  variance_amount: number
+  annual_budget: number          // full year FORECAST total
+  /** Full year APPROVED total; null on the same terms as approved_budget. */
+  approved_annual_budget: number | null
+  variance_amount: number        // projection vs FORECAST, not vs the approved budget
   variance_percent: number
 }
 
@@ -338,6 +355,12 @@ export interface FullYearReport {
   sections: FullYearSection[]
   gross_profit: FullYearLine
   net_profit: FullYearLine
+  /**
+   * The label of the budget version the approved column came from, so the page
+   * can name its yardstick instead of printing an anonymous second money
+   * column. Null whenever there is no approved budget.
+   */
+  approved_budget_label?: string | null
 }
 
 // ============================================

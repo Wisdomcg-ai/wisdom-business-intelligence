@@ -741,6 +741,12 @@ async function postHandler(request: Request) {
       sections,
       gross_profit: grossProfit,
       net_profit: netProfit,
+      // Named so the page can say which yardstick the approved column is. A
+      // second money column with no provenance is how a pack ends up measured
+      // against a version nobody remembers approving. Null — not the label of a
+      // version that failed to resolve — whenever there is no approved budget,
+      // because the renderer keys the whole column off that.
+      approved_budget_label: approvedAvailable ? approvedLabel : null,
     }
 
     return NextResponse.json({

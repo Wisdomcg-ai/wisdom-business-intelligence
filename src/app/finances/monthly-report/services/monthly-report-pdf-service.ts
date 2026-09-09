@@ -25,6 +25,7 @@ import { GRID_CONFIG } from '../types/pdf-layout'
 import { calculateBoundingBox, normalizeLayoutPlacements } from '../utils/grid-helpers'
 import { WIDGET_METHOD_MAP } from './widget-renderer'
 import { assessBalanceSheetForPdf, type BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
+import { hasApprovedBudget, formatApprovedAnnual } from '../utils/full-year-approved'
 import type { BalanceSheetCompare, BalanceSheetData } from '../types'
 
 interface PDFOptions {
@@ -2029,10 +2030,19 @@ export class MonthlyReportPDFService {
     this.doc.text(`Full Year Projection — FY${fy.fiscal_year}`, this.margin, this.yPosition)
     this.yPosition += 6
 
+    // The approved budget only earns a column when the budget store actually
+    // answered. Same predicate as the browser tab, from the same module, so the
+    // pack and the screen can never disagree about whether the yardstick is
+    // there — and an approved column is never printed empty, because a blank
+    // budget cell is read as zero.
+    const showApproved = hasApprovedBudget(fy)
+
     this.doc.setFontSize(8)
     this.doc.setFont('helvetica', 'normal')
     this.doc.text(
-      `Actuals through ${this.formatMonth(fy.last_actual_month)}, then budget forecast`,
+      showApproved
+        ? `Actuals through ${this.formatMonth(fy.last_actual_month)}, then forecast — measured against ${fy.approved_budget_label || 'the approved budget'}`
+        : `Actuals through ${this.formatMonth(fy.last_actual_month)}, then budget forecast`,
       this.margin, this.yPosition
     )
     this.yPosition += 6
@@ -2042,7 +2052,15 @@ export class MonthlyReportPDFService {
       return d.toLocaleDateString('en-AU', { month: 'short' })
     })
 
-    const headers = ['Account', ...monthLabels, 'Projected', 'Budget', 'Var ($)', 'Var (%)']
+    // With the approved budget beside it, "Budget" stops naming anything in
+    // particular, so the prediction becomes "Forecast" and the yardstick takes
+    // the name. The variance headings name their referent for the same reason:
+    // adjacent to "Approved Budget" they read as a variance to it, and they are
+    // still projection-vs-forecast — the route computes them that way and this
+    // change deliberately does not restate a single number.
+    const headers = showApproved
+      ? ['Account', ...monthLabels, 'Projected', 'Forecast', 'Approved Budget', 'Var vs Fcst ($)', 'Var vs Fcst (%)']
+      : ['Account', ...monthLabels, 'Projected', 'Budget', 'Var ($)', 'Var (%)']
     // Variance columns are the last two
     const varianceCols = [headers.length - 2, headers.length - 1]
     const tableData: any[] = []
@@ -2078,6 +2096,7 @@ export class MonthlyReportPDFService {
         }
         row.push(this.fmtCurrency(line.projected_total))
         row.push(this.fmtCurrency(line.annual_budget))
+        if (showApproved) row.push(formatApprovedAnnual(line, (n) => this.fmtCurrency(n)))
         row.push(this.fmtVariance(line.variance_amount))
         row.push(this.fmtPct(line.variance_percent))
         tableData.push(row)
@@ -2092,6 +2111,7 @@ export class MonthlyReportPDFService {
       }
       stRow.push({ content: this.fmtCurrency(st.projected_total), styles: { fontStyle: 'bold' } })
       stRow.push({ content: this.fmtCurrency(st.annual_budget), styles: { fontStyle: 'bold' } })
+      if (showApproved) stRow.push({ content: formatApprovedAnnual(st, (n) => this.fmtCurrency(n)), styles: { fontStyle: 'bold' } })
       stRow.push({ content: this.fmtVariance(st.variance_amount), styles: { fontStyle: 'bold' } })
       stRow.push({ content: this.fmtPct(st.variance_percent), styles: { fontStyle: 'bold' } })
       tableData.push(stRow)
@@ -2107,6 +2127,7 @@ export class MonthlyReportPDFService {
         }
         gpRow.push({ content: this.fmtCurrency(gpLine.projected_total), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
         gpRow.push({ content: this.fmtCurrency(gpLine.annual_budget), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
+        if (showApproved) gpRow.push({ content: formatApprovedAnnual(gpLine, (n) => this.fmtCurrency(n)), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
         gpRow.push({ content: this.fmtVariance(gpLine.variance_amount), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
         gpRow.push({ content: this.fmtPct(gpLine.variance_percent), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
         tableData.push(gpRow)
@@ -2124,6 +2145,7 @@ export class MonthlyReportPDFService {
     }
     npRow.push({ content: this.fmtCurrency(np.projected_total), styles: npStyle })
     npRow.push({ content: this.fmtCurrency(np.annual_budget), styles: npStyle })
+    if (showApproved) npRow.push({ content: formatApprovedAnnual(np, (n) => this.fmtCurrency(n)), styles: npStyle })
     npRow.push({ content: this.fmtVariance(np.variance_amount), styles: npStyle })
     npRow.push({ content: this.fmtPct(np.variance_percent), styles: npStyle })
     tableData.push(npRow)
