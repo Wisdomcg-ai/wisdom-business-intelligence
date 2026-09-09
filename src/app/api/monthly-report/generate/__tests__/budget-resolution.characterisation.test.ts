@@ -18,8 +18,15 @@
  *   - a dangling pin DOES retry the fallback
  *   - a pin whose fiscal_year is null is honoured for every year
  *   - the fallback tries profile-space before businesses-space, first hit wins
+ *
+ * The last suite is not characterisation: it pins the account-code tier, which
+ * is new behaviour on the budget-store path. Everything above it is unchanged
+ * apart from one fixture column (`xero_account_code: null` on the base mapping
+ * row, so the harness rows have the shape prod rows have) — the tier is inert
+ * without a code on both sides, and those cases prove it.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { isAccountMatch } from '@/lib/utils/account-matching'
 
 // ── Sentry ───────────────────────────────────────────────────────────────────
 const captureMessage = vi.fn()
@@ -178,7 +185,7 @@ function baseTables(over: Partial<Record<string, any[]>> = {}) {
     business_profiles: [{ id: PROFILE, business_id: BIZ, fiscal_year_start: 7 }],
     monthly_report_settings: [],
     account_mappings: [
-      { id: 'map-1', business_id: BIZ, xero_account_name: REVENUE, report_category: 'Revenue', forecast_pl_line_id: null, forecast_pl_line_name: null },
+      { id: 'map-1', business_id: BIZ, xero_account_name: REVENUE, xero_account_code: null, report_category: 'Revenue', forecast_pl_line_id: null, forecast_pl_line_name: null },
     ],
     financial_forecasts: [],
     forecast_pl_lines: [],
@@ -641,3 +648,281 @@ describe('monthly-report/generate — a revision does not restate earlier months
   })
 })
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The ACCOUNT CODE tier.
+//
+// Every case above matches budget to actual by NAME, because that is all the
+// route had. Name matching is a heuristic and it loses on any account renamed
+// on one side only. Urban Road's P&L carries "Foreign Currency Gains and
+// Losses"; its Xero budget carries "Foreign Currency Loss/Gain" (code 62700).
+// Those normalise to "and currency foreign gains losses" and "currency foreign
+// lossgain" — nothing in common — so the August pack printed the account TWICE:
+// once with the actual and a $0 budget, once budget-only with a $0 actual, both
+// inside Operating Expenses, and both subtotals wrong.
+//
+// The code is the same string on both sides. These cases pin that it is used,
+// that a code-matched line is CLAIMED like any other (or the budget-only pass
+// re-emits it as the duplicate this fix exists to remove), and that the tier is
+// inert wherever there are no codes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FX_XERO = 'Foreign Currency Gains and Losses'
+const FX_BUDGET = 'Foreign Currency Loss/Gain'
+const GENERAL = 'General Expenses'
+
+/** An account_mappings row. `code` null is the real Urban Road FX shape. */
+const mapping = (name: string, code: string | null, category = 'Operating Expenses') => ({
+  id: `map-${name}`,
+  business_id: BIZ,
+  xero_account_name: name,
+  xero_account_code: code,
+  report_category: category,
+  forecast_pl_line_id: null,
+  forecast_pl_line_name: null,
+})
+
+/** A budget_lines row carrying a code. */
+const codedLine = (
+  id: string,
+  code: string | null,
+  name: string,
+  month: string,
+  amount: number,
+  category = 'Operating Expenses',
+) => ({
+  id,
+  budget_version_id: 'v1',
+  business_id: BIZ,
+  account_code: code,
+  account_name: name,
+  category,
+  month,
+  amount,
+})
+
+/** A composite actuals row. `code` null means Xero posted no code. */
+const actual = (code: string | null, name: string, monthly: Record<string, number>, type = 'opex') => ({
+  account_code: code,
+  account_name: name,
+  account_type: type,
+  monthly_values: monthly,
+})
+
+/**
+ * An active forecast is what routes the ACTUALS through ForecastReadService —
+ * the mocked `compositeRows`. Without one the route falls back to reading
+ * xero_pl_lines_wide_compat directly and every actual reads $0, which would
+ * make these cases pass or fail for reasons that have nothing to do with
+ * matching. The BUDGET still comes from the store: the gate is budget_source,
+ * not the presence of a forecast.
+ */
+const actualsRouting = () => [forecast('active', 'Actuals routing', { active: true })]
+
+function opexLines(report: any) {
+  const section = (report.sections ?? []).find((s: any) => s.category === 'Operating Expenses')
+  return section?.lines ?? []
+}
+
+describe('monthly-report/generate — matching on the account code', () => {
+  beforeEach(() => {
+    captureMessage.mockClear()
+    tables = baseTables()
+  })
+
+  it('the Foreign Currency case: different names, same code, ONE row carrying both numbers', async () => {
+    // Sanity: the name tiers genuinely cannot see these two as the same
+    // account. Without this the case could pass for the wrong reason.
+    expect(isAccountMatch(FX_XERO, FX_BUDGET)).toBe(false)
+
+    compositeRows = [actual('62700', FX_XERO, { '2026-07': 100, '2026-08': 919.25 })]
+    tables = baseTables({
+      account_mappings: [mapping(FX_XERO, '62700')],
+      monthly_report_settings: [onStore],
+      financial_forecasts: actualsRouting(),
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [
+        codedLine('l-1', '62700', FX_BUDGET, '2026-07', 800),
+        codedLine('l-2', '62700', FX_BUDGET, '2026-08', 1000),
+      ],
+    })
+
+    const { report } = await resolution()
+    const lines = opexLines(report)
+
+    expect(lines).toHaveLength(1)
+    expect(lines[0].actual).toBe(919.25)
+    expect(lines[0].budget).toBe(1000)
+    expect(lines[0].ytd_budget).toBe(1800)
+    expect(lines[0].is_budget_only).toBe(false)
+    // The subtotal is the point: two rows for one account double the budget.
+    const subtotal = report.sections.find((s: any) => s.category === 'Operating Expenses').subtotal
+    expect(subtotal.actual).toBe(919.25)
+    expect(subtotal.budget).toBe(1000)
+  })
+
+  it('a code-matched line is CLAIMED — the budget-only pass must not re-emit it', async () => {
+    // The failure that matters most. `matchedBudgetLineIds` / the identity set
+    // are what stop the budget-only pass from printing the same account again.
+    // A tier that matched without registering there produces exactly the
+    // two-rows-one-account bug this whole change removes.
+    compositeRows = [actual('62700', FX_XERO, { '2026-08': 919.25 })]
+    tables = baseTables({
+      account_mappings: [mapping(FX_XERO, '62700')],
+      monthly_report_settings: [onStore],
+      financial_forecasts: actualsRouting(),
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [codedLine('l-1', '62700', FX_BUDGET, '2026-08', 1000)],
+    })
+
+    const { report } = await resolution()
+    const lines = opexLines(report)
+    expect(lines.filter((l: any) => l.is_budget_only)).toHaveLength(0)
+    expect(lines.map((l: any) => l.account_name)).toEqual([FX_XERO])
+  })
+
+  it('takes the code from the MAPPING when Xero posted the row without one', async () => {
+    // Urban Road's real shape: xero_pl_lines.account_code is null for that
+    // account, because Xero's P&L emits it as a report-only line. The mapping
+    // is the only place the code can be declared, so it is consulted second
+    // rather than not at all.
+    compositeRows = [actual(null, FX_XERO, { '2026-08': 919.25 })]
+    tables = baseTables({
+      account_mappings: [mapping(FX_XERO, '62700')],
+      monthly_report_settings: [onStore],
+      financial_forecasts: actualsRouting(),
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [codedLine('l-1', '62700', FX_BUDGET, '2026-08', 1000)],
+    })
+
+    const lines = opexLines((await resolution()).report)
+    expect(lines).toHaveLength(1)
+    expect(lines[0].budget).toBe(1000)
+  })
+
+  it('the actuals row\'s own code wins over the mapping\'s copy', async () => {
+    // account_mappings carries a copy of the Xero code; xero_pl_lines carries
+    // what Xero actually posted. Prefer the fact, or a stale mapping silently
+    // reroutes an account's budget to a different account.
+    compositeRows = [actual('428.1', GENERAL, { '2026-08': 50 })]
+    tables = baseTables({
+      account_mappings: [mapping(GENERAL, '428.2')],
+      monthly_report_settings: [onStore],
+      financial_forecasts: actualsRouting(),
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [
+        codedLine('l-1', '428.1', 'BATHURST: General Expenses', '2026-08', 500),
+        codedLine('l-2', '428.2', 'ORANGE: General Expenses', '2026-08', 400),
+      ],
+    })
+
+    const lines = opexLines((await resolution()).report)
+    const matched = lines.find((l: any) => !l.is_budget_only)
+    expect(matched.budget).toBe(500)
+  })
+
+  it('two accounts sharing a name are two rows, and their budgets are not summed', async () => {
+    // Keyed on the name, the resolver merged these into one line budgeted 900,
+    // the first Xero row claimed it and the second rendered $0 with a
+    // "already claimed" warning. Both rows were plausible; the sum was not.
+    compositeRows = [
+      actual('428.1', GENERAL, { '2026-08': 50 }),
+      actual('428.2', GENERAL, { '2026-08': 60 }),
+    ]
+    tables = baseTables({
+      account_mappings: [mapping(GENERAL, null)],
+      monthly_report_settings: [onStore],
+      financial_forecasts: actualsRouting(),
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [
+        codedLine('l-1', '428.1', GENERAL, '2026-08', 500),
+        codedLine('l-2', '428.2', GENERAL, '2026-08', 400),
+      ],
+    })
+
+    const { report } = await resolution()
+    const lines = opexLines(report)
+    expect(lines).toHaveLength(2)
+    expect(lines.map((l: any) => l.budget).sort((a: number, b: number) => a - b)).toEqual([400, 500])
+    expect(lines.map((l: any) => l.actual).sort((a: number, b: number) => a - b)).toEqual([50, 60])
+    expect(lines.some((l: any) => l.is_budget_only)).toBe(false)
+    // No double-claim: neither row was starved of its own budget.
+    expect(
+      captureMessage.mock.calls.filter((c: any[]) => String(c[0]).includes('already claimed')),
+    ).toHaveLength(0)
+    const subtotal = report.sections.find((s: any) => s.category === 'Operating Expenses').subtotal
+    expect(subtotal.budget).toBe(900)
+    expect(subtotal.actual).toBe(110)
+  })
+
+  it('the unmatched half of a same-name pair still reaches the report as budget-only', async () => {
+    // Splitting the merged line is only half the fix. The budget-only pass used
+    // to suppress by NAME, so the sibling that had no actual would be dropped
+    // entirely and its whole annual budget would vanish from the subtotal —
+    // worse than the merge, which at least kept the money on the page.
+    compositeRows = [actual('428.1', GENERAL, { '2026-08': 50 })]
+    tables = baseTables({
+      account_mappings: [mapping(GENERAL, null)],
+      monthly_report_settings: [onStore],
+      financial_forecasts: actualsRouting(),
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [
+        codedLine('l-1', '428.1', GENERAL, '2026-08', 500),
+        codedLine('l-2', '428.2', GENERAL, '2026-08', 400),
+      ],
+    })
+
+    const { report } = await resolution()
+    const lines = opexLines(report)
+    expect(lines).toHaveLength(2)
+    expect(lines.filter((l: any) => l.is_budget_only)).toHaveLength(1)
+    const subtotal = report.sections.find((s: any) => s.category === 'Operating Expenses').subtotal
+    expect(subtotal.budget).toBe(900)
+    expect(subtotal.actual).toBe(50)
+  })
+
+  it('the code beats a name that matches a different account', async () => {
+    // Where the two keys disagree, the identity wins and the name-alike is left
+    // to stand on its own as budget-only.
+    compositeRows = [actual('428.1', 'Sundry', { '2026-08': 50 })]
+    tables = baseTables({
+      account_mappings: [mapping('Sundry', null)],
+      monthly_report_settings: [onStore],
+      financial_forecasts: actualsRouting(),
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [
+        codedLine('l-1', '428.1', 'Miscellaneous', '2026-08', 500),
+        codedLine('l-2', '999', 'Sundry', '2026-08', 400),
+      ],
+    })
+
+    const lines = opexLines((await resolution()).report)
+    const matched = lines.find((l: any) => !l.is_budget_only)
+    expect(matched.account_name).toBe('Sundry')
+    expect(matched.budget).toBe(500)          // account 428.1 "Miscellaneous"
+    const budgetOnly = lines.filter((l: any) => l.is_budget_only)
+    expect(budgetOnly).toHaveLength(1)
+    expect(budgetOnly[0].budget).toBe(400)    // account 999 "Sundry"
+  })
+
+  it('is inert on the forecast path — a coded actual does not match an uncoded budget', async () => {
+    // forecast_pl_lines has no code column, so budgetByCode is empty and the
+    // cascade falls straight through to the name tiers. Every client not on the
+    // budget store therefore behaves exactly as it did.
+    compositeRows = [actual('62700', FX_XERO, { '2026-08': 919.25 })]
+    tables = baseTables({
+      account_mappings: [mapping(FX_XERO, '62700')],
+      financial_forecasts: [forecast('active', 'Active FY27', { active: true })],
+      forecast_pl_lines: [plLine('bl-1', 'active', FX_BUDGET, { '2026-08': 1000 }, 'Operating Expenses')],
+    })
+
+    const { report } = await resolution()
+    const lines = opexLines(report)
+    // Two rows, exactly as before: the actual with no budget, and the budget
+    // with no actual. Not fixed here — fixing it would change every client on
+    // the legacy path — but proven unchanged.
+    expect(lines).toHaveLength(2)
+    expect(lines.find((l: any) => l.account_name === FX_XERO).budget).toBe(0)
+    expect(lines.find((l: any) => l.account_name === FX_BUDGET).is_budget_only).toBe(true)
+  })
+})
