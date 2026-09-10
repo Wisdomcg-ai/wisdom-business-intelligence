@@ -13,6 +13,7 @@
 import { describe, it, expect } from 'vitest'
 import { MonthlyReportPDFService } from '../monthly-report-pdf-service'
 import { fixtureReport, docText } from './pdf-pack-fixture'
+import type { PDFLayout } from '../../types/pdf-layout'
 
 const noBudget = (overrides = {}) =>
   fixtureReport({
@@ -91,7 +92,7 @@ describe('the PDF has the same three states as the tab', () => {
 })
 
 describe('the KPI cards do not claim a budget either', () => {
-  const kpiLayout = {
+  const kpiLayout: PDFLayout = {
     version: 1,
     pages: [
       {
