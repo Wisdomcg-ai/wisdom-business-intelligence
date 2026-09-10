@@ -113,12 +113,59 @@ describe('WG.1 — the balance sheet is placed twice and stays that way', () => 
     expect(placed).not.toContain('balance_sheet')
   })
 
-  it('turning the section on adds a page to a layout that had none', () => {
+  it('turning the section on adds BOTH pages to a layout that had none', () => {
+    // The trap this used to pass over: sync reasons about TYPES, and
+    // autoPlaceWidget built a widget with no config at all — so the renderer's
+    // default decided, and the coach got the vs-prior-month page and silently
+    // no vs-last-year page. Asserting only that the type appears documents the
+    // defect as correct. Business 8c8c63b2 in prod is exactly this shape: a
+    // one-page saved layout with the balance-sheet section already on.
     const layout = layoutWith(['executive_summary'])
     const { layout: synced, added } = syncLayoutWithSettings(layout, withBs)
     expect(added).toContain('balance_sheet')
-    const placed = synced.pages.flatMap((p) => p.widgets.map((w) => w.type))
-    expect(placed).toContain('balance_sheet')
+
+    const compares = synced.pages
+      .flatMap((p) => p.widgets)
+      .filter((w) => w.type === 'balance_sheet')
+      .map((w) => w.config?.compare)
+    expect(compares).toEqual(['mom', 'yoy'])
+  })
+
+  it('places each comparison on its own portrait page', () => {
+    // A full-page portrait table does not fit the landscape grid (rowSpan 3
+    // against 2 rows), and autoPlaceWidget returning null drops it silently.
+    const layout = layoutWith(['executive_summary'])
+    const { layout: synced } = syncLayoutWithSettings(layout, withBs)
+    const bsPages = synced.pages.filter((p) => p.widgets.some((w) => w.type === 'balance_sheet'))
+    expect(bsPages).toHaveLength(2)
+    for (const page of bsPages) {
+      expect(page.orientation).toBe('portrait')
+      expect(page.widgets).toHaveLength(1)
+    }
+  })
+
+  it('does not re-add a copy the coach deliberately deleted', () => {
+    // The other half of the type-level rule: `toAdd` fires only for a type
+    // that appears NOWHERE. A layout keeping just the yoy page must stay that
+    // way across settings saves, or the editor cannot be used to shorten a
+    // pack.
+    const layout: PDFLayout = {
+      version: 1,
+      pages: [
+        {
+          id: 'p1',
+          orientation: 'portrait',
+          widgets: [{ id: 'w0', type: 'balance_sheet' as any, col: 0, row: 0, colSpan: 2, rowSpan: 3, config: { compare: 'yoy' } }],
+        },
+      ],
+    }
+    const { layout: synced, added } = syncLayoutWithSettings(layout, withBs)
+    expect(added).not.toContain('balance_sheet')
+    const compares = synced.pages
+      .flatMap((p) => p.widgets)
+      .filter((w) => w.type === 'balance_sheet')
+      .map((w) => w.config?.compare)
+    expect(compares).toEqual(['yoy'])
   })
 })
 

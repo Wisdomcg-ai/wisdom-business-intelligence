@@ -5,8 +5,41 @@ import { generateId, findFirstAvailablePosition, canPlace } from './grid-helpers
 
 // ── Section → Widget mapping ─────────────────────────────────────
 
-/** Which widget types are gated by which section toggle */
-const SECTION_WIDGET_MAP: { sectionKey: keyof ReportSections | null; type: WidgetType }[] = [
+/**
+ * The two balance-sheet pages: August against July, and August against last
+ * August (Calxa pages 19-22). ONE widget type placed twice, distinguished only
+ * by config.compare — the grouping, subtotals and signs are identical.
+ *
+ * Declared once and read by both the default layout and the settings sync,
+ * because a type whose placements are spelled out in one of them and inferred
+ * in the other is how "turn the balance sheet on" came to mean one page here
+ * and two pages there.
+ */
+export const BALANCE_SHEET_PLACEMENTS: Record<string, unknown>[] = [
+  { compare: 'mom' },
+  { compare: 'yoy' },
+]
+
+/**
+ * Which widget types are gated by which section toggle.
+ *
+ * `placements` is for a type that means MORE THAN ONE page. Without it the sync
+ * reasons purely about types — `autoPlaceWidget(page, type)` builds a widget
+ * with no config — so switching a section on against an existing saved layout
+ * produced whichever page the renderer defaults to and silently omitted the
+ * rest of the set.
+ *
+ * `ownPage` is for a type that IS a page rather than a tile. The sync otherwise
+ * fills the first gap it finds, and a 2x3 balance sheet fits beside another one
+ * on a 3x3 landscape page — two half-width balance sheets on one sheet, which
+ * is not a management pack.
+ */
+const SECTION_WIDGET_MAP: {
+  sectionKey: keyof ReportSections | null
+  type: WidgetType
+  placements?: Record<string, unknown>[]
+  ownPage?: 'portrait' | 'landscape'
+}[] = [
   // Always-on tables
   { sectionKey: null, type: 'executive_summary' },
   { sectionKey: null, type: 'budget_vs_actual' },
@@ -20,7 +53,7 @@ const SECTION_WIDGET_MAP: { sectionKey: keyof ReportSections | null; type: Widge
   // web Balance Sheet tab, so turning the tab on turns the pages on. Note this
   // is a TYPE-level gate: both placements (vs prior month, vs last year) come
   // and go together, which is what "show me the balance sheet" means.
-  { sectionKey: 'balance_sheet', type: 'balance_sheet' },
+  { sectionKey: 'balance_sheet', type: 'balance_sheet', placements: BALANCE_SHEET_PLACEMENTS, ownPage: 'portrait' },
   // Charts
   // WD.1 — the A/B/PY analysis trio rides the trend_charts flag.
   { sectionKey: 'trend_charts', type: 'analysis_chart_income' },
@@ -114,8 +147,7 @@ export function generateDefaultLayout(sections?: ReportSections): PDFLayout {
   // but never duplicates or splits them. Drag them elsewhere in the layout
   // editor if the pack wants them in another position.
   if (sections?.balance_sheet) {
-    addFullPage('balance_sheet', 'portrait', { compare: 'mom' })
-    addFullPage('balance_sheet', 'portrait', { compare: 'yoy' })
+    for (const config of BALANCE_SHEET_PLACEMENTS) addFullPage('balance_sheet', 'portrait', config)
   }
 
   // ── WD.1: Actual / Budget / Last-Year analysis charts (Calxa's core chart,
@@ -181,11 +213,20 @@ export function syncLayoutWithSettings(
   //
   // WG.1 — the other half of that rule, for types placed more than once
   // (balance_sheet: one page vs prior month, one vs last year). Both sides
-  // below reason about TYPES, never about individual placements: `toAdd` only
-  // fires for a type that appears NOWHERE, so a second hand-placed copy is
-  // never duplicated, and `toRemove` only fires when the section is switched
-  // off, in which case both copies going is the intent. Anything that starts
-  // filtering per-widget here must keep that property.
+  // below still decide about TYPES, never about individual placements: `toAdd`
+  // only fires for a type that appears NOWHERE, so a second hand-placed copy is
+  // never duplicated and a copy the coach deliberately deleted stays deleted;
+  // `toRemove` only fires when the section is switched off, in which case both
+  // copies going is the intent. Anything that starts filtering per-widget here
+  // must keep that property.
+  //
+  // What a type CONTRIBUTES when it is added is a different question, and it is
+  // the one this got wrong: the answer is its declared placements, all of them.
+  // A type whose pages differ only by config was being added with no config at
+  // all, so turning the balance sheet on against a saved layout produced the
+  // renderer's default comparison — vs prior month — and silently dropped the
+  // vs-last-year page. One business in prod has exactly that shape: a one-page
+  // saved layout with sections.balance_sheet already true.
   const managedTypes = new Set(SECTION_WIDGET_MAP.map(e => e.type))
 
   // Find all widget types currently in the layout
@@ -224,28 +265,38 @@ export function syncLayoutWithSettings(
 
   // Add new widgets — try to fit on existing pages first, then create new ones
   for (const type of toAdd) {
-    let placed = false
+    const entry = SECTION_WIDGET_MAP.find(e => e.type === type)
+    const placements = entry?.placements ?? [undefined]
 
-    // Try to fit on an existing page
-    for (const page of newLayout.pages) {
-      const widget = autoPlaceWidget(page, type)
-      if (widget) {
-        page.widgets.push(widget)
-        placed = true
-        break
+    for (const config of placements) {
+      let placed = false
+
+      // Try to fit on an existing page — unless this type is a page in its own
+      // right, in which case sharing one is the failure, not the fallback.
+      if (!entry?.ownPage) {
+        for (const page of newLayout.pages) {
+          const widget = autoPlaceWidget(page, type, config)
+          if (widget) {
+            page.widgets.push(widget)
+            placed = true
+            break
+          }
+        }
       }
-    }
 
-    // No room — create a new page
-    if (!placed) {
-      const def = WIDGET_DEFINITIONS[type]
-      const needsLandscape = def.minColSpan > 2 || def.defaultColSpan > 2
-      const orientation = needsLandscape ? 'landscape' : 'landscape' // charts look better landscape
-      const page: LayoutPage = { id: generateId(), orientation, widgets: [] }
-      const widget = autoPlaceWidget(page, type)
-      if (widget) {
-        page.widgets.push(widget)
-        newLayout.pages.push(page)
+      // No room — create a new page
+      if (!placed) {
+        const def = WIDGET_DEFINITIONS[type]
+        const needsLandscape = def.minColSpan > 2 || def.defaultColSpan > 2
+        const orientation: 'portrait' | 'landscape' =
+          entry?.ownPage
+          ?? (needsLandscape ? 'landscape' : 'landscape') // charts look better landscape
+        const page: LayoutPage = { id: generateId(), orientation, widgets: [] }
+        const widget = autoPlaceWidget(page, type, config)
+        if (widget) {
+          page.widgets.push(widget)
+          newLayout.pages.push(page)
+        }
       }
     }
   }
@@ -271,7 +322,13 @@ export function createEmptyPage(orientation: 'portrait' | 'landscape' = 'portrai
  */
 export function autoPlaceWidget(
   page: LayoutPage,
-  type: WidgetType
+  type: WidgetType,
+  /**
+   * Carried onto the placed widget. A type whose pages differ only by config
+   * (balance_sheet's two comparisons) is otherwise placed with none, and the
+   * renderer's default silently decides which page you got.
+   */
+  config?: Record<string, unknown>,
 ): LayoutWidget | null {
   const def = WIDGET_DEFINITIONS[type]
   const pos = findFirstAvailablePosition(page, def.defaultColSpan, def.defaultRowSpan)
@@ -284,5 +341,6 @@ export function autoPlaceWidget(
     row: pos.row,
     colSpan: def.defaultColSpan,
     rowSpan: def.defaultRowSpan,
+    ...(config ? { config } : {}),
   }
 }
