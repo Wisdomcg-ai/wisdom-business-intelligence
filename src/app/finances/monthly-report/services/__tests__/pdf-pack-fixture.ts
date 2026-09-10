@@ -211,3 +211,24 @@ export function pageContaining(doc: any, needle: string): number {
   }
   return -1
 }
+
+/**
+ * The strings a page actually draws, one per jsPDF show-text operator.
+ *
+ * A `text()` call given one string emits ONE run; given wrapped lines it emits
+ * one per line. That is the difference between a note that fits the paper and
+ * one that runs off the edge of it, and it is the only place the difference is
+ * visible after the fact.
+ */
+export function textRuns(doc: any, pageNumber: number): string[] {
+  const page = doc.internal.pages[pageNumber]
+  if (!Array.isArray(page)) return []
+  const runs: string[] = []
+  // One page element is a whole BT…ET block, so the operators have to be read
+  // line by line rather than element by element.
+  for (const op of page.join('\n').split('\n')) {
+    const match = /^(?:T\* )?\((.*)\) Tj$/.exec(op.trim())
+    if (match) runs.push(match[1])
+  }
+  return runs
+}

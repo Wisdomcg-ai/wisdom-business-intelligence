@@ -524,22 +524,19 @@ export class MonthlyReportPDFService {
 
     // The proof line. Residual is zero by construction; if it ever isn't,
     // say so in amber rather than pretending.
-    this.doc.setFontSize(8.5)
-    this.doc.setFont('helvetica', 'normal')
     if (Math.abs(flow.continuity_residual) <= 0.01) {
-      this.doc.setTextColor(90, 90, 90)
-      this.doc.text(
+      this.drawNote(
         'These two columns explain the bank movement exactly — they are your balance sheet in motion.',
-        this.margin, this.yPosition,
+        undefined,
+        { fontSize: 8.5, color: [90, 90, 90] },
       )
     } else {
-      this.doc.setTextColor(146, 64, 14)
-      this.doc.text(
+      this.drawNote(
         `Note: the columns differ from the bank movement by ${this.fmtCurrency(flow.continuity_residual)} — treat this page as indicative this month.`,
-        this.margin, this.yPosition,
+        undefined,
+        { fontSize: 8.5, color: [146, 64, 14] },
       )
     }
-    this.doc.setTextColor(0, 0, 0)
   }
 
   renderMoneyFlow(box: WidgetBoundingBox): void {
@@ -621,15 +618,14 @@ export class MonthlyReportPDFService {
     // currency; say so instead of leaving HKD figures to be misread.
     const translated = tenants.filter(t => t.functional_currency && t.functional_currency !== vm.business.presentation_currency)
     if (translated.length > 0) {
+      // One clause per translated entity — IICT has three orgs — so this line
+      // grows with the consolidation and has to wrap.
       const y = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 5
-      this.doc.setFontSize(7.5)
-      this.doc.setFont('helvetica', 'normal')
-      this.doc.setTextColor(90, 90, 90)
-      this.doc.text(
+      this.drawNote(
         `${translated.map(t => `${t.display_name} translated from ${t.functional_currency}`).join(' · ')} — all figures in ${vm.business.presentation_currency} at monthly-average rates.`,
-        this.margin, y,
+        y,
+        { color: [90, 90, 90] },
       )
-      this.doc.setTextColor(0, 0, 0)
     }
   }
 
@@ -685,14 +681,10 @@ export class MonthlyReportPDFService {
     this.renderBalanceSheetTable(bs)
 
     const y = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 6
-    this.doc.setFontSize(7.5)
-    this.doc.setFont('helvetica', 'normal')
-    this.doc.setTextColor(107, 114, 128)
-    this.doc.text(
+    this.drawNote(
       'Sourced from Xero · Negatives shown in (brackets) · % Variance is N/A when the prior period is zero',
-      this.margin, y,
+      y,
     )
-    this.doc.setTextColor(0, 0, 0)
   }
 
   /**
@@ -753,11 +745,16 @@ export class MonthlyReportPDFService {
    * this.yPosition; the bottom of the block is returned either way, so a
    * caller can put something under it.
    */
-  private drawNote(message: string, y?: number): number {
+  private drawNote(
+    message: string,
+    y?: number,
+    opts?: { fontSize?: number; color?: [number, number, number] },
+  ): number {
     const width = this.pageWidth - this.margin * 2
-    this.doc.setFontSize(7.5)
+    const [r, g, b] = opts?.color ?? [107, 114, 128]
+    this.doc.setFontSize(opts?.fontSize ?? 7.5)
     this.doc.setFont('helvetica', 'normal')
-    this.doc.setTextColor(107, 114, 128)
+    this.doc.setTextColor(r, g, b)
     const lines: string[] = this.doc.splitTextToSize(message, width)
     const top = y ?? this.yPosition
     this.doc.text(lines, this.margin, top)
@@ -1344,6 +1341,7 @@ export class MonthlyReportPDFService {
       if (standing.length > 0) {
         let y = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 6
         this.doc.setFontSize(8)
+        const available = this.pageWidth - this.margin * 2
         for (const line of standing) {
           if (y > this.pageHeight - this.margin - 6) {
             this.addPage('landscape')
@@ -1358,7 +1356,23 @@ export class MonthlyReportPDFService {
             ? ` — refer to the ${line.refer_to} page`
             : ` — refer to ${line.refer_to} (page not in this pack)`
           if (!line.in_pack) this.doc.setTextColor(185, 28, 28)
-          this.doc.text(suffix, this.margin + labelWidth, y)
+          // Both halves are coach-entered free text (the account name and the
+          // page it refers to), so the pair can be wider than the paper. The
+          // first fragment sits after the bold label; the rest wraps to the
+          // margin instead of running off the edge.
+          const suffixLines: string[] = this.doc.splitTextToSize(
+            suffix,
+            Math.max(20, available - labelWidth),
+          )
+          this.doc.text(suffixLines[0] ?? '', this.margin + labelWidth, y)
+          for (const extra of suffixLines.slice(1)) {
+            y += 4.5
+            if (y > this.pageHeight - this.margin - 6) {
+              this.addPage('landscape')
+              y = this.yPosition
+            }
+            this.doc.text(extra, this.margin, y)
+          }
           y += 4.5
         }
         this.doc.setTextColor(0, 0, 0)
@@ -2252,17 +2266,18 @@ export class MonthlyReportPDFService {
     const approvedNote = showApproved
       ? ` · Approved budget: ${fy.approved_budget_label || 'unnamed version'}`
       : ''
-    this.doc.text(`${through}${trailer}${approvedNote}`, this.margin, this.yPosition)
-    this.yPosition += 6
+    // Wrapped: the approved version's own label rides on the end of this line
+    // (Urban Road's is 37 characters), and jsPDF does not wrap — it prints off
+    // the edge of the paper and the overflow is simply lost.
+    this.drawNote(`${through}${trailer}${approvedNote}`, undefined, { fontSize: 8, color: [0, 0, 0] })
+    this.yPosition += 1.5
 
     // Dashes down two columns with nothing explaining them get an explanation
     // supplied by the reader, and it is usually the wrong one.
     const absentNote = forecastAbsentNote(fy)
     if (absentNote) {
-      this.doc.setTextColor(146, 96, 20)
-      this.doc.text(absentNote, this.margin, this.yPosition)
-      this.doc.setTextColor(0, 0, 0)
-      this.yPosition += 6
+      this.drawNote(absentNote, undefined, { fontSize: 8, color: [146, 96, 20] })
+      this.yPosition += 1.5
     }
 
     const monthLabels = fy.gross_profit.months.map(m => {
@@ -3525,10 +3540,8 @@ export class MonthlyReportPDFService {
     // against last year is a real comparison — but the reader has to be told
     // that the missing middle bar is an absence and not a run of zeros.
     if (data.budgetAbsentNote) {
-      this.doc.setTextColor(146, 96, 20)
-      this.doc.text(data.budgetAbsentNote, this.margin, this.yPosition)
-      this.doc.setTextColor(107, 114, 128)
-      this.yPosition += 6
+      this.drawNote(data.budgetAbsentNote, undefined, { fontSize: 9, color: [146, 96, 20] })
+      this.yPosition += 1.5
     }
 
     // Legend — the middle entry drops out entirely when there is no series,
