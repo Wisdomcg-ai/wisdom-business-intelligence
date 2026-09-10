@@ -61,6 +61,53 @@ export function transformVarianceHeatmapData(report: FullYearReport): { cells: H
   return { cells, categories: categories.filter(c => report.sections.some(s => s.category === c)), months, forecastMonths }
 }
 
+/**
+ * The word this chart puts in front of a reader.
+ *
+ * Every cell is measured against `budget`, which on the Full Year report is the
+ * FORECAST. That word is now taken: the same pack's Full Year page shows an
+ * approved budget beside a forecast, so an unqualified "Budget" on this chart
+ * names neither of them. Only disambiguate where there is something to
+ * disambiguate from.
+ *
+ * Exported because the PDF draws this same chart from the same data, and the
+ * pack and the tab are not allowed to name one number two ways. Before this
+ * existed the tab said "Forecast Variance Heatmap" and the pack, two clicks
+ * later, said "Budget Variance Heatmap" over the identical grid.
+ */
+export function heatmapYardstick(report: FullYearReport): 'Forecast' | 'Budget' {
+  return hasApprovedBudget(report) ? 'Forecast' : 'Budget'
+}
+
+/** The heading both surfaces use. */
+export function heatmapTitle(report: FullYearReport): string {
+  return `${heatmapYardstick(report)} Variance Heatmap`
+}
+
+/** The one-line description both surfaces use under that heading. */
+export const HEATMAP_SUBTITLE =
+  'Green = favorable, Red = unfavorable variance by category and month'
+
+/**
+ * Why this chart cannot be drawn, or null when it can.
+ *
+ * With no forecast at all every budget is 0, the divide-by-zero guard leaves
+ * every variancePct at 0, and `getHeatmapColor(0)` takes its favourable branch:
+ * a full five-category × twelve-month grid of on-track green, in a client's
+ * pack, computed from an absent forecast. Distinct Directions is in exactly
+ * that state today. The third state is a sentence, not a grid.
+ */
+export function heatmapUnavailableReason(report: FullYearReport): string | null {
+  if (hasForecastBudget(report)) return null
+  return (
+    `No forecast exists for FY${report.fiscal_year}, so there is nothing to measure these ` +
+    `categories against. Every cell would read 0%, which is not the same as being on track.`
+  )
+}
+
+/** The heading that sentence sits under, on both surfaces. */
+export const HEATMAP_UNAVAILABLE_TITLE = 'Variance Heatmap'
+
 interface Props {
   fullYearReport: FullYearReport
 }
@@ -71,30 +118,17 @@ export default function VarianceHeatmapChart({ fullYearReport }: Props) {
 
   if (cells.length === 0) return null
 
-  // Every cell here is measured against `budget`, which on the Full Year report
-  // is the FORECAST. That word is now taken: the same pack's Full Year page
-  // shows an approved budget beside a forecast, so an unqualified "Budget" on
-  // this chart names neither of them. Only disambiguate where there is
-  // something to disambiguate from.
-  const twoYardsticks = hasApprovedBudget(fullYearReport)
-  const yardstick = twoYardsticks ? 'Forecast' : 'Budget'
+  const yardstick = heatmapYardstick(fullYearReport)
+  const unavailable = heatmapUnavailableReason(fullYearReport)
 
-  // With no forecast at all, every budget is 0, the divide-by-zero guard makes
-  // every variancePct 0, and the whole grid prints "+0%" in on-track green — a
-  // page-sized statement that everything is fine, derived from nothing. Say so
-  // instead.
-  if (!hasForecastBudget(fullYearReport)) {
+  if (unavailable) {
     return (
       <ChartCard
-        title="Variance Heatmap"
+        title={HEATMAP_UNAVAILABLE_TITLE}
         subtitle="Not available for this month"
         tooltip="This heatmap measures each category against the forecast. With no forecast for the year there is nothing to measure against, so no cell can be computed."
       >
-        <p className="text-sm text-amber-700">
-          No forecast exists for FY{fullYearReport.fiscal_year}, so there is nothing to measure
-          these categories against. Every cell would read 0%, which is not the same as being on
-          track.
-        </p>
+        <p className="text-sm text-amber-700">{unavailable}</p>
       </ChartCard>
     )
   }
@@ -103,8 +137,8 @@ export default function VarianceHeatmapChart({ fullYearReport }: Props) {
 
   return (
     <ChartCard
-      title={`${yardstick} Variance Heatmap`}
-      subtitle="Green = favorable, Red = unfavorable variance by category and month"
+      title={heatmapTitle(fullYearReport)}
+      subtitle={HEATMAP_SUBTITLE}
       tooltip={`A quick way to spot trouble. Each cell shows how far actual results are from ${yardstick.toLowerCase()} for that category and month. Green means you're on track or better, red means you're over ${yardstick.toLowerCase()}. Hover on a cell for the exact numbers.`}
     >
       <div className="overflow-x-auto">

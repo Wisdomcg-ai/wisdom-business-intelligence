@@ -7,7 +7,13 @@ import { transformCashflowToChartData, CASHFLOW_CHART_COLORS, CASHFLOW_CHART_SER
 import { transformRevenueBreakdownData } from '../components/charts/RevenueBreakdownChart'
 import { transformBreakEvenData } from '../components/charts/BreakEvenChart'
 import { transformRevenueVsExpensesData } from '../components/charts/RevenueVsExpensesTrendChart'
-import { transformVarianceHeatmapData } from '../components/charts/VarianceHeatmapChart'
+import {
+  transformVarianceHeatmapData,
+  heatmapTitle,
+  heatmapUnavailableReason,
+  HEATMAP_SUBTITLE,
+  HEATMAP_UNAVAILABLE_TITLE,
+} from '../components/charts/VarianceHeatmapChart'
 import { transformBurnRateData } from '../components/charts/BudgetBurnRateChart'
 import { transformAnalysisChartData, type AnalysisChartSection } from '../components/charts/analysis-chart-data'
 import { resolveSectionFilter, sectionTableTitle } from './section-table-config'
@@ -2541,14 +2547,26 @@ export class MonthlyReportPDFService {
     if (cells.length === 0) return
     this.addPage('landscape')
 
+    // The heading, the yardstick word and the refusal sentence all come from
+    // the chart component, because this page and the browser tab are the same
+    // chart. When only the tab learned that a missing forecast cannot be drawn,
+    // this page went on printing a five-by-twelve grid of on-track green for a
+    // client whose forecast does not exist.
+    const unavailable = heatmapUnavailableReason(fy)
+
     this.doc.setFontSize(14)
     this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Budget Variance Heatmap', this.margin, this.yPosition)
+    this.doc.text(unavailable ? HEATMAP_UNAVAILABLE_TITLE : heatmapTitle(fy), this.margin, this.yPosition)
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
-    this.doc.text('Green = favorable, Red = unfavorable variance by category and month', this.margin, this.yPosition)
+    this.doc.text(unavailable ? 'Not available for this month' : HEATMAP_SUBTITLE, this.margin, this.yPosition)
     this.yPosition += 10
+
+    if (unavailable) {
+      this.drawReasonCard(unavailable)
+      return
+    }
 
     const gridLeft = this.margin + 35
     const gridRight = this.pageWidth - this.margin
