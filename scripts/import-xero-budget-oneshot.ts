@@ -88,13 +88,33 @@ async function verifyAndMaybeLock(doLock: boolean) {
   }
 
   const v = versions[0]
-  const { data: lines, error: linesErr } = await admin
-    .from('budget_lines')
-    .select('month, category, amount')
-    .eq('budget_version_id', v.id)
-  if (linesErr) { console.error(`Could not read budget_lines: ${linesErr.message}`); process.exit(1) }
-
-  const rows = (lines ?? []) as Array<{ month: string; category: string | null; amount: number }>
+  // Paged the way fetchAllBudgetLines does, and for the same reason: budget_lines
+  // is one row per account per month, so PostgREST's 1000-row cap is twelve
+  // times closer than it looks. A version with 84 accounts is 1008 rows, and an
+  // un-ranged read printed "STORED LINES: 1000" with per-month subtotals
+  // quietly short — from the tool whose whole job is CERTIFYING the numbers
+  // before the version is locked and shipped. Urban Road is at 61 accounts and
+  // Distinct Directions at 52; the next import past 84 would have shipped a
+  // budget smaller than the one the client approved, and said nothing.
+  //
+  // The .order() is load-bearing, not decoration. Without a total order the
+  // pages do not partition the rows: PostgREST may return the same row on two
+  // pages and drop another entirely, so the 1000 that arrived would be an
+  // arbitrary subset rather than the first thousand.
+  const rows: Array<{ month: string; category: string | null; amount: number }> = []
+  const PAGE = 1000
+  for (let from = 0; ; from += PAGE) {
+    const { data: page, error: linesErr } = await admin
+      .from('budget_lines')
+      .select('month, category, amount')
+      .eq('budget_version_id', v.id)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (linesErr) { console.error(`Could not read budget_lines: ${linesErr.message}`); process.exit(1) }
+    if (!page || page.length === 0) break
+    rows.push(...(page as Array<{ month: string; category: string | null; amount: number }>))
+    if (page.length < PAGE) break
+  }
   const byMonth = new Map<string, Map<string, number>>()
   for (const r of rows) {
     const cat = r.category ?? '(unclassified)'
