@@ -3,6 +3,7 @@
 import { Fragment, useState } from 'react'
 import { ChevronRight, Loader2, Users, Settings } from 'lucide-react'
 import type { WagesDetailData } from '../types'
+import { wagesYardstick, wagesEmployeeYardstick } from '../utils/budget-yardstick'
 
 interface WagesAnalysisTabProps {
   data: WagesDetailData | null
@@ -104,16 +105,39 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
 
   const totalVariance = totalBudget - totalActual
 
+  // The word over the money, and the availability guard under it. Both columns
+  // called "Budget" on this page used to name whatever forecast_pl_lines and
+  // forecast_employees happened to hold — including nothing at all, which the
+  // page reported as a 100% favourable variance on wages.
+  const yardstick = wagesYardstick(data.budget_provenance)
+  const empYardstick = wagesEmployeeYardstick(
+    data.budget_provenance,
+    data.employee_plan_available ?? true,
+  )
+  const dash = <span className="text-gray-400">—</span>
+  const budgetCell = (v: number) => (yardstick.available ? (v ? fmt(v) : dash) : dash)
+  const empBudgetCell = (v: number) => (empYardstick.available ? (v ? fmt(v) : dash) : dash)
+
   return (
     <div className="space-y-4">
       {/* Account Summary */}
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        {yardstick.absentNote && (
+          <div className="p-4 bg-amber-50 border-b border-amber-200">
+            <p className="text-sm text-amber-800">{yardstick.absentNote}</p>
+          </div>
+        )}
+        {yardstick.note && (
+          <div className="px-4 py-2 bg-slate-50 border-b border-slate-200">
+            <p className="text-xs text-gray-600">{yardstick.note}</p>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="bg-brand-navy text-white text-xs">
                 <th className="px-4 py-3 text-left font-semibold">Account</th>
-                <th className="px-4 py-3 text-right font-semibold">Budget</th>
+                <th className="px-4 py-3 text-right font-semibold">{yardstick.columnLabel}</th>
                 <th className="px-4 py-3 text-right font-semibold">Actual</th>
                 <th className="px-4 py-3 text-right font-semibold">Var ($)</th>
               </tr>
@@ -122,16 +146,18 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
               {data.accounts.map((account) => (
                 <tr key={account.account_name} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="px-4 py-2 text-sm text-gray-900">{account.account_name}</td>
-                  <td className="px-4 py-2 text-sm text-right text-gray-600">{account.budget ? fmt(account.budget) : '—'}</td>
+                  <td className="px-4 py-2 text-sm text-right text-gray-600">{budgetCell(account.budget)}</td>
                   <td className="px-4 py-2 text-sm text-right font-medium text-gray-900">{fmt(account.actual)}</td>
-                  <td className={`px-4 py-2 text-sm text-right ${varianceColor(account.variance)}`}>{fmt(account.variance)}</td>
+                  <td className={`px-4 py-2 text-sm text-right ${yardstick.available ? varianceColor(account.variance) : ''}`}>
+                    {yardstick.available ? fmt(account.variance) : dash}
+                  </td>
                 </tr>
               ))}
               <tr className="bg-brand-navy text-white font-semibold">
                 <td className="px-4 py-3 text-sm">Total</td>
-                <td className="px-4 py-3 text-sm text-right">{fmt(data.grand_total.budget)}</td>
+                <td className="px-4 py-3 text-sm text-right">{yardstick.available ? fmt(data.grand_total.budget) : '—'}</td>
                 <td className="px-4 py-3 text-sm text-right">{fmt(data.grand_total.actual)}</td>
-                <td className="px-4 py-3 text-sm text-right">{fmt(data.grand_total.variance)}</td>
+                <td className="px-4 py-3 text-sm text-right">{yardstick.available ? fmt(data.grand_total.variance) : '—'}</td>
               </tr>
             </tbody>
           </table>
@@ -141,6 +167,16 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
       {/* Employee Pay Run Table */}
       {visibleEmployees.length > 0 && (
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+          {empYardstick.absentNote && (
+            <div className="p-4 bg-amber-50 border-b border-amber-200">
+              <p className="text-sm text-amber-800">{empYardstick.absentNote}</p>
+            </div>
+          )}
+          {empYardstick.note && (
+            <div className="px-4 py-2 bg-slate-50 border-b border-slate-200">
+              <p className="text-xs text-gray-600">{empYardstick.note}</p>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -152,7 +188,7 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
                     </th>
                   ))}
                   <th className="px-4 py-3 text-right font-semibold">Total Paid</th>
-                  <th className="px-4 py-3 text-right font-semibold">Budget</th>
+                  <th className="px-4 py-3 text-right font-semibold">{empYardstick.columnLabel}</th>
                   <th className="px-4 py-3 text-right font-semibold">Var ($)</th>
                 </tr>
               </thead>
@@ -200,10 +236,10 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
                           {emp.actual_total ? fmt(emp.actual_total) : '—'}
                         </td>
                         <td className="px-4 py-2 text-sm text-right text-gray-600">
-                          {emp.budget_total ? fmt(emp.budget_total) : '—'}
+                          {empBudgetCell(emp.budget_total)}
                         </td>
-                        <td className={`px-4 py-2 text-sm text-right font-medium ${varianceColor(emp.variance)}`}>
-                          {emp.budget_total || emp.actual_total ? fmt(emp.variance) : '—'}
+                        <td className={`px-4 py-2 text-sm text-right font-medium ${empYardstick.available ? varianceColor(emp.variance) : ''}`}>
+                          {empYardstick.available && (emp.budget_total || emp.actual_total) ? fmt(emp.variance) : dash}
                         </td>
                       </tr>
                       {isExpanded && (
@@ -243,8 +279,8 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
                     <td key={d} className="px-4 py-3 text-sm text-right">{fmt(colTotals[d])}</td>
                   ))}
                   <td className="px-4 py-3 text-sm text-right">{fmt(totalActual)}</td>
-                  <td className="px-4 py-3 text-sm text-right">{fmt(totalBudget)}</td>
-                  <td className="px-4 py-3 text-sm text-right">{fmt(totalVariance)}</td>
+                  <td className="px-4 py-3 text-sm text-right">{empYardstick.available ? fmt(totalBudget) : '—'}</td>
+                  <td className="px-4 py-3 text-sm text-right">{empYardstick.available ? fmt(totalVariance) : '—'}</td>
                 </tr>
               </tbody>
             </table>
@@ -299,7 +335,15 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
       {data.payroll_available && (
         <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
           <p className="text-xs text-blue-800">
-            Actuals sourced from Xero PayRun data. Budget from forecast employees.
+            Actuals sourced from Xero PayRun data.{' '}
+            {yardstick.available
+              ? `The account ${yardstick.columnLabel.toLowerCase()} comes from ${
+                  data.budget_provenance?.source === 'budget_version'
+                    ? 'the approved budget'
+                    : 'the forecast'
+                }.`
+              : 'There is no budget for this month — see the note above the accounts.'}
+            {empYardstick.available && ' The per-employee column comes from the forecast’s employee plan.'}
           </p>
         </div>
       )}

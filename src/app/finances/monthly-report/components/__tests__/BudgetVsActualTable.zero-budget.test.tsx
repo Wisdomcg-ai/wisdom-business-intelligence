@@ -86,7 +86,7 @@ describe('BudgetVsActualTable — no budget (the Envisage Mar-26 shape)', () => 
 
   it('leads with the explanation banner instead of trailing the table', () => {
     const { container } = render(<BudgetVsActualTable report={reportWith({})} />)
-    const banner = screen.getByText(/No budget forecast found/)
+    const banner = screen.getByText(/No budget for this month/)
     const table = container.querySelector('table')
     expect(banner).toBeTruthy()
     expect(table).toBeTruthy()
@@ -94,6 +94,25 @@ describe('BudgetVsActualTable — no budget (the Envisage Mar-26 shape)', () => 
     expect(
       banner.compareDocumentPosition(table!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+  })
+
+  it('says WHY, in the sentence the PDF page prints', () => {
+    // `no_budget_reason` is the resolver's own answer and had no consumers at
+    // all: the banner said "no budget forecast found" to a client on the
+    // budget store whose locked version simply is not in force yet.
+    render(
+      <BudgetVsActualTable
+        report={reportWith({ budget_source: 'none', no_budget_reason: 'version_not_yet_effective' })}
+      />,
+    )
+    expect(
+      screen.getByText(/the approved budget version takes effect after this month/),
+    ).toBeTruthy()
+  })
+
+  it('names the fiscal year when the reason is a missing forecast', () => {
+    render(<BudgetVsActualTable report={reportWith({ no_budget_reason: null })} />)
+    expect(screen.getByText(/no active forecast was found for FY2026/)).toBeTruthy()
   })
 })
 

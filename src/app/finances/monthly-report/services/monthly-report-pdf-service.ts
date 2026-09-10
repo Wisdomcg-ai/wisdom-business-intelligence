@@ -1,16 +1,27 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import * as Sentry from '@sentry/nextjs'
 import type { GeneratedReport, ReportSection, ReportLine, MonthlyReportSettings, ReportSections, VarianceCommentary, FullYearReport, SubscriptionDetailData, WagesDetailData } from '../types'
 import type { CashflowForecastData } from '@/app/finances/forecast/types'
 import { transformCashflowToChartData, CASHFLOW_CHART_COLORS, CASHFLOW_CHART_SERIES } from '@/app/finances/forecast/utils/cashflow-chart-data'
 import { transformRevenueBreakdownData } from '../components/charts/RevenueBreakdownChart'
 import { transformBreakEvenData } from '../components/charts/BreakEvenChart'
 import { transformRevenueVsExpensesData } from '../components/charts/RevenueVsExpensesTrendChart'
-import { transformVarianceHeatmapData } from '../components/charts/VarianceHeatmapChart'
-import { transformBurnRateData } from '../components/charts/BudgetBurnRateChart'
+import {
+  transformVarianceHeatmapData,
+  heatmapTitle,
+  heatmapUnavailableReason,
+  HEATMAP_SUBTITLE,
+  HEATMAP_UNAVAILABLE_TITLE,
+} from '../components/charts/VarianceHeatmapChart'
+import {
+  transformBurnRateData,
+  burnRateYardstick,
+  burnRateSubtitle,
+} from '../components/charts/BudgetBurnRateChart'
 import { transformAnalysisChartData, type AnalysisChartSection } from '../components/charts/analysis-chart-data'
 import { resolveSectionFilter, sectionTableTitle } from './section-table-config'
-import { annotateStandingLines } from '../utils/standing-commentary'
+import { annotateStandingLines, pickStandingCommentaryHost } from '../utils/standing-commentary'
 import { buildConsolidatedRows } from '../utils/consolidated-rows'
 import { transformCashRunwayData } from '../components/charts/CashRunwayChart'
 import { transformCumulativeNetCashData } from '../components/charts/CumulativeNetCashChart'
@@ -23,6 +34,18 @@ import type { PDFLayout, WidgetType, WidgetBoundingBox } from '../types/pdf-layo
 import { GRID_CONFIG } from '../types/pdf-layout'
 import { calculateBoundingBox, normalizeLayoutPlacements } from '../utils/grid-helpers'
 import { WIDGET_METHOD_MAP } from './widget-renderer'
+import { assessBalanceSheetForPdf, type BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
+import { statementYardstick, wagesYardstick, wagesEmployeeYardstick, noBudgetNote } from '../utils/budget-yardstick'
+import {
+  hasApprovedBudget,
+  formatApprovedAnnual,
+  hasForecastBudget,
+  formatForecastValue,
+  forecastAbsentNote,
+  forwardSeriesAbsentNote,
+  VALUE_ABSENT,
+} from '../utils/full-year-approved'
+import type { BalanceSheetCompare, BalanceSheetData } from '../types'
 
 interface PDFOptions {
   commentary?: VarianceCommentary
@@ -40,6 +63,13 @@ interface PDFOptions {
   moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
   /** WD.6 — the consolidated report (per-entity columns) for consolidation parents. */
   consolidated?: import('../utils/consolidated-rows').ConsolidatedReportVM
+  /**
+   * WG.1 — the balance sheet, keyed by comparison mode. Two entries because
+   * the endpoint answers one comparison at a time; a placed widget reads the
+   * one its config.compare names. An entry with `data: null` still carries a
+   * `reason`, and the page prints that reason instead of the table.
+   */
+  balanceSheets?: BalanceSheetPdfSources
   /** WF.4 — true when this month's budget was back-filled from actuals: the
    *  cover must say so, because a ~0% variance is an echo, not performance. */
   budgetBackfilled?: boolean
@@ -104,6 +134,15 @@ export class MonthlyReportPDFService {
   private margin: number = 15
   private yPosition: number = 15
   private skipNextAddPage: boolean = false
+  /**
+   * The layout being rendered right now, or null on the legacy page order.
+   * Set by generateFromLayout and cleared when it throws, because the fallback
+   * runs the hard-coded order and must not be reasoned about as if the layout
+   * were still in force.
+   */
+  private activeLayout: PDFLayout | null = null
+  /** Memoised — see standingHostWidgetId. `undefined` = not computed yet. */
+  private standingHostId: string | null | undefined = undefined
 
   constructor(report: GeneratedReport, options?: PDFOptions) {
     // Start portrait — first page is executive summary
@@ -125,8 +164,26 @@ export class MonthlyReportPDFService {
         try {
           return this.generateFromLayout(this.options.pdfLayout)
         } catch (err) {
+          // This fallback is silent by construction: it discards the layout,
+          // rebuilds the doc, and runs the hard-coded legacy page order. The
+          // coach gets a complete, plausible PDF in the WRONG order and is
+          // told nothing — one bad widget and a pack ships that nobody knows
+          // is off-spec. Keep the fallback (a PDF beats no PDF), but never let
+          // it be the only record that it happened.
+          Sentry.captureException(err, {
+            tags: { invariant: 'pdf-layout-fallback' },
+            extra: {
+              context: '[PDF] Layout-driven generation failed — fell back to the legacy page order',
+              reportMonth: this.report?.report_month,
+              pageCount: this.options.pdfLayout?.pages?.length,
+            },
+          } as any)
           console.error('[PDF] Layout-driven generation failed, falling back to default:', err)
-          // Reset the doc for default generation
+          // Reset the doc for default generation. The layout is no longer in
+          // force, and anything that reads it — the standing-commentary host,
+          // for one — must go back to the legacy answer.
+          this.activeLayout = null
+          this.standingHostId = undefined
           this.doc = new jsPDF('portrait', 'mm', 'a4')
           this.pageWidth = A4_SHORT
           this.pageHeight = A4_LONG
@@ -178,6 +235,25 @@ export class MonthlyReportPDFService {
     }
     if (this.options.fullYearReport) {
       this.addFullYearProjection()
+    }
+
+    // WG.1 — the two balance sheets (Calxa pages 19-22), in the position
+    // generateDefaultLayout gives them: after the full-year projection.
+    //
+    // They were reachable ONLY from a hand-written layout. generate() is what
+    // runs whenever pdf_layout is null — which is every client today, Urban
+    // Road included — and it never called addBalanceSheetPage, while page.tsx
+    // fired two live Xero balance-sheet round-trips the moment
+    // sections.balance_sheet was on. Urban Road, Just Digital Signage and
+    // Precision paid for the fetches and got no pages. Nobody should have to
+    // hand-write a layout to get a page their settings say is on.
+    //
+    // Gated on the flag alone, not on the sheets having loaded: an export that
+    // did not fetch them prints the page and says why, which is the same three
+    // states the widget path has.
+    if (sec?.balance_sheet) {
+      this.addBalanceSheetPage('mom')
+      this.addBalanceSheetPage('yoy')
     }
 
     // WD.1 — the Calxa Actual/Budget/Last-Year analysis charts (Income, COGS,
@@ -449,22 +525,19 @@ export class MonthlyReportPDFService {
 
     // The proof line. Residual is zero by construction; if it ever isn't,
     // say so in amber rather than pretending.
-    this.doc.setFontSize(8.5)
-    this.doc.setFont('helvetica', 'normal')
     if (Math.abs(flow.continuity_residual) <= 0.01) {
-      this.doc.setTextColor(90, 90, 90)
-      this.doc.text(
+      this.drawNote(
         'These two columns explain the bank movement exactly — they are your balance sheet in motion.',
-        this.margin, this.yPosition,
+        undefined,
+        { fontSize: 8.5, color: [90, 90, 90] },
       )
     } else {
-      this.doc.setTextColor(146, 64, 14)
-      this.doc.text(
+      this.drawNote(
         `Note: the columns differ from the bank movement by ${this.fmtCurrency(flow.continuity_residual)} — treat this page as indicative this month.`,
-        this.margin, this.yPosition,
+        undefined,
+        { fontSize: 8.5, color: [146, 64, 14] },
       )
     }
-    this.doc.setTextColor(0, 0, 0)
   }
 
   renderMoneyFlow(box: WidgetBoundingBox): void {
@@ -546,20 +619,241 @@ export class MonthlyReportPDFService {
     // currency; say so instead of leaving HKD figures to be misread.
     const translated = tenants.filter(t => t.functional_currency && t.functional_currency !== vm.business.presentation_currency)
     if (translated.length > 0) {
+      // One clause per translated entity — IICT has three orgs — so this line
+      // grows with the consolidation and has to wrap.
       const y = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 5
-      this.doc.setFontSize(7.5)
-      this.doc.setFont('helvetica', 'normal')
-      this.doc.setTextColor(90, 90, 90)
-      this.doc.text(
+      this.drawNote(
         `${translated.map(t => `${t.display_name} translated from ${t.functional_currency}`).join(' · ')} — all figures in ${vm.business.presentation_currency} at monthly-average rates.`,
-        this.margin, y,
+        y,
+        { color: [90, 90, 90] },
       )
-      this.doc.setTextColor(0, 0, 0)
     }
   }
 
   renderConsolidatedPL(box: WidgetBoundingBox): void {
     this.renderWithSkipPage(this.addConsolidatedPLPage, box)
+  }
+
+  // =====================================================================
+  // Balance Sheet (WG.1, PORTRAIT) — Calxa pages 19-22
+  // =====================================================================
+  // Two placements of ONE widget: config.compare = 'mom' (vs prior month) or
+  // 'yoy' (vs same month last year). The rows come straight off
+  // /api/Xero/balance-sheet in the order the route emits them, so the page
+  // carries whatever section grouping Xero gives — including the sections a
+  // client hasn't mapped, which is the "New unmapped Asset / Liability" block
+  // Calxa prints. Grouping, subtotal set, ordering and sign conventions are
+  // NOT re-derived here: BalanceSheetTab renders the same array the same way,
+  // and a PDF page that disagrees with the tab above it is the defect this
+  // widget was written to avoid.
+  private addBalanceSheetPage(compare: BalanceSheetCompare): void {
+    const verdict = assessBalanceSheetForPdf(this.options.balanceSheets?.[compare], compare)
+    this.addPage('portrait')
+
+    const heading = compare === 'mom' ? 'vs Prior Month' : 'vs Same Month Last Year'
+    this.doc.setFontSize(14)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.text(
+      `Balance Sheet ${heading} — ${this.formatMonth(this.report.report_month)}`,
+      this.margin, this.yPosition,
+    )
+    this.yPosition += 8
+
+    if (!verdict.ok) {
+      // The honest card, same shape as Where Did Our Money Go. Reserved for
+      // there being nothing to print at all — Xero refused, the month is empty,
+      // the comparison period does not exist. Never a half-table, never a
+      // column of zeros: the page says what went wrong and stops.
+      this.drawReasonCard(`This page couldn't be produced: ${verdict.reason}.`)
+      return
+    }
+
+    // A sheet that does not add up — or one whose totals we cannot identify well
+    // enough to check — still has figures, and withholding them makes the pack
+    // disagree with the tab the coach is looking at, which shows the full table
+    // under its banners. State what is wrong above the table and print the
+    // table. "Could not check" is a third state alongside the value, not a
+    // replacement for it. Both banners the tab can raise come through here, so
+    // a sheet 13c out cannot warn the coach and reassure the client.
+    if (verdict.warnings.length > 0) this.drawWarningCard(verdict.warnings.join(' '))
+
+    const bs = verdict.data
+    this.renderBalanceSheetTable(bs)
+
+    const y = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 6
+    this.drawNote(
+      'Sourced from Xero · Negatives shown in (brackets) · % Variance is N/A when the prior period is zero',
+      y,
+    )
+  }
+
+  /**
+   * The amber "couldn't check" card. A page that cannot be produced must still
+   * be a page, and must say why in words the owner can act on.
+   */
+  private drawReasonCard(message: string): void {
+    const width = this.pageWidth - this.margin * 2
+    this.doc.setFontSize(10)
+    this.doc.setFont('helvetica', 'normal')
+    const lines: string[] = this.doc.splitTextToSize(message, width - 10)
+    // Height follows the text. It used to be a fixed 26mm, which fits two
+    // lines: a longer reason ran out through the bottom of its own box.
+    const lineHeight = (this.doc.getFontSize() * 1.15) / (this.doc as any).internal.scaleFactor
+    const height = Math.max(26, 10 + lines.length * lineHeight)
+    this.doc.setFillColor(251, 243, 228)
+    this.doc.setDrawColor(224, 174, 92)
+    this.doc.roundedRect(this.margin, this.yPosition, width, height, 2, 2, 'FD')
+    this.doc.setTextColor(138, 94, 18)
+    this.doc.text(lines, this.margin + 5, this.yPosition + 8)
+    this.doc.setTextColor(0, 0, 0)
+    this.yPosition += height + 6
+  }
+
+  /**
+   * The red band that sits ON TOP of a table, for figures that are real but
+   * cannot be trusted to add up. Deliberately the same red and the same
+   * sentence shape as BalanceSheetTab's banner: the page below it is still the
+   * page, and the reader is told what is wrong with it rather than being
+   * handed a sentence where the numbers should be.
+   */
+  private drawWarningCard(message: string): void {
+    const width = this.pageWidth - this.margin * 2
+    this.doc.setFontSize(9)
+    this.doc.setFont('helvetica', 'bold')
+    const lines: string[] = this.doc.splitTextToSize(message, width - 10)
+    const height = 8 + lines.length * 4.5
+    this.doc.setFillColor(254, 242, 242)
+    this.doc.setDrawColor(220, 108, 108)
+    this.doc.roundedRect(this.margin, this.yPosition, width, height, 2, 2, 'FD')
+    this.doc.setTextColor(153, 27, 27)
+    this.doc.text(lines, this.margin + 5, this.yPosition + 6)
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.setFont('helvetica', 'normal')
+    this.yPosition += height + 4
+  }
+
+  /**
+   * A grey note line under a heading or a table — WRAPPED.
+   *
+   * jsPDF's `text()` does not wrap: a string wider than the page runs off the
+   * paper and the overflow is simply not printed. Urban Road's yardstick note
+   * is 179 characters on a PORTRAIT page, and the half that got cut was the
+   * half naming the yardstick — the reason the note exists. Every note this
+   * pack draws goes through here so that cannot happen again.
+   *
+   * Pass `y` to draw at a computed position (under a table) without moving
+   * this.yPosition; the bottom of the block is returned either way, so a
+   * caller can put something under it.
+   */
+  private drawNote(
+    message: string,
+    y?: number,
+    opts?: { fontSize?: number; color?: [number, number, number] },
+  ): number {
+    const width = this.pageWidth - this.margin * 2
+    const [r, g, b] = opts?.color ?? [107, 114, 128]
+    this.doc.setFontSize(opts?.fontSize ?? 7.5)
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setTextColor(r, g, b)
+    const lines: string[] = this.doc.splitTextToSize(message, width)
+    const top = y ?? this.yPosition
+    this.doc.text(lines, this.margin, top)
+    this.doc.setTextColor(0, 0, 0)
+    const lineHeight = (this.doc.getFontSize() * 1.15) / (this.doc as any).internal.scaleFactor
+    const bottom = top + lines.length * lineHeight + 1.5
+    if (y === undefined) this.yPosition = bottom
+    return bottom
+  }
+
+  /** Formatting mirrors BalanceSheetTab: no currency symbol, no decimals,
+   *  negatives in (brackets). Calxa prints the same. */
+  private fmtBsAmount(value: number | null): string {
+    if (value === null) return '—'
+    const abs = Math.abs(value)
+    const formatted = abs.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+    return value < 0 ? `(${formatted})` : formatted
+  }
+
+  private fmtBsPct(value: number | null): string {
+    if (value === null) return 'N/A'
+    const formatted = `${Math.round(Math.abs(value))}%`
+    return value < 0 ? `(${formatted})` : formatted
+  }
+
+  private renderBalanceSheetTable(bs: BalanceSheetData): void {
+    // autoTable can't see row semantics, so carry them alongside: didParseCell
+    // reads this by row index rather than sniffing the rendered label text.
+    const kinds = bs.rows.map(r => r.type)
+
+    const body = bs.rows.map((r) => {
+      if (r.type === 'section_header') return [r.label, '', '', '', '']
+      return [
+        r.label,
+        this.fmtBsAmount(r.current),
+        this.fmtBsAmount(r.prior),
+        this.fmtBsAmount(r.variance),
+        this.fmtBsPct(r.variance_pct),
+      ]
+    })
+
+    autoTable(this.doc, {
+      startY: this.yPosition,
+      head: [
+        ['', bs.current_label, bs.prior_label || '—', 'Variance', '% Variance'],
+        ['', 'Actuals', 'Actuals', '', ''],
+      ],
+      body,
+      theme: 'grid',
+      headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold', fontSize: 7.5, halign: 'right' },
+      bodyStyles: { fontSize: 8 },
+      columnStyles: {
+        0: { cellWidth: 70, halign: 'left' },
+        1: { halign: 'right' },
+        2: { halign: 'right' },
+        3: { halign: 'right' },
+        4: { halign: 'right' },
+      },
+      margin: { left: this.margin, right: this.margin },
+      didParseCell: (data) => {
+        if (data.section === 'head') {
+          if (data.column.index === 0) data.cell.styles.halign = 'left'
+          if (data.row.index === 1) data.cell.styles.fontStyle = 'normal'
+          return
+        }
+        const kind = kinds[data.row.index]
+        if (kind === 'section_header') {
+          data.cell.styles.fontStyle = 'italic'
+          data.cell.styles.textColor = [150, 150, 150]
+        } else if (kind === 'subtotal') {
+          data.cell.styles.fontStyle = 'bold'
+          data.cell.styles.fillColor = [243, 244, 246]
+        } else if (kind === 'net_assets') {
+          data.cell.styles.fontStyle = 'bold'
+          data.cell.styles.fillColor = GP_BLUE
+        } else if (data.column.index === 0) {
+          // Line items sit under their section header, as in the web tab.
+          data.cell.styles.cellPadding = { top: 1, right: 2, bottom: 1, left: 4 }
+        }
+        // Red for genuinely negative figures only — '—' and 'N/A' are neither
+        // negative nor zero, and must not be tinted as if they were.
+        const text = String(data.cell.raw ?? '')
+        if (data.column.index > 0 && text.startsWith('(')) {
+          data.cell.styles.textColor = [185, 28, 28]
+        }
+      },
+    })
+  }
+
+  /**
+   * WG.1 — layout-mode dispatch. config.compare picks the comparison column;
+   * a widget with no config (the one syncLayoutWithSettings auto-adds when the
+   * balance-sheet section is switched on) is the prior-month page, which is
+   * the first of the two in the Calxa pack.
+   */
+  renderBalanceSheet(box: WidgetBoundingBox, widget?: import('../types/pdf-layout').LayoutWidget): void {
+    const compare: BalanceSheetCompare = widget?.config?.compare === 'yoy' ? 'yoy' : 'mom'
+    this.renderWithSkipPage(() => this.addBalanceSheetPage(compare), box)
   }
 
   // =====================================================================
@@ -617,6 +911,11 @@ export class MonthlyReportPDFService {
     const hasAnnual = settings.show_budget_annual_total
 
     // ── Build header rows ──
+    // The word over the money. For a client on the budget store these columns
+    // are the APPROVED budget, and the Full Year page later in the same pack
+    // gives "Forecast" to a different number — so an unqualified "Budget" here
+    // is two columns a reader can reconcile the wrong way round.
+    const yardstick = statementYardstick(report)
     const navyStyle = { fillColor: NAVY as number[], textColor: [255, 255, 255] as number[], fontStyle: 'bold' as const, fontSize: 7 }
 
     const headerRow1: any[] = [
@@ -631,13 +930,13 @@ export class MonthlyReportPDFService {
     if (hasAnnual) headerRow1.push({ content: 'Budget\nAnnual', rowSpan: 2, styles: { ...navyStyle, halign: 'center' as const, fontSize: 6 } })
 
     const headerRow2: any[] = [
-      { content: 'Budget', styles: navyStyle },
+      { content: yardstick.columnLabel, styles: navyStyle },
       { content: 'Actual', styles: navyStyle },
       { content: 'Variance', styles: navyStyle },
     ]
     if (hasYtd) {
       headerRow2.push(
-        { content: 'Budget', styles: navyStyle },
+        { content: yardstick.columnLabel, styles: navyStyle },
         { content: 'Actual', styles: navyStyle },
         { content: 'Variance', styles: navyStyle },
       )
@@ -757,29 +1056,38 @@ export class MonthlyReportPDFService {
     })
 
     // Convert to table data
+    // Same three states as the rows on pages 4/6/10 and as ReportSummaryCards,
+    // which suppresses its Budget line entirely when there is no budget. This
+    // page is the one a client reads first.
     const tableBody: any[][] = rows.map(row => {
       const r: any[] = [
         row.label,
-        this.fmtCurrency(row.budget),
+        this.budgetCell(row.budget),
         this.fmtCurrency(row.actual),
-        this.fmtVariance(row.variance),
+        this.hasBudget ? this.fmtVariance(row.variance) : VALUE_ABSENT,
       ]
       if (hasYtd) {
         r.push(
-          this.fmtCurrency(row.ytdBudget),
+          this.budgetCell(row.ytdBudget),
           this.fmtCurrency(row.ytdActual),
-          this.fmtVariance(row.ytdVariance),
+          this.hasBudget ? this.fmtVariance(row.ytdVariance) : VALUE_ABSENT,
         )
       }
-      if (hasUnspent) r.push(this.fmtCurrency(row.unspent))
-      if (hasNextMonth) r.push(this.fmtCurrency(row.nextMonth))
-      if (hasAnnual) r.push(this.fmtCurrency(row.annual))
+      if (hasUnspent) r.push(this.budgetCell(row.unspent))
+      if (hasNextMonth) r.push(this.budgetCell(row.nextMonth))
+      if (hasAnnual) r.push(this.budgetCell(row.annual))
       return r
     })
 
     // Determine which column indices are variance columns
     const varianceCols: number[] = [3] // monthly variance
     if (hasYtd) varianceCols.push(6) // YTD variance
+
+    // Names the yardstick for the columns too narrow to rename — Unspent
+    // Budget, Budget Next Mth, Budget Annual. Null, and so absent, for every
+    // client with only one yardstick in their pack.
+    this.drawNoBudgetNotice()
+    if (yardstick.note) this.drawNote(yardstick.note)
 
     autoTable(this.doc, {
       startY: this.yPosition,
@@ -870,7 +1178,10 @@ export class MonthlyReportPDFService {
   // =====================================================================
   // Page 2+: Budget vs Actual Detail (LANDSCAPE — many columns)
   // =====================================================================
-  private addBudgetVsActualDetail(sectionFilter?: import('../types').ReportCategory[] | null): void {
+  private addBudgetVsActualDetail(
+    sectionFilter?: import('../types').ReportCategory[] | null,
+    widgetId?: string,
+  ): void {
     // WD.2 — an optional section scope turns the full statement into the
     // Calxa-style per-section table ("Income Analysis | Table" etc.). Filtered
     // tables show lines + subtotals only: Gross Profit and Net Profit are
@@ -886,12 +1197,20 @@ export class MonthlyReportPDFService {
     this.doc.text(`${title} — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
     this.yPosition += 8
 
-    const headers: string[] = ['Account', 'Budget', 'Actual', 'Var ($)', 'Var (%)']
+    // These are pack pages 4, 6 and 10 — the most-read pages in it. For a
+    // client on the budget store this column IS the approved budget, and the
+    // Full Year page at 16 reserves that name for it while giving "Forecast"
+    // to something else. Unqualified, the two invite the wrong reconciliation.
+    const yardstick = statementYardstick(this.report)
+    this.drawNoBudgetNotice()
+    if (yardstick.note) this.drawNote(yardstick.note)
+
+    const headers: string[] = ['Account', yardstick.columnLabel, 'Actual', 'Var ($)', 'Var (%)']
     const varianceCols = [3, 4] // Var ($) and Var (%)
     let nextCol = 5
 
     if (settings.show_ytd) {
-      headers.push('YTD Budget', 'YTD Actual', 'YTD Var ($)', 'YTD Var (%)')
+      headers.push(yardstick.ytdColumnLabel, 'YTD Actual', 'YTD Var ($)', 'YTD Var (%)')
       varianceCols.push(nextCol + 2, nextCol + 3)
       nextCol += 4
     }
@@ -1009,10 +1328,13 @@ export class MonthlyReportPDFService {
       },
     })
 
-    // WD.3 — standing "refer to …" lines, statement view only. A line whose
-    // target page is not in this pack renders WITH a warning marker (visible,
-    // never silent).
-    if (!filter) {
+    // WD.3 — standing "refer to …" lines, under exactly ONE table in the pack.
+    // Which one is standingHostWidgetId's call; under the Calxa page order
+    // there is no unfiltered statement to host them and they used to vanish. A
+    // line whose target page is not in this pack renders WITH a warning marker
+    // (visible, never silent).
+    const standingHost = this.standingHostWidgetId()
+    if (standingHost === null ? !filter : widgetId === standingHost) {
       const standing = annotateStandingLines(
         this.report.settings.standing_commentary ?? [],
         this.packPageLabels(),
@@ -1020,6 +1342,7 @@ export class MonthlyReportPDFService {
       if (standing.length > 0) {
         let y = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 6
         this.doc.setFontSize(8)
+        const available = this.pageWidth - this.margin * 2
         for (const line of standing) {
           if (y > this.pageHeight - this.margin - 6) {
             this.addPage('landscape')
@@ -1034,7 +1357,23 @@ export class MonthlyReportPDFService {
             ? ` — refer to the ${line.refer_to} page`
             : ` — refer to ${line.refer_to} (page not in this pack)`
           if (!line.in_pack) this.doc.setTextColor(185, 28, 28)
-          this.doc.text(suffix, this.margin + labelWidth, y)
+          // Both halves are coach-entered free text (the account name and the
+          // page it refers to), so the pair can be wider than the paper. The
+          // first fragment sits after the bold label; the rest wraps to the
+          // margin instead of running off the edge.
+          const suffixLines: string[] = this.doc.splitTextToSize(
+            suffix,
+            Math.max(20, available - labelWidth),
+          )
+          this.doc.text(suffixLines[0] ?? '', this.margin + labelWidth, y)
+          for (const extra of suffixLines.slice(1)) {
+            y += 4.5
+            if (y > this.pageHeight - this.margin - 6) {
+              this.addPage('landscape')
+              y = this.yPosition
+            }
+            this.doc.text(extra, this.margin, y)
+          }
           y += 4.5
         }
         this.doc.setTextColor(0, 0, 0)
@@ -1054,7 +1393,14 @@ export class MonthlyReportPDFService {
     this.yPosition += 8
 
     const settings = this.report.settings
-    const headers = ['Account', 'YTD Budget', 'YTD Actual', 'YTD Var ($)', 'YTD Var (%)']
+    const ytdYardstick = statementYardstick(this.report)
+    // The note, not just the column head. This page renames its budget column
+    // and then pushes 'Unspent' and 'Annual' — budget-derived columns too
+    // narrow to rename, which is exactly what the note exists to name. Without
+    // it they were the last unqualified budget money in Urban Road's pack.
+    this.drawNoBudgetNotice()
+    if (ytdYardstick.note) this.drawNote(ytdYardstick.note)
+    const headers = ['Account', ytdYardstick.ytdColumnLabel, 'YTD Actual', 'YTD Var ($)', 'YTD Var (%)']
     const varianceCols = [3, 4]
     if (settings.show_unspent_budget) headers.push('Unspent')
     if (settings.show_budget_annual_total) headers.push('Annual')
@@ -1075,13 +1421,13 @@ export class MonthlyReportPDFService {
       for (const line of section.lines) {
         const row: any[] = [
           line.is_budget_only ? `${line.account_name} (budget only)` : line.account_name,
-          this.fmtCurrency(line.ytd_budget),
+          this.budgetCell(line.ytd_budget),
           this.fmtCurrency(line.ytd_actual),
-          this.fmtVariance(line.ytd_variance_amount),
-          this.fmtPct(line.ytd_variance_percent),
+          this.varianceCell(line.ytd_variance_amount),
+          this.variancePctCell(line.ytd_variance_percent, line.ytd_budget),
         ]
-        if (settings.show_unspent_budget) row.push(this.fmtCurrency(line.unspent_budget))
-        if (settings.show_budget_annual_total) row.push(this.fmtCurrency(line.budget_annual_total))
+        if (settings.show_unspent_budget) row.push(this.budgetCell(line.unspent_budget))
+        if (settings.show_budget_annual_total) row.push(this.budgetCell(line.budget_annual_total))
         tableData.push(row)
         currentBodyIdx++
       }
@@ -1090,13 +1436,13 @@ export class MonthlyReportPDFService {
       const st = section.subtotal
       const subtotalRow: any[] = [
         { content: st.account_name, styles: { fontStyle: 'bold' } },
-        this.fmtCurrency(st.ytd_budget),
+        this.budgetCell(st.ytd_budget),
         this.fmtCurrency(st.ytd_actual),
-        this.fmtVariance(st.ytd_variance_amount),
-        this.fmtPct(st.ytd_variance_percent),
+        this.varianceCell(st.ytd_variance_amount),
+        this.variancePctCell(st.ytd_variance_percent, st.ytd_budget),
       ]
-      if (settings.show_unspent_budget) subtotalRow.push(this.fmtCurrency(st.unspent_budget))
-      if (settings.show_budget_annual_total) subtotalRow.push(this.fmtCurrency(st.budget_annual_total))
+      if (settings.show_unspent_budget) subtotalRow.push(this.budgetCell(st.unspent_budget))
+      if (settings.show_budget_annual_total) subtotalRow.push(this.budgetCell(st.budget_annual_total))
       tableData.push(subtotalRow)
       currentBodyIdx++
     }
@@ -1121,6 +1467,32 @@ export class MonthlyReportPDFService {
       },
     })
 
+  }
+
+  /**
+   * WD.3 — which Budget-vs-Actual table the standing "refer to …" lines belong
+   * under, as a widget id (null = the legacy unfiltered statement).
+   *
+   * The lines used to render only under an UNFILTERED statement. The Calxa page
+   * order has no unfiltered page — only the three section-scoped tables at
+   * pages 4, 6 and 10 — so Matt's standing lines ("Wages & Salaries | Refer to
+   * Payroll Summary Page" and the two "refer to summary page" ones) disappeared
+   * from the pack entirely, while Calxa prints them under the expenses table.
+   *
+   * pickStandingCommentaryHost holds the ordering rule and the reasoning.
+   */
+  private standingHostWidgetId(): string | null {
+    if (this.standingHostId !== undefined) return this.standingHostId
+
+    const tables = (this.activeLayout?.pages ?? [])
+      .flatMap((page) => (Array.isArray(page.widgets) ? page.widgets : []))
+      .filter((w) => w.type === 'budget_vs_actual')
+      .map((w) => ({ id: w.id, filter: resolveSectionFilter(w.config) }))
+
+    // No layout, or a layout with no statement at all: null, and the caller
+    // falls back to the legacy flow's single unfiltered call.
+    this.standingHostId = pickStandingCommentaryHost(tables)
+    return this.standingHostId
   }
 
   /**
@@ -1243,17 +1615,33 @@ export class MonthlyReportPDFService {
     this.doc.text(`Wages Analysis — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
     this.yPosition += 8
 
-    const headers = ['Account Name', 'Budget', 'Actual', 'Var ($)', 'Var (%)']
+    // The word over the money, from the resolution the ROUTE used — the same
+    // helper, the same words as the browser tab. This page read
+    // forecast_pl_lines unconditionally until the budget moved behind the
+    // resolver, so on a budget-store client's pack an unqualified "Budget" here
+    // sat four pages from an "Approved Budget" naming a different number for
+    // the same account.
+    const yardstick = wagesYardstick(detail.budget_provenance)
+    if (yardstick.absentNote) this.drawReasonCard(yardstick.absentNote)
+    if (yardstick.note) this.drawNote(yardstick.note)
+
+    const headers = ['Account Name', yardstick.columnLabel, 'Actual', 'Var ($)', 'Var (%)']
     const varianceCols = [3, 4]
     const tableData: any[] = []
+    // Three states, the tab's: a figure, or a dash with the reason stated
+    // above. Never $0 — which on this page reads as "we budget nothing for our
+    // team" and turns the whole actual into a favourable variance.
+    const budgetCell = (v: number) => (yardstick.available ? this.fmtCurrency(v) : '—')
+    const varCell = (v: number) => (yardstick.available ? this.fmtVariance(v) : '—')
+    const pctCell = (v: number) => (yardstick.available ? this.fmtPct(v) : '—')
 
     for (const account of detail.accounts) {
       tableData.push([
         account.account_name,
-        this.fmtCurrency(account.budget),
+        budgetCell(account.budget),
         this.fmtCurrency(account.actual),
-        this.fmtVariance(account.variance),
-        this.fmtPct(account.variance_percent),
+        varCell(account.variance),
+        pctCell(account.variance_percent),
       ])
     }
 
@@ -1263,10 +1651,10 @@ export class MonthlyReportPDFService {
     const grandTotalIdx = tableData.length
     tableData.push([
       { content: 'Grand Total', styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
-      { content: this.fmtCurrency(detail.grand_total.budget), styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
+      { content: budgetCell(detail.grand_total.budget), styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
       { content: this.fmtCurrency(detail.grand_total.actual), styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
-      { content: this.fmtVariance(detail.grand_total.variance), styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
-      { content: this.fmtPct(gtVarPct), styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
+      { content: varCell(detail.grand_total.variance), styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
+      { content: pctCell(gtVarPct), styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
     ])
 
     autoTable(this.doc, {
@@ -1299,12 +1687,21 @@ export class MonthlyReportPDFService {
       this.doc.text('Employee Detail', this.margin, this.yPosition)
       this.yPosition += 6
 
-      const empHeaders = ['Employee', 'Total Paid', 'Budget', 'Var ($)']
+      // A different object from the table above: only a forecast carries a
+      // per-employee plan, and the approved budget is not split by employee.
+      const empYardstick = wagesEmployeeYardstick(
+        detail.budget_provenance,
+        detail.employee_plan_available ?? true,
+      )
+      if (empYardstick.absentNote) this.drawReasonCard(empYardstick.absentNote)
+      if (empYardstick.note) this.drawNote(empYardstick.note)
+
+      const empHeaders = ['Employee', 'Total Paid', empYardstick.columnLabel, 'Var ($)']
       const empData = detail.employees.map(e => [
         e.name,
         this.fmtCurrency(e.actual_total),
-        this.fmtCurrency(e.budget_total),
-        this.fmtVariance(e.variance),
+        empYardstick.available ? this.fmtCurrency(e.budget_total) : '—',
+        empYardstick.available ? this.fmtVariance(e.variance) : '—',
       ])
 
       autoTable(this.doc, {
@@ -1848,20 +2245,56 @@ export class MonthlyReportPDFService {
     this.doc.text(`Full Year Projection — FY${fy.fiscal_year}`, this.margin, this.yPosition)
     this.yPosition += 6
 
+    // The approved budget only earns a column when the budget store actually
+    // answered. Same predicate as the browser tab, from the same module, so the
+    // pack and the screen can never disagree about whether the yardstick is
+    // there — and an approved column is never printed empty, because a blank
+    // budget cell is read as zero.
+    const showApproved = hasApprovedBudget(fy)
+
+    // Every variance column on this page is projection-vs-FORECAST — the
+    // headers say "Var vs Fcst" — so the subtitle must not claim the page is
+    // "measured against" the approved version, which is a second yardstick
+    // shown beside them and not the one they are computed from. The browser tab
+    // states it neutrally; two surfaces of one page do not get to describe it
+    // differently.
+    const showForecast = hasForecastBudget(fy)
+
     this.doc.setFontSize(8)
     this.doc.setFont('helvetica', 'normal')
-    this.doc.text(
-      `Actuals through ${this.formatMonth(fy.last_actual_month)}, then budget forecast`,
-      this.margin, this.yPosition
-    )
-    this.yPosition += 6
+    const through = `Actuals through ${this.formatMonth(fy.last_actual_month)}`
+    const trailer = showForecast ? (showApproved ? ', then forecast' : ', then budget forecast') : ''
+    const approvedNote = showApproved
+      ? ` · Approved budget: ${fy.approved_budget_label || 'unnamed version'}`
+      : ''
+    // Wrapped: the approved version's own label rides on the end of this line
+    // (Urban Road's is 37 characters), and jsPDF does not wrap — it prints off
+    // the edge of the paper and the overflow is simply lost.
+    this.drawNote(`${through}${trailer}${approvedNote}`, undefined, { fontSize: 8, color: [0, 0, 0] })
+    this.yPosition += 1.5
+
+    // Dashes down two columns with nothing explaining them get an explanation
+    // supplied by the reader, and it is usually the wrong one.
+    const absentNote = forecastAbsentNote(fy)
+    if (absentNote) {
+      this.drawNote(absentNote, undefined, { fontSize: 8, color: [146, 96, 20] })
+      this.yPosition += 1.5
+    }
 
     const monthLabels = fy.gross_profit.months.map(m => {
       const d = new Date(m.month + '-01')
       return d.toLocaleDateString('en-AU', { month: 'short' })
     })
 
-    const headers = ['Account', ...monthLabels, 'Projected', 'Budget', 'Var ($)', 'Var (%)']
+    // With the approved budget beside it, "Budget" stops naming anything in
+    // particular, so the prediction becomes "Forecast" and the yardstick takes
+    // the name. The variance headings name their referent for the same reason:
+    // adjacent to "Approved Budget" they read as a variance to it, and they are
+    // still projection-vs-forecast — the route computes them that way and this
+    // change deliberately does not restate a single number.
+    const headers = showApproved
+      ? ['Account', ...monthLabels, 'Projected', 'Forecast', 'Approved Budget', 'Var vs Fcst ($)', 'Var vs Fcst (%)']
+      : ['Account', ...monthLabels, 'Projected', 'Budget', 'Var ($)', 'Var (%)']
     // Variance columns are the last two
     const varianceCols = [headers.length - 2, headers.length - 1]
     const tableData: any[] = []
@@ -1875,6 +2308,12 @@ export class MonthlyReportPDFService {
       'Other Income': [59, 130, 246],
       'Other Expenses': [107, 114, 128],
     }
+
+    // A forecast cell, or the absent mark. Only a month that has NOT closed and
+    // the forecast-derived totals go through this; actuals are unaffected.
+    const fcst = (v: number) => formatForecastValue(v, showForecast, (n) => this.fmtCurrency(n))
+    const fcstVar = (v: number) => formatForecastValue(v, showForecast, (n) => this.fmtVariance(n))
+    const fcstPct = (v: number) => formatForecastValue(v, showForecast, (n) => this.fmtPct(n))
 
     for (const section of fy.sections) {
       specialRowIndices.add(currentBodyIdx)
@@ -1893,12 +2332,13 @@ export class MonthlyReportPDFService {
       for (const line of section.lines) {
         const row: any[] = [line.account_name]
         for (const md of line.months) {
-          row.push(this.fmtCurrency(md.source === 'actual' ? md.actual : md.budget))
+          row.push(md.source === 'actual' ? this.fmtCurrency(md.actual) : fcst(md.budget))
         }
         row.push(this.fmtCurrency(line.projected_total))
-        row.push(this.fmtCurrency(line.annual_budget))
-        row.push(this.fmtVariance(line.variance_amount))
-        row.push(this.fmtPct(line.variance_percent))
+        row.push(fcst(line.annual_budget))
+        if (showApproved) row.push(formatApprovedAnnual(line, (n) => this.fmtCurrency(n)))
+        row.push(fcstVar(line.variance_amount))
+        row.push(fcstPct(line.variance_percent))
         tableData.push(row)
         currentBodyIdx++
       }
@@ -1907,12 +2347,13 @@ export class MonthlyReportPDFService {
       const st = section.subtotal
       const stRow: any[] = [{ content: st.account_name, styles: { fontStyle: 'bold' } }]
       for (const md of st.months) {
-        stRow.push({ content: this.fmtCurrency(md.source === 'actual' ? md.actual : md.budget), styles: { fontStyle: 'bold' } })
+        stRow.push({ content: md.source === 'actual' ? this.fmtCurrency(md.actual) : fcst(md.budget), styles: { fontStyle: 'bold' } })
       }
       stRow.push({ content: this.fmtCurrency(st.projected_total), styles: { fontStyle: 'bold' } })
-      stRow.push({ content: this.fmtCurrency(st.annual_budget), styles: { fontStyle: 'bold' } })
-      stRow.push({ content: this.fmtVariance(st.variance_amount), styles: { fontStyle: 'bold' } })
-      stRow.push({ content: this.fmtPct(st.variance_percent), styles: { fontStyle: 'bold' } })
+      stRow.push({ content: fcst(st.annual_budget), styles: { fontStyle: 'bold' } })
+      if (showApproved) stRow.push({ content: formatApprovedAnnual(st, (n) => this.fmtCurrency(n)), styles: { fontStyle: 'bold' } })
+      stRow.push({ content: fcstVar(st.variance_amount), styles: { fontStyle: 'bold' } })
+      stRow.push({ content: fcstPct(st.variance_percent), styles: { fontStyle: 'bold' } })
       tableData.push(stRow)
       currentBodyIdx++
 
@@ -1922,12 +2363,13 @@ export class MonthlyReportPDFService {
         const gpLine = fy.gross_profit
         const gpRow: any[] = [{ content: 'Gross Profit', styles: { fontStyle: 'bold', fillColor: GP_BLUE } }]
         for (const md of gpLine.months) {
-          gpRow.push({ content: this.fmtCurrency(md.source === 'actual' ? md.actual : md.budget), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
+          gpRow.push({ content: md.source === 'actual' ? this.fmtCurrency(md.actual) : fcst(md.budget), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
         }
         gpRow.push({ content: this.fmtCurrency(gpLine.projected_total), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
-        gpRow.push({ content: this.fmtCurrency(gpLine.annual_budget), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
-        gpRow.push({ content: this.fmtVariance(gpLine.variance_amount), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
-        gpRow.push({ content: this.fmtPct(gpLine.variance_percent), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
+        gpRow.push({ content: fcst(gpLine.annual_budget), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
+        if (showApproved) gpRow.push({ content: formatApprovedAnnual(gpLine, (n) => this.fmtCurrency(n)), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
+        gpRow.push({ content: fcstVar(gpLine.variance_amount), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
+        gpRow.push({ content: fcstPct(gpLine.variance_percent), styles: { fillColor: GP_BLUE, fontStyle: 'bold' } })
         tableData.push(gpRow)
         currentBodyIdx++
       }
@@ -1939,12 +2381,13 @@ export class MonthlyReportPDFService {
     const npStyle = { fillColor: NAVY as number[], textColor: [255, 255, 255] as number[], fontStyle: 'bold' as const }
     const npRow: any[] = [{ content: 'Net Profit', styles: npStyle }]
     for (const md of np.months) {
-      npRow.push({ content: this.fmtCurrency(md.source === 'actual' ? md.actual : md.budget), styles: npStyle })
+      npRow.push({ content: md.source === 'actual' ? this.fmtCurrency(md.actual) : fcst(md.budget), styles: npStyle })
     }
     npRow.push({ content: this.fmtCurrency(np.projected_total), styles: npStyle })
-    npRow.push({ content: this.fmtCurrency(np.annual_budget), styles: npStyle })
-    npRow.push({ content: this.fmtVariance(np.variance_amount), styles: npStyle })
-    npRow.push({ content: this.fmtPct(np.variance_percent), styles: npStyle })
+    npRow.push({ content: fcst(np.annual_budget), styles: npStyle })
+    if (showApproved) npRow.push({ content: formatApprovedAnnual(np, (n) => this.fmtCurrency(n)), styles: npStyle })
+    npRow.push({ content: fcstVar(np.variance_amount), styles: npStyle })
+    npRow.push({ content: fcstPct(np.variance_percent), styles: npStyle })
     tableData.push(npRow)
 
     autoTable(this.doc, {
@@ -1960,8 +2403,10 @@ export class MonthlyReportPDFService {
         if (data.column.index > 0 && data.section !== 'head') {
           data.cell.styles.halign = 'right'
         }
-        // Variance tinting for normal data rows
-        if (data.section === 'body' && !specialRowIndices.has(data.row.index) && varianceCols.includes(data.column.index)) {
+        // Variance tinting for normal data rows. Skipped entirely with no
+        // forecast: the cells hold a mark, and tinting a mark green would be
+        // the same false claim in colour that the number was in figures.
+        if (showForecast && data.section === 'body' && !specialRowIndices.has(data.row.index) && varianceCols.includes(data.column.index)) {
           this.applyVarianceTint(data)
         }
       },
@@ -2082,7 +2527,7 @@ export class MonthlyReportPDFService {
 
   private addBreakEvenChartPage(): void {
     const fy = this.options.fullYearReport!
-    const { data, summary } = transformBreakEvenData(fy)
+    const { data, summary, forwardAbsentNote } = transformBreakEvenData(fy)
     if (data.length === 0) return
     this.addPage('landscape')
 
@@ -2094,6 +2539,14 @@ export class MonthlyReportPDFService {
     this.doc.setFont('helvetica', 'normal')
     this.doc.text('Revenue needed to cover all costs each month', this.margin, this.yPosition)
     this.yPosition += 8
+
+    // Same series, same sentence as the browser tab: with no forecast the
+    // chart stops at the last closed month rather than drawing revenue and the
+    // break-even line falling to zero together.
+    if (forwardAbsentNote) {
+      this.drawNote(forwardAbsentNote, undefined, { fontSize: 9, color: [146, 96, 20] })
+      this.yPosition += 1.5
+    }
 
     // KPI row
     const isAbove = summary.marginOfSafety >= 0
@@ -2209,6 +2662,12 @@ export class MonthlyReportPDFService {
     this.doc.text('Monthly revenue and total expenses with profit gap', this.margin, this.yPosition)
     this.yPosition += 10
 
+    const rveAbsentNote = forwardSeriesAbsentNote(fy)
+    if (rveAbsentNote) {
+      this.drawNote(rveAbsentNote, undefined, { fontSize: 9, color: [146, 96, 20] })
+      this.yPosition += 1.5
+    }
+
     // Legend
     let legendX = this.margin
     for (const item of [{ label: 'Revenue', color: CHART_COLORS.revenue.rgb }, { label: 'Expenses', color: CHART_COLORS.expenses.rgb }]) {
@@ -2276,14 +2735,26 @@ export class MonthlyReportPDFService {
     if (cells.length === 0) return
     this.addPage('landscape')
 
+    // The heading, the yardstick word and the refusal sentence all come from
+    // the chart component, because this page and the browser tab are the same
+    // chart. When only the tab learned that a missing forecast cannot be drawn,
+    // this page went on printing a five-by-twelve grid of on-track green for a
+    // client whose forecast does not exist.
+    const unavailable = heatmapUnavailableReason(fy)
+
     this.doc.setFontSize(14)
     this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Budget Variance Heatmap', this.margin, this.yPosition)
+    this.doc.text(unavailable ? HEATMAP_UNAVAILABLE_TITLE : heatmapTitle(fy), this.margin, this.yPosition)
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
-    this.doc.text('Green = favorable, Red = unfavorable variance by category and month', this.margin, this.yPosition)
+    this.doc.text(unavailable ? 'Not available for this month' : HEATMAP_SUBTITLE, this.margin, this.yPosition)
     this.yPosition += 10
+
+    if (unavailable) {
+      this.drawReasonCard(unavailable)
+      return
+    }
 
     const gridLeft = this.margin + 35
     const gridRight = this.pageWidth - this.margin
@@ -2341,14 +2812,18 @@ export class MonthlyReportPDFService {
     if (data.length === 0) return
     this.addPage('portrait')
 
+    // Named off the report's own budget_source, from the chart component, so
+    // this page and the Charts tab cannot call one number two things. The
+    // subtitle used to say "each annual budget" for every client — including
+    // the ten whose tab says the bar is a forecast.
+    const pctElapsed = data[0]?.pctElapsed || 0
     this.doc.setFontSize(14)
     this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Budget Burn Rate', this.margin, this.yPosition)
+    this.doc.text(burnRateYardstick(this.report).title, this.margin, this.yPosition)
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
-    const pctElapsed = data[0]?.pctElapsed || 0
-    this.doc.text(`How much of each annual budget has been spent (${pctElapsed.toFixed(0)}% of FY elapsed)`, this.margin, this.yPosition)
+    this.doc.text(burnRateSubtitle(this.report, pctElapsed), this.margin, this.yPosition)
     this.yPosition += 10
 
     const barLeft = this.margin + 40
@@ -2565,7 +3040,14 @@ export class MonthlyReportPDFService {
     const fy = this.options.fullYearReport!
     const wagesNames = this.report.settings.wages_account_names || []
     const data = transformTeamCostData(fy, wagesNames)
-    if (data.length === 0) return
+    // The empty-names guard is the one that matters, and only the tab had it.
+    // transformTeamCostData matches P&L lines against the configured wages
+    // account names; with none configured it still returns twelve rows, every
+    // one of them $0 wages and 0.0% of revenue. `data.length === 0` never
+    // fires, so the pack printed a page telling a client they spend nothing on
+    // their team — from a setting nobody filled in. No client has this chart on
+    // with an empty list today; the trap is that turning it on is one click.
+    if (data.length === 0 || wagesNames.length === 0) return
     this.addPage('landscape')
 
     this.doc.setFontSize(14)
@@ -2576,6 +3058,12 @@ export class MonthlyReportPDFService {
     this.doc.setFont('helvetica', 'normal')
     this.doc.text('Monthly wages spend vs percentage of revenue', this.margin, this.yPosition)
     this.yPosition += 10
+
+    const teamAbsentNote = forwardSeriesAbsentNote(fy)
+    if (teamAbsentNote) {
+      this.drawNote(teamAbsentNote, undefined, { fontSize: 9, color: [146, 96, 20] })
+      this.yPosition += 1.5
+    }
 
     const headers = ['Month', 'Wages', 'Revenue', '% of Revenue']
     const tableData = data.map(d => [
@@ -2739,6 +3227,8 @@ export class MonthlyReportPDFService {
     // page-wide margin (box.x is used as a symmetric margin by every autoTable
     // call). Snap those in place rather than printing them broken.
     const layout = normalizeLayoutPlacements(rawLayout)
+    this.activeLayout = layout
+    this.standingHostId = undefined
     let isFirstPage = true
 
     for (const page of layout.pages) {
@@ -2856,6 +3346,14 @@ export class MonthlyReportPDFService {
         // Present even when not comparable — the renderer draws the honest
         // "couldn't check" card with the reason instead of a blank page.
         return !!this.options.moneyFlow
+      case 'balance_sheet':
+        // Always "available", for the same reason money_flow is: the grey
+        // "Data not available" placeholder is the least honest of the three
+        // states — it can't say whether Xero refused, whether there is no
+        // comparison period, or whether the sheet failed to balance. The
+        // renderer names the reason on the page instead. Returning false here
+        // would silently swallow all three.
+        return true
       default:
         return true
     }
@@ -2918,7 +3416,7 @@ export class MonthlyReportPDFService {
     // WD.2 — widget.config scopes the table to a section subset (see
     // section-table-config.ts). No config = the full statement, unchanged.
     const filter = resolveSectionFilter(widget?.config)
-    this.renderWithSkipPage(() => this.addBudgetVsActualDetail(filter), box)
+    this.renderWithSkipPage(() => this.addBudgetVsActualDetail(filter, widget?.id), box)
   }
 
   renderYTDSummary(box: WidgetBoundingBox): void {
@@ -3026,10 +3524,17 @@ export class MonthlyReportPDFService {
   }
 
   /**
-   * WD.1 — one landscape page of 12 monthly bar groups: Actual, Budget,
+   * WD.1 — one landscape page of 12 monthly bar groups: Actual, the yardstick,
    * Last-Year Actual. Actual bars stop at the last completed month (null
-   * months draw no bar, not a zero bar); budget and prior-year run all 12 —
-   * matching the Calxa chart this replaces.
+   * months draw no bar, not a zero bar); the other two run all 12 — matching
+   * the Calxa chart this replaces.
+   *
+   * The middle series names itself. It is the approved budget for a client on
+   * the budget store and the forecast for everyone else (see
+   * analysis-chart-data), and this page sits directly above a Budget-vs-Actual
+   * table measured against the same thing — a legend saying "Budget" over the
+   * forecast, one page above a table holding the client to the approved
+   * budget, is two yardsticks under one word.
    */
   private addAnalysisChartPage(section: AnalysisChartSection, titleOverride?: string): void {
     const fy = this.options.fullYearReport
@@ -3046,13 +3551,25 @@ export class MonthlyReportPDFService {
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
     this.doc.setTextColor(107, 114, 128)
-    this.doc.text('Actuals vs Budget vs Last Year', this.margin, this.yPosition)
+    this.doc.text(
+      data.budgetLabel ? `Actuals vs ${data.budgetLabel} vs Last Year` : 'Actuals vs Last Year',
+      this.margin, this.yPosition,
+    )
     this.yPosition += 8
 
-    // Legend
+    // With no yardstick at all the page is still worth printing — actuals
+    // against last year is a real comparison — but the reader has to be told
+    // that the missing middle bar is an absence and not a run of zeros.
+    if (data.budgetAbsentNote) {
+      this.drawNote(data.budgetAbsentNote, undefined, { fontSize: 9, color: [146, 96, 20] })
+      this.yPosition += 1.5
+    }
+
+    // Legend — the middle entry drops out entirely when there is no series,
+    // rather than standing over an empty column.
     const SERIES: Array<{ label: string; rgb: [number, number, number] }> = [
       { label: 'Actuals', rgb: [34, 197, 94] },
-      { label: 'Budget', rgb: [251, 191, 36] },
+      ...(data.budgetLabel ? [{ label: data.budgetLabel, rgb: [251, 191, 36] as [number, number, number] }] : []),
       { label: 'Last Year', rgb: [59, 130, 246] },
     ]
     let legendX = this.margin
@@ -3074,7 +3591,7 @@ export class MonthlyReportPDFService {
     const chartWidth = chartRight - chartLeft
 
     // Negative months (rebate-heavy COGS, contra revenue) get a floor.
-    const minRaw = Math.min(0, ...data.months.flatMap((m) => [m.actual ?? 0, m.budget, m.priorYear]))
+    const minRaw = Math.min(0, ...data.months.flatMap((m) => [m.actual ?? 0, m.budget ?? 0, m.priorYear]))
     const maxVal = data.maxValue * 1.08
     const minVal = minRaw * 1.08
     const range = maxVal - minVal || 1
@@ -3094,13 +3611,15 @@ export class MonthlyReportPDFService {
       this.doc.text(this.fmtCurrency(tick), chartLeft - 2, y + 1.5, { align: 'right' })
     }
 
-    // Bars: 12 groups × 3 series
+    // Bars: 12 groups × the series that exist
     const groupWidth = chartWidth / data.months.length
     const barWidth = Math.min(6, (groupWidth * 0.72) / SERIES.length)
     const zeroY = yFor(0)
     data.months.forEach((m, i) => {
       const groupLeft = chartLeft + i * groupWidth + (groupWidth - barWidth * SERIES.length) / 2
-      const values: Array<number | null> = [m.actual, m.budget, m.priorYear]
+      const values: Array<number | null> = data.budgetLabel
+        ? [m.actual, m.budget, m.priorYear]
+        : [m.actual, m.priorYear]
       values.forEach((v, si) => {
         if (v === null || v === 0) return
         const x = groupLeft + si * barWidth
@@ -3123,17 +3642,17 @@ export class MonthlyReportPDFService {
 
   renderKPIRevenue(box: WidgetBoundingBox): void {
     const s = this.report.summary
-    this.renderKPICard(box, 'Revenue', s.revenue.actual, s.revenue.variance, [16, 185, 129])
+    this.renderKPICard(box, 'Revenue', s.revenue.actual, s.revenue.variance, s.revenue.budget, [16, 185, 129])
   }
 
   renderKPIGrossProfit(box: WidgetBoundingBox): void {
     const s = this.report.summary
-    this.renderKPICard(box, 'Gross Profit', s.gross_profit.actual, s.gross_profit.variance, [59, 130, 246])
+    this.renderKPICard(box, 'Gross Profit', s.gross_profit.actual, s.gross_profit.variance, s.gross_profit.budget, [59, 130, 246])
   }
 
   renderKPINetProfit(box: WidgetBoundingBox): void {
     const s = this.report.summary
-    this.renderKPICard(box, 'Net Profit', s.net_profit.actual, s.net_profit.variance, [139, 92, 246])
+    this.renderKPICard(box, 'Net Profit', s.net_profit.actual, s.net_profit.variance, s.net_profit.budget, [139, 92, 246])
   }
 
   private renderKPICard(
@@ -3141,6 +3660,7 @@ export class MonthlyReportPDFService {
     label: string,
     value: number,
     variance: number,
+    budget: number,
     color: [number, number, number]
   ): void {
     // Background
@@ -3158,11 +3678,21 @@ export class MonthlyReportPDFService {
     this.doc.setFont('helvetica', 'bold')
     this.doc.text(this.fmtCurrency(value), box.x + box.w / 2, box.y + box.h * 0.55, { align: 'center' })
 
-    // Variance
+    // Variance — only when there is something to be a variance TO.
+    //
+    // ReportSummaryCards wraps the same line in `hasBudget` and returns null
+    // for a $0 budget, with the reason in its own comment: "a $0 budget used to
+    // render '(+0.0%)', which reads as 'on budget'". This card wrote the
+    // variance and the literal words "vs budget" unconditionally, so a client
+    // with no budget would have been told their whole actual was a favourable
+    // variance against one. Latent — no saved layout places a kpi_* widget
+    // today — and it is the same one-click trap as the team-cost page.
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
-    const varText = variance >= 0 ? `+${this.fmtCurrency(variance)} vs budget` : `${this.fmtCurrency(variance)} vs budget`
-    this.doc.text(varText, box.x + box.w / 2, box.y + box.h * 0.75, { align: 'center' })
+    if (this.hasBudget && budget !== 0) {
+      const varText = variance >= 0 ? `+${this.fmtCurrency(variance)} vs budget` : `${this.fmtCurrency(variance)} vs budget`
+      this.doc.text(varText, box.x + box.w / 2, box.y + box.h * 0.75, { align: 'center' })
+    }
 
     this.doc.setTextColor(0, 0, 0)
   }
@@ -3199,28 +3729,74 @@ export class MonthlyReportPDFService {
     return 'neutral'
   }
 
+  // ── Three states for budget-derived cells ────────────────────────────────
+  //
+  // The browser tab has had these since WA.3; the PDF printed
+  // `fmtCurrency(line.budget)` and `fmtVariance(line.variance_amount)`
+  // unconditionally. So the coach's screen dashed every budget cell under an
+  // amber "no budget" banner while the pack the client received showed the same
+  // month as $0 budget with the whole actual as a variance — favourable, on
+  // every line, for the three clients whose report resolves no budget.
+  //
+  // Same rule as the tab, deliberately: no budget at all dashes every
+  // budget-derived cell; inside a budgeted report a single $0-budget line keeps
+  // its dollar variance (an unbudgeted expense IS a real variance, and the
+  // Calxa packs show it) and drops the divide-by-zero percentage that reads as
+  // "on budget".
+  private get hasBudget(): boolean {
+    return this.report.has_budget !== false
+  }
+
+  private budgetCell(value: number): string {
+    return this.hasBudget ? this.fmtCurrency(value) : VALUE_ABSENT
+  }
+
+  private varianceCell(value: number): any {
+    if (!this.hasBudget) return VALUE_ABSENT
+    return { content: this.fmtVariance(value), _polarity: this.polarityOf(value) }
+  }
+
+  private variancePctCell(value: number, base: number): any {
+    if (!this.hasBudget || base === 0) return VALUE_ABSENT
+    return { content: this.fmtPct(value), _polarity: this.polarityOf(value) }
+  }
+
+  /**
+   * The amber card that says WHY the budget columns are dashes.
+   *
+   * `report.no_budget_reason` has been emitted by generate/route.ts since the
+   * budget store shipped and has had no consumers at all: the pack showed a
+   * wall of dashes and left the reader to supply their own explanation, which
+   * is usually "the system is broken" or "we budgeted nothing". Drawn at the
+   * top of each statement page, where the tab puts its banner.
+   */
+  private drawNoBudgetNotice(): void {
+    const note = noBudgetNote(this.report)
+    if (note) this.drawReasonCard(note)
+  }
+
   private buildLineRow(line: ReportLine, settings: MonthlyReportSettings): any[] {
     const row: any[] = [
       line.is_budget_only ? `${line.account_name} (budget only)` : line.account_name,
-      this.fmtCurrency(line.budget),
+      this.budgetCell(line.budget),
       this.fmtCurrency(line.actual),
       // Phase 71-07 (S4): tag variance cells with structured polarity so
       // `applyVarianceTint` no longer depends on parsing formatted text.
-      { content: this.fmtVariance(line.variance_amount), _polarity: this.polarityOf(line.variance_amount) },
-      { content: this.fmtPct(line.variance_percent), _polarity: this.polarityOf(line.variance_percent) },
+      this.varianceCell(line.variance_amount),
+      this.variancePctCell(line.variance_percent, line.budget),
     ]
     if (settings.show_ytd) {
       row.push(
-        this.fmtCurrency(line.ytd_budget),
+        this.budgetCell(line.ytd_budget),
         this.fmtCurrency(line.ytd_actual),
-        { content: this.fmtVariance(line.ytd_variance_amount), _polarity: this.polarityOf(line.ytd_variance_amount) },
-        { content: this.fmtPct(line.ytd_variance_percent), _polarity: this.polarityOf(line.ytd_variance_percent) }
+        this.varianceCell(line.ytd_variance_amount),
+        this.variancePctCell(line.ytd_variance_percent, line.ytd_budget),
       )
     }
-    if (settings.show_unspent_budget) row.push(this.fmtCurrency(line.unspent_budget))
-    if (settings.show_budget_next_month) row.push(this.fmtCurrency(line.budget_next_month))
-    if (settings.show_budget_annual_total) row.push(this.fmtCurrency(line.budget_annual_total))
-    if (settings.show_prior_year) row.push(line.prior_year !== null ? this.fmtCurrency(line.prior_year) : '—')
+    if (settings.show_unspent_budget) row.push(this.budgetCell(line.unspent_budget))
+    if (settings.show_budget_next_month) row.push(this.budgetCell(line.budget_next_month))
+    if (settings.show_budget_annual_total) row.push(this.budgetCell(line.budget_annual_total))
+    if (settings.show_prior_year) row.push(line.prior_year !== null ? this.fmtCurrency(line.prior_year) : VALUE_ABSENT)
     return row
   }
 

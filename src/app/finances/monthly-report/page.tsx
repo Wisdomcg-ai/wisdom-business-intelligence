@@ -931,6 +931,7 @@ export default function MonthlyReportPage() {
     memo?: string
     moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
     consolidated?: import('./utils/consolidated-rows').ConsolidatedReportVM
+    balanceSheets?: import('./utils/balance-sheet-pdf').BalanceSheetPdfSources
     budgetSuperRate?: number | null
     budgetActualEndMonth?: string | null
     budgetBackfilled?: boolean
@@ -1049,6 +1050,45 @@ export default function MonthlyReportPage() {
       }
     }
 
+    // WG.1 — the two balance-sheet pages (Calxa 19-22). Fetched FRESH, and
+    // deliberately NOT read from the Balance Sheet tab's state the way the
+    // blocks above reuse theirs: that state holds whichever compare mode the
+    // coach last clicked, for whichever month they last looked at, so reusing
+    // it would print July's sheet under an August heading and nothing would
+    // say so. Two round-trips because the endpoint answers one comparison at a
+    // time. A failure never blocks the export — it travels as a reason the
+    // page prints, and is captured rather than swallowed.
+    let balanceSheets: import('./utils/balance-sheet-pdf').BalanceSheetPdfSources | undefined
+    const wantsBalanceSheet =
+      !!settings?.sections.balance_sheet ||
+      (settings?.pdf_layout?.pages ?? []).some(p =>
+        (p.widgets ?? []).some(w => w.type === 'balance_sheet'),
+      )
+    if (businessId && wantsBalanceSheet) {
+      balanceSheets = {}
+      for (const compare of ['mom', 'yoy'] as const) {
+        try {
+          const res = await fetch(
+            `/api/Xero/balance-sheet?business_id=${encodeURIComponent(businessId)}&month=${encodeURIComponent(selectedMonth)}&compare=${compare}`
+          )
+          if (res.ok) {
+            balanceSheets[compare] = { data: await res.json() }
+          } else {
+            const body = await res.json().catch(() => ({} as any))
+            const reason = typeof body?.error === 'string' ? body.error : `Xero returned ${res.status}`
+            balanceSheets[compare] = { data: null, reason }
+            Sentry.captureMessage(
+              `[PDF] balance-sheet ${compare} load failed (${res.status}) — the page will state why`,
+              'warning' as any
+            )
+          }
+        } catch (err) {
+          balanceSheets[compare] = { data: null, reason: 'the balance sheet could not be reached' }
+          Sentry.captureException(err, { tags: { invariant: 'pdf-balance-sheet-load' } } as any)
+        }
+      }
+    }
+
     // WF.2/WF.4 — budget metadata for the super-rate and provenance checks.
     // undefined = not threaded (checks skip); null rate = statutory default.
     let budgetSuperRate: number | null | undefined
@@ -1081,6 +1121,7 @@ export default function MonthlyReportPage() {
       memo: memoText,
       moneyFlow,
       consolidated,
+      balanceSheets,
       budgetSuperRate,
       budgetActualEndMonth,
       budgetBackfilled,
@@ -1102,6 +1143,7 @@ export default function MonthlyReportPage() {
       memo?: string
       moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
       consolidated?: import('./utils/consolidated-rows').ConsolidatedReportVM
+      balanceSheets?: import('./utils/balance-sheet-pdf').BalanceSheetPdfSources
       businessName?: string
       sections?: import('./types').ReportSections
       pdfLayout?: import('./types/pdf-layout').PDFLayout | null

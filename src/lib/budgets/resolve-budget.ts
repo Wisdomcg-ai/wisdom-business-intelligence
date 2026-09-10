@@ -11,11 +11,17 @@
  * object; this module is the seam that lets the source change underneath the
  * report without the report noticing.
  *
- * THIS FILE CHANGES NO BEHAVIOUR. Every branch below is lifted verbatim from
- * generate/route.ts, including the things that look like bugs — the FY guard's
- * null-tolerance, the sequential id loop, the unordered line read whose row
- * order decides which duplicate account name wins downstream. The budget-version
- * tier is inert until a caller passes a pin, which nothing does yet.
+ * The FORECAST tiers below still change no behaviour: every branch is lifted
+ * verbatim from generate/route.ts, including the things that look like bugs —
+ * the FY guard's null-tolerance, the sequential id loop, the unordered line
+ * read whose row order decides which duplicate account name wins downstream.
+ * Leave them alone; the characterisation suite exists to catch anyone who
+ * doesn't.
+ *
+ * The BUDGET-VERSION tier does not share that constraint, because it has no
+ * legacy to be faithful to. It carries budget_lines.account_code through and
+ * groups on it — see budgetLineKey below for why grouping on the name alone
+ * was quietly summing distinct accounts together.
  *
  * See .planning/BUDGET-STORE-PLAN.md.
  */
@@ -37,6 +43,33 @@ import * as Sentry from '@sentry/nextjs'
  */
 export interface ResolvedBudgetLine {
   id: string
+  /**
+   * Xero's account code — the one key that is the same string on the budget
+   * side and the actuals side, and the reason this field exists at all. Name
+   * matching is a heuristic that loses on any account a bookkeeper renamed on
+   * one side only: Urban Road's P&L says "Foreign Currency Gains and Losses"
+   * where its budget says "Foreign Currency Loss/Gain", which normalise to
+   * nothing in common, so the report printed the account TWICE — once with the
+   * actual and a $0 budget, once budget-only with a $0 actual.
+   *
+   * What that costs is the READING, not the totals. Both rows land in the same
+   * section, buildSubtotal sums the section, and every summed field — actual,
+   * budget, ytd, unspent_budget, budget_annual_total, even the variance —
+   * comes out identical to the single-row result. What is wrong is each row's
+   * own variance: one reports the whole actual as an overspend against a $0
+   * budget, the other the whole budget as unspent against a $0 actual, and
+   * neither is a fact about anything. And an account list with an account on it
+   * twice cannot be reconciled to Xero, which is what a management pack is for.
+   * The totals only break when the two rows land in DIFFERENT sections, which
+   * happens when the Xero row's category and the budget line's disagree.
+   *
+   * OPTIONAL, not `string | null`: the forecast path never selects it, so on
+   * that path the property is absent rather than present-and-null, and the
+   * resolved line is byte-identical to what it was before this field existed.
+   * Everything downstream must therefore treat a missing code as "this source
+   * has no codes", never as "this account has no code".
+   */
+  account_code?: string | null
   account_name: string
   /**
    * Report display vocabulary: 'Revenue' | 'Cost of Sales' |
@@ -146,6 +179,30 @@ function noneBecause(reason: NoBudgetReason): ResolvedBudget {
 }
 
 const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/
+
+/**
+ * The identity of a budget account: its code when it has one, its name when it
+ * does not.
+ *
+ * Two things have to agree on this or money goes missing. The resolver groups
+ * budget_lines by it (one row per account per month collapses into one line
+ * carrying a month map), and the report's budget-only pass suppresses by it
+ * (a budget account already shown against an actual must not be re-emitted as
+ * a second, budget-only row). Key those two on DIFFERENT things — grouping on
+ * code, suppressing on name — and a pair of same-named accounts splits into
+ * two lines of which only one survives the suppression: the other's whole
+ * annual budget silently disappears from the subtotal. Grouping on name alone,
+ * which is what this replaced, had the mirror-image failure: the two accounts
+ * merged and their budgets were summed into whichever row won.
+ *
+ * The `code:` / `name:` prefixes keep the two namespaces apart, so an account
+ * code that happens to read like another account's name cannot collide with it.
+ */
+export function budgetLineKey(line: { account_code?: string | null; account_name?: string | null }): string {
+  const code = (line.account_code ?? '').trim().toLowerCase()
+  if (code) return `code:${code}`
+  return `name:${(line.account_name ?? '').trim().toLowerCase()}`
+}
 
 function countMonths(lines: readonly ResolvedBudgetLine[]): number {
   const months = new Set<string>()
@@ -290,6 +347,57 @@ export async function resolveBudget(
  * missing relation reads as "could not read the budget", not a 500 on every
  * client's report.
  */
+interface BudgetLineRow {
+  id: string
+  account_code: string | null
+  account_name: string
+  category: string | null
+  month: string
+  amount: number | string
+  budget_version_id: string
+}
+
+/**
+ * Every budget line for these versions, paginated.
+ *
+ * Supabase/PostgREST caps a single SELECT at 1000 rows, and budget_lines is one
+ * row per account per month — twelve rows per budgeted account. Urban Road's
+ * version is 699 rows and Distinct Directions' 619, so 84 budgeted accounts is
+ * where the cap starts eating the tail: no error, no short-read warning, just a
+ * budget quietly missing its last accounts and an annual total that understates
+ * what the client was held to. The same cap dropped ~$5.3M of COGS on JDS in
+ * the Phase 44.1 hotfix, which is why forecast-read-service pages the identical
+ * way.
+ *
+ * Never throws — a caller that has already decided to fail closed needs an
+ * answer, not an exception — so a failed page comes back as `failed`.
+ */
+async function fetchAllBudgetLines(
+  supabase: SupabaseClient,
+  versionIds: string[],
+): Promise<{ rows: BudgetLineRow[]; failed: boolean }> {
+  const all: BudgetLineRow[] = []
+  const pageSize = 1000
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('budget_lines')
+      .select('id, account_code, account_name, category, month, amount, budget_version_id')
+      .in('budget_version_id', versionIds)
+      // Ordered so the pages partition the rows instead of overlapping them:
+      // without a total order PostgREST may return the same row on two pages
+      // and a budget line would be counted twice.
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error) return { rows: [], failed: true }
+    if (!data || data.length === 0) break
+    all.push(...(data as BudgetLineRow[]))
+    if (data.length < pageSize) break
+    from += pageSize
+  }
+  return { rows: all, failed: false }
+}
+
 async function resolveInForceVersion(
   supabase: SupabaseClient,
   businessId: string,
@@ -375,32 +483,36 @@ async function resolveInForceVersion(
       return noneBecause('multiple_versions_in_force')
     }
 
-    const { data: rows, error: linesError } = await supabase
-      .from('budget_lines')
-      .select('id, account_name, category, month, amount, budget_version_id')
-      .in('budget_version_id', Array.from(chosen.keys()))
+    const { rows, failed } = await fetchAllBudgetLines(supabase, Array.from(chosen.keys()))
 
-    if (linesError) return noneBecause('budget_read_failed')
-    if (!rows || rows.length === 0) return noneBecause('version_has_no_lines')
+    if (failed) return noneBecause('budget_read_failed')
+    if (rows.length === 0) return noneBecause('version_has_no_lines')
 
     // budget_lines is one row per account per month; the report wants one line
     // per account carrying a month map. A row counts only when its version is
     // the one governing its own month — that is what keeps a superseded
     // version's July out of the total once a revision takes over in October.
+    //
+    // Grouped on the ACCOUNT CODE, falling back to the name only for a line
+    // that has none. Keyed on the name alone — which is what this used to do —
+    // two distinct Xero accounts that happen to share a name (a real shape in
+    // a chart of accounts that carries per-location duplicates) were merged
+    // into one line and their budgets summed, and the merge was invisible in
+    // the report because the row it produced looked perfectly ordinary.
     const byAccount = new Map<string, ResolvedBudgetLine>()
-    for (const row of rows as Array<{
-      id: string
-      account_name: string
-      category: string | null
-      month: string
-      amount: number | string
-      budget_version_id: string
-    }>) {
+    for (const row of rows) {
       if (versionForMonth.get(row.month) !== row.budget_version_id) continue
-      let line = byAccount.get(row.account_name)
+      const key = budgetLineKey(row)
+      let line = byAccount.get(key)
       if (!line) {
-        line = { id: row.id, account_name: row.account_name, category: row.category, forecast_months: {} }
-        byAccount.set(row.account_name, line)
+        line = {
+          id: row.id,
+          account_code: row.account_code ?? null,
+          account_name: row.account_name,
+          category: row.category,
+          forecast_months: {},
+        }
+        byAccount.set(key, line)
       }
       line.forecast_months[row.month] = (line.forecast_months[row.month] ?? 0) + (Number(row.amount) || 0)
     }

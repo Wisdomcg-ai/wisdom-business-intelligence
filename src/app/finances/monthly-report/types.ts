@@ -220,6 +220,31 @@ export interface GeneratedReport {
   has_budget: boolean
   budget_forecast_name?: string
   /**
+   * What the budget column on THIS report actually is — emitted by the route
+   * from the resolver, not copied from settings, because a client switched to
+   * the budget store whose version will not resolve has budget_source
+   * 'budget_version' in settings and no budget at all here.
+   *
+   * Anything that puts the word "Budget" in front of a reader has to consult
+   * it. One pack now shows an approved budget and a forecast side by side on
+   * the Full Year page, so an unqualified "Budget" elsewhere in the same pack
+   * names neither of them.
+   */
+  budget_source?: 'forecast' | 'budget_version' | 'none'
+  /** budget_versions.id when budget_source is 'budget_version'. */
+  budget_version_id?: string | null
+  /**
+   * Why there is no budget, when the client is on the budget store — emitted by
+   * generate/route.ts straight off the resolver. Undefined on a snapshot frozen
+   * before the field existed, and null on the forecast path (the resolver only
+   * explains itself for a budget-store client).
+   *
+   * Anything that shows a reader an empty budget column has to say why: a
+   * column of dashes with nothing explaining it gets read as "we budgeted
+   * nothing", which is a different and false claim.
+   */
+  no_budget_reason?: import('@/lib/budgets/resolve-budget').NoBudgetReason | null
+  /**
    * True when this report was produced by `/api/monthly-report/consolidated`
    * (i.e. the underlying business is a consolidation parent). Enables
    * consolidation-specific UI affordances — e.g. the "Consolidated budget
@@ -310,7 +335,22 @@ export interface ForecastPLLine {
 export interface FullYearMonthData {
   month: string           // 'YYYY-MM'
   actual: number
+  /**
+   * The FORECAST for this month — "where will we land". Kept as `budget`
+   * because that is what the API has always called it; renaming it here would
+   * only move the confusion, and the approved budget now sits beside it under
+   * its own name.
+   */
   budget: number
+  /**
+   * The APPROVED budget for this month, out of budget_versions/budget_lines —
+   * "what were we held to". Null, never 0, when the client is not on the budget
+   * store or the store could not answer: a zero in a budget column reads as a
+   * deliberate decision to spend nothing, and every variance measured off it
+   * comes out favourable. An account the budget genuinely does not mention is a
+   * real 0 and the route sends 0 for it — the two cases are not the same.
+   */
+  approved_budget: number | null
   prior_year: number      // actual value from same month one year earlier (Phase 26)
   source: 'actual' | 'forecast'
 }
@@ -320,8 +360,10 @@ export interface FullYearLine {
   category: string
   months: FullYearMonthData[]    // 12 entries
   projected_total: number        // actuals + remaining forecast
-  annual_budget: number          // full year budget
-  variance_amount: number
+  annual_budget: number          // full year FORECAST total
+  /** Full year APPROVED total; null on the same terms as approved_budget. */
+  approved_annual_budget: number | null
+  variance_amount: number        // projection vs FORECAST, not vs the approved budget
   variance_percent: number
 }
 
@@ -338,6 +380,21 @@ export interface FullYearReport {
   sections: FullYearSection[]
   gross_profit: FullYearLine
   net_profit: FullYearLine
+  /**
+   * The label of the budget version the approved column came from, so the page
+   * can name its yardstick instead of printing an anonymous second money
+   * column. Null whenever there is no approved budget.
+   */
+  approved_budget_label?: string | null
+  /**
+   * Did an active forecast exist for this fiscal year at all?
+   *
+   * False is not "the forecast is zero" — it is "there is no forecast", and the
+   * Forecast and variance columns must render a mark rather than a number.
+   * Optional because a snapshot frozen before the route emitted it carries no
+   * value; hasForecastBudget reads the evidence in that case.
+   */
+  forecast_available?: boolean
 }
 
 // ============================================
@@ -520,8 +577,45 @@ export interface ExternalMetricSeriesData {
   } | null
 }
 
+/**
+ * What produced a budget column on a page that resolves its own budget.
+ *
+ * The wages page reads a budget of its own rather than slicing the report's, so
+ * it carries the resolver's three fields back with the figures. Everything a
+ * reader is told about that column is derived from THIS, never from settings —
+ * a client switched to the budget store whose version will not resolve has
+ * budget_source='budget_version' in settings and no budget at all on the page.
+ */
+export interface BudgetProvenance {
+  source: 'budget_version' | 'forecast' | 'none'
+  /** The version's label / the forecast's name. */
+  label?: string | null
+  /** Why there is no budget, when the client is on the budget store. */
+  reason?: import('@/lib/budgets/resolve-budget').NoBudgetReason | null
+  /** Names the fiscal year in the absent sentence. */
+  fiscal_year?: number | string | null
+}
+
 export interface WagesDetailData {
   accounts: WagesAccountLine[]
+  /**
+   * What the account-level Budget column on this page IS. The page resolves its
+   * own budget — it is not a slice of the report's — so it carries its own
+   * provenance back rather than letting the surface guess from settings.
+   *
+   * Optional: a response cached before this field existed has none, and is
+   * rendered with exactly the words it carried then (see wagesYardstick).
+   */
+  budget_provenance?: BudgetProvenance
+  /**
+   * Is there a per-employee plan for this month at all? Only a forecast has
+   * one — the approved budget is not split by employee — so this is false for
+   * a budget-store client with no forecast, and the per-employee Budget and
+   * Variance columns are dashes rather than $0 against a full actual.
+   *
+   * Optional for the same reason budget_provenance is.
+   */
+  employee_plan_available?: boolean
   employees: WagesEmployeeLine[]
   employee_totals: { actual: number; budget: number; variance: number }
   grand_total: { actual: number; budget: number; variance: number }

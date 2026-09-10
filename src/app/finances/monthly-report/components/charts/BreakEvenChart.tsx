@@ -6,6 +6,7 @@ import {
 import type { FullYearReport } from '../../types'
 import { CHART_COLORS } from './chart-colors'
 import { fmtCurrency, fmtAxisTick, getMonthLabel, ChartCard } from './chart-utils'
+import { hasForecastBudget, forwardSeriesAbsentNote } from '../../utils/full-year-approved'
 
 export interface BreakEvenDataPoint {
   monthLabel: string
@@ -27,13 +28,21 @@ export interface BreakEvenSummary {
   totalMonths: number
 }
 
-export function transformBreakEvenData(report: FullYearReport): { data: BreakEvenDataPoint[]; summary: BreakEvenSummary } {
+export function transformBreakEvenData(
+  report: FullYearReport,
+): { data: BreakEvenDataPoint[]; summary: BreakEvenSummary; forwardAbsentNote: string | null } {
   const revSection = report.sections.find(s => s.category === 'Revenue')
   const cogsSection = report.sections.find(s => s.category === 'Cost of Sales')
   const opexSection = report.sections.find(s => s.category === 'Operating Expenses')
   const otherExpSection = report.sections.find(s => s.category === 'Other Expenses')
 
-  if (!revSection) return { data: [], summary: { currentMonthRevenue: 0, currentMonthBreakEven: 0, marginOfSafety: 0, marginOfSafetyPct: 0, averageBreakEven: 0, monthsAboveBreakEven: 0, totalMonths: 0 } }
+  if (!revSection) {
+    return {
+      data: [],
+      summary: { currentMonthRevenue: 0, currentMonthBreakEven: 0, marginOfSafety: 0, marginOfSafetyPct: 0, averageBreakEven: 0, monthsAboveBreakEven: 0, totalMonths: 0 },
+      forwardAbsentNote: null,
+    }
+  }
 
   // Step 1: Calculate a blended variable cost ratio from actual months only.
   // Using per-month ratios causes the break-even line to jump around — a blended
@@ -58,7 +67,7 @@ export function transformBreakEvenData(report: FullYearReport): { data: BreakEve
   const blendedContributionMarginRatio = 1 - blendedVariableCostRatio
 
   // Step 2: Build per-month data using the blended ratio
-  const data: BreakEvenDataPoint[] = report.gross_profit.months.map((gpMonth, i) => {
+  const allMonths: BreakEvenDataPoint[] = report.gross_profit.months.map((gpMonth, i) => {
     const isActual = gpMonth.source === 'actual'
 
     // Revenue = operating revenue only (exclude Other Income — it doesn't have COGS)
@@ -87,6 +96,13 @@ export function transformBreakEvenData(report: FullYearReport): { data: BreakEve
     }
   })
 
+  // With no forecast for the year, every `budget` above is 0 — not a plan to
+  // earn nothing, an absence. Plotting it drew revenue collapsing to zero from
+  // the first open month and a break-even line derived from the same zeros.
+  // The series stops at the last closed month instead, and the page says so.
+  const forward = hasForecastBudget(report)
+  const data = forward ? allMonths : allMonths.filter(d => d.source === 'actual')
+
   // Find the last actual month for the summary KPI
   const actualData = data.filter(d => d.source === 'actual')
   const lastActual = actualData.length > 0 ? actualData[actualData.length - 1] : data[0]
@@ -108,6 +124,7 @@ export function transformBreakEvenData(report: FullYearReport): { data: BreakEve
       monthsAboveBreakEven,
       totalMonths: data.length,
     },
+    forwardAbsentNote: forwardSeriesAbsentNote(report),
   }
 }
 
@@ -154,7 +171,7 @@ interface Props {
 }
 
 export default function BreakEvenChart({ fullYearReport }: Props) {
-  const { data, summary } = transformBreakEvenData(fullYearReport)
+  const { data, summary, forwardAbsentNote } = transformBreakEvenData(fullYearReport)
   if (data.length === 0) return null
 
   const lastActualIdx = data.reduce((acc, d, i) => d.source === 'actual' ? i : acc, -1)
@@ -165,6 +182,12 @@ export default function BreakEvenChart({ fullYearReport }: Props) {
 
   return (
     <ChartCard title="Break-Even Analysis" subtitle="Revenue needed to cover all costs each month" tooltip="Shows the minimum revenue you need each month just to cover your costs (the break-even line). When your actual revenue is above the line, you're profitable. The gap between them is your margin of safety — the bigger the better.">
+      {forwardAbsentNote && (
+        <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {forwardAbsentNote}
+        </p>
+      )}
+
       {/* KPI summary cards */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-gray-50 rounded-lg p-3 text-center">

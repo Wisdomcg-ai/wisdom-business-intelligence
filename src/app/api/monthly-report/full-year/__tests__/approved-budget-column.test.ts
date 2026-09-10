@@ -54,6 +54,12 @@ function serviceClient() {
       gt: (col: string, val: unknown) => build(table, [...filters, [col, val, 'gt']], ordered),
       order: (col: string, opts?: { ascending?: boolean }) =>
         build(table, filters, { col, ascending: opts?.ascending ?? true }),
+      // PostgREST caps a page at 1000 rows and the resolver pages through
+      // budget_lines with .range(); a harness without it would silently return
+      // every row on page one and prove nothing about the cap.
+      range: (from: number, to: number) => ({
+        then: (resolve: any) => Promise.resolve({ data: run().slice(from, to + 1), error: null }).then(resolve),
+      }),
       limit: (n: number) => ({
         maybeSingle: async () => ({ data: run().slice(0, n)[0] ?? null, error: null }),
         then: (resolve: any) => Promise.resolve({ data: run().slice(0, n), error: null }).then(resolve),
@@ -228,6 +234,33 @@ describe('full-year — the approved budget column', () => {
     expect(line.approved_annual_budget).toBe(5000)
   })
 
+  it('names the version the column came from, so the page is not printing an anonymous second money column', async () => {
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [budgetLine('bl-1', 'v1', '2026-07', 5000)],
+    })
+
+    const { body } = await fullYear()
+    expect(body.report.approved_budget_label).toBe('Overall Budget')
+  })
+
+  it('leaves the label null whenever there is no approved budget, because the column is keyed off it', async () => {
+    // Both halves: never switched over, and switched over but unresolvable. A
+    // label without a budget would put a header over an empty column, and an
+    // empty budget column is read as zero.
+    const { body: never } = await fullYear()
+    expect(never.report.approved_budget_label).toBeNull()
+
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      budget_versions: [version('v1', '2027-06')],
+      budget_lines: [budgetLine('bl-1', 'v1', '2027-06', 5000)],
+    })
+    const { body: notInForce } = await fullYear()
+    expect(notInForce.report.approved_budget_label).toBeNull()
+  })
+
   it('a switched client whose version is not yet in force gets null, not the forecast', async () => {
     // Fail-closed: the budget must never quietly become the forecast for a
     // client who was deliberately moved off it.
@@ -315,3 +348,149 @@ describe('full-year — an approved budget with no actuals and no forecast', () 
   })
 })
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// One page renders both surfaces, so both must resolve an account the same way.
+//
+// The resolver groups budget_lines on budgetLineKey — the account CODE, falling
+// back to the name only for a line that has none. This route used to match
+// those same lines by name alone, so an account a bookkeeper renamed on one
+// side only (Urban Road's P&L says "Foreign Currency Gains and Losses" where
+// its budget says "Foreign Currency Loss/Gain", code 62700) split into two rows
+// here while the monthly Budget vs Actual page showed one. Same client, same
+// pack, two different account lists, and no way for a reader to reconcile
+// either of them to Xero.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('full-year — the approved budget is matched on the account code', () => {
+  const XERO_NAME = 'Foreign Currency Gains and Losses'
+  const BUDGET_NAME = 'Foreign Currency Loss/Gain'
+  const CODE = '62700'
+
+  beforeEach(() => {
+    captureMessage.mockClear()
+  })
+
+  /** The budget and the actuals share a code and disagree about the name. */
+  function renamedAccount() {
+    compositeRows = [
+      { account_code: CODE, account_name: XERO_NAME, account_type: 'opex', section: '', monthly_values: { '2026-07': 900 } },
+    ]
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      account_mappings: [{ business_id: BIZ, xero_account_name: XERO_NAME, report_category: 'Operating Expenses' }],
+      forecast_pl_lines: [],
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [
+        { ...budgetLine('bl-1', 'v1', '2026-07', 5000), account_code: CODE, account_name: BUDGET_NAME, category: 'Operating Expenses' },
+      ],
+    })
+  }
+
+  it('emits ONE row for an account renamed on one side only', async () => {
+    renamedAccount()
+    const { status, body } = await fullYear()
+    expect(status).toBe(200)
+    const section = (body.report?.sections ?? []).find((s: any) => s.category === 'Operating Expenses')
+
+    expect(section.lines).toHaveLength(1)
+    expect(section.lines[0].account_name).toBe(XERO_NAME)
+    expect(section.lines[0].approved_annual_budget).toBe(5000)
+    // The budget landed on the row that carries the actual, so the subtotal is
+    // the budget once — not once on each of two half-rows.
+    expect(section.subtotal.approved_annual_budget).toBe(5000)
+  })
+
+  it('falls back to the name when the actuals row carries no code', async () => {
+    // Xero's synthetic report-only lines arrive with a blank code and can be
+    // given one nowhere else, so the name tier has to keep working.
+    renamedAccount()
+    compositeRows = [
+      { account_code: null, account_name: BUDGET_NAME, account_type: 'opex', section: '', monthly_values: { '2026-07': 900 } },
+    ]
+    tables.account_mappings = [{ business_id: BIZ, xero_account_name: BUDGET_NAME, report_category: 'Operating Expenses' }]
+
+    const { body } = await fullYear()
+    const section = (body.report?.sections ?? []).find((s: any) => s.category === 'Operating Expenses')
+    expect(section.lines).toHaveLength(1)
+    expect(section.lines[0].approved_annual_budget).toBe(5000)
+  })
+
+  it('keeps two accounts that share a name but carry different codes', async () => {
+    // The mirror-image failure: suppressing by name deletes the second
+    // account's whole annual budget from the page, which is worse than the
+    // duplicate row it was meant to remove.
+    compositeRows = []
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      account_mappings: [],
+      forecast_pl_lines: [],
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [
+        { ...budgetLine('bl-1', 'v1', '2026-07', 5000), account_code: '41000', account_name: 'Sales' },
+        { ...budgetLine('bl-2', 'v1', '2026-07', 3000), account_code: '41001', account_name: 'Sales' },
+      ],
+    })
+
+    const { body } = await fullYear()
+    const section = (body.report?.sections ?? []).find((s: any) => s.category === 'Revenue')
+    expect(section.lines).toHaveLength(2)
+    expect(section.subtotal.approved_annual_budget).toBe(8000)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// "No forecast" and "a forecast of zero" are different answers.
+//
+// Distinct Directions has an is_active = false FY2027 forecast and an
+// is_active = true FY2026 one, so a FY2027 report resolves no forecast at all
+// and every annual_budget below comes out 0. The route says so in one field
+// rather than leaving the page to guess from the zeros.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('full-year — whether a forecast exists at all', () => {
+  beforeEach(() => {
+    captureMessage.mockClear()
+    compositeRows = [
+      { account_name: REVENUE, account_type: 'revenue', section: 'Revenue', monthly_values: { '2026-07': 900 } },
+    ]
+  })
+
+  it('is false when the only forecast for the year is inactive', async () => {
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      financial_forecasts: [
+        { id: 'fc-27', business_id: PROFILE, name: 'FY2027 Financial Forecast', is_active: false, fiscal_year: FY },
+        { id: 'fc-26', business_id: PROFILE, name: 'FY2026 Forecast', is_active: true, fiscal_year: 2026 },
+      ],
+      forecast_pl_lines: [],
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [budgetLine('bl-1', 'v1', '2026-07', 5000)],
+    })
+
+    const { status, body } = await fullYear()
+    expect(status).toBe(200)
+    expect(body.report.forecast_available).toBe(false)
+    // The approved budget is still there — it is the only yardstick left.
+    expect(body.report.approved_budget_label).toBe('Overall Budget')
+    const line = revenueLine(body)
+    expect(line.approved_annual_budget).toBe(5000)
+    // The zeros are still zeros in the payload; the flag is what stops the
+    // page rendering them as a favourable variance.
+    expect(line.annual_budget).toBe(0)
+  })
+
+  it('is false when the forecast exists but has no materialised lines', async () => {
+    // The empty-shell wizard trap: an active forecast the route already
+    // demotes. It must demote the flag with it.
+    tables = baseTables({ forecast_pl_lines: [] })
+    const { body } = await fullYear()
+    expect(body.report.forecast_available).toBe(false)
+  })
+
+  it('is true whenever a forecast actually backs the columns', async () => {
+    tables = baseTables()
+    const { body } = await fullYear()
+    expect(body.report.forecast_available).toBe(true)
+  })
+})
