@@ -235,6 +235,25 @@ export class MonthlyReportPDFService {
       this.addFullYearProjection()
     }
 
+    // WG.1 — the two balance sheets (Calxa pages 19-22), in the position
+    // generateDefaultLayout gives them: after the full-year projection.
+    //
+    // They were reachable ONLY from a hand-written layout. generate() is what
+    // runs whenever pdf_layout is null — which is every client today, Urban
+    // Road included — and it never called addBalanceSheetPage, while page.tsx
+    // fired two live Xero balance-sheet round-trips the moment
+    // sections.balance_sheet was on. Urban Road, Just Digital Signage and
+    // Precision paid for the fetches and got no pages. Nobody should have to
+    // hand-write a layout to get a page their settings say is on.
+    //
+    // Gated on the flag alone, not on the sheets having loaded: an export that
+    // did not fetch them prints the page and says why, which is the same three
+    // states the widget path has.
+    if (sec?.balance_sheet) {
+      this.addBalanceSheetPage('mom')
+      this.addBalanceSheetPage('yoy')
+    }
+
     // WD.1 — the Calxa Actual/Budget/Last-Year analysis charts (Income, COGS,
     // Expenses). The web Trends tab has computed this shape since Phase 27;
     // the PDF never carried it. Rides the trend_charts flag like the tab does.
