@@ -220,6 +220,20 @@ export interface GeneratedReport {
   has_budget: boolean
   budget_forecast_name?: string
   /**
+   * What the budget column on THIS report actually is — emitted by the route
+   * from the resolver, not copied from settings, because a client switched to
+   * the budget store whose version will not resolve has budget_source
+   * 'budget_version' in settings and no budget at all here.
+   *
+   * Anything that puts the word "Budget" in front of a reader has to consult
+   * it. One pack now shows an approved budget and a forecast side by side on
+   * the Full Year page, so an unqualified "Budget" elsewhere in the same pack
+   * names neither of them.
+   */
+  budget_source?: 'forecast' | 'budget_version' | 'none'
+  /** budget_versions.id when budget_source is 'budget_version'. */
+  budget_version_id?: string | null
+  /**
    * True when this report was produced by `/api/monthly-report/consolidated`
    * (i.e. the underlying business is a consolidation parent). Enables
    * consolidation-specific UI affordances — e.g. the "Consolidated budget

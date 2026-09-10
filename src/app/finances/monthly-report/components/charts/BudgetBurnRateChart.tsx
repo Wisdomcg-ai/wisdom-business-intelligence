@@ -68,8 +68,20 @@ export default function BudgetBurnRateChart({ report }: Props) {
     return CHART_COLORS.positive.hex
   }
 
+  // This chart reads the MONTHLY report, whose budget column is the approved
+  // budget for a client on the budget store and the forecast for everyone else.
+  // "Budget" therefore names two different things depending on who is reading,
+  // and the same pack's Full Year page now uses both words for two columns side
+  // by side. Say which one this is.
+  const onApproved = report.budget_source === 'budget_version'
+  const yardstick = onApproved ? 'approved budget' : 'forecast'
+
   return (
-    <ChartCard title="Budget Burn Rate" subtitle={`Expense budgets for current FY (${pctElapsed.toFixed(0)}% of year elapsed)`} tooltip="Shows how fast you're spending through each annual expense budget in the current financial year. The coloured bar is how much you've used so far, and the dashed line marks where you should be based on how far through the year you are. If the bar passes the line, you're spending faster than planned.">
+    <ChartCard
+      title={onApproved ? 'Approved Budget Burn Rate' : 'Forecast Burn Rate'}
+      subtitle={`Expense ${yardstick} for current FY (${pctElapsed.toFixed(0)}% of year elapsed)`}
+      tooltip={`Shows how fast you're spending through each annual expense ${yardstick} in the current financial year. The coloured bar is how much you've used so far, and the dashed line marks where you should be based on how far through the year you are. If the bar passes the line, you're spending faster than planned.`}
+    >
       <div className="space-y-4">
         {data.map(item => (
           <div key={item.label}>

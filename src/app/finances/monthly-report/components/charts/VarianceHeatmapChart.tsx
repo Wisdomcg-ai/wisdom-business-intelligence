@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { FullYearReport } from '../../types'
 import { getHeatmapColor } from './chart-colors'
 import { fmtCurrency, getMonthLabel, ChartCard } from './chart-utils'
+import { hasApprovedBudget, hasForecastBudget } from '../../utils/full-year-approved'
 
 export interface HeatmapCell {
   category: string
@@ -70,10 +71,42 @@ export default function VarianceHeatmapChart({ fullYearReport }: Props) {
 
   if (cells.length === 0) return null
 
+  // Every cell here is measured against `budget`, which on the Full Year report
+  // is the FORECAST. That word is now taken: the same pack's Full Year page
+  // shows an approved budget beside a forecast, so an unqualified "Budget" on
+  // this chart names neither of them. Only disambiguate where there is
+  // something to disambiguate from.
+  const twoYardsticks = hasApprovedBudget(fullYearReport)
+  const yardstick = twoYardsticks ? 'Forecast' : 'Budget'
+
+  // With no forecast at all, every budget is 0, the divide-by-zero guard makes
+  // every variancePct 0, and the whole grid prints "+0%" in on-track green — a
+  // page-sized statement that everything is fine, derived from nothing. Say so
+  // instead.
+  if (!hasForecastBudget(fullYearReport)) {
+    return (
+      <ChartCard
+        title="Variance Heatmap"
+        subtitle="Not available for this month"
+        tooltip="This heatmap measures each category against the forecast. With no forecast for the year there is nothing to measure against, so no cell can be computed."
+      >
+        <p className="text-sm text-amber-700">
+          No forecast exists for FY{fullYearReport.fiscal_year}, so there is nothing to measure
+          these categories against. Every cell would read 0%, which is not the same as being on
+          track.
+        </p>
+      </ChartCard>
+    )
+  }
+
   const cellWidth = 100 / (months.length + 1)
 
   return (
-    <ChartCard title="Budget Variance Heatmap" subtitle="Green = favorable, Red = unfavorable variance by category and month" tooltip="A quick way to spot trouble. Each cell shows how far actual results are from budget for that category and month. Green means you're on track or better, red means you're over budget. Hover on a cell for the exact numbers.">
+    <ChartCard
+      title={`${yardstick} Variance Heatmap`}
+      subtitle="Green = favorable, Red = unfavorable variance by category and month"
+      tooltip={`A quick way to spot trouble. Each cell shows how far actual results are from ${yardstick.toLowerCase()} for that category and month. Green means you're on track or better, red means you're over ${yardstick.toLowerCase()}. Hover on a cell for the exact numbers.`}
+    >
       <div className="overflow-x-auto">
         <div className="min-w-[600px]">
           {/* Header row */}
@@ -131,7 +164,7 @@ export default function VarianceHeatmapChart({ fullYearReport }: Props) {
         <div className="mt-3 p-3 bg-gray-50 rounded-lg text-xs">
           <span className="font-semibold">{hoveredCell.category}</span> — {hoveredCell.monthLabel}
           {hoveredCell.source === 'forecast' && <span className="ml-1 text-gray-400">(Forecast)</span>}:
-          {hoveredCell.source === 'actual' ? ' Actual' : ' Budget'} {fmtCurrency(hoveredCell.actual)} vs Budget {fmtCurrency(hoveredCell.budget)}
+          {hoveredCell.source === 'actual' ? ' Actual' : ` ${yardstick}`} {fmtCurrency(hoveredCell.actual)} vs {yardstick} {fmtCurrency(hoveredCell.budget)}
           ({hoveredCell.variancePct >= 0 ? '+' : ''}{hoveredCell.variancePct.toFixed(1)}%)
         </div>
       )}
