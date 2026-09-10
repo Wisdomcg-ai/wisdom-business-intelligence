@@ -37,6 +37,7 @@ import { WIDGET_METHOD_MAP } from './widget-renderer'
 import { assessBalanceSheetForPdf, type BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
 import { statementYardstick, wagesYardstick, wagesEmployeeYardstick, noBudgetNote } from '../utils/budget-yardstick'
 import { withoutSilentLines, withoutSilentFullYearLines } from '@/lib/monthly-report/empty-lines'
+import { SECTION_TEXT, RULE_STRONG, paintNegatives, packTableStyles } from './pack-style'
 import {
   hasApprovedBudget,
   formatApprovedAnnual,
@@ -1222,13 +1223,12 @@ export class MonthlyReportPDFService {
 
     const tableData: any[] = []
 
-    const sectionColors: Record<string, number[]> = {
-      'Revenue': [16, 185, 129],
-      'Cost of Sales': [239, 68, 68],
-      'Operating Expenses': [245, 158, 11],
-      'Other Income': [59, 130, 246],
-      'Other Expenses': [107, 114, 128],
-    }
+    // Section names are LABELS, not warnings. The pack used emerald for Revenue,
+    // red for Cost of Sales and amber for Operating Expenses — saturated
+    // full-width bands that read as alarms, and they consumed the one colour the
+    // page actually needs, which is red for an unfavourable figure. Calxa gives
+    // the section a quiet grey heading over a rule and spends its red on the
+    // numbers.
 
     // Track which body-row indices are section headers, subtotals, GP, NP for tinting logic
     const specialRowIndices = new Set<number>()
@@ -1244,10 +1244,12 @@ export class MonthlyReportPDFService {
         content: section.category,
         colSpan: headers.length,
         styles: {
-          fillColor: sectionColors[section.category] || [107, 114, 128],
-          textColor: 255,
+          fillColor: [255, 255, 255] as [number, number, number],
+          textColor: [SECTION_TEXT[0], SECTION_TEXT[1], SECTION_TEXT[2]] as [number, number, number],
           fontStyle: 'bold',
           fontSize: 8,
+          lineWidth: { top: 0, right: 0, bottom: 0.3, left: 0 },
+          lineColor: [RULE_STRONG[0], RULE_STRONG[1], RULE_STRONG[2]] as [number, number, number],
         },
       }])
       currentBodyIdx++
@@ -1272,7 +1274,18 @@ export class MonthlyReportPDFService {
       // coach's prose. One row per line so the account name can actually be
       // bold (autoTable styles are per-cell, not per-substring).
       if (this.options.commentary && ['Cost of Sales', 'Operating Expenses', 'Other Expenses'].includes(section.category)) {
-        const commentaryLines = section.lines.filter(l => this.options.commentary![l.account_name])
+        // An amber row with nothing in it is worse than no row: it asserts that
+        // this account was commented on and then says "—". The August pack
+        // carried six of them (Art Import, Artist Commissions, Cushions & Decor,
+        // Freight to Customer, International Orders, Posters) because the
+        // account was TRIGGERED but neither the generated draft nor the coach
+        // had written anything for it yet.
+        const commentaryLines = section.lines.filter(l => {
+          const e = this.options.commentary![l.account_name]
+          if (!e) return false
+          const hasDraft = (e.draft_warnings?.length ?? 0) === 0 && !!(e.draft_note ?? '').trim()
+          return hasDraft || !!(e.coach_note ?? '').trim()
+        })
         const amber = { fillColor: [255, 251, 235] as number[], textColor: [120, 53, 15] as number[], fontSize: 6.5, cellPadding: 2 }
         for (const l of commentaryLines) {
           const entry = this.options.commentary![l.account_name]
@@ -1304,9 +1317,7 @@ export class MonthlyReportPDFService {
         specialRowIndices.add(currentBodyIdx)
         const gpRow = this.buildLineRow(this.report.gross_profit_row, settings)
         gpRow[0] = { content: 'Gross Profit', styles: { fontStyle: 'bold', fillColor: GP_BLUE } }
-        for (let i = 1; i < gpRow.length; i++) {
-          gpRow[i] = { content: gpRow[i], styles: { fillColor: GP_BLUE, fontStyle: 'bold' } }
-        }
+        this.restyleRow(gpRow, { fillColor: GP_BLUE, fontStyle: 'bold' })
         tableData.push(gpRow)
         currentBodyIdx++
       }
@@ -1317,9 +1328,7 @@ export class MonthlyReportPDFService {
     specialRowIndices.add(currentBodyIdx)
     const npRow = this.buildLineRow(this.report.net_profit_row, settings)
     npRow[0] = { content: 'Net Profit', styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } }
-    for (let i = 1; i < npRow.length; i++) {
-      npRow[i] = { content: npRow[i], styles: { fillColor: NAVY, textColor: [255, 255, 255], fontStyle: 'bold' } }
-    }
+    this.restyleRow(npRow, { fillColor: NAVY, textColor: [255, 255, 255], fontStyle: 'bold' })
     tableData.push(npRow)
     }
 
@@ -1327,15 +1336,19 @@ export class MonthlyReportPDFService {
       startY: this.yPosition,
       head: [headers],
       body: tableData,
-      theme: 'grid',
-      headStyles: { fillColor: NAVY, textColor: 255, fontStyle: 'bold', fontSize: 7 },
-      bodyStyles: { fontSize: 7 },
-      columnStyles: { 0: { cellWidth: 50 } },
+      // Calxa's grain: no vertical rules, a hairline under each row, a quiet
+      // grey header. 'grid' drew a border round all fourteen columns of every
+      // row, which is what made this page read as a spreadsheet dump rather
+      // than a statement.
+      ...packTableStyles(7),
+      columnStyles: { 0: { cellWidth: 50, halign: 'left' } },
       margin: { left: this.margin, right: this.margin },
       didParseCell: (data) => {
         if (data.column.index > 0 && data.section !== 'head') {
           data.cell.styles.halign = 'right'
         }
+        // A parenthesised figure is unfavourable, wherever it lands.
+        paintNegatives(data as never)
         // Variance tinting for normal data rows
         if (data.section === 'body' && !specialRowIndices.has(data.row.index) && varianceCols.includes(data.column.index)) {
           this.applyVarianceTint(data)
@@ -2316,13 +2329,12 @@ export class MonthlyReportPDFService {
     const specialRowIndices = new Set<number>()
     let currentBodyIdx = 0
 
-    const sectionColors: Record<string, number[]> = {
-      'Revenue': [16, 185, 129],
-      'Cost of Sales': [239, 68, 68],
-      'Operating Expenses': [245, 158, 11],
-      'Other Income': [59, 130, 246],
-      'Other Expenses': [107, 114, 128],
-    }
+    // Section names are LABELS, not warnings. The pack used emerald for Revenue,
+    // red for Cost of Sales and amber for Operating Expenses — saturated
+    // full-width bands that read as alarms, and they consumed the one colour the
+    // page actually needs, which is red for an unfavourable figure. Calxa gives
+    // the section a quiet grey heading over a rule and spends its red on the
+    // numbers.
 
     // A forecast cell, or the absent mark. Only a month that has NOT closed and
     // the forecast-derived totals go through this; actuals are unaffected.
@@ -2336,10 +2348,12 @@ export class MonthlyReportPDFService {
         content: section.category,
         colSpan: headers.length,
         styles: {
-          fillColor: sectionColors[section.category] || [107, 114, 128],
-          textColor: 255,
+          fillColor: [255, 255, 255] as [number, number, number],
+          textColor: [SECTION_TEXT[0], SECTION_TEXT[1], SECTION_TEXT[2]] as [number, number, number],
           fontStyle: 'bold',
           fontSize: 6,
+          lineWidth: { top: 0, right: 0, bottom: 0.3, left: 0 },
+          lineColor: [RULE_STRONG[0], RULE_STRONG[1], RULE_STRONG[2]] as [number, number, number],
         },
       }])
       currentBodyIdx++
@@ -3374,6 +3388,26 @@ export class MonthlyReportPDFService {
     }
   }
 
+  /**
+   * Style a built row's cells without destroying the ones already styled.
+   *
+   * `buildLineRow` returns a mix: plain strings for ordinary figures, and
+   * `{ content, styles }` objects for the cells that carry their own meaning —
+   * the dashes a no-budget client gets, and tinted variances. The Gross Profit
+   * and Net Profit rows used to wrap EVERY cell as `{ content: cell }`, which
+   * turns an already-wrapped cell into `{ content: { content, styles } }` and
+   * prints the literal text "[object Object]" where a number belongs. It was
+   * doing exactly that on the Gross Profit line of the August pack.
+   */
+  private restyleRow(row: any[], styles: Record<string, unknown>): void {
+    for (let i = 1; i < row.length; i++) {
+      const cell = row[i]
+      row[i] = cell !== null && typeof cell === 'object'
+        ? { ...cell, styles: { ...(cell.styles ?? {}), ...styles } }
+        : { content: cell, styles: { ...styles } }
+    }
+  }
+
   private renderPlaceholder(type: WidgetType, box: WidgetBoundingBox, message?: string): void {
     this.doc.setDrawColor(200, 200, 200)
     this.doc.setFillColor(248, 248, 248)
@@ -3867,18 +3901,29 @@ export class MonthlyReportPDFService {
     this.doc.setTextColor(0, 0, 0)
   }
 
+  /**
+   * A figure, the way a management pack prints one.
+   *
+   * No currency symbol, and negatives in parentheses rather than with a minus.
+   * A statement states its currency once — repeating "$" three hundred times is
+   * what turns a fourteen-column table into a wall, and "-$6,122" is not the
+   * accounting convention that a reader of these packs has read all their life.
+   * en-AU, not en-US: this is an Australian practice.
+   */
   private fmtCurrency(value: number): string {
     const abs = Math.abs(value)
-    const formatted = abs.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
-    return value < 0 ? `-$${formatted}` : `$${formatted}`
+    const formatted = abs.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+    // Rounded before the sign test: -0.4 must not print as "(0)", a
+    // parenthesised nothing that reads as an unfavourable result.
+    return Math.round(value) < 0 ? `(${formatted})` : formatted
   }
 
   /** Format variance with parentheses for unfavorable (negative) values */
   private fmtVariance(value: number): string {
     const abs = Math.abs(value)
-    const formatted = abs.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
-    if (value < 0) return `($${formatted})`
-    return `$${formatted}`
+    const formatted = abs.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+    if (Math.round(value) < 0) return `(${formatted})`
+    return formatted
   }
 
   private fmtPct(value: number): string {

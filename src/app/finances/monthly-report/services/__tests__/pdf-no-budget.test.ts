@@ -68,7 +68,8 @@ describe('the PDF has the same three states as the tab', () => {
     const text = docText(new MonthlyReportPDFService(noBudget(), {}).generate())
     // The actual is real and appears; the $0 budget and the variance that
     // merely repeats the actual do not.
-    expect(text).toContain('$62,035')
+    // No currency symbol: the pack states its currency once (see fmtCurrency).
+    expect(text).toContain('62,035')
     expect(text).not.toContain('+0.0%')
   })
 
@@ -86,7 +87,7 @@ describe('the PDF has the same three states as the tab', () => {
 
   it('leaves a budgeted pack showing its budget figures', () => {
     const text = docText(new MonthlyReportPDFService(fixtureReport(), {}).generate())
-    expect(text).toContain('$90,000')
+    expect(text).toContain('90,000')
     expect(text).not.toContain('No budget for this month')
   })
 })
