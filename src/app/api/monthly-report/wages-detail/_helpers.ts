@@ -13,6 +13,7 @@
  * No external dependency added: levenshtein is an inline iterative DP
  * implementation per Phase 71 CONTEXT D-B1 (no library in package.json).
  */
+import { buildFuzzyLookup, isAccountMatch } from '@/lib/utils/account-matching';
 
 export type MatchVia = 'exact' | 'token_sort' | 'fuzzy' | 'no_match';
 
@@ -263,4 +264,80 @@ export function computePayrollTies(args: {
     within_tolerance: Math.abs(delta) <= PAY_TIES_TOLERANCE,
     comparable,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The account-level budget on the wages page
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One budget line, in the shape both budget sources hand this page.
+ *
+ * `is_from_payroll` exists only on the forecast side (budget_versions has no
+ * such notion), so the fallback that reads it is a forecast-only tier by
+ * construction — see the fourth tier below.
+ */
+export interface WagesBudgetLine {
+  account_name: string
+  forecast_months?: Record<string, number> | null
+  is_from_payroll?: boolean | null
+}
+
+/**
+ * Match one configured wages account to its budget for a month.
+ *
+ * Lifted verbatim out of route.ts — four tiers, first non-zero wins, and the
+ * scan tiers take the LARGEST candidate rather than the first. It moved here
+ * because the route now feeds it whichever budget the client is actually held
+ * to (the approved budget out of budget_versions once they are on the budget
+ * store, the forecast otherwise), and the thing worth pinning in a test is that
+ * a budget-store client's wages budget is the approved one: Urban Road's
+ * August 2026 'Employ - Wages & Salaries' is $52,519 approved against $76,182
+ * in the forecast that this page used to read.
+ *
+ * The tiers are unchanged on purpose. Every forecast client's wages page must
+ * come out of this byte-identical to what it printed before, including the
+ * fourth tier's "any payroll-derived line will do" guess.
+ */
+export function buildWagesBudgetResolver(
+  budgetLines: WagesBudgetLine[],
+  /** account_mappings, Xero name → budget line name. */
+  xeroToForecast: Map<string, string>,
+): (accountName: string, month: string) => number {
+  const budgetLookup = buildFuzzyLookup(budgetLines, (item) => item.account_name)
+
+  return (accountName: string, month: string): number => {
+    let best = 0
+
+    const direct = budgetLookup(accountName)
+    if (direct?.forecast_months) {
+      best = Math.abs(direct.forecast_months[month] || 0)
+    }
+    if (best === 0) {
+      for (const bl of budgetLines) {
+        if (isAccountMatch(accountName, bl.account_name)) {
+          const val = Math.abs(bl.forecast_months?.[month] || 0)
+          if (val > best) best = val
+        }
+      }
+    }
+    if (best === 0) {
+      const mapped = xeroToForecast.get(accountName.toLowerCase())
+      if (mapped) {
+        const bridged = budgetLookup(mapped)
+        if (bridged?.forecast_months) best = Math.abs(bridged.forecast_months[month] || 0)
+      }
+    }
+    if (best === 0) {
+      // Forecast-only by construction: no budget_versions line carries the
+      // flag, so a budget-store client falls out of this tier at zero rather
+      // than borrowing a number from an account nobody asked about.
+      for (const pl of budgetLines.filter((bl) => bl.is_from_payroll)) {
+        const val = Math.abs(pl.forecast_months?.[month] || 0)
+        if (val > best) best = val
+      }
+    }
+
+    return best
+  }
 }

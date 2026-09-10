@@ -234,6 +234,17 @@ export interface GeneratedReport {
   /** budget_versions.id when budget_source is 'budget_version'. */
   budget_version_id?: string | null
   /**
+   * Why there is no budget, when the client is on the budget store — emitted by
+   * generate/route.ts straight off the resolver. Undefined on a snapshot frozen
+   * before the field existed, and null on the forecast path (the resolver only
+   * explains itself for a budget-store client).
+   *
+   * Anything that shows a reader an empty budget column has to say why: a
+   * column of dashes with nothing explaining it gets read as "we budgeted
+   * nothing", which is a different and false claim.
+   */
+  no_budget_reason?: import('@/lib/budgets/resolve-budget').NoBudgetReason | null
+  /**
    * True when this report was produced by `/api/monthly-report/consolidated`
    * (i.e. the underlying business is a consolidation parent). Enables
    * consolidation-specific UI affordances — e.g. the "Consolidated budget
@@ -566,8 +577,45 @@ export interface ExternalMetricSeriesData {
   } | null
 }
 
+/**
+ * What produced a budget column on a page that resolves its own budget.
+ *
+ * The wages page reads a budget of its own rather than slicing the report's, so
+ * it carries the resolver's three fields back with the figures. Everything a
+ * reader is told about that column is derived from THIS, never from settings —
+ * a client switched to the budget store whose version will not resolve has
+ * budget_source='budget_version' in settings and no budget at all on the page.
+ */
+export interface BudgetProvenance {
+  source: 'budget_version' | 'forecast' | 'none'
+  /** The version's label / the forecast's name. */
+  label?: string | null
+  /** Why there is no budget, when the client is on the budget store. */
+  reason?: import('@/lib/budgets/resolve-budget').NoBudgetReason | null
+  /** Names the fiscal year in the absent sentence. */
+  fiscal_year?: number | string | null
+}
+
 export interface WagesDetailData {
   accounts: WagesAccountLine[]
+  /**
+   * What the account-level Budget column on this page IS. The page resolves its
+   * own budget — it is not a slice of the report's — so it carries its own
+   * provenance back rather than letting the surface guess from settings.
+   *
+   * Optional: a response cached before this field existed has none, and is
+   * rendered with exactly the words it carried then (see wagesYardstick).
+   */
+  budget_provenance?: BudgetProvenance
+  /**
+   * Is there a per-employee plan for this month at all? Only a forecast has
+   * one — the approved budget is not split by employee — so this is false for
+   * a budget-store client with no forecast, and the per-employee Budget and
+   * Variance columns are dashes rather than $0 against a full actual.
+   *
+   * Optional for the same reason budget_provenance is.
+   */
+  employee_plan_available?: boolean
   employees: WagesEmployeeLine[]
   employee_totals: { actual: number; budget: number; variance: number }
   grand_total: { actual: number; budget: number; variance: number }

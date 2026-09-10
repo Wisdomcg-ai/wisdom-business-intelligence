@@ -4,7 +4,8 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { forecastBelongsToBusiness } from '@/lib/budgets/owned-forecast'
-import { buildFuzzyLookup, isAccountMatch } from '@/lib/utils/account-matching'
+import { resolveBudget } from '@/lib/budgets/resolve-budget'
+import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
@@ -19,6 +20,7 @@ import {
   oldestPeriodEnd,
   computePayrollPhasing,
   computePayrollTies,
+  buildWagesBudgetResolver,
 } from './_helpers'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
@@ -143,6 +145,18 @@ async function postHandler(request: Request) {
     // ===== 1. Resolve dual business IDs and forecast ID =====
     const ids = await resolveBusinessProfileIds(supabase, business_id)
 
+    // Which yardstick this client is held to. Read POSITIVELY and off the same
+    // row the statement pages read: nineteen businesses have no settings row at
+    // all, so this arrives undefined rather than 'forecast', and a `!==
+    // 'forecast'` test would switch every one of them onto the budget store.
+    const { data: reportSettings } = await supabase
+      .from('monthly_report_settings')
+      .select('budget_source')
+      .eq('business_id', business_id)
+      .maybeSingle()
+    const budgetSource: 'forecast' | 'budget_version' =
+      reportSettings?.budget_source === 'budget_version' ? 'budget_version' : 'forecast'
+
     // The pin arrives in the REQUEST BODY, and everything below runs on the
     // service-role client, which bypasses RLS. Without this check a caller with
     // access to one business could name another tenant's forecast and read its
@@ -164,32 +178,54 @@ async function postHandler(request: Request) {
         } as any)
       }
     }
-    if (!forecastId) {
-      const { data: forecast } = await supabase
-        .from('financial_forecasts')
-        .select('id')
-        .in('business_id', ids.all)
-        .eq('fiscal_year', fiscal_year)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      if (forecast) { forecastId = forecast.id }
-    }
+
+    // ===== 1b. The BUDGET, through the resolver every other page uses =====
+    //
+    // This page used to read forecast_pl_lines unconditionally. For a client on
+    // the budget store that put the FORECAST under the word "Budget" on a page
+    // bound into a pack whose statement pages head "Approved Budget" over a
+    // different number for the same account — Urban Road's August 2026
+    // 'Employ - Wages & Salaries' is $52,519 approved and $76,182 in the
+    // forecast. And for the five clients with no effective forecast the column
+    // was $0 throughout, which the page reported as a 100% favourable variance
+    // on wages.
+    //
+    // Same resolver, same inputs (business, FY, month) as generate/route.ts, so
+    // the two pages of one pack cannot resolve different budgets. Only the
+    // report month is asked for: this page reads no other window.
+    const resolvedBudget = await resolveBudget(supabase, {
+      businessId: business_id,
+      profileId: ids.profileId,
+      fiscalYear: fiscal_year,
+      reportMonth: report_month,
+      months: [report_month],
+      budgetSource,
+      pin: { budgetForecastId: forecastId ?? null },
+    })
+
+    // The per-EMPLOYEE plan is a different object: only a forecast has one, and
+    // the approved budget is not split by employee. It follows the resolver's
+    // forecast when there is one, and is honestly absent when there is not —
+    // rather than silently borrowing the pin's forecast behind an approved
+    // budget's back.
+    const employeePlanForecastId: string | null = resolvedBudget.forecastId
 
     // ===== 2. Fetch DB data in parallel =====
-    const [plResult, budgetResult, mappingsResult, forecastEmpResult, forecastSettingsResult] = await Promise.all([
+    const [plResult, payrollFlagResult, mappingsResult, forecastEmpResult, forecastSettingsResult] = await Promise.all([
       // Actuals from xero_pl_lines (search both ID formats)
       supabase
         .from('xero_pl_lines_wide_compat')
         .select('account_name, monthly_values')
         .in('business_id', ids.all),
-      // Budget from forecast_pl_lines
-      forecastId
+      // is_from_payroll, for the resolved budget's lines. The resolver does not
+      // carry the flag (budget_versions has no such notion), and the fourth
+      // matching tier below reads it — so it is fetched alongside and joined by
+      // line id, which keeps a forecast client's page byte-identical.
+      employeePlanForecastId
         ? supabase
             .from('forecast_pl_lines')
-            .select('account_name, category, forecast_months, is_from_payroll')
-            .eq('forecast_id', forecastId)
+            .select('id, is_from_payroll')
+            .eq('forecast_id', employeePlanForecastId)
         : Promise.resolve({ data: [] }),
       // Account mappings bridge
       supabase
@@ -197,26 +233,37 @@ async function postHandler(request: Request) {
         .select('xero_account_name, forecast_pl_line_name')
         .eq('business_id', business_id),
       // Forecast employees (budget) — include pay_per_period, monthly_cost, start_date
-      forecastId
+      employeePlanForecastId
         ? supabase
             .from('forecast_employees')
             .select('employee_name, position, category, annual_salary, super_rate, pay_per_period, monthly_cost, start_date, is_active')
-            .eq('forecast_id', forecastId)
+            .eq('forecast_id', employeePlanForecastId)
             .eq('is_active', true)
             .order('annual_salary', { ascending: false })
         : Promise.resolve({ data: [] }),
       // Forecast payroll frequency
-      forecastId
+      employeePlanForecastId
         ? supabase
             .from('financial_forecasts')
             .select('payroll_frequency')
-            .eq('id', forecastId)
+            .eq('id', employeePlanForecastId)
             .single()
         : Promise.resolve({ data: null }),
     ])
 
     const plLines = plResult.data || []
-    const budgetLines = (budgetResult.data || []) as { account_name: string; category: string; forecast_months: Record<string, number>; is_from_payroll: boolean }[]
+    const payrollLineIds = new Set(
+      ((payrollFlagResult.data || []) as { id: string; is_from_payroll: boolean | null }[])
+        .filter((r) => r.is_from_payroll)
+        .map((r) => r.id),
+    )
+    const budgetLines = resolvedBudget.lines.map((line) => ({
+      account_name: line.account_name,
+      category: line.category,
+      forecast_months: line.forecast_months,
+      is_from_payroll: payrollLineIds.has(line.id),
+    }))
+    const budgetAvailable = resolvedBudget.source !== 'none'
     const mappings = mappingsResult.data || []
     const allForecastEmployees = (forecastEmpResult.data || []) as {
       employee_name: string; position: string; category: string
@@ -247,7 +294,6 @@ async function postHandler(request: Request) {
 
     // ===== 3. Build lookups for P&L matching =====
     const actualLookup = buildFuzzyLookup(plLines, (item) => item.account_name)
-    const budgetLookup = buildFuzzyLookup(budgetLines, (item) => item.account_name)
 
     const xeroToForecast = new Map<string, string>()
     const forecastToXero = new Map<string, string>()
@@ -257,6 +303,11 @@ async function postHandler(request: Request) {
         forecastToXero.set(m.forecast_pl_line_name.toLowerCase(), m.xero_account_name)
       }
     }
+
+    // The four matching tiers, unchanged and now in one testable place. Fed the
+    // resolved budget, so which object they search — the approved budget or the
+    // forecast — is settled once, upstream, for the whole page.
+    const resolveWagesBudget = buildWagesBudgetResolver(budgetLines, xeroToForecast)
 
     // ===== 4. Account-level breakdown (P&L totals) =====
     let grandActual = 0
@@ -283,36 +334,7 @@ async function postHandler(request: Request) {
         console.log(`[WagesDetail] Account "${name}": actualLine=${actualLine ? 'found' : 'NOT FOUND'}, actual=${actual}, monthKeys=${actualLine?.monthly_values ? Object.keys(actualLine.monthly_values).slice(0,3).join(',') : 'none'}`)
       }
 
-      let bestBudgetValue = 0
-      const directBudget = budgetLookup(name)
-      if (directBudget?.forecast_months) {
-        bestBudgetValue = Math.abs(directBudget.forecast_months[report_month] || 0)
-      }
-      if (bestBudgetValue === 0) {
-        for (const bl of budgetLines) {
-          if (isAccountMatch(name, bl.account_name)) {
-            const val = Math.abs(bl.forecast_months?.[report_month] || 0)
-            if (val > bestBudgetValue) bestBudgetValue = val
-          }
-        }
-      }
-      if (bestBudgetValue === 0) {
-        const mappedForecastName = xeroToForecast.get(name.toLowerCase())
-        if (mappedForecastName) {
-          const bridgeBudget = budgetLookup(mappedForecastName)
-          if (bridgeBudget?.forecast_months) {
-            bestBudgetValue = Math.abs(bridgeBudget.forecast_months[report_month] || 0)
-          }
-        }
-      }
-      if (bestBudgetValue === 0) {
-        for (const pl of budgetLines.filter(bl => bl.is_from_payroll)) {
-          const val = Math.abs(pl.forecast_months?.[report_month] || 0)
-          if (val > bestBudgetValue) bestBudgetValue = val
-        }
-      }
-
-      const budget = bestBudgetValue
+      const budget = resolveWagesBudget(name, report_month)
       grandActual += actual
       grandBudget += budget
       const variance = budget - actual
@@ -823,6 +845,19 @@ async function postHandler(request: Request) {
       success: true,
       data: {
         accounts,
+        // What the account-level Budget column IS, carried back rather than
+        // re-derived by each surface. 'none' is the honest empty: the tab and
+        // the pack dash every budget-derived cell and say why, instead of
+        // printing $0 and a 100%-favourable variance on wages.
+        budget_provenance: {
+          source: resolvedBudget.source,
+          label: resolvedBudget.label,
+          reason: resolvedBudget.noBudgetReason,
+          fiscal_year,
+        },
+        // The per-employee plan lives only in a forecast. False means there is
+        // no plan for this month — not that the team is budgeted at nothing.
+        employee_plan_available: forecastEmployees.length > 0,
         employees,
         employee_totals: {
           actual: Math.round(empActualTotal * 100) / 100,

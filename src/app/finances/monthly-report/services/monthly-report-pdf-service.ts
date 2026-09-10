@@ -35,7 +35,7 @@ import { GRID_CONFIG } from '../types/pdf-layout'
 import { calculateBoundingBox, normalizeLayoutPlacements } from '../utils/grid-helpers'
 import { WIDGET_METHOD_MAP } from './widget-renderer'
 import { assessBalanceSheetForPdf, type BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
-import { statementYardstick } from '../utils/budget-yardstick'
+import { statementYardstick, wagesYardstick, wagesEmployeeYardstick } from '../utils/budget-yardstick'
 import {
   hasApprovedBudget,
   formatApprovedAnnual,
@@ -681,16 +681,20 @@ export class MonthlyReportPDFService {
    */
   private drawReasonCard(message: string): void {
     const width = this.pageWidth - this.margin * 2
-    this.doc.setFillColor(251, 243, 228)
-    this.doc.setDrawColor(224, 174, 92)
-    this.doc.roundedRect(this.margin, this.yPosition, width, 26, 2, 2, 'FD')
     this.doc.setFontSize(10)
     this.doc.setFont('helvetica', 'normal')
-    this.doc.setTextColor(138, 94, 18)
     const lines: string[] = this.doc.splitTextToSize(message, width - 10)
+    // Height follows the text. It used to be a fixed 26mm, which fits two
+    // lines: a longer reason ran out through the bottom of its own box.
+    const lineHeight = (this.doc.getFontSize() * 1.15) / (this.doc as any).internal.scaleFactor
+    const height = Math.max(26, 10 + lines.length * lineHeight)
+    this.doc.setFillColor(251, 243, 228)
+    this.doc.setDrawColor(224, 174, 92)
+    this.doc.roundedRect(this.margin, this.yPosition, width, height, 2, 2, 'FD')
+    this.doc.setTextColor(138, 94, 18)
     this.doc.text(lines, this.margin + 5, this.yPosition + 8)
     this.doc.setTextColor(0, 0, 0)
-    this.yPosition += 32
+    this.yPosition += height + 6
   }
 
   /**
@@ -714,6 +718,34 @@ export class MonthlyReportPDFService {
     this.doc.setTextColor(0, 0, 0)
     this.doc.setFont('helvetica', 'normal')
     this.yPosition += height + 4
+  }
+
+  /**
+   * A grey note line under a heading or a table — WRAPPED.
+   *
+   * jsPDF's `text()` does not wrap: a string wider than the page runs off the
+   * paper and the overflow is simply not printed. Urban Road's yardstick note
+   * is 179 characters on a PORTRAIT page, and the half that got cut was the
+   * half naming the yardstick — the reason the note exists. Every note this
+   * pack draws goes through here so that cannot happen again.
+   *
+   * Pass `y` to draw at a computed position (under a table) without moving
+   * this.yPosition; the bottom of the block is returned either way, so a
+   * caller can put something under it.
+   */
+  private drawNote(message: string, y?: number): number {
+    const width = this.pageWidth - this.margin * 2
+    this.doc.setFontSize(7.5)
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setTextColor(107, 114, 128)
+    const lines: string[] = this.doc.splitTextToSize(message, width)
+    const top = y ?? this.yPosition
+    this.doc.text(lines, this.margin, top)
+    this.doc.setTextColor(0, 0, 0)
+    const lineHeight = (this.doc.getFontSize() * 1.15) / (this.doc as any).internal.scaleFactor
+    const bottom = top + lines.length * lineHeight + 1.5
+    if (y === undefined) this.yPosition = bottom
+    return bottom
   }
 
   /** Formatting mirrors BalanceSheetTab: no currency symbol, no decimals,
@@ -1551,17 +1583,33 @@ export class MonthlyReportPDFService {
     this.doc.text(`Wages Analysis — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
     this.yPosition += 8
 
-    const headers = ['Account Name', 'Budget', 'Actual', 'Var ($)', 'Var (%)']
+    // The word over the money, from the resolution the ROUTE used — the same
+    // helper, the same words as the browser tab. This page read
+    // forecast_pl_lines unconditionally until the budget moved behind the
+    // resolver, so on a budget-store client's pack an unqualified "Budget" here
+    // sat four pages from an "Approved Budget" naming a different number for
+    // the same account.
+    const yardstick = wagesYardstick(detail.budget_provenance)
+    if (yardstick.absentNote) this.drawReasonCard(yardstick.absentNote)
+    if (yardstick.note) this.drawNote(yardstick.note)
+
+    const headers = ['Account Name', yardstick.columnLabel, 'Actual', 'Var ($)', 'Var (%)']
     const varianceCols = [3, 4]
     const tableData: any[] = []
+    // Three states, the tab's: a figure, or a dash with the reason stated
+    // above. Never $0 — which on this page reads as "we budget nothing for our
+    // team" and turns the whole actual into a favourable variance.
+    const budgetCell = (v: number) => (yardstick.available ? this.fmtCurrency(v) : '—')
+    const varCell = (v: number) => (yardstick.available ? this.fmtVariance(v) : '—')
+    const pctCell = (v: number) => (yardstick.available ? this.fmtPct(v) : '—')
 
     for (const account of detail.accounts) {
       tableData.push([
         account.account_name,
-        this.fmtCurrency(account.budget),
+        budgetCell(account.budget),
         this.fmtCurrency(account.actual),
-        this.fmtVariance(account.variance),
-        this.fmtPct(account.variance_percent),
+        varCell(account.variance),
+        pctCell(account.variance_percent),
       ])
     }
 
@@ -1571,10 +1619,10 @@ export class MonthlyReportPDFService {
     const grandTotalIdx = tableData.length
     tableData.push([
       { content: 'Grand Total', styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
-      { content: this.fmtCurrency(detail.grand_total.budget), styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
+      { content: budgetCell(detail.grand_total.budget), styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
       { content: this.fmtCurrency(detail.grand_total.actual), styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
-      { content: this.fmtVariance(detail.grand_total.variance), styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
-      { content: this.fmtPct(gtVarPct), styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
+      { content: varCell(detail.grand_total.variance), styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
+      { content: pctCell(gtVarPct), styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } },
     ])
 
     autoTable(this.doc, {
@@ -1607,12 +1655,21 @@ export class MonthlyReportPDFService {
       this.doc.text('Employee Detail', this.margin, this.yPosition)
       this.yPosition += 6
 
-      const empHeaders = ['Employee', 'Total Paid', 'Budget', 'Var ($)']
+      // A different object from the table above: only a forecast carries a
+      // per-employee plan, and the approved budget is not split by employee.
+      const empYardstick = wagesEmployeeYardstick(
+        detail.budget_provenance,
+        detail.employee_plan_available ?? true,
+      )
+      if (empYardstick.absentNote) this.drawReasonCard(empYardstick.absentNote)
+      if (empYardstick.note) this.drawNote(empYardstick.note)
+
+      const empHeaders = ['Employee', 'Total Paid', empYardstick.columnLabel, 'Var ($)']
       const empData = detail.employees.map(e => [
         e.name,
         this.fmtCurrency(e.actual_total),
-        this.fmtCurrency(e.budget_total),
-        this.fmtVariance(e.variance),
+        empYardstick.available ? this.fmtCurrency(e.budget_total) : '—',
+        empYardstick.available ? this.fmtVariance(e.variance) : '—',
       ])
 
       autoTable(this.doc, {
