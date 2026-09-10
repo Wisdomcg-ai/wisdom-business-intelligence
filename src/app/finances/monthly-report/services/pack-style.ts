@@ -125,3 +125,43 @@ export function paintNegatives(data: {
     data.cell.styles.textColor = rgb(NEGATIVE)
   }
 }
+
+/** One block of the period band: how many columns it spans, and what it says. */
+export interface BandGroup {
+  label: string
+  colSpan: number
+  /** Alternating tone is what separates one period from the next without a rule. */
+  tone: 'dark' | 'light'
+}
+
+/**
+ * The two-tier header Calxa puts over every statement.
+ *
+ * The top tier carries the PERIOD spanning the columns it covers — "Aug 2026"
+ * over budget/actual/variance, "YTD FY2027" over the year-to-date block — in
+ * alternating grey-lavender tones. The tier beneath carries the column names on
+ * near-white. A reader can then tell at a glance which period a column belongs
+ * to; with a single tier of fourteen labels they cannot, and that is most of
+ * what made our version of this page unreadable.
+ *
+ * Returned as an autoTable head row, to be placed above the existing one.
+ */
+export function periodBandRow(groups: readonly BandGroup[]) {
+  return groups.map((g) => ({
+    content: g.label,
+    colSpan: g.colSpan,
+    styles: {
+      fillColor: g.tone === 'dark' ? rgb(BAND) : rgb(BAND_LIGHT),
+      textColor: rgb(BAND_TEXT),
+      fontStyle: 'bold' as const,
+      halign: 'center' as const,
+      fontSize: 7.5,
+      lineWidth: { top: 0, right: 0, bottom: 0, left: 0 },
+    },
+  }))
+}
+
+/** The lighter half of the alternating period band. */
+export const BAND_LIGHT: RGB = [220, 220, 225]
+/** Text on either band tone — near-black, as Calxa sets it. */
+export const BAND_TEXT: RGB = [38, 38, 42]
