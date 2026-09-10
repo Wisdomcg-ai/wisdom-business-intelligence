@@ -14,7 +14,11 @@ import {
   HEATMAP_SUBTITLE,
   HEATMAP_UNAVAILABLE_TITLE,
 } from '../components/charts/VarianceHeatmapChart'
-import { transformBurnRateData } from '../components/charts/BudgetBurnRateChart'
+import {
+  transformBurnRateData,
+  burnRateYardstick,
+  burnRateSubtitle,
+} from '../components/charts/BudgetBurnRateChart'
 import { transformAnalysisChartData, type AnalysisChartSection } from '../components/charts/analysis-chart-data'
 import { resolveSectionFilter, sectionTableTitle } from './section-table-config'
 import { annotateStandingLines } from '../utils/standing-commentary'
@@ -2624,14 +2628,18 @@ export class MonthlyReportPDFService {
     if (data.length === 0) return
     this.addPage('portrait')
 
+    // Named off the report's own budget_source, from the chart component, so
+    // this page and the Charts tab cannot call one number two things. The
+    // subtitle used to say "each annual budget" for every client — including
+    // the ten whose tab says the bar is a forecast.
+    const pctElapsed = data[0]?.pctElapsed || 0
     this.doc.setFontSize(14)
     this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Budget Burn Rate', this.margin, this.yPosition)
+    this.doc.text(burnRateYardstick(this.report).title, this.margin, this.yPosition)
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
-    const pctElapsed = data[0]?.pctElapsed || 0
-    this.doc.text(`How much of each annual budget has been spent (${pctElapsed.toFixed(0)}% of FY elapsed)`, this.margin, this.yPosition)
+    this.doc.text(burnRateSubtitle(this.report, pctElapsed), this.margin, this.yPosition)
     this.yPosition += 10
 
     const barLeft = this.margin + 40

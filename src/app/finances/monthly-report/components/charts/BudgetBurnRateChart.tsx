@@ -52,6 +52,35 @@ export function transformBurnRateData(report: GeneratedReport): BurnRateItem[] {
   return items
 }
 
+/**
+ * What this chart is actually measuring, in the words both surfaces use.
+ *
+ * It reads the MONTHLY report, whose budget column is the approved budget for a
+ * client on the budget store and the forecast for everyone else. "Budget"
+ * therefore names two different things depending on who is reading, and the
+ * same pack's Full Year page now uses both words for two columns side by side.
+ *
+ * Exported because the PDF draws this same chart from the same data. When only
+ * the tab was renamed, the tab said "Forecast Burn Rate" and the pack said
+ * "Budget Burn Rate" over the identical bar — for ten of the eleven clients
+ * with a settings row, on a pair of surfaces that had agreed before.
+ */
+export function burnRateYardstick(
+  report: Pick<GeneratedReport, 'budget_source'>,
+): { title: string; noun: string } {
+  return report.budget_source === 'budget_version'
+    ? { title: 'Approved Budget Burn Rate', noun: 'approved budget' }
+    : { title: 'Forecast Burn Rate', noun: 'forecast' }
+}
+
+/** The line under that heading, on both surfaces. */
+export function burnRateSubtitle(
+  report: Pick<GeneratedReport, 'budget_source'>,
+  pctElapsed: number,
+): string {
+  return `Expense ${burnRateYardstick(report).noun} for current FY (${pctElapsed.toFixed(0)}% of year elapsed)`
+}
+
 interface Props {
   report: GeneratedReport
 }
@@ -68,19 +97,13 @@ export default function BudgetBurnRateChart({ report }: Props) {
     return CHART_COLORS.positive.hex
   }
 
-  // This chart reads the MONTHLY report, whose budget column is the approved
-  // budget for a client on the budget store and the forecast for everyone else.
-  // "Budget" therefore names two different things depending on who is reading,
-  // and the same pack's Full Year page now uses both words for two columns side
-  // by side. Say which one this is.
-  const onApproved = report.budget_source === 'budget_version'
-  const yardstick = onApproved ? 'approved budget' : 'forecast'
+  const { title, noun } = burnRateYardstick(report)
 
   return (
     <ChartCard
-      title={onApproved ? 'Approved Budget Burn Rate' : 'Forecast Burn Rate'}
-      subtitle={`Expense ${yardstick} for current FY (${pctElapsed.toFixed(0)}% of year elapsed)`}
-      tooltip={`Shows how fast you're spending through each annual expense ${yardstick} in the current financial year. The coloured bar is how much you've used so far, and the dashed line marks where you should be based on how far through the year you are. If the bar passes the line, you're spending faster than planned.`}
+      title={title}
+      subtitle={burnRateSubtitle(report, pctElapsed)}
+      tooltip={`Shows how fast you're spending through each annual expense ${noun} in the current financial year. The coloured bar is how much you've used so far, and the dashed line marks where you should be based on how far through the year you are. If the bar passes the line, you're spending faster than planned.`}
     >
       <div className="space-y-4">
         {data.map(item => (
