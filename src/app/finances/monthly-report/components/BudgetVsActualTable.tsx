@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, FileText, Landmark } from 'lucide-react'
 import type { GeneratedReport, ReportLine, ReportSection, MonthlyReportSettings, VarianceCommentary, VendorSummary, VendorTransaction, ReportTab, CommentaryTriggerReason } from '../types'
 import { statementYardstick, noBudgetNote } from '../utils/budget-yardstick'
 import { commentaryBadge } from '@/lib/monthly-report/commentary-badge'
+import { groupExpenseLines } from '@/lib/monthly-report/expense-groups'
 
 interface BudgetVsActualTableProps {
   report: GeneratedReport
@@ -460,15 +461,41 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                       {section.category}
                     </td>
                   </tr>
-                  {/* Lines — only rows with non-zero data */}
-                  {visibleLines.map((line, idx) => (
-                    <LineRow
-                      key={`${section.category}-${idx}`}
-                      line={line}
-                      isRevenue={isRevenue}
-                      settings={settings}
-                      hasBudget={report.has_budget}
-                    />
+                  {/* Lines, under their expense group headings where the coach
+                      has set them. The same groupExpenseLines the pack uses —
+                      a tab that disagrees with the PDF beneath it is the
+                      defect, not a cosmetic difference. Ungrouped clients take
+                      the flat branch and render exactly as before. */}
+                  {groupExpenseLines(visibleLines, settings.expense_group_order).map((g, gi) => (
+                    <React.Fragment key={`${section.category}-g${gi}`}>
+                      {g.name && (
+                        <tr className="bg-gray-50">
+                          <td colSpan={colCount} className="px-3 py-1.5 text-xs font-semibold text-gray-600">
+                            {g.name}
+                          </td>
+                        </tr>
+                      )}
+                      {g.lines.map((line, idx) => (
+                        <LineRow
+                          key={`${section.category}-${gi}-${idx}`}
+                          line={line}
+                          isRevenue={isRevenue}
+                          settings={settings}
+                          hasBudget={report.has_budget}
+                        />
+                      ))}
+                      {g.subtotal && (
+                        <SubtotalRow
+                          line={g.subtotal}
+                          label={`Total ${g.name}`}
+                          bgClass="bg-gray-50"
+                          textClass="text-gray-800 font-semibold"
+                          settings={settings}
+                          isRevenue={isRevenue}
+                          hasBudget={report.has_budget}
+                        />
+                      )}
+                    </React.Fragment>
                   ))}
                   {/* Subtotal */}
                   <SubtotalRow

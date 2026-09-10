@@ -77,6 +77,14 @@ export interface MonthlyReportSettings {
   pdf_layout?: import('./types/pdf-layout').PDFLayout | null
   /** WD.3 — standing commentary bullets; null/undefined = none. */
   standing_commentary?: StandingCommentaryLine[] | null
+  /**
+   * The order the expense group headings run in. Membership lives on
+   * `account_mappings.report_subcategory`; this is the coach's editorial
+   * choice, which matches no property of the accounts. Null/absent = the
+   * expense pages stay a flat list, which is what every client that has not
+   * opted in gets.
+   */
+  expense_group_order?: string[] | null
   created_at?: string
   updated_at?: string
 }
@@ -182,6 +190,17 @@ export interface ReportLine {
   budget_annual_total: number
   // Prior year
   prior_year: number | null
+  /**
+   * The expense group this account belongs to ("Employment Expense", "Bank and
+   * Other Fees", …), from `account_mappings.report_subcategory`.
+   *
+   * Calxa gathers 49 expense accounts under nine headings with a subtotal each;
+   * ours printed them as one flat alphabetical list, which is why the expense
+   * pages read as a ledger export. Null on every client that has not grouped
+   * its chart yet — and a null group renders exactly as today, so nothing
+   * changes for anyone until a coach opts in.
+   */
+  group?: string | null
 }
 
 export interface ReportSection {

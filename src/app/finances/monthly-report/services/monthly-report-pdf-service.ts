@@ -36,8 +36,9 @@ import { calculateBoundingBox, normalizeLayoutPlacements } from '../utils/grid-h
 import { WIDGET_METHOD_MAP } from './widget-renderer'
 import { assessBalanceSheetForPdf, type BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
 import { statementYardstick, wagesYardstick, wagesEmployeeYardstick, noBudgetNote } from '../utils/budget-yardstick'
+import { groupExpenseLines } from '@/lib/monthly-report/expense-groups'
 import { withoutSilentLines, withoutSilentFullYearLines } from '@/lib/monthly-report/empty-lines'
-import { BAND_LIGHT, periodBandRow, type BandGroup, SECTION_TEXT, RULE_STRONG, paintNegatives, packTableStyles } from './pack-style'
+import { GROUP_SHADE, BAND_LIGHT, periodBandRow, type BandGroup, SECTION_TEXT, RULE_STRONG, paintNegatives, packTableStyles } from './pack-style'
 import {
   hasApprovedBudget,
   formatApprovedAnnual,
@@ -1291,9 +1292,39 @@ export class MonthlyReportPDFService {
       // printing a full row of zeros — three of the pack's most-read pages were
       // mostly Commercial Sales, Furniture Sales and Canvas Jondo at $0/$0/$0.
       // Display only: the lines stay in the payload and the snapshot.
-      for (const line of withoutSilentLines(section.lines)) {
-        tableData.push(this.buildLineRow(line, settings))
-        currentBodyIdx++
+      // Expense accounts print under their group heading with a subtotal each,
+      // the way the reference pack does — 49 accounts in one flat alphabetical
+      // run is what made this page read as a ledger export. A client that has
+      // grouped nothing takes the ungrouped branch and gets exactly the flat
+      // list it got before.
+      const visible = withoutSilentLines(section.lines)
+      for (const g of groupExpenseLines(visible, settings.expense_group_order)) {
+        if (g.name) {
+          specialRowIndices.add(currentBodyIdx)
+          tableData.push([{
+            content: g.name,
+            colSpan: headers.length,
+            styles: {
+              fillColor: [GROUP_SHADE[0], GROUP_SHADE[1], GROUP_SHADE[2]] as [number, number, number],
+              textColor: [60, 60, 60] as [number, number, number],
+              fontStyle: 'bold',
+              fontSize: 7.5,
+            },
+          }])
+          currentBodyIdx++
+        }
+        for (const line of g.lines) {
+          tableData.push(this.buildLineRow(line, settings))
+          currentBodyIdx++
+        }
+        if (g.subtotal) {
+          specialRowIndices.add(currentBodyIdx)
+          const groupRow = this.buildLineRow(g.subtotal, settings)
+          groupRow[0] = { content: `Total ${g.name}`, styles: { fontStyle: 'bold' } }
+          this.restyleRow(groupRow, { fontStyle: 'bold', fillColor: GROUP_SHADE as never })
+          tableData.push(groupRow)
+          currentBodyIdx++
+        }
       }
 
       specialRowIndices.add(currentBodyIdx)

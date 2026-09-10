@@ -490,6 +490,7 @@ async function postHandler(request: Request) {
       const line: ReportLine = {
         account_name: xero.account_name,
         xero_account_name: xero.account_name,
+        group: mapping?.report_subcategory ?? null,
         is_budget_only: false,
         actual,
         budget,
@@ -549,6 +550,10 @@ async function postHandler(request: Request) {
         const line: ReportLine = {
           account_name: bl.account_name,
           xero_account_name: null,
+          // A budget-only line has no Xero account behind it, so its group has
+          // to come from the name the budget uses. Matched the same way the
+          // rest of the row is: by the mapping the name resolves to, if any.
+          group: mappingByXeroName.get(bl.account_name)?.report_subcategory ?? null,
           is_budget_only: true,
           actual: 0,
           budget,
