@@ -25,6 +25,8 @@ export interface ReportLine {
   budget_next_month: number
   budget_annual_total: number
   prior_year: number | null
+  /** Expense group heading — see the same field on the UI's ReportLine. */
+  group?: string | null
 }
 
 // Map xero account_type to report_category

@@ -37,6 +37,17 @@ if (!businessId || !month) {
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, getSupabaseSecretKey())
 
+/**
+ * Used only until the `expense_group_order` migration is applied to prod — the
+ * code deploys before the column exists, and the preview should still show the
+ * page the way it will look. Matches the reference pack's heading order.
+ */
+const EXPENSE_GROUP_ORDER_FALLBACK = [
+  'Employment Expense', 'Travel & Accommodation', 'Professional Expense',
+  'IT Hardware and Software', 'Marketing and Advertising', 'Occupancy Expense',
+  'Foreign Currency Gains and Losses', 'Bank and Other Fees', 'Other Operating Expenses',
+]
+
 async function main() {
   // jsPDF needs a DOM-ish global before the service module is imported.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -83,6 +94,34 @@ async function main() {
       .filter(([slug]) => bySlug[slug])
       .map(([slug, category]) => ({ category, ...bySlug[slug] }))
   }
+  // A stored snapshot predates whatever field is being worked on today — its
+  // lines were written by the generate route as it stood when the coach clicked
+  // Generate. The preview's job is to show the PAGE, so it back-fills the
+  // fields the live route would now emit, from the same tables the route reads.
+  // Here: the expense group each account belongs to, and the order the headings
+  // run in. Nothing is written back.
+  const { data: maps } = await admin
+    .from('account_mappings')
+    .select('xero_account_name, report_subcategory')
+    .eq('business_id', businessId)
+    .is('deleted_at', null)
+  const groupOf = new Map<string, string | null>(
+    (maps ?? []).map((m: { xero_account_name: string; report_subcategory: string | null }) =>
+      [m.xero_account_name, m.report_subcategory]),
+  )
+  for (const sec of (report.sections ?? []) as { lines?: { account_name: string; group?: string | null }[] }[]) {
+    for (const l of sec.lines ?? []) l.group = groupOf.get(l.account_name) ?? null
+  }
+  const { data: st } = await admin
+    .from('monthly_report_settings')
+    .select('expense_group_order')
+    .eq('business_id', businessId)
+    .maybeSingle()
+  const settings = (report.settings ?? {}) as Record<string, unknown>
+  settings.expense_group_order =
+    (st as { expense_group_order?: string[] } | null)?.expense_group_order ?? EXPENSE_GROUP_ORDER_FALLBACK
+  report.settings = settings
+
   console.log(`Report month ${snap.report_month}`)
   console.log(`  budget_source:        ${report.budget_source ?? '(not recorded — pre-#490 snapshot)'}`)
   console.log(`  budget_forecast_name: ${report.budget_forecast_name ?? '—'}`)
