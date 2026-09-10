@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, FileText, Landmark } from 'lucide-react'
 import type { GeneratedReport, ReportLine, ReportSection, MonthlyReportSettings, VarianceCommentary, VendorSummary, VendorTransaction, ReportTab } from '../types'
-import { statementYardstick } from '../utils/budget-yardstick'
+import { statementYardstick, noBudgetNote } from '../utils/budget-yardstick'
 
 interface BudgetVsActualTableProps {
   report: GeneratedReport
@@ -380,13 +380,13 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
     <div className="bg-white rounded-lg shadow-sm overflow-hidden">
       {/* WA.3 — the no-budget explanation leads the table instead of trailing
           ~50 rows below it. Without a budget every Budget/Variance cell is "—",
-          and the reader should know why before they scan the columns. */}
-      {!report.has_budget && (
+          and the reader should know why before they scan the columns. The
+          sentence itself comes from the shared helper: the PDF page prints the
+          same one, off the same `no_budget_reason`, so the coach's screen and
+          the client's pack say the same thing about the same month. */}
+      {noBudgetNote(report) && (
         <div className="p-4 bg-amber-50 border-b border-amber-200">
-          <p className="text-sm text-amber-800">
-            No budget forecast found — {yardstick.columnLabel} and Variance columns are shown
-            as &ldquo;—&rdquo;. Set up a financial forecast to enable budget comparison.
-          </p>
+          <p className="text-sm text-amber-800">{noBudgetNote(report)}</p>
         </div>
       )}
       {/* Names the yardstick for the columns too narrow to rename — Unspent

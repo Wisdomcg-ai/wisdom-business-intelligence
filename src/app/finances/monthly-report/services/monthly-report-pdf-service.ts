@@ -35,13 +35,14 @@ import { GRID_CONFIG } from '../types/pdf-layout'
 import { calculateBoundingBox, normalizeLayoutPlacements } from '../utils/grid-helpers'
 import { WIDGET_METHOD_MAP } from './widget-renderer'
 import { assessBalanceSheetForPdf, type BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
-import { statementYardstick, wagesYardstick, wagesEmployeeYardstick } from '../utils/budget-yardstick'
+import { statementYardstick, wagesYardstick, wagesEmployeeYardstick, noBudgetNote } from '../utils/budget-yardstick'
 import {
   hasApprovedBudget,
   formatApprovedAnnual,
   hasForecastBudget,
   formatForecastValue,
   forecastAbsentNote,
+  VALUE_ABSENT,
 } from '../utils/full-year-approved'
 import type { BalanceSheetCompare, BalanceSheetData } from '../types'
 
@@ -1057,23 +1058,26 @@ export class MonthlyReportPDFService {
     })
 
     // Convert to table data
+    // Same three states as the rows on pages 4/6/10 and as ReportSummaryCards,
+    // which suppresses its Budget line entirely when there is no budget. This
+    // page is the one a client reads first.
     const tableBody: any[][] = rows.map(row => {
       const r: any[] = [
         row.label,
-        this.fmtCurrency(row.budget),
+        this.budgetCell(row.budget),
         this.fmtCurrency(row.actual),
-        this.fmtVariance(row.variance),
+        this.hasBudget ? this.fmtVariance(row.variance) : VALUE_ABSENT,
       ]
       if (hasYtd) {
         r.push(
-          this.fmtCurrency(row.ytdBudget),
+          this.budgetCell(row.ytdBudget),
           this.fmtCurrency(row.ytdActual),
-          this.fmtVariance(row.ytdVariance),
+          this.hasBudget ? this.fmtVariance(row.ytdVariance) : VALUE_ABSENT,
         )
       }
-      if (hasUnspent) r.push(this.fmtCurrency(row.unspent))
-      if (hasNextMonth) r.push(this.fmtCurrency(row.nextMonth))
-      if (hasAnnual) r.push(this.fmtCurrency(row.annual))
+      if (hasUnspent) r.push(this.budgetCell(row.unspent))
+      if (hasNextMonth) r.push(this.budgetCell(row.nextMonth))
+      if (hasAnnual) r.push(this.budgetCell(row.annual))
       return r
     })
 
@@ -1084,14 +1088,8 @@ export class MonthlyReportPDFService {
     // Names the yardstick for the columns too narrow to rename — Unspent
     // Budget, Budget Next Mth, Budget Annual. Null, and so absent, for every
     // client with only one yardstick in their pack.
-    if (yardstick.note) {
-      this.doc.setFontSize(7.5)
-      this.doc.setFont('helvetica', 'normal')
-      this.doc.setTextColor(107, 114, 128)
-      this.doc.text(yardstick.note, this.margin, this.yPosition)
-      this.doc.setTextColor(0, 0, 0)
-      this.yPosition += 5
-    }
+    this.drawNoBudgetNotice()
+    if (yardstick.note) this.drawNote(yardstick.note)
 
     autoTable(this.doc, {
       startY: this.yPosition,
@@ -1206,14 +1204,8 @@ export class MonthlyReportPDFService {
     // Full Year page at 16 reserves that name for it while giving "Forecast"
     // to something else. Unqualified, the two invite the wrong reconciliation.
     const yardstick = statementYardstick(this.report)
-    if (yardstick.note) {
-      this.doc.setFontSize(7.5)
-      this.doc.setFont('helvetica', 'normal')
-      this.doc.setTextColor(107, 114, 128)
-      this.doc.text(yardstick.note, this.margin, this.yPosition)
-      this.doc.setTextColor(0, 0, 0)
-      this.yPosition += 5
-    }
+    this.drawNoBudgetNotice()
+    if (yardstick.note) this.drawNote(yardstick.note)
 
     const headers: string[] = ['Account', yardstick.columnLabel, 'Actual', 'Var ($)', 'Var (%)']
     const varianceCols = [3, 4] // Var ($) and Var (%)
@@ -1387,6 +1379,12 @@ export class MonthlyReportPDFService {
 
     const settings = this.report.settings
     const ytdYardstick = statementYardstick(this.report)
+    // The note, not just the column head. This page renames its budget column
+    // and then pushes 'Unspent' and 'Annual' — budget-derived columns too
+    // narrow to rename, which is exactly what the note exists to name. Without
+    // it they were the last unqualified budget money in Urban Road's pack.
+    this.drawNoBudgetNotice()
+    if (ytdYardstick.note) this.drawNote(ytdYardstick.note)
     const headers = ['Account', ytdYardstick.ytdColumnLabel, 'YTD Actual', 'YTD Var ($)', 'YTD Var (%)']
     const varianceCols = [3, 4]
     if (settings.show_unspent_budget) headers.push('Unspent')
@@ -1408,13 +1406,13 @@ export class MonthlyReportPDFService {
       for (const line of section.lines) {
         const row: any[] = [
           line.is_budget_only ? `${line.account_name} (budget only)` : line.account_name,
-          this.fmtCurrency(line.ytd_budget),
+          this.budgetCell(line.ytd_budget),
           this.fmtCurrency(line.ytd_actual),
-          this.fmtVariance(line.ytd_variance_amount),
-          this.fmtPct(line.ytd_variance_percent),
+          this.varianceCell(line.ytd_variance_amount),
+          this.variancePctCell(line.ytd_variance_percent, line.ytd_budget),
         ]
-        if (settings.show_unspent_budget) row.push(this.fmtCurrency(line.unspent_budget))
-        if (settings.show_budget_annual_total) row.push(this.fmtCurrency(line.budget_annual_total))
+        if (settings.show_unspent_budget) row.push(this.budgetCell(line.unspent_budget))
+        if (settings.show_budget_annual_total) row.push(this.budgetCell(line.budget_annual_total))
         tableData.push(row)
         currentBodyIdx++
       }
@@ -1423,13 +1421,13 @@ export class MonthlyReportPDFService {
       const st = section.subtotal
       const subtotalRow: any[] = [
         { content: st.account_name, styles: { fontStyle: 'bold' } },
-        this.fmtCurrency(st.ytd_budget),
+        this.budgetCell(st.ytd_budget),
         this.fmtCurrency(st.ytd_actual),
-        this.fmtVariance(st.ytd_variance_amount),
-        this.fmtPct(st.ytd_variance_percent),
+        this.varianceCell(st.ytd_variance_amount),
+        this.variancePctCell(st.ytd_variance_percent, st.ytd_budget),
       ]
-      if (settings.show_unspent_budget) subtotalRow.push(this.fmtCurrency(st.unspent_budget))
-      if (settings.show_budget_annual_total) subtotalRow.push(this.fmtCurrency(st.budget_annual_total))
+      if (settings.show_unspent_budget) subtotalRow.push(this.budgetCell(st.unspent_budget))
+      if (settings.show_budget_annual_total) subtotalRow.push(this.budgetCell(st.budget_annual_total))
       tableData.push(subtotalRow)
       currentBodyIdx++
     }
@@ -3686,28 +3684,74 @@ export class MonthlyReportPDFService {
     return 'neutral'
   }
 
+  // ── Three states for budget-derived cells ────────────────────────────────
+  //
+  // The browser tab has had these since WA.3; the PDF printed
+  // `fmtCurrency(line.budget)` and `fmtVariance(line.variance_amount)`
+  // unconditionally. So the coach's screen dashed every budget cell under an
+  // amber "no budget" banner while the pack the client received showed the same
+  // month as $0 budget with the whole actual as a variance — favourable, on
+  // every line, for the three clients whose report resolves no budget.
+  //
+  // Same rule as the tab, deliberately: no budget at all dashes every
+  // budget-derived cell; inside a budgeted report a single $0-budget line keeps
+  // its dollar variance (an unbudgeted expense IS a real variance, and the
+  // Calxa packs show it) and drops the divide-by-zero percentage that reads as
+  // "on budget".
+  private get hasBudget(): boolean {
+    return this.report.has_budget !== false
+  }
+
+  private budgetCell(value: number): string {
+    return this.hasBudget ? this.fmtCurrency(value) : VALUE_ABSENT
+  }
+
+  private varianceCell(value: number): any {
+    if (!this.hasBudget) return VALUE_ABSENT
+    return { content: this.fmtVariance(value), _polarity: this.polarityOf(value) }
+  }
+
+  private variancePctCell(value: number, base: number): any {
+    if (!this.hasBudget || base === 0) return VALUE_ABSENT
+    return { content: this.fmtPct(value), _polarity: this.polarityOf(value) }
+  }
+
+  /**
+   * The amber card that says WHY the budget columns are dashes.
+   *
+   * `report.no_budget_reason` has been emitted by generate/route.ts since the
+   * budget store shipped and has had no consumers at all: the pack showed a
+   * wall of dashes and left the reader to supply their own explanation, which
+   * is usually "the system is broken" or "we budgeted nothing". Drawn at the
+   * top of each statement page, where the tab puts its banner.
+   */
+  private drawNoBudgetNotice(): void {
+    const note = noBudgetNote(this.report)
+    if (note) this.drawReasonCard(note)
+  }
+
   private buildLineRow(line: ReportLine, settings: MonthlyReportSettings): any[] {
     const row: any[] = [
       line.is_budget_only ? `${line.account_name} (budget only)` : line.account_name,
-      this.fmtCurrency(line.budget),
+      this.budgetCell(line.budget),
       this.fmtCurrency(line.actual),
       // Phase 71-07 (S4): tag variance cells with structured polarity so
       // `applyVarianceTint` no longer depends on parsing formatted text.
-      { content: this.fmtVariance(line.variance_amount), _polarity: this.polarityOf(line.variance_amount) },
-      { content: this.fmtPct(line.variance_percent), _polarity: this.polarityOf(line.variance_percent) },
+      this.varianceCell(line.variance_amount),
+      this.variancePctCell(line.variance_percent, line.budget),
     ]
     if (settings.show_ytd) {
       row.push(
-        this.fmtCurrency(line.ytd_budget),
+        this.budgetCell(line.ytd_budget),
         this.fmtCurrency(line.ytd_actual),
-        { content: this.fmtVariance(line.ytd_variance_amount), _polarity: this.polarityOf(line.ytd_variance_amount) },
-        { content: this.fmtPct(line.ytd_variance_percent), _polarity: this.polarityOf(line.ytd_variance_percent) }
+        this.varianceCell(line.ytd_variance_amount),
+        this.variancePctCell(line.ytd_variance_percent, line.ytd_budget),
       )
     }
-    if (settings.show_unspent_budget) row.push(this.fmtCurrency(line.unspent_budget))
-    if (settings.show_budget_next_month) row.push(this.fmtCurrency(line.budget_next_month))
-    if (settings.show_budget_annual_total) row.push(this.fmtCurrency(line.budget_annual_total))
-    if (settings.show_prior_year) row.push(line.prior_year !== null ? this.fmtCurrency(line.prior_year) : '—')
+    if (settings.show_unspent_budget) row.push(this.budgetCell(line.unspent_budget))
+    if (settings.show_budget_next_month) row.push(this.budgetCell(line.budget_next_month))
+    if (settings.show_budget_annual_total) row.push(this.budgetCell(line.budget_annual_total))
+    if (settings.show_prior_year) row.push(line.prior_year !== null ? this.fmtCurrency(line.prior_year) : VALUE_ABSENT)
     return row
   }
 
