@@ -1,7 +1,15 @@
 import type { BalanceSheetCompare, BalanceSheetData, BalanceSheetRow } from '../types'
 
 /**
- * WG.1 — what the exporter hands the PDF for ONE comparison mode.
+ * WG.1 — what the exporter hands the PDF for ONE comparison mode, and the WORDS
+ * both surfaces use for a sheet that does not add up.
+ *
+ * The words live here because they were the thing that drifted: the tab printed
+ * "Balance Sheet does not balance — residual of $2 (Assets exceed Liabilities +
+ * Equity)." and the pack printed a differently-worded sentence off the same
+ * threshold and the same three totals, while the comment below claimed the two
+ * could not disagree. One coach, one month, two descriptions of the same $2.
+ * Both surfaces now render the same string.
  *
  * `data` and `reason` are kept apart on purpose. "Xero wouldn't answer" and
  * "Xero answered, and the sheet doesn't add up" are different sentences, and a
@@ -69,6 +77,33 @@ function fmtDollars(v: number): string {
 }
 
 /**
+ * The accounting-equation banner, in one place.
+ *
+ * Rendered above the table on BOTH surfaces — BalanceSheetTab's red banner and
+ * the PDF page's red card — because a coach reading the tab and a client
+ * reading the pack are being told about the same residual and must be told the
+ * same thing about it. The direction is named rather than signed: "assets
+ * exceed" and "assets fall short of" are what a reader can act on.
+ */
+export function equationImbalanceSentence(residual: number): string {
+  return (
+    `Balance Sheet does not balance — residual of ${fmtDollars(residual)} ` +
+    `(Assets ${residual > 0 ? 'exceed' : 'fall short of'} Liabilities + Equity). ` +
+    `The figures shown are Xero's; the discrepancy is not.`
+  )
+}
+
+/**
+ * Xero's own Net-Assets-vs-Total-Equity check — a DIFFERENT check from the
+ * equation above (it compares two rows Xero printed, not the three totals),
+ * computed at a 0.01 threshold in Xero/balance-sheet/route.ts. Shared for the
+ * same reason.
+ */
+export const NET_ASSETS_EQUITY_SENTENCE =
+  'Balance sheet does not balance — Net Assets and Total Equity differ. ' +
+  'This may indicate unreconciled transactions in Xero.'
+
+/**
  * Locate a section total by label. Copied verbatim from BalanceSheetTab's
  * `findSubtotal` — including the loose `includes(...)` fallbacks, which exist
  * because AU orgs label the equity block half a dozen ways ("Total Equity",
@@ -130,10 +165,7 @@ export function assessBalanceSheetForPdf(
   // equation left a sheet 13c out showing the coach a warning on screen and the
   // client a clean page. Same sentence as the badge, deliberately.
   if (entry.data.balances === false) {
-    warnings.push(
-      'Balance sheet does not balance — Net Assets and Total Equity differ. ' +
-      'This may indicate unreconciled transactions in Xero.',
-    )
+    warnings.push(NET_ASSETS_EQUITY_SENTENCE)
   }
 
   const totalAssets = findSubtotal(rows, (l) => l.startsWith('total asset') || l.includes('asset'))
@@ -160,14 +192,10 @@ export function assessBalanceSheetForPdf(
   const residual = totalAssets - (totalLiabilities + totalEquity)
   if (Math.abs(residual) > BS_EQUATION_TOLERANCE) {
     // The figures are still the figures. Print them, and say on the page that
-    // the equation does not close — the same call BalanceSheetTab makes, in
-    // the same words and off the same threshold, because a coach reading the
-    // tab and a client reading the pack must be told the same thing.
-    warnings.push(
-      `This balance sheet does not balance — assets ${residual > 0 ? 'exceed' : 'fall short of'} ` +
-      `liabilities plus equity by ${fmtDollars(residual)}. The figures below are Xero's; ` +
-      `the discrepancy is not.`,
-    )
+    // the equation does not close — literally the sentence BalanceSheetTab
+    // renders, from equationImbalanceSentence, off the same threshold and the
+    // same three totals.
+    warnings.push(equationImbalanceSentence(residual))
   }
 
   return { ok: true, data: entry.data, warnings }

@@ -18,6 +18,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   assessBalanceSheetForPdf,
+  equationImbalanceSentence,
+  NET_ASSETS_EQUITY_SENTENCE,
   BS_EQUATION_TOLERANCE,
   type BalanceSheetPdfInput,
 } from '../balance-sheet-pdf'
@@ -211,5 +213,34 @@ describe('WG.1 — assessBalanceSheetForPdf', () => {
     const v = assessBalanceSheetForPdf(loaded(sheet({ rows: [] })), 'mom')
     expect(v.ok).toBe(false)
     if (!v.ok) expect(v.reason).toContain('no balance sheet rows')
+  })
+})
+
+describe('one sentence for both surfaces', () => {
+  it('the warning the pack prints is literally the banner the tab renders', () => {
+    // The tab printed "Balance Sheet does not balance — residual of $2 (Assets
+    // exceed Liabilities + Equity)." and the pack printed a differently-worded
+    // sentence off the same threshold and the same three totals, while this
+    // module's comment claimed the two could not disagree.
+    const v = assessBalanceSheetForPdf(loaded(sheet({ equity: EQUITY - 2 })), 'mom')
+    expect(v.ok).toBe(true)
+    if (v.ok) expect(v.warnings).toContain(equationImbalanceSentence(2))
+  })
+
+  it('names the direction, both ways', () => {
+    expect(equationImbalanceSentence(2)).toContain('Assets exceed')
+    expect(equationImbalanceSentence(-2)).toContain('Assets fall short of')
+    expect(equationImbalanceSentence(-2)).toContain('$2')
+  })
+
+  it('keeps the Net-Assets check as its own, separate sentence', () => {
+    const v = assessBalanceSheetForPdf(loaded(sheet({ } as any)), 'mom')
+    expect(v.ok).toBe(true)
+    const withBadge = assessBalanceSheetForPdf(
+      { data: { ...sheet(), balances: false } },
+      'mom',
+    )
+    if (withBadge.ok) expect(withBadge.warnings).toContain(NET_ASSETS_EQUITY_SENTENCE)
+    expect(NET_ASSETS_EQUITY_SENTENCE).not.toEqual(equationImbalanceSentence(2))
   })
 })

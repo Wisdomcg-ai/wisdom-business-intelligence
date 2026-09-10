@@ -2,6 +2,11 @@
 
 import { useEffect } from 'react'
 import { Loader2, AlertCircle, RefreshCw } from 'lucide-react'
+import {
+  equationImbalanceSentence,
+  NET_ASSETS_EQUITY_SENTENCE,
+  BS_EQUATION_TOLERANCE,
+} from '../utils/balance-sheet-pdf'
 import type { BalanceSheetData, BalanceSheetRow, BalanceSheetCompare } from '../types'
 
 // ─── Formatting helpers ──────────────────────────────────────────────────────
@@ -194,23 +199,23 @@ export default function BalanceSheetTab({
   const residual = canComputeResidual
     ? (totalAssets as number) - ((totalLiabilities as number) + (totalEquity as number))
     : 0
-  const isImbalanced = canComputeResidual && Math.abs(residual) > 1
-
-  const fmtAbsCurrency = (v: number): string =>
-    `$${Math.abs(v).toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+  // The same tolerance the pack uses — BS_EQUATION_TOLERANCE — because the two
+  // must not disagree about whether a sheet balances either.
+  const isImbalanced = canComputeResidual && Math.abs(residual) > BS_EQUATION_TOLERANCE
 
   return (
     <div className="space-y-4">
-      {/* S5: Equation residual banner — louder than the amber `balances` badge below */}
+      {/* S5: Equation residual banner — louder than the amber `balances` badge
+          below. The sentence comes from balance-sheet-pdf so the pack prints
+          the same one about the same residual: the two used to be worded
+          differently while a comment claimed they could not be. */}
       {isImbalanced && (
         <div
           role="alert"
           className="mb-2 rounded-md border border-red-300 bg-red-50 px-4 py-3"
         >
           <p className="text-sm font-semibold text-red-800">
-            Balance Sheet does not balance — residual of {fmtAbsCurrency(residual)}
-            {' '}
-            (Assets {residual > 0 ? 'exceed' : 'are short of'} Liabilities + Equity).
+            {equationImbalanceSentence(residual)}
           </p>
           <p className="mt-1 text-xs text-red-700">
             <a
@@ -259,7 +264,7 @@ export default function BalanceSheetTab({
       {!balanceSheet.balances && (
         <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
           <AlertCircle className="w-4 h-4 shrink-0" />
-          Balance sheet does not balance — Net Assets and Total Equity differ. This may indicate unreconciled transactions in Xero.
+          {NET_ASSETS_EQUITY_SENTENCE}
         </div>
       )}
 
