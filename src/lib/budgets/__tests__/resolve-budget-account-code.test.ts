@@ -30,6 +30,10 @@ import { resolveBudget, budgetLineKey } from '../resolve-budget'
  * reason.
  */
 function clientOver(tables: Record<string, any[]>) {
+  // How many unordered pages this client has served. PostgREST gives no
+  // guarantee about the order of an un-ORDERed read, so two .range() calls
+  // against it need not partition the rows — see the range() comment.
+  let unorderedPages = 0
   const build = (
     table: string,
     filters: Array<[string, unknown, 'eq' | 'in' | 'not-is']> = [],
@@ -59,8 +63,25 @@ function clientOver(tables: Record<string, any[]>) {
       // PostgREST caps a page at 1000 rows and the resolver pages through
       // budget_lines with .range(); a harness without it would silently return
       // every row on page one and prove nothing about the cap.
+      //
+      // An UNORDERED range is deliberately unstable. Postgres may hand the same
+      // query back in a different order between two statements, so pages of an
+      // un-ORDERed read overlap and drop rather than partition — which is the
+      // whole reason fetchAllBudgetLines carries `.order('id')`. A harness that
+      // partitioned a stable array either way would pass the cap cases with the
+      // ordering deleted, and the ordering half of the fix would be unpinned.
+      // Rotating by one more row per page is the cheapest faithful model of
+      // that: page two then repeats a row page one already returned and skips
+      // one nobody returned.
       range: (from: number, to: number) => ({
-        then: (resolve: any) => Promise.resolve({ data: run().slice(from, to + 1), error: null }).then(resolve),
+        then: (resolve: any) => {
+          let out = run()
+          if (!ordered && out.length > 0) {
+            const k = ++unorderedPages % out.length
+            out = [...out.slice(k), ...out.slice(0, k)]
+          }
+          return Promise.resolve({ data: out.slice(from, to + 1), error: null }).then(resolve)
+        },
       }),
       limit: (n: number) => ({
         maybeSingle: async () => ({ data: run().slice(0, n)[0] ?? null, error: null }),
@@ -282,11 +303,16 @@ describe('resolveBudget — reading past the 1000-row page cap', () => {
   })
 
   it('does not double-count a row that sits on a page boundary', async () => {
-    // The pages have to partition the rows, not overlap them — an ordered
-    // .range() is what makes that true, and a repeated row would silently
-    // inflate the very account it lands on.
+    // The pages have to partition the rows, not overlap them, and an ordered
+    // .range() is what makes that true: the harness serves an un-ORDERed range
+    // from a rotating array, so deleting `.order('id')` from
+    // fetchAllBudgetLines makes page two repeat a row from page one and skip
+    // one nobody read. A repeated row silently inflates the very account it
+    // lands on, and a skipped one shrinks another — neither raises an error.
     const r = await resolveFullYear(fullYearBudget(84))
+    expect(r.lines).toHaveLength(84)
     for (const line of r.lines) {
+      expect(Object.keys(line.forecast_months)).toHaveLength(12)
       expect(Object.values(line.forecast_months).every((v) => v === 100)).toBe(true)
     }
   })
