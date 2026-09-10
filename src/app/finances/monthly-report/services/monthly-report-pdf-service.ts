@@ -2936,7 +2936,14 @@ export class MonthlyReportPDFService {
     const fy = this.options.fullYearReport!
     const wagesNames = this.report.settings.wages_account_names || []
     const data = transformTeamCostData(fy, wagesNames)
-    if (data.length === 0) return
+    // The empty-names guard is the one that matters, and only the tab had it.
+    // transformTeamCostData matches P&L lines against the configured wages
+    // account names; with none configured it still returns twelve rows, every
+    // one of them $0 wages and 0.0% of revenue. `data.length === 0` never
+    // fires, so the pack printed a page telling a client they spend nothing on
+    // their team — from a setting nobody filled in. No client has this chart on
+    // with an empty list today; the trap is that turning it on is one click.
+    if (data.length === 0 || wagesNames.length === 0) return
     this.addPage('landscape')
 
     this.doc.setFontSize(14)
