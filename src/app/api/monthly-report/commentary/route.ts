@@ -9,6 +9,8 @@ import { extractVendorInfo, createVendorKey } from '@/lib/utils/vendor-normaliza
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import * as Sentry from '@sentry/nextjs'
 import { toBaseAmount } from '@/lib/monthly-report/commentary-money'
+import { buildRatioClause, pickDenominator, type RatioContext } from '@/lib/monthly-report/commentary-clause'
+import { buildDraftNote } from '@/lib/monthly-report/commentary-draft'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 import { z } from 'zod'
@@ -23,6 +25,13 @@ const CommentaryPostSchema = z.object({
   favourable_expense_lines: z.array(z.any()).optional(),
   bs_lines: z.array(z.any()).optional(),
   trigger_reasons: z.record(z.string(), z.any()).optional(),
+  /**
+   * The denominators for the ratio clause, lifted off the generated report so
+   * the commentary's percentage is a share of the same income the statement
+   * above it prints. Optional: a caller that omits it gets supplier lists with
+   * no clause, which is what this route did before.
+   */
+  ratio_context: z.any().optional(),
 })
 
 export const dynamic = 'force-dynamic'
@@ -35,6 +44,9 @@ const supabase = createClient(
 interface ExpenseOverBudgetLine {
   account_name: string
   xero_account_name: string
+  /** The figures the statement prints — see TriggerLine's note on why these travel. */
+  actual?: number
+  budget?: number | null
 }
 
 // Phase 71-04 (S1): expanded trigger types — see utils/commentary-triggers.ts.
@@ -51,6 +63,9 @@ type TriggerReason =
 interface TriggerLineInput {
   account_name: string
   xero_account_name: string
+  /** The figures the statement prints — see TriggerLine's note on why these travel. */
+  actual?: number
+  budget?: number | null
 }
 
 interface VendorTransaction {
@@ -150,6 +165,7 @@ async function postHandler(request: Request) {
       favourable_expense_lines = [],
       bs_lines = [],
       trigger_reasons = {},
+      ratio_context = null,
     } = body as {
       business_id: string
       report_month: string
@@ -158,6 +174,7 @@ async function postHandler(request: Request) {
       favourable_expense_lines?: TriggerLineInput[]
       bs_lines?: TriggerLineInput[]
       trigger_reasons?: Record<string, TriggerReason>
+      ratio_context?: RatioContext | null
     }
 
     if (!business_id || !report_month || !expense_lines) {
@@ -265,6 +282,41 @@ async function postHandler(request: Request) {
     // it before it is quoted, because the commentary sits underneath a statement
     // line and the two have to be the same money.
     const baseCurrency: string | null = connection.functional_currency ?? null
+
+    // The prior month, for the fallback comparator ("… against 8.9% in June").
+    // One read of the wide mirror carries every account's whole year, so this
+    // costs a single query rather than one per account. Actuals only — no
+    // budget is involved, so there is nothing here that could disagree with the
+    // report's own resolved figures.
+    const priorMonth = (() => {
+      const [y, m] = report_month.split('-').map(Number)
+      if (!y || !m) return null
+      const d = new Date(Date.UTC(y, m - 2, 1))
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+    })()
+    const priorMonthLabel = priorMonth
+      ? new Date(`${priorMonth}-01T00:00:00Z`).toLocaleString('en-AU', { month: 'long', timeZone: 'UTC' })
+      : null
+
+    const priorActuals = new Map<string, number>()
+    let priorIncomeActual: number | null = null
+    if (priorMonth) {
+      const { data: wideRows } = await supabase
+        .from('xero_pl_lines_wide_compat')
+        .select('account_name, account_type, monthly_values')
+        .eq('tenant_id', tenantId)
+      let incomeSum = 0
+      let sawIncome = false
+      for (const row of (wideRows ?? []) as { account_name: string; account_type: string; monthly_values: Record<string, number> }[]) {
+        const v = Number(row.monthly_values?.[priorMonth] ?? 0)
+        if (!Number.isFinite(v)) continue
+        priorActuals.set(row.account_name, (priorActuals.get(row.account_name) ?? 0) + v)
+        if (row.account_type === 'revenue') { incomeSum += v; sawIncome = true }
+      }
+      // Null, not 0: a month we hold no revenue for cannot be a denominator,
+      // and 0 would make every prior-month ratio infinite or refused silently.
+      priorIncomeActual = sawIncome ? incomeSum : null
+    }
     const xeroHeaders = {
       'Authorization': `Bearer ${accessToken}`,
       'xero-tenant-id': tenantId,
@@ -365,10 +417,15 @@ async function postHandler(request: Request) {
     // the reasonByAccount resolver built up-front.
     const commentary: Record<string, {
       vendor_summary: VendorSummary[]
+      /** The coach's prose. Never written by the generator. */
       coach_note: string
       is_edited: boolean
       detail_tab_ref?: 'subscriptions' | 'wages' | null
       trigger_reason?: TriggerReason
+      /** The generated facts. Rebuilt every run; safe to overwrite. */
+      draft_note?: string
+      /** Coach-only: an unconvertible document, or a list that oversums. */
+      draft_warnings?: string[]
     }> = {}
 
     for (const line of allLines) {
@@ -512,12 +569,63 @@ async function postHandler(request: Request) {
         significant.push({ vendor: 'Others', amount: othersTotal, transactions: othersTransactions })
       }
 
+      // The draft: facts only, rebuilt from scratch every run.
+      //
+      // It goes in its own field and never touches `coach_note`. That split is
+      // what makes regenerating safe — facts that recompute cannot go stale,
+      // and prose that is never overwritten cannot be lost. Urban Road's August
+      // pack would otherwise have carried an over-budget flag on Wages against
+      // a budget it is within 35 cents of, because the stored commentary
+      // predated a budget-source switch.
+      const ctx = ratio_context as RatioContext | null
+      const accountActual = typeof line.actual === 'number' ? line.actual : null
+      let draft_note = ''
+      let draft_warnings: string[] = []
+
+      if (accountActual !== null) {
+        const denom = ctx
+          ? pickDenominator(line.account_name, ctx.revenueLines ?? [], {
+              actual: ctx.incomeActual,
+              budget: ctx.incomeBudget,
+            })
+          : null
+
+        const clause = denom
+          ? buildRatioClause({
+              accountActual,
+              accountBudget: typeof line.budget === 'number' ? line.budget : null,
+              denominatorActual: denom.actual,
+              denominatorBudget: denom.budget,
+              priorAccountActual: priorActuals.get(line.xero_account_name ?? line.account_name) ?? null,
+              priorDenominatorActual: priorIncomeActual,
+              denominatorLabel: denom.label,
+              priorMonthLabel,
+            })
+          : null
+
+        const draft = buildDraftNote({
+          accountName: line.account_name,
+          vendors: significant.map(v => ({
+            vendor: v.vendor,
+            amount: v.amount,
+            converted: v.converted,
+            sourceCurrency: v.sourceCurrency,
+          })),
+          accountActual,
+          clause,
+        })
+        draft_note = draft.body
+        draft_warnings = draft.warnings
+      }
+
       commentary[line.account_name] = {
         vendor_summary: significant,
         coach_note: '',
         is_edited: false,
         detail_tab_ref,
         trigger_reason,
+        draft_note,
+        draft_warnings,
       }
     }
 
