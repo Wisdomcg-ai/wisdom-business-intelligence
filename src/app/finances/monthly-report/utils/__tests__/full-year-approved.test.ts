@@ -87,17 +87,25 @@ describe('hasApprovedBudget', () => {
     expect(hasApprovedBudget(forecastOnly)).toBe(false)
   })
 
-  it('is false when the client is on the store but no version is in force', () => {
+  it('is false on the totals alone, even when a version label came through', () => {
     // budget_source='budget_version' with an unlocked or not-yet-effective
-    // version: the route sends nulls, and the column must not appear at all.
-    // Appearing-and-empty is the failure mode this exists to prevent.
-    const noVersion = report({
+    // version. This case used to carry a fixture byte-identical to the one
+    // above it, so it proved nothing the previous case did not: at this level
+    // "never switched over" and "switched over and unresolvable" produce the
+    // same payload, which is exactly why the predicate reads the numbers rather
+    // than a settings flag. What it CAN pin is that a stray label does not
+    // conjure the column — a header over an empty column is read as a budget of
+    // zero, and every variance off zero comes out favourable.
+    //
+    // The route-side half (does the route send nulls for that client at all) is
+    // covered in api/monthly-report/full-year/__tests__.
+    const labelWithoutBudget = report({
       sections: report().sections.map((s) => ({ ...s, subtotal: line(s.subtotal.account_name, null) })),
       gross_profit: line('Gross Profit', null),
       net_profit: line('Net Profit', null),
-      approved_budget_label: null,
+      approved_budget_label: 'Overall Budget (Xero, rev 12 Aug 2026)',
     })
-    expect(hasApprovedBudget(noVersion)).toBe(false)
+    expect(hasApprovedBudget(labelWithoutBudget)).toBe(false)
   })
 
   it('falls back to the section subtotals when net profit predates the field', () => {
