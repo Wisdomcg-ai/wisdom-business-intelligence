@@ -89,3 +89,39 @@ describe('the PDF has the same three states as the tab', () => {
     expect(text).not.toContain('No budget for this month')
   })
 })
+
+describe('the KPI cards do not claim a budget either', () => {
+  const kpiLayout = {
+    version: 1,
+    pages: [
+      {
+        id: 'p1',
+        orientation: 'portrait' as const,
+        widgets: [
+          { id: 'k1', type: 'kpi_revenue' as const, col: 0, row: 0, colSpan: 1, rowSpan: 1 },
+        ],
+      },
+    ],
+  }
+
+  it('drops "vs budget" when there is no budget', () => {
+    const svc = new MonthlyReportPDFService(noBudget(), { pdfLayout: kpiLayout })
+    expect(docText(svc.generate())).not.toContain('vs budget')
+  })
+
+  it('drops it for a $0 budget too — "+$0 vs budget" reads as on budget', () => {
+    const zeroBudget = fixtureReport({
+      summary: {
+        ...fixtureReport().summary,
+        revenue: { actual: 100_000, budget: 0, variance: 100_000, variance_percent: 0 },
+      },
+    })
+    const svc = new MonthlyReportPDFService(zeroBudget, { pdfLayout: kpiLayout })
+    expect(docText(svc.generate())).not.toContain('vs budget')
+  })
+
+  it('still prints it for a budgeted client', () => {
+    const svc = new MonthlyReportPDFService(fixtureReport(), { pdfLayout: kpiLayout })
+    expect(docText(svc.generate())).toContain('vs budget')
+  })
+})

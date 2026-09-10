@@ -3642,17 +3642,17 @@ export class MonthlyReportPDFService {
 
   renderKPIRevenue(box: WidgetBoundingBox): void {
     const s = this.report.summary
-    this.renderKPICard(box, 'Revenue', s.revenue.actual, s.revenue.variance, [16, 185, 129])
+    this.renderKPICard(box, 'Revenue', s.revenue.actual, s.revenue.variance, s.revenue.budget, [16, 185, 129])
   }
 
   renderKPIGrossProfit(box: WidgetBoundingBox): void {
     const s = this.report.summary
-    this.renderKPICard(box, 'Gross Profit', s.gross_profit.actual, s.gross_profit.variance, [59, 130, 246])
+    this.renderKPICard(box, 'Gross Profit', s.gross_profit.actual, s.gross_profit.variance, s.gross_profit.budget, [59, 130, 246])
   }
 
   renderKPINetProfit(box: WidgetBoundingBox): void {
     const s = this.report.summary
-    this.renderKPICard(box, 'Net Profit', s.net_profit.actual, s.net_profit.variance, [139, 92, 246])
+    this.renderKPICard(box, 'Net Profit', s.net_profit.actual, s.net_profit.variance, s.net_profit.budget, [139, 92, 246])
   }
 
   private renderKPICard(
@@ -3660,6 +3660,7 @@ export class MonthlyReportPDFService {
     label: string,
     value: number,
     variance: number,
+    budget: number,
     color: [number, number, number]
   ): void {
     // Background
@@ -3677,11 +3678,21 @@ export class MonthlyReportPDFService {
     this.doc.setFont('helvetica', 'bold')
     this.doc.text(this.fmtCurrency(value), box.x + box.w / 2, box.y + box.h * 0.55, { align: 'center' })
 
-    // Variance
+    // Variance — only when there is something to be a variance TO.
+    //
+    // ReportSummaryCards wraps the same line in `hasBudget` and returns null
+    // for a $0 budget, with the reason in its own comment: "a $0 budget used to
+    // render '(+0.0%)', which reads as 'on budget'". This card wrote the
+    // variance and the literal words "vs budget" unconditionally, so a client
+    // with no budget would have been told their whole actual was a favourable
+    // variance against one. Latent — no saved layout places a kpi_* widget
+    // today — and it is the same one-click trap as the team-cost page.
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
-    const varText = variance >= 0 ? `+${this.fmtCurrency(variance)} vs budget` : `${this.fmtCurrency(variance)} vs budget`
-    this.doc.text(varText, box.x + box.w / 2, box.y + box.h * 0.75, { align: 'center' })
+    if (this.hasBudget && budget !== 0) {
+      const varText = variance >= 0 ? `+${this.fmtCurrency(variance)} vs budget` : `${this.fmtCurrency(variance)} vs budget`
+      this.doc.text(varText, box.x + box.w / 2, box.y + box.h * 0.75, { align: 'center' })
+    }
 
     this.doc.setTextColor(0, 0, 0)
   }
