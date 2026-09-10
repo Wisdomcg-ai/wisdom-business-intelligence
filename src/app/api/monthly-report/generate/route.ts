@@ -336,7 +336,14 @@ async function postHandler(request: Request) {
     // This prevents the same forecast line's budget from being counted multiple times when
     // multiple Xero accounts fuzzy-match to the same forecast line.
     const claimedBudgetLineIds = new Set<string>()
-    const matchLog: { xero: string; budget: string | null; method: string; budgetClaimed: boolean }[] = []
+    const matchLog: {
+      xero: string
+      budget: string | null
+      method: string
+      budgetClaimed: boolean
+      /** Present only when a pin and the account code named different lines. */
+      codeWouldHaveMatched?: string
+    }[] = []
 
     // 6. Process each Xero actual line
     const categoryLines: Record<string, ReportLine[]> = {
@@ -358,11 +365,46 @@ async function postHandler(request: Request) {
       const excludeFromBudget = lowerName.includes('depreciation') || lowerName.includes('amortisation') || lowerName.includes('amortization')
 
       // Find matching budget line.
-      // Tiers: account code → direct ID → mapping name → fuzzy name match.
+      // Tiers: the coach's pin → the account code → the mapping name → the
+      // fuzzy name match. Two identities and then two guesses.
       let budgetLine: any = null
       let matchMethod = 'none'
+      /**
+       * The budget line the CODE would have chosen, when a pin chose a
+       * different one. Null whenever they agree or only one of them answered.
+       * Recorded rather than resolved: the pin wins, and a reader needs to be
+       * able to find out that the two disagreed — otherwise the only symptom
+       * is a budget figure that looks perfectly ordinary against the wrong
+       * account.
+       */
+      let codeDisagreedWithPin: string | null = null
       if (!excludeFromBudget) {
-        // -- Tier 0: the account code --------------------------------------
+        // The actuals row's own code, the mapping's second. The row's code is
+        // the FACT — what Xero posted — while account_mappings carries a copy,
+        // so where the two can disagree the fact wins. The mapping is consulted
+        // only when the row has no code at all, which is the real state of
+        // Xero's synthetic report-only lines: they arrive with a blank code and
+        // can be given one nowhere else.
+        const xeroCode = String(xero.account_code ?? mapping?.xero_account_code ?? '').trim().toLowerCase()
+        const byCode = xeroCode ? budgetByCode.get(xeroCode) : undefined
+
+        // -- Tier 0: the coach's pin ---------------------------------------
+        // A pin is a human being saying which budget line this account IS.
+        // The code is an identity the two sides happen to share, which is a
+        // very good inference and still an inference. When a person has stated
+        // the answer, an inference does not get to overrule them — it gets to
+        // be recorded as disagreeing with them.
+        if (mapping?.forecast_pl_line_id) {
+          budgetLine = budgetById.get(mapping.forecast_pl_line_id)
+          if (budgetLine) {
+            matchMethod = 'forecast_pl_line_id'
+            if (byCode && byCode.id !== budgetLine.id) {
+              codeDisagreedWithPin = byCode.account_name ?? null
+            }
+          }
+        }
+
+        // -- Tier 1: the account code --------------------------------------
         // Above the name tiers because it is an identity rather than a guess.
         // Names diverge across the two sides for ordinary bookkeeping reasons
         // (Urban Road's P&L "Foreign Currency Gains and Losses" against its
@@ -370,24 +412,13 @@ async function postHandler(request: Request) {
         // fails silently, printing the account twice: once with the actual and
         // a $0 budget, once budget-only with a $0 actual.
         //
-        // The actuals row's own code first, the mapping's second. The row's
-        // code is the FACT — what Xero posted — while account_mappings carries
-        // a copy, so where the two can disagree the fact wins. The mapping is
-        // consulted only when the row has no code at all, which is the real
-        // state of Xero's synthetic report-only lines: they arrive with a blank
-        // code and can be given one nowhere else.
-        //
-        // Inert on the forecast path (budgetByCode is empty there), so every
-        // client not on the budget store falls straight through to the tiers
-        // below and behaves exactly as before.
-        const xeroCode = String(xero.account_code ?? mapping?.xero_account_code ?? '').trim().toLowerCase()
-        if (xeroCode) {
-          budgetLine = budgetByCode.get(xeroCode)
-          if (budgetLine) matchMethod = 'account_code'
-        }
-        if (!budgetLine && mapping?.forecast_pl_line_id) {
-          budgetLine = budgetById.get(mapping.forecast_pl_line_id)
-          if (budgetLine) matchMethod = 'forecast_pl_line_id'
+        // Inert wherever the budget lines carry no codes — the resolver does
+        // not select forecast_pl_lines.account_code, so budgetByCode is empty
+        // on the forecast path and every client not on the budget store falls
+        // straight through to the tiers below and behaves exactly as before.
+        if (!budgetLine && byCode) {
+          budgetLine = byCode
+          matchMethod = 'account_code'
         }
         if (!budgetLine && mapping?.forecast_pl_line_name) {
           budgetLine = findBudgetByName(mapping.forecast_pl_line_name)
@@ -421,6 +452,7 @@ async function postHandler(request: Request) {
         budget: budgetLine?.account_name || null,
         method: matchMethod,
         budgetClaimed: !budgetAlreadyClaimed,
+        ...(codeDisagreedWithPin ? { codeWouldHaveMatched: codeDisagreedWithPin } : {}),
       })
 
       if (budgetAlreadyClaimed) {
@@ -583,6 +615,10 @@ async function postHandler(request: Request) {
     const matched = matchLog.filter(m => m.method !== 'none')
     const unmatched = matchLog.filter(m => m.method === 'none')
     const duplicateBudgetMatches = matchLog.filter(m => m.method !== 'none' && !m.budgetClaimed)
+    // A pin and an account code naming different budget lines is not an error —
+    // the pin is honoured — but it means one of the two is stale, and nothing
+    // else on the page will ever say so.
+    const pinCodeDisagreements = matchLog.filter(m => m.codeWouldHaveMatched)
     const unmatchedBudgetLines = budgetPLLines.filter(bl => !matchedBudgetLineIds.has(bl.id))
     const skippedByIdentity = unmatchedBudgetLines.filter(bl => matchedBudgetLineKeys.has(budgetLineKey(bl)))
 
@@ -593,6 +629,7 @@ async function postHandler(request: Request) {
         unmatchedXero: unmatched.length,
         unmatchedBudgetLines: unmatchedBudgetLines.length,
         budgetDuplicatesBlocked: duplicateBudgetMatches.length,
+        pinCodeDisagreements: pinCodeDisagreements.length,
         budgetOnlySkippedByIdentity: skippedByIdentity.length,
         budgetOnlyAdded: addedBudgetOnlyKeys.size,
         matchMethods: {
@@ -639,6 +676,11 @@ async function postHandler(request: Request) {
         xero_accounts: matchLog.length,
         budget_lines: budgetPLLines.length,
         matched: matched.length,
+        pin_code_disagreements: pinCodeDisagreements.map(m => ({
+          xero: m.xero,
+          pinned: m.budget,
+          code_would_have_matched: m.codeWouldHaveMatched,
+        })),
         unmatched_xero: unmatched.map(m => m.xero),
         unmatched_budget: unmatchedBudgetLines.map((bl: any) => bl.account_name),
         match_detail: matchLog,

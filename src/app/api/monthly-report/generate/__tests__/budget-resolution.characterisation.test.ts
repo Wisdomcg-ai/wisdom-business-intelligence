@@ -906,9 +906,11 @@ describe('monthly-report/generate — matching on the account code', () => {
   })
 
   it('is inert on the forecast path — a coded actual does not match an uncoded budget', async () => {
-    // forecast_pl_lines has no code column, so budgetByCode is empty and the
-    // cascade falls straight through to the name tiers. Every client not on the
-    // budget store therefore behaves exactly as it did.
+    // The resolver does not select forecast_pl_lines.account_code (the column
+    // exists; this path deliberately reads the fields it always read), so
+    // budgetByCode is empty and the cascade falls straight through to the name
+    // tiers. Every client not on the budget store therefore behaves exactly as
+    // it did.
     compositeRows = [actual('62700', FX_XERO, { '2026-08': 919.25 })]
     tables = baseTables({
       account_mappings: [mapping(FX_XERO, '62700')],
@@ -924,5 +926,96 @@ describe('monthly-report/generate — matching on the account code', () => {
     expect(lines).toHaveLength(2)
     expect(lines.find((l: any) => l.account_name === FX_XERO).budget).toBe(0)
     expect(lines.find((l: any) => l.account_name === FX_BUDGET).is_budget_only).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A pin outranks a code.
+//
+// account_mappings.forecast_pl_line_id is a human being saying which budget
+// line an account IS. The account code is an identity the two sides happen to
+// share — a very good inference, and still an inference. Placed above the pin,
+// the code silently overruled a coach's explicit decision and nothing recorded
+// that a decision had been made at all.
+//
+// No live exposure today: zero mappings fleet-wide carry a pin. It is wrong on
+// principle and free to fix now.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('monthly-report/generate — a pin outranks the account code', () => {
+  const pinned = (name: string, code: string | null, lineId: string) => ({
+    ...mapping(name, code),
+    forecast_pl_line_id: lineId,
+  })
+
+  /** The Xero row's code says 428.1; the coach pinned the 428.2 line. */
+  function disagreeing() {
+    compositeRows = [actual('428.1', GENERAL, { '2026-08': 50 })]
+    tables = baseTables({
+      account_mappings: [pinned(GENERAL, null, 'l-2')],
+      monthly_report_settings: [onStore],
+      financial_forecasts: actualsRouting(),
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [
+        codedLine('l-1', '428.1', 'BATHURST: General Expenses', '2026-08', 500),
+        codedLine('l-2', '428.2', 'ORANGE: General Expenses', '2026-08', 400),
+      ],
+    })
+  }
+
+  beforeEach(() => {
+    captureMessage.mockClear()
+    tables = baseTables()
+  })
+
+  it('honours the pin when the code would have chosen differently', async () => {
+    disagreeing()
+    const { report } = await resolution()
+    const matched = opexLines(report).find((l: any) => !l.is_budget_only)
+    expect(matched.budget).toBe(400)
+  })
+
+  it('records the disagreement, so a stale pin or a stale code is findable', async () => {
+    disagreeing()
+    const { body } = await generate()
+    const entry = body._debug.match_detail.find((m: any) => m.xero === GENERAL)
+    expect(entry.method).toBe('forecast_pl_line_id')
+    expect(entry.codeWouldHaveMatched).toBe('BATHURST: General Expenses')
+    expect(body._debug.pin_code_disagreements).toEqual([
+      { xero: GENERAL, pinned: 'ORANGE: General Expenses', code_would_have_matched: 'BATHURST: General Expenses' },
+    ])
+  })
+
+  it('says nothing when the pin and the code agree', async () => {
+    compositeRows = [actual('428.1', GENERAL, { '2026-08': 50 })]
+    tables = baseTables({
+      account_mappings: [pinned(GENERAL, null, 'l-1')],
+      monthly_report_settings: [onStore],
+      financial_forecasts: actualsRouting(),
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [codedLine('l-1', '428.1', 'BATHURST: General Expenses', '2026-08', 500)],
+    })
+
+    const { body } = await generate()
+    expect(body._debug.pin_code_disagreements).toEqual([])
+    expect(body._debug.match_detail.find((m: any) => m.xero === GENERAL).codeWouldHaveMatched).toBeUndefined()
+  })
+
+  it('still falls through to the code when the pin points at nothing', async () => {
+    // A dangling pin — the line it named was deleted — must not strand the
+    // account with no budget at all.
+    compositeRows = [actual('428.1', GENERAL, { '2026-08': 50 })]
+    tables = baseTables({
+      account_mappings: [pinned(GENERAL, null, 'deleted-line')],
+      monthly_report_settings: [onStore],
+      financial_forecasts: actualsRouting(),
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [codedLine('l-1', '428.1', 'BATHURST: General Expenses', '2026-08', 500)],
+    })
+
+    const { body } = await generate()
+    const entry = body._debug.match_detail.find((m: any) => m.xero === GENERAL)
+    expect(entry.method).toBe('account_code')
+    expect(entry.budget).toBe('BATHURST: General Expenses')
   })
 })
