@@ -8,6 +8,7 @@ interface BudgetVsActualDashboardProps {
   report: GeneratedReport
   commentary?: VarianceCommentary
   commentaryLoading?: boolean
+  commentaryUnverified?: boolean
   onCommentaryChange?: (accountName: string, text: string) => void
   /** Phase 42 Plan 04: textarea blur signal — parent flushes the auto-save queue. */
   onCommitBlur?: (accountName: string) => void
@@ -16,7 +17,7 @@ interface BudgetVsActualDashboardProps {
   readOnly?: boolean
 }
 
-export default function BudgetVsActualDashboard({ report, commentary, commentaryLoading, onCommentaryChange, onCommitBlur, onTabChange, readOnly }: BudgetVsActualDashboardProps) {
+export default function BudgetVsActualDashboard({ report, commentary, commentaryLoading, commentaryUnverified, onCommentaryChange, onCommitBlur, onTabChange, readOnly }: BudgetVsActualDashboardProps) {
   return (
     <div>
       {report.budget_forecast_name && (
@@ -34,6 +35,7 @@ export default function BudgetVsActualDashboard({ report, commentary, commentary
         report={report}
         commentary={commentary}
         commentaryLoading={commentaryLoading}
+        commentaryUnverified={commentaryUnverified}
         onCommentaryChange={onCommentaryChange}
         onCommitBlur={onCommitBlur}
         onTabChange={onTabChange}

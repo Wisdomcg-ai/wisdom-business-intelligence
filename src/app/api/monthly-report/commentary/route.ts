@@ -244,7 +244,11 @@ async function postHandler(request: Request) {
     for (const l of bs_lines) pushUnique(l)
 
     if (allLines.length === 0) {
-      return NextResponse.json({ success: true, commentary: {} })
+      // A real answer: we looked, and nothing crosses a threshold this month.
+      // `checked: true` is what lets the client CLEAR last month's rows rather
+      // than leave them standing. See the three bail-outs below for the other
+      // kind of empty.
+      return NextResponse.json({ success: true, commentary: {}, checked: true })
     }
 
     // Check for Xero connection.
@@ -267,13 +271,16 @@ async function postHandler(request: Request) {
     const connection = connections?.[0] ?? null
 
     if (!connection) {
-      return NextResponse.json({ success: true, commentary: {} })
+      // NOT an answer — we could not look. `checked: false` keeps the client
+      // from reading "no Xero connection" as "nothing is over budget".
+      return NextResponse.json({ success: true, commentary: {}, checked: false })
     }
 
     // Get valid access token
     const tokenResult = await getValidAccessToken({ id: connection.id }, supabase)
     if (!tokenResult.success || !tokenResult.accessToken) {
-      return NextResponse.json({ success: true, commentary: {} })
+      // Token refresh failed — again, could not look.
+      return NextResponse.json({ success: true, commentary: {}, checked: false })
     }
 
     const accessToken = tokenResult.accessToken
@@ -643,7 +650,7 @@ async function postHandler(request: Request) {
       Sentry.captureException(revertErr, { tags: { route: 'monthly-report/commentary' }, extra: { context: "[monthly-report/commentary] revertReportIfApproved failed" } } as any)
     }
 
-    return NextResponse.json({ success: true, commentary })
+    return NextResponse.json({ success: true, commentary, checked: true })
 
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'monthly-report/commentary' }, extra: { context: "[Commentary] Error" } } as any)

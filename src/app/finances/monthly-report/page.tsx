@@ -51,6 +51,7 @@ import { useReconciliation } from './hooks/useReconciliation'
 import { useReportTemplates } from './hooks/useReportTemplates'
 import { useBalanceSheet } from './hooks/useBalanceSheet'
 import { extractRatioContext } from '@/lib/monthly-report/commentary-clause'
+import { reconcileCommentary } from '@/lib/monthly-report/commentary-reconcile'
 import { collectCommentaryTriggers, type TriggerLine } from './utils/commentary-triggers'
 import { useConsolidatedBalanceSheet } from './hooks/useConsolidatedBalanceSheet'
 import { useConsolidatedCashflow } from './hooks/useConsolidatedCashflow'
@@ -105,6 +106,10 @@ export default function MonthlyReportPage() {
   // Commentary state
   const [commentary, setCommentary] = useState<VarianceCommentary | undefined>(undefined)
   const [commentaryLoading, setCommentaryLoading] = useState(false)
+  // True when the last commentary check could not run (no Xero connection, or a
+  // token refresh that failed). The rows on screen are then the previous
+  // answer, and the panel says so rather than presenting them as current.
+  const [commentaryUnverified, setCommentaryUnverified] = useState(false)
 
   // Phase 42 Plan 04: track loaded snapshot status to drive isLocked (D-06).
   // Plan 42-05 will give Finalise full lock UX; this plan only sets it up so
@@ -746,18 +751,24 @@ export default function MonthlyReportPage() {
       })
 
       const data = await res.json()
-      if (data.success && data.commentary && Object.keys(data.commentary).length > 0) {
-        // Merge persisted coach notes from existing commentary
-        if (existingCommentary) {
-          for (const [acctName, entry] of Object.entries(existingCommentary)) {
-            if (entry.coach_note && data.commentary[acctName]) {
-              data.commentary[acctName].coach_note = entry.coach_note
-              data.commentary[acctName].is_edited = true
-            }
-          }
-        }
-        setCommentary(data.commentary)
+      if (!data.success) return
+
+      // Three states, not two (fail-open house rule). `checked: false` means the
+      // route could not look at all — no Xero connection, or a token refresh
+      // that failed — and an empty answer from a check that never happened must
+      // not be read as "nothing is over budget". Keep what is on screen and SAY
+      // that it is unverified; the old code kept it and said nothing, which is
+      // how a stale row survives indefinitely.
+      if (data.checked === false) {
+        setCommentaryUnverified(true)
+        return
       }
+      setCommentaryUnverified(false)
+
+      // Rebuild, do not accumulate. An account that no longer triggers loses its
+      // row; a coach note survives its trigger. See commentary-reconcile.ts.
+      const reconciled = reconcileCommentary(data.commentary ?? {}, existingCommentary)
+      setCommentary(Object.keys(reconciled).length > 0 ? reconciled : undefined)
     } catch (err) {
       console.error('[MonthlyReport] Commentary fetch error:', err)
     } finally {
@@ -1676,6 +1687,7 @@ export default function MonthlyReportPage() {
             report={report}
             commentary={commentary}
             commentaryLoading={commentaryLoading}
+            commentaryUnverified={commentaryUnverified}
             onCommentaryChange={handleCommentaryChange}
             onCommitBlur={() => autoSave.flushImmediately()}
             onTabChange={setActiveTab}

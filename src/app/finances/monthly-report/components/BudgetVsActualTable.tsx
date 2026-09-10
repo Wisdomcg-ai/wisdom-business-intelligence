@@ -2,13 +2,17 @@
 
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, FileText, Landmark } from 'lucide-react'
-import type { GeneratedReport, ReportLine, ReportSection, MonthlyReportSettings, VarianceCommentary, VendorSummary, VendorTransaction, ReportTab } from '../types'
+import type { GeneratedReport, ReportLine, ReportSection, MonthlyReportSettings, VarianceCommentary, VendorSummary, VendorTransaction, ReportTab, CommentaryTriggerReason } from '../types'
 import { statementYardstick, noBudgetNote } from '../utils/budget-yardstick'
+import { commentaryBadge } from '@/lib/monthly-report/commentary-badge'
 
 interface BudgetVsActualTableProps {
   report: GeneratedReport
   commentary?: VarianceCommentary
   commentaryLoading?: boolean
+  /** The last commentary check could not run — the rows below are the previous
+   *  answer, not a current one. */
+  commentaryUnverified?: boolean
   onCommentaryChange?: (accountName: string, text: string) => void
   onCommitBlur?: (accountName: string) => void
   onTabChange?: (tab: ReportTab) => void
@@ -267,9 +271,16 @@ function TransactionDrillDown({ vendors }: { vendors: VendorSummary[] }) {
   )
 }
 
+const BADGE_TONE: Record<'bad' | 'good' | 'neutral', string> = {
+  bad: 'text-red-600 bg-red-50',
+  good: 'text-emerald-700 bg-emerald-50',
+  neutral: 'text-gray-600 bg-gray-100',
+}
+
 function CommentaryLine({
   accountName,
   variance,
+  triggerReason,
   vendors,
   coachNote,
   detailTabRef,
@@ -280,6 +291,7 @@ function CommentaryLine({
 }: {
   accountName: string
   variance: number
+  triggerReason?: CommentaryTriggerReason
   vendors: VendorSummary[]
   coachNote: string
   detailTabRef?: 'subscriptions' | 'wages' | null
@@ -291,6 +303,7 @@ function CommentaryLine({
   readOnly?: boolean
 }) {
   const tabLabel = detailTabRef === 'subscriptions' ? 'Subscriptions' : detailTabRef === 'wages' ? 'Wages' : null
+  const badge = commentaryBadge(variance, triggerReason)
 
   return (
     <div className="py-3 px-4 rounded-lg border border-gray-200 bg-white">
@@ -299,9 +312,11 @@ function CommentaryLine({
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-gray-900">{accountName}</span>
-            <span className="text-xs font-medium text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
-              {formatVendorAmount(Math.abs(variance))} over budget
-            </span>
+            {badge && (
+              <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${BADGE_TONE[badge.tone]}`}>
+                {badge.text}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -350,7 +365,7 @@ function CommentaryLine({
 // the function to make the test-only rationale explicit.
 export { CommentaryLine }
 
-export default function BudgetVsActualTable({ report, commentary, commentaryLoading, onCommentaryChange, onCommitBlur, onTabChange, readOnly }: BudgetVsActualTableProps) {
+export default function BudgetVsActualTable({ report, commentary, commentaryLoading, commentaryUnverified, onCommentaryChange, onCommitBlur, onTabChange, readOnly }: BudgetVsActualTableProps) {
   const settings = report.settings
 
   // What "Budget" means here. For a client on the budget store it is the
@@ -524,9 +539,14 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
             <div className="w-1 h-5 bg-red-500 rounded-full" />
             <h3 className="text-base font-bold text-gray-900">Expense Commentary</h3>
             <span className="text-xs text-gray-500">
-              {Object.keys(commentary).length} account{Object.keys(commentary).length !== 1 ? 's' : ''} over budget
+              {Object.keys(commentary).length} account{Object.keys(commentary).length !== 1 ? 's' : ''} flagged
             </span>
           </div>
+          {commentaryUnverified && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-4">
+              Couldn&apos;t refresh commentary from Xero — showing the last saved version, which may be out of date.
+            </p>
+          )}
           <div className="space-y-4">
             {report.sections
               .filter(s => ['Cost of Sales', 'Operating Expenses', 'Other Expenses'].includes(s.category))
@@ -544,6 +564,7 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                             key={`commentary-${l.account_name}`}
                             accountName={l.account_name}
                             variance={l.variance_amount}
+                            triggerReason={entry.trigger_reason}
                             vendors={entry.vendor_summary || []}
                             coachNote={entry.coach_note || ''}
                             detailTabRef={entry.detail_tab_ref}
