@@ -62,6 +62,16 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     minColSpan: 2, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 3,
     dataDependency: 'contractors',
   },
+  payroll_grid: {
+    type: 'payroll_grid',
+    label: 'Payroll Grid (2 months)',
+    category: 'tables',
+    fullRow: true,
+    icon: 'CalendarDays',
+    defaultColSpan: 3, defaultRowSpan: 2,
+    minColSpan: 3, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 3,
+    dataDependency: 'wages',
+  },
   wages_detail: {
     type: 'wages_detail',
     label: 'Wages Detail',

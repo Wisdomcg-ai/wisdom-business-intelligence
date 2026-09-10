@@ -38,6 +38,7 @@ import { assessBalanceSheetForPdf, type BalanceSheetPdfSources } from '../utils/
 import { statementYardstick, wagesYardstick, wagesEmployeeYardstick, noBudgetNote } from '../utils/budget-yardstick'
 import { groupExpenseLines } from '@/lib/monthly-report/expense-groups'
 import type { ContractorRollup } from '@/lib/monthly-report/contractor-rollup'
+import type { PayrollGrid } from '@/lib/monthly-report/payroll-grid'
 import { withoutSilentLines, withoutSilentFullYearLines } from '@/lib/monthly-report/empty-lines'
 import { GROUP_SHADE, BAND_LIGHT, periodBandRow, type BandGroup, SECTION_TEXT, RULE_STRONG, paintNegatives, packTableStyles } from './pack-style'
 import {
@@ -57,6 +58,8 @@ interface PDFOptions {
   subscriptionDetail?: SubscriptionDetailData
   /** The Contractor Analysis page's rows, already rolled up (see contractor-rollup). */
   contractorDetail?: ContractorRollup
+  /** The two-month payroll grid (see payroll-grid). */
+  payrollGrid?: PayrollGrid
   wagesDetail?: WagesDetailData
   cashflowForecast?: CashflowForecastData
   /** WE.1b — external-metrics series with this month's values (entered data). */
@@ -3617,8 +3620,107 @@ export class MonthlyReportPDFService {
     this.renderWithSkipPage(this.addSubscriptionDetailPage, box)
   }
 
+  // =====================================================================
+  // Payroll grid (LANDSCAPE) — Calxa page 15
+  // =====================================================================
+  /**
+   * Every employee against every pay run, two months across, with the wages
+   * budget and the difference beneath.
+   *
+   * The month bands matter more than they look: four columns under July and
+   * five under August is the whole reason the wages line moves month to month,
+   * and a reader who cannot see the run count reads a 25% rise as overspend.
+   */
+  private addPayrollGridPage(): void {
+    const grid = this.options.payrollGrid
+    if (!grid || grid.employees.length === 0 || grid.run_dates.length === 0) return
+    this.addPage('landscape')
+    this.drawPageTitle(`Payroll — ${this.formatMonth(this.report.report_month)}`)
+
+    const dayLabel = (iso: string): string => {
+      const [, m, d] = iso.split('-').map(Number)
+      return `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1]}`
+    }
+
+    // Tier 1: the month over its own run dates. Tier 2: the dates.
+    const band: BandGroup[] = [{ label: '', colSpan: 3, tone: 'light' }]
+    for (const [i, m] of grid.months.entries()) {
+      if (m.run_dates.length === 0) continue
+      band.push({
+        label: `${this.formatShortMonth(m.month)} · ${m.run_dates.length} run${m.run_dates.length === 1 ? '' : 's'}`,
+        colSpan: m.run_dates.length,
+        tone: i % 2 === 0 ? 'light' : 'dark',
+      })
+    }
+    band.push({ label: 'Month', colSpan: grid.months.length, tone: 'light' })
+
+    const headers = [
+      'Employee', 'Started', 'Weekly',
+      ...grid.run_dates.map(dayLabel),
+      ...grid.months.map((m) => this.formatShortMonth(m.month)),
+    ]
+
+    const body: any[] = grid.employees.map((e) => [
+      e.name,
+      e.start_date ? dayLabel(e.start_date) + ' ' + e.start_date.slice(0, 4) : '—',
+      e.weekly === null ? '—' : this.fmtCurrency(e.weekly),
+      ...grid.run_dates.map((d) => (e.cells[d] === null || e.cells[d] === undefined ? '—' : this.fmtCurrency(e.cells[d] as number))),
+      ...grid.months.map((m) =>
+        this.fmtCurrency(m.run_dates.reduce((t, d) => t + (e.cells[d] ?? 0), 0))),
+    ])
+
+    const bold = (content: string) => ({ content, styles: { fontStyle: 'bold' as const, fillColor: GROUP_SHADE } })
+    body.push([
+      bold('Total'), bold(''), bold(''),
+      ...grid.run_dates.map((d) =>
+        bold(this.fmtCurrency(grid.employees.reduce((t, e) => t + (e.cells[d] ?? 0), 0)))),
+      ...grid.months.map((m) => bold(this.fmtCurrency(m.total))),
+    ])
+    body.push([
+      bold('Budget'), bold(''), bold(''),
+      ...grid.run_dates.map(() => bold('')),
+      ...grid.months.map((m) => bold(m.budget === null ? '—' : this.fmtCurrency(m.budget))),
+    ])
+    body.push([
+      { content: 'Difference', styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
+      { content: '', styles: { fillColor: GP_BLUE } },
+      { content: '', styles: { fillColor: GP_BLUE } },
+      ...grid.run_dates.map(() => ({ content: '', styles: { fillColor: GP_BLUE } })),
+      ...grid.months.map((m) => ({
+        content: m.difference === null ? '—' : this.fmtVariance(m.difference),
+        styles: { fontStyle: 'bold', fillColor: GP_BLUE },
+      })),
+    ])
+
+    autoTable(this.doc, {
+      startY: this.yPosition,
+      head: [periodBandRow(band), headers],
+      body,
+      ...packTableStyles(7),
+      columnStyles: { 0: { cellWidth: 38, halign: 'left' }, 1: { cellWidth: 20 }, 2: { cellWidth: 18 } },
+      margin: { left: this.margin, right: this.margin },
+      didParseCell: (data) => {
+        if (data.column.index > 0 && data.section !== 'head') data.cell.styles.halign = 'right'
+        paintNegatives(data as never)
+      },
+    })
+
+    // Under the table, not over it: drawNote writes at yPosition, which
+    // autoTable does not advance for you.
+    this.yPosition = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 6
+    this.drawNote(
+      'Paid amounts are Xero payslips, one column per pay run. “Weekly” is stated only where every run in the window paid the same.',
+      undefined,
+      { fontSize: 7.5, color: [120, 120, 120] },
+    )
+  }
+
   renderContractorDetail(box: WidgetBoundingBox): void {
     this.renderWithSkipPage(this.addContractorDetailPage, box)
+  }
+
+  renderPayrollGrid(box: WidgetBoundingBox): void {
+    this.renderWithSkipPage(this.addPayrollGridPage, box)
   }
 
   renderWagesDetail(box: WidgetBoundingBox): void {
