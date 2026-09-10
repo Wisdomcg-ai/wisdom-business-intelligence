@@ -415,35 +415,59 @@ export function useMonthlyReport(businessId: string) {
     [],
   )
 
-  const loadSnapshot = useCallback(
+  /**
+   * Read a month's stored snapshot. Reads only — the caller decides what, if
+   * anything, to put on screen.
+   *
+   * This is split out from `loadSnapshot` because the combined version was a
+   * reader that wrote. `handleGenerateReport` called it for one thing — the
+   * persisted commentary and the draft/final status — and got the stored
+   * report_data pushed into state as a side effect, on top of the report it
+   * had just generated. Urban Road, 10 Sep 2026: a regenerate flashed the new
+   * budget ($450k, the locked Xero budget version) and then reverted to the old
+   * one ($533k, a superseded forecast) about a second later. The generate was
+   * never wrong; the line after it undid the generate.
+   */
+  const fetchSnapshot = useCallback(
     async (reportMonth: string) => {
       try {
         const res = await fetch(
           `/api/monthly-report/snapshot?business_id=${businessId}&report_month=${reportMonth}`,
         )
         const data = await res.json()
-        if (data.snapshot) {
-          // Phase 71-10 (D4): hydrate persisted `sections` back to ReportSection[].
-          // Handles three shapes (named map / legacy numeric-keyed object / passthrough
-          // array) so pre-71-10 snapshots still load. Downstream consumers
-          // (BudgetVsActualTable, pdf-service) continue to receive the array shape.
-          const persisted = data.snapshot.report_data
-          const hydratedReportData = persisted
-            ? {
-                ...persisted,
-                sections: deserializeReportSections(persisted.sections ?? []),
-              }
-            : persisted
-          if (hydratedReportData) setReport(hydratedReportData)
-          return { ...data.snapshot, report_data: hydratedReportData }
-        }
-        return null
+        if (!data.snapshot) return null
+        // Phase 71-10 (D4): hydrate persisted `sections` back to ReportSection[].
+        // Handles three shapes (named map / legacy numeric-keyed object / passthrough
+        // array) so pre-71-10 snapshots still load. Downstream consumers
+        // (BudgetVsActualTable, pdf-service) continue to receive the array shape.
+        const persisted = data.snapshot.report_data
+        const hydratedReportData = persisted
+          ? {
+              ...persisted,
+              sections: deserializeReportSections(persisted.sections ?? []),
+            }
+          : persisted
+        return { ...data.snapshot, report_data: hydratedReportData }
       } catch (err) {
         console.error('[useMonthlyReport] Load snapshot error:', err)
         return null
       }
     },
     [businessId],
+  )
+
+  /**
+   * Read a month's snapshot AND show it — for the paths whose whole purpose is
+   * to put a stored report on screen (changing month, opening one from Report
+   * History). Anything else wants `fetchSnapshot`.
+   */
+  const loadSnapshot = useCallback(
+    async (reportMonth: string) => {
+      const snapshot = await fetchSnapshot(reportMonth)
+      if (snapshot?.report_data) setReport(snapshot.report_data)
+      return snapshot
+    },
+    [fetchSnapshot],
   )
 
   return {
@@ -455,6 +479,7 @@ export function useMonthlyReport(businessId: string) {
     generateReport,
     saveSnapshot,
     loadSnapshot,
+    fetchSnapshot,
     dataQuality,
     perTenantQuality,
     qualityCheckFailed,
