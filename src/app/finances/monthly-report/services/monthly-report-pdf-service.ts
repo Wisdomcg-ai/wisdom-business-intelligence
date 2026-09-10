@@ -620,13 +620,20 @@ export class MonthlyReportPDFService {
     this.yPosition += 8
 
     if (!verdict.ok) {
-      // The honest card, same shape as Where Did Our Money Go. A balance sheet
-      // that can't be proved to balance is not a balance sheet, so it never
-      // gets printed as a half-table or a column of zeros — the page says what
-      // went wrong and stops.
+      // The honest card, same shape as Where Did Our Money Go. Reserved for
+      // there being nothing to print at all — Xero refused, the month is empty,
+      // the comparison period does not exist. Never a half-table, never a
+      // column of zeros: the page says what went wrong and stops.
       this.drawReasonCard(`This page couldn't be produced: ${verdict.reason}.`)
       return
     }
+
+    // A sheet that does not add up still has figures, and withholding them
+    // makes the pack disagree with the tab the coach is looking at — which
+    // shows the full table under a red banner. State the discrepancy above the
+    // table and print the table. "Could not check" is a third state alongside
+    // the value, not a replacement for it.
+    if (verdict.warning) this.drawWarningCard(verdict.warning)
 
     const bs = verdict.data
     this.renderBalanceSheetTable(bs)
@@ -658,6 +665,29 @@ export class MonthlyReportPDFService {
     this.doc.text(lines, this.margin + 5, this.yPosition + 8)
     this.doc.setTextColor(0, 0, 0)
     this.yPosition += 32
+  }
+
+  /**
+   * The red band that sits ON TOP of a table, for figures that are real but
+   * cannot be trusted to add up. Deliberately the same red and the same
+   * sentence shape as BalanceSheetTab's banner: the page below it is still the
+   * page, and the reader is told what is wrong with it rather than being
+   * handed a sentence where the numbers should be.
+   */
+  private drawWarningCard(message: string): void {
+    const width = this.pageWidth - this.margin * 2
+    this.doc.setFontSize(9)
+    this.doc.setFont('helvetica', 'bold')
+    const lines: string[] = this.doc.splitTextToSize(message, width - 10)
+    const height = 8 + lines.length * 4.5
+    this.doc.setFillColor(254, 242, 242)
+    this.doc.setDrawColor(220, 108, 108)
+    this.doc.roundedRect(this.margin, this.yPosition, width, height, 2, 2, 'FD')
+    this.doc.setTextColor(153, 27, 27)
+    this.doc.text(lines, this.margin + 5, this.yPosition + 6)
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.setFont('helvetica', 'normal')
+    this.yPosition += height + 4
   }
 
   /** Formatting mirrors BalanceSheetTab: no currency symbol, no decimals,

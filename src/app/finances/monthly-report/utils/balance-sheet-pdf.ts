@@ -8,6 +8,11 @@ import type { BalanceSheetCompare, BalanceSheetData, BalanceSheetRow } from '../
  * pack that prints neither — a blank page, or worse a table of zeros — is
  * exactly the failure this widget exists to avoid. A page that cannot be
  * produced says so, in words, on the page.
+ *
+ * Note which of those two is which. Only the first is "there is nothing to
+ * show". The second HAS a sheet; what it lacks is a proof that the sheet adds
+ * up, and that is a warning to print above the table, not a reason to withhold
+ * it. See BalanceSheetVerdict.
  */
 export interface BalanceSheetPdfInput {
   /** The parsed sheet, or null when it could not be loaded at all. */
@@ -32,8 +37,25 @@ export type BalanceSheetPdfSources = Partial<Record<BalanceSheetCompare, Balance
  */
 export const BS_EQUATION_TOLERANCE = 1
 
+/**
+ * Three states, not two.
+ *
+ * `ok` with no warning is a sheet that adds up. `ok` WITH a warning is a sheet
+ * that does not, printed anyway with the discrepancy stated above it — which is
+ * exactly what BalanceSheetTab does on screen: a red banner on top of the full
+ * table. Withholding the table instead cost a tenant out by $2 (Armstrong is
+ * the known imbalanced one) four of the twenty-seven pages, replaced by one
+ * sentence, while the coach's own screen showed them the figures — the tab and
+ * the pack telling them different things about the same month.
+ *
+ * `ok: false` is reserved for genuinely having nothing to print: Xero refused,
+ * the month is empty, the comparison period does not exist, or the totals
+ * cannot be identified well enough to say anything about the sheet at all.
+ * "Could not check" is a third state alongside the value, not a replacement
+ * for it.
+ */
 export type BalanceSheetVerdict =
-  | { ok: true; data: BalanceSheetData }
+  | { ok: true; data: BalanceSheetData; warning?: string }
   /** `reason` completes the sentence "This page couldn't be produced: …". */
   | { ok: false; reason: string }
 
@@ -54,8 +76,8 @@ function findSubtotal(rows: BalanceSheetRow[], predicate: (label: string) => boo
 }
 
 /**
- * Decide whether this comparison can be printed as a balance sheet, or has to
- * be printed as a stated reason.
+ * Decide what this comparison can print: the table, the table with a stated
+ * warning, or a stated reason and no table.
  *
  * Order matters: check that we HAVE a sheet before checking that it balances,
  * and check the comparison column before the equation, so the reader is told
@@ -108,11 +130,17 @@ export function assessBalanceSheetForPdf(
 
   const residual = totalAssets - (totalLiabilities + totalEquity)
   if (Math.abs(residual) > BS_EQUATION_TOLERANCE) {
+    // The figures are still the figures. Print them, and say on the page that
+    // the equation does not close — the same call BalanceSheetTab makes, in
+    // the same words and off the same threshold, because a coach reading the
+    // tab and a client reading the pack must be told the same thing.
     return {
-      ok: false,
-      reason:
-        `the balance sheet does not balance — assets ${residual > 0 ? 'exceed' : 'fall short of'} ` +
-        `liabilities plus equity by ${fmtDollars(residual)}`,
+      ok: true,
+      data: entry.data,
+      warning:
+        `This balance sheet does not balance — assets ${residual > 0 ? 'exceed' : 'fall short of'} ` +
+        `liabilities plus equity by ${fmtDollars(residual)}. The figures below are Xero's; ` +
+        `the discrepancy is not.`,
     }
   }
 

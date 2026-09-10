@@ -1,11 +1,17 @@
 /**
- * WG.1 — the balance-sheet PDF page must never print a half-table.
+ * WG.1 — three states for the balance-sheet PDF page.
  *
- * The trap this guards: a management pack whose balance sheet doesn't add up,
- * or whose comparison column is empty, is worse than a missing page — it looks
- * finished. Every path that can't be printed has to come back as a stated
- * reason, and the reason has to say which of the three things went wrong
- * (couldn't load / nothing to compare against / doesn't balance).
+ * The table; the table under a stated warning; or a stated reason and no table.
+ * Which of those a case falls into is the whole point of this file.
+ *
+ * A pack whose balance sheet doesn't add up and doesn't say so is worse than a
+ * missing page, because it looks finished. But so is the opposite: a tenant out
+ * by $2 (Armstrong is the known one) losing four of twenty-seven pages to a
+ * sentence, while the coach's own Balance Sheet tab shows them the full table
+ * under a red banner. The tab and the pack must tell them the same thing about
+ * the same month, so an imbalance is a WARNING over real figures — and only
+ * genuinely having nothing to print (Xero refused, no rows, no comparison
+ * period, totals unidentifiable) withholds the table.
  *
  * Figures are Urban Road Pty Ltd, August 2026, which balances to the cent.
  */
@@ -69,21 +75,40 @@ describe('WG.1 — assessBalanceSheetForPdf', () => {
     if (v.ok) expect(v.data.rows).toHaveLength(11)
   })
 
-  it('refuses to print a sheet that does not balance, and says by how much', () => {
-    // $10k of equity vanishes: assets now exceed liabilities + equity.
+  it('prints a sheet that does not balance, with the discrepancy stated over it', () => {
+    // $10k of equity vanishes: assets now exceed liabilities + equity. The
+    // figures are still Xero's figures and the page still shows them.
     const v = assessBalanceSheetForPdf(loaded(sheet({ equity: EQUITY - 10000 })), 'mom')
-    expect(v.ok).toBe(false)
-    if (!v.ok) {
-      expect(v.reason).toContain('does not balance')
-      expect(v.reason).toContain('exceed')
-      expect(v.reason).toContain('$10,000')
+    expect(v.ok).toBe(true)
+    if (v.ok) {
+      expect(v.data.rows).toHaveLength(11)
+      expect(v.warning).toContain('does not balance')
+      expect(v.warning).toContain('exceed')
+      expect(v.warning).toContain('$10,000')
     }
   })
 
   it('names the direction when assets fall short instead of exceeding', () => {
     const v = assessBalanceSheetForPdf(loaded(sheet({ equity: EQUITY + 10000 })), 'mom')
-    expect(v.ok).toBe(false)
-    if (!v.ok) expect(v.reason).toContain('fall short of')
+    expect(v.ok).toBe(true)
+    if (v.ok) expect(v.warning).toContain('fall short of')
+  })
+
+  it('warns on the same $2 the web tab warns on, and still shows the table', () => {
+    // Armstrong's shape. Four pages of a twenty-seven page pack must not be
+    // replaced by one sentence over two dollars while the tab shows the sheet.
+    const v = assessBalanceSheetForPdf(loaded(sheet({ equity: EQUITY - 2 })), 'mom')
+    expect(v.ok).toBe(true)
+    if (v.ok) {
+      expect(v.warning).toBeTruthy()
+      expect(v.data.rows).toHaveLength(11)
+    }
+  })
+
+  it('says nothing at all when the sheet balances', () => {
+    const v = assessBalanceSheetForPdf(loaded(sheet()), 'mom')
+    expect(v.ok).toBe(true)
+    if (v.ok) expect(v.warning).toBeUndefined()
   })
 
   it('tolerates sub-dollar rounding — the same threshold the web tab uses', () => {
@@ -91,6 +116,7 @@ describe('WG.1 — assessBalanceSheetForPdf', () => {
     expect(BS_EQUATION_TOLERANCE).toBe(1)
     const v = assessBalanceSheetForPdf(loaded(sheet({ equity: EQUITY - 0.6 })), 'mom')
     expect(v.ok).toBe(true)
+    if (v.ok) expect(v.warning).toBeUndefined()
   })
 
   it('refuses when there is nothing in the comparison column', () => {
