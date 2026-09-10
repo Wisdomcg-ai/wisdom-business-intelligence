@@ -509,6 +509,12 @@ export default function MonthlyReportPage() {
   const autoSave = useAutoSaveReport({
     report,
     commentary,
+    // The month on screen. `report` lags this across a month change (the
+    // snapshot GET is awaited, and a month with no saved snapshot never
+    // replaces it at all), so the hook refuses to write while the two
+    // disagree — otherwise the POST lands on the month just navigated away
+    // from, as a draft with its commentary blanked.
+    selectedMonth,
     userId,
     isLocked,
     onSaveSuccess: () => {

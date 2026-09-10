@@ -58,6 +58,10 @@ function makeHarness() {
     commentary: VarianceCommentary | undefined
     userId: string | null
     isLocked: boolean
+    /** The month on screen. Defaults to the report's own month so the
+     *  pre-existing single-month tests are unaffected; the month-change
+     *  suite passes it explicitly to model a mid-change render. */
+    selectedMonth?: string
     onSaveSuccess?: () => void
     saveSnapshot: (
       reportData: GeneratedReport,
@@ -67,6 +71,7 @@ function makeHarness() {
     const api = useAutoSaveReport({
       report: props.report,
       commentary: props.commentary,
+      selectedMonth: props.selectedMonth ?? props.report?.report_month ?? '',
       userId: props.userId,
       isLocked: props.isLocked,
       onSaveSuccess: props.onSaveSuccess,
@@ -814,5 +819,293 @@ describe('useAutoSaveReport (Phase 42)', () => {
     })
     await flushMicrotasks()
     expect(saveSnapshot).not.toHaveBeenCalled()
+  })
+  // ---------- Month-change write guard ----------
+  //
+  // The coach switches month. `handleMonthChange` runs
+  //   setSelectedMonth(next); setCommentary(undefined); await loadSnapshot(next)
+  // so between the state flush and the GET resolving there is a render where
+  // `selectedMonth` is the NEW month but `report` is still the PREVIOUS
+  // month's. The commentary transition arms the 500ms debounce; if it fires in
+  // that window, saveSnapshot derives business_id/report_month from the report
+  // payload and the POST lands on the PREVIOUS month — rewriting it as a draft
+  // with its commentary blanked.
+  //
+  // Two ways in:
+  //   (a) the snapshot GET for the new month simply takes >500ms; or
+  //   (b) the new month has NO snapshot at all — loadSnapshot returns null
+  //       without calling setReport, so `report` stays on the previous month
+  //       indefinitely AND loadedSnapshotStatus drops to null, unlocking a
+  //       finalised previous month.
+  //
+  // Rule: auto-save only ever writes the month that is on screen.
+  describe('month-change write guard', () => {
+    const MARCH_COMMENTARY = {
+      Rent: { vendor_summary: [], coach_note: 'March: rent review landed', is_edited: true },
+    } as unknown as VarianceCommentary
+
+    it('REGRESSION (a): a debounce firing mid-month-change does NOT write the previous month', async () => {
+      const saveSnapshot = vi.fn().mockResolvedValue({ id: 's1' })
+      const { Harness } = makeHarness()
+      const march = makeReport({ report_month: '2026-03' })
+
+      // Coach sits on March with its commentary loaded. Two renders clear the
+      // init guard, so the hook is armed exactly as it is in real use.
+      const { rerender } = render(
+        <Harness
+          report={march}
+          commentary={{}}
+          selectedMonth="2026-03"
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      rerender(
+        <Harness
+          report={march}
+          commentary={MARCH_COMMENTARY}
+          selectedMonth="2026-03"
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+      await flushMicrotasks()
+      expect(saveSnapshot).toHaveBeenCalledTimes(1)
+      expect(saveSnapshot.mock.calls[0][0].report_month).toBe('2026-03')
+      saveSnapshot.mockClear()
+
+      // Month change: selectedMonth flips to April and commentary is cleared,
+      // but the April snapshot GET has not resolved so `report` is still March.
+      rerender(
+        <Harness
+          report={march}
+          commentary={undefined}
+          selectedMonth="2026-04"
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+
+      // The GET is slower than the 500ms debounce.
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+      await flushMicrotasks()
+
+      expect(saveSnapshot).not.toHaveBeenCalled()
+    })
+
+    it('REGRESSION (b): the new month having no snapshot does NOT unlock a write to the finalised previous month', async () => {
+      const saveSnapshot = vi.fn().mockResolvedValue({ id: 's1' })
+      const { Harness } = makeHarness()
+      const march = makeReport({ report_month: '2026-03' })
+
+      // March is finalised — isLocked=true, so nothing saves while it is on screen.
+      const { rerender } = render(
+        <Harness
+          report={march}
+          commentary={{}}
+          selectedMonth="2026-03"
+          userId="u1"
+          isLocked
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      rerender(
+        <Harness
+          report={march}
+          commentary={MARCH_COMMENTARY}
+          selectedMonth="2026-03"
+          userId="u1"
+          isLocked
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+      await flushMicrotasks()
+      expect(saveSnapshot).not.toHaveBeenCalled()
+
+      // Switch to April. April has no snapshot at all: loadSnapshot resolves
+      // null, so `report` is never replaced (still March) and
+      // loadedSnapshotStatus drops to null — isLocked goes false.
+      rerender(
+        <Harness
+          report={march}
+          commentary={undefined}
+          selectedMonth="2026-04"
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+      await flushMicrotasks()
+
+      // Without the guard this POSTs March as {status:'draft', commentary:null},
+      // silently un-finalising the month and wiping the coach's notes.
+      expect(saveSnapshot).not.toHaveBeenCalled()
+    })
+
+    it('a user-initiated flush is refused while the report lags the selected month', async () => {
+      const saveSnapshot = vi.fn().mockResolvedValue({ id: 's1' })
+      const { Harness, apiRef } = makeHarness()
+      const march = makeReport({ report_month: '2026-03' })
+
+      render(
+        <Harness
+          report={march}
+          commentary={MARCH_COMMENTARY}
+          selectedMonth="2026-04"
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      await act(async () => {
+        apiRef.current!.flushImmediately()
+        await Promise.resolve()
+      })
+      expect(saveSnapshot).not.toHaveBeenCalled()
+
+      await act(async () => {
+        apiRef.current!.retryNow()
+        await Promise.resolve()
+      })
+      expect(saveSnapshot).not.toHaveBeenCalled()
+    })
+
+    it('saving resumes, against the NEW month, once its snapshot lands', async () => {
+      const saveSnapshot = vi.fn().mockResolvedValue({ id: 's1' })
+      const { Harness } = makeHarness()
+      const march = makeReport({ report_month: '2026-03' })
+      const april = makeReport({ report_month: '2026-04' })
+
+      const { rerender } = render(
+        <Harness
+          report={march}
+          commentary={MARCH_COMMENTARY}
+          selectedMonth="2026-03"
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      // Month change with the GET still in flight.
+      rerender(
+        <Harness
+          report={march}
+          commentary={undefined}
+          selectedMonth="2026-04"
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+      await flushMicrotasks()
+      expect(saveSnapshot).not.toHaveBeenCalled()
+
+      // April's snapshot lands: report and commentary are now April's.
+      const aprilCommentary = {
+        Rent: { vendor_summary: [], coach_note: 'April note', is_edited: true },
+      } as unknown as VarianceCommentary
+      rerender(
+        <Harness
+          report={april}
+          commentary={aprilCommentary}
+          selectedMonth="2026-04"
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      // The coach then edits April's commentary.
+      rerender(
+        <Harness
+          report={april}
+          commentary={{
+            Rent: { vendor_summary: [], coach_note: 'April note edited', is_edited: true },
+          } as unknown as VarianceCommentary}
+          selectedMonth="2026-04"
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+      await flushMicrotasks()
+
+      expect(saveSnapshot).toHaveBeenCalledTimes(1)
+      expect(saveSnapshot.mock.calls[0][0].report_month).toBe('2026-04')
+    })
+
+    it('a month change mid-backoff abandons the retry instead of writing the old month', async () => {
+      const saveSnapshot = vi.fn().mockRejectedValue(new Error('500'))
+      const { Harness, statusRef } = makeHarness()
+      const march = makeReport({ report_month: '2026-03' })
+
+      const { rerender } = render(
+        <Harness
+          report={march}
+          commentary={{}}
+          selectedMonth="2026-03"
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      rerender(
+        <Harness
+          report={march}
+          commentary={MARCH_COMMENTARY}
+          selectedMonth="2026-03"
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      // Debounce fires, first attempt fails, backoff starts.
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+      await flushMicrotasks()
+      expect(saveSnapshot).toHaveBeenCalledTimes(1)
+
+      // Coach switches month while the backoff is sleeping.
+      rerender(
+        <Harness
+          report={march}
+          commentary={undefined}
+          selectedMonth="2026-04"
+          userId="u1"
+          isLocked={false}
+          saveSnapshot={saveSnapshot}
+        />,
+      )
+      act(() => {
+        vi.advanceTimersByTime(10000)
+      })
+      await flushMicrotasks()
+
+      // No further attempt against March, and no terminal-failure toast for a
+      // month the coach has already navigated away from.
+      expect(saveSnapshot).toHaveBeenCalledTimes(1)
+      expect(toast.error).not.toHaveBeenCalled()
+      expect(statusRef.current?.kind).toBe('idle')
+    })
   })
 })

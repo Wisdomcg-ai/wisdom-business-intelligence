@@ -7,6 +7,10 @@
  *   - POST wipe-guard: the regenerate path never sends coach_notes, and the
  *     upsert payload must NOT contain the key then — including it as null
  *     would wipe the saved memo on every regenerate. Explicit null clears.
+ *   - The same wipe-guard now covers `commentary`, which had the opposite
+ *     rule (`commentary: commentary || null`, unconditional). Any save that
+ *     did not carry commentary blanked a month of coach notes — the payload
+ *     an auto-save fired during a month change sends.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
@@ -161,5 +165,43 @@ describe('WD.8 — POST wipe-guard on coach_notes', () => {
     routeTables(q2)
     await POST(postReq({ ...fullBody, coach_notes: '' }))
     expect(q2.calls.upsert[0].coach_notes).toBeNull()
+  })
+})
+
+describe('POST wipe-guard on commentary', () => {
+  const fullBody = {
+    ...BASE,
+    fiscal_year: 2027,
+    report_data: { some: 'report' },
+    summary: { some: 'summary' },
+  }
+
+  it('a save WITHOUT commentary omits the key — it cannot wipe a month of coach notes', async () => {
+    const q = chain({ data: { id: 'snap-1' }, error: null })
+    routeTables(q)
+    const res = await POST(postReq(fullBody))
+    expect(res.status).toBe(200)
+    expect('commentary' in q.calls.upsert[0]).toBe(false)
+  })
+
+  it('an explicit commentary still writes, and an explicit null still clears', async () => {
+    const notes = { Rent: { vendor_summary: [], coach_note: 'rent review', is_edited: true } }
+    const q = chain({ data: { id: 'snap-1' }, error: null })
+    routeTables(q)
+    await POST(postReq({ ...fullBody, commentary: notes }))
+    expect(q.calls.upsert[0].commentary).toEqual(notes)
+
+    const q2 = chain({ data: { id: 'snap-1' }, error: null })
+    routeTables(q2)
+    await POST(postReq({ ...fullBody, commentary: null }))
+    expect(q2.calls.upsert[0].commentary).toBeNull()
+  })
+
+  it('an empty map is a deliberate clear and still reaches the row', async () => {
+    const q = chain({ data: { id: 'snap-1' }, error: null })
+    routeTables(q)
+    await POST(postReq({ ...fullBody, commentary: {} }))
+    expect('commentary' in q.calls.upsert[0]).toBe(true)
+    expect(q.calls.upsert[0].commentary).toEqual({})
   })
 })
