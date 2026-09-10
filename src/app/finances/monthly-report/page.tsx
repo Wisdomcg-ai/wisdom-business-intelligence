@@ -958,6 +958,7 @@ export default function MonthlyReportPage() {
     fullYearReport?: import('./types').FullYearReport
     subscriptionDetail?: import('./types').SubscriptionDetailData
     contractorDetail?: import('@/lib/monthly-report/contractor-rollup').ContractorRollup
+    payrollGrid?: import('@/lib/monthly-report/payroll-grid').PayrollGrid
     wagesDetail?: import('./types').WagesDetailData
     cashflowForecast?: CashflowForecastData
     externalMetrics?: import('./types').ExternalMetricSeriesData[]
@@ -1012,6 +1013,33 @@ export default function MonthlyReportPage() {
         // Never block the export, never drop the page silently.
         Sentry.captureException(err, {
           tags: { invariant: 'contractor-detail-load' },
+          extra: { businessId, selectedMonth },
+        } as never)
+      }
+    }
+
+    // The two-month payroll grid (Calxa 15). Pure database read — payslips are
+    // already synced — so it costs no Xero call and is loaded for every export
+    // rather than only when a coach has opened the Wages tab.
+    let payroll: import('@/lib/monthly-report/payroll-grid').PayrollGrid | undefined
+    if (settings?.sections.payroll_detail && businessId) {
+      try {
+        const res = await fetch('/api/monthly-report/payroll-grid', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            business_id: businessId,
+            report_month: selectedMonth,
+            fiscal_year: fiscalYear,
+            months: 2,
+          }),
+        })
+        if (!res.ok) throw new Error(`payroll grid ${res.status}`)
+        const payload = await res.json()
+        payroll = payload.data ?? undefined
+      } catch (err) {
+        Sentry.captureException(err, {
+          tags: { invariant: 'payroll-grid-load' },
           extra: { businessId, selectedMonth },
         } as never)
       }
@@ -1184,6 +1212,7 @@ export default function MonthlyReportPage() {
       fullYearReport: fyReport || undefined,
       subscriptionDetail: subDetail || undefined,
       contractorDetail: contractorRollup,
+      payrollGrid: payroll,
       wagesDetail: wDetail || undefined,
       cashflowForecast: cfData,
       externalMetrics: extMetrics,

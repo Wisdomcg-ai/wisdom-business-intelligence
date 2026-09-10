@@ -139,6 +139,29 @@ async function main() {
     businessName: biz?.name ?? 'Client',
   } as never)
 
+  // The pages whose data does not live on the snapshot are built here from the
+  // same tables their routes read, so the harness can show them without an
+  // authenticated request. Payroll is a pure database read; contractor detail
+  // needs a live Xero pull and is therefore NOT reproduced here.
+  const { buildPayrollGrid } = await import('@/lib/monthly-report/payroll-grid')
+  const [wy, wm] = month!.split('-').map(Number)
+  const prev = wm === 1 ? `${wy - 1}-12` : `${wy}-${String(wm - 1).padStart(2, '0')}`
+  const { data: conns } = await admin
+    .from('xero_connections').select('tenant_id').eq('business_id', businessId).eq('is_active', true)
+  const tenantIds = (conns ?? []).map((c: { tenant_id: string }) => c.tenant_id).filter(Boolean)
+  if (tenantIds.length > 0) {
+    const [{ data: slips }, { data: emps }] = await Promise.all([
+      admin.from('xero_payslip_lines')
+        .select('employee_id, employee_name, payment_date, wages, super_amount')
+        .in('tenant_id', tenantIds).gte('payment_date', `${prev}-01`).lt('payment_date', `${wy}-${String(wm + 1).padStart(2, '0')}-01`),
+      admin.from('xero_employees').select('employee_id, start_date').in('tenant_id', tenantIds),
+    ])
+    if (slips && slips.length > 0) {
+      const svcAny = svc as unknown as { options: Record<string, unknown> }
+      svcAny.options.payrollGrid = buildPayrollGrid(slips as never, (emps ?? []) as never, [prev, month!], {})
+    }
+  }
+
   const doc = (svc as unknown as { generate: () => { output: (k: string) => ArrayBuffer } }).generate()
   fs.writeFileSync(out, Buffer.from(doc.output('arraybuffer')))
   console.log(`\nWrote ${out}`)

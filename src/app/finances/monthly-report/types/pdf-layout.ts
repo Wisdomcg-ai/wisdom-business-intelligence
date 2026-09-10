@@ -12,6 +12,9 @@ export type WidgetType =
   // with last month, this month and their budget, then the same rows rolled up
   // by department. Replaces a hand-rolled Google Sheet tab.
   | 'contractor_detail'
+  // The two-month payroll grid (Calxa 15): every employee against every pay
+  // run, with the month's wages budget and the difference beneath.
+  | 'payroll_grid'
   | 'wages_detail'
   | 'cashflow_forecast_table'
   // WE.1b — the external-metrics insert pages (Lumary clinic income, Hubstaff
