@@ -8,6 +8,10 @@ export type WidgetType =
   | 'ytd_summary'
   | 'full_year_projection'
   | 'subscription_detail'
+  // The Contractor Analysis page (Calxa 14): every contractor down the side
+  // with last month, this month and their budget, then the same rows rolled up
+  // by department. Replaces a hand-rolled Google Sheet tab.
+  | 'contractor_detail'
   | 'wages_detail'
   | 'cashflow_forecast_table'
   // WE.1b — the external-metrics insert pages (Lumary clinic income, Hubstaff
@@ -117,7 +121,7 @@ export interface WidgetDefinition {
   maxColSpan: number
   minRowSpan: number
   maxRowSpan: number
-  dataDependency?: 'fullYear' | 'cashflow' | 'subscriptions' | 'wages' | 'report'
+  dataDependency?: 'fullYear' | 'cashflow' | 'subscriptions' | 'contractors' | 'wages' | 'report'
 }
 
 // Bounding box for PDF rendering (mm)
