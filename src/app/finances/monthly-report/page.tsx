@@ -225,6 +225,7 @@ export default function MonthlyReportPage() {
     generateReport,
     saveSnapshot,
     loadSnapshot,
+    fetchSnapshot,
     dataQuality,
     perTenantQuality,
     qualityCheckFailed,
@@ -779,8 +780,13 @@ export default function MonthlyReportPage() {
 
     if (result && !('needsMappings' in result)) {
       toast.success('Report generated')
-      // Load persisted commentary to merge with fresh vendor data
-      const snapshot = await loadSnapshot(selectedMonth)
+      // Read the stored snapshot for its commentary and its draft/final status
+      // ONLY. `fetchSnapshot`, never `loadSnapshot`: the hydrating one would put
+      // the PREVIOUS report back on screen over the one just generated, which is
+      // how Urban Road's 10 Sep regenerate flashed the new budget and then
+      // reverted to the superseded forecast a second later — and how auto-save
+      // then wrote that superseded report back over the fresh save.
+      const snapshot = await fetchSnapshot(selectedMonth)
       const persistedCommentary = snapshot?.commentary || undefined
       // Phase 42 Plan 04: a freshly-generated report should reflect the loaded
       // snapshot status (or 'draft' if there's no snapshot yet). Without this,
@@ -811,7 +817,7 @@ export default function MonthlyReportPage() {
         }
       }
     }
-  }, [selectedMonth, fiscalYear, reconciliation, generateReport, fetchCommentary, loadSnapshot, saveSnapshot, userId])
+  }, [selectedMonth, fiscalYear, reconciliation, generateReport, fetchCommentary, fetchSnapshot, saveSnapshot, userId])
 
   // WA.4 — switching fiscal year clears every FY-keyed cache (their lazy-load
   // effects guard on `!data`, so without the clears the Full Year / Trends /
