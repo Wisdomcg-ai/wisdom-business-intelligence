@@ -21,7 +21,7 @@ import {
 } from '../components/charts/BudgetBurnRateChart'
 import { transformAnalysisChartData, type AnalysisChartSection } from '../components/charts/analysis-chart-data'
 import { resolveSectionFilter, sectionTableTitle } from './section-table-config'
-import { annotateStandingLines } from '../utils/standing-commentary'
+import { annotateStandingLines, pickStandingCommentaryHost } from '../utils/standing-commentary'
 import { buildConsolidatedRows } from '../utils/consolidated-rows'
 import { transformCashRunwayData } from '../components/charts/CashRunwayChart'
 import { transformCumulativeNetCashData } from '../components/charts/CumulativeNetCashChart'
@@ -132,6 +132,15 @@ export class MonthlyReportPDFService {
   private margin: number = 15
   private yPosition: number = 15
   private skipNextAddPage: boolean = false
+  /**
+   * The layout being rendered right now, or null on the legacy page order.
+   * Set by generateFromLayout and cleared when it throws, because the fallback
+   * runs the hard-coded order and must not be reasoned about as if the layout
+   * were still in force.
+   */
+  private activeLayout: PDFLayout | null = null
+  /** Memoised — see standingHostWidgetId. `undefined` = not computed yet. */
+  private standingHostId: string | null | undefined = undefined
 
   constructor(report: GeneratedReport, options?: PDFOptions) {
     // Start portrait — first page is executive summary
@@ -168,7 +177,11 @@ export class MonthlyReportPDFService {
             },
           } as any)
           console.error('[PDF] Layout-driven generation failed, falling back to default:', err)
-          // Reset the doc for default generation
+          // Reset the doc for default generation. The layout is no longer in
+          // force, and anything that reads it — the standing-commentary host,
+          // for one — must go back to the legacy answer.
+          this.activeLayout = null
+          this.standingHostId = undefined
           this.doc = new jsPDF('portrait', 'mm', 'a4')
           this.pageWidth = A4_SHORT
           this.pageHeight = A4_LONG
@@ -1118,7 +1131,10 @@ export class MonthlyReportPDFService {
   // =====================================================================
   // Page 2+: Budget vs Actual Detail (LANDSCAPE — many columns)
   // =====================================================================
-  private addBudgetVsActualDetail(sectionFilter?: import('../types').ReportCategory[] | null): void {
+  private addBudgetVsActualDetail(
+    sectionFilter?: import('../types').ReportCategory[] | null,
+    widgetId?: string,
+  ): void {
     // WD.2 — an optional section scope turns the full statement into the
     // Calxa-style per-section table ("Income Analysis | Table" etc.). Filtered
     // tables show lines + subtotals only: Gross Profit and Net Profit are
@@ -1271,10 +1287,13 @@ export class MonthlyReportPDFService {
       },
     })
 
-    // WD.3 — standing "refer to …" lines, statement view only. A line whose
-    // target page is not in this pack renders WITH a warning marker (visible,
-    // never silent).
-    if (!filter) {
+    // WD.3 — standing "refer to …" lines, under exactly ONE table in the pack.
+    // Which one is standingHostWidgetId's call; under the Calxa page order
+    // there is no unfiltered statement to host them and they used to vanish. A
+    // line whose target page is not in this pack renders WITH a warning marker
+    // (visible, never silent).
+    const standingHost = this.standingHostWidgetId()
+    if (standingHost === null ? !filter : widgetId === standingHost) {
       const standing = annotateStandingLines(
         this.report.settings.standing_commentary ?? [],
         this.packPageLabels(),
@@ -1384,6 +1403,32 @@ export class MonthlyReportPDFService {
       },
     })
 
+  }
+
+  /**
+   * WD.3 — which Budget-vs-Actual table the standing "refer to …" lines belong
+   * under, as a widget id (null = the legacy unfiltered statement).
+   *
+   * The lines used to render only under an UNFILTERED statement. The Calxa page
+   * order has no unfiltered page — only the three section-scoped tables at
+   * pages 4, 6 and 10 — so Matt's standing lines ("Wages & Salaries | Refer to
+   * Payroll Summary Page" and the two "refer to summary page" ones) disappeared
+   * from the pack entirely, while Calxa prints them under the expenses table.
+   *
+   * pickStandingCommentaryHost holds the ordering rule and the reasoning.
+   */
+  private standingHostWidgetId(): string | null {
+    if (this.standingHostId !== undefined) return this.standingHostId
+
+    const tables = (this.activeLayout?.pages ?? [])
+      .flatMap((page) => (Array.isArray(page.widgets) ? page.widgets : []))
+      .filter((w) => w.type === 'budget_vs_actual')
+      .map((w) => ({ id: w.id, filter: resolveSectionFilter(w.config) }))
+
+    // No layout, or a layout with no statement at all: null, and the caller
+    // falls back to the legacy flow's single unfiltered call.
+    this.standingHostId = pickStandingCommentaryHost(tables)
+    return this.standingHostId
   }
 
   /**
@@ -3065,6 +3110,8 @@ export class MonthlyReportPDFService {
     // page-wide margin (box.x is used as a symmetric margin by every autoTable
     // call). Snap those in place rather than printing them broken.
     const layout = normalizeLayoutPlacements(rawLayout)
+    this.activeLayout = layout
+    this.standingHostId = undefined
     let isFirstPage = true
 
     for (const page of layout.pages) {
@@ -3252,7 +3299,7 @@ export class MonthlyReportPDFService {
     // WD.2 — widget.config scopes the table to a section subset (see
     // section-table-config.ts). No config = the full statement, unchanged.
     const filter = resolveSectionFilter(widget?.config)
-    this.renderWithSkipPage(() => this.addBudgetVsActualDetail(filter), box)
+    this.renderWithSkipPage(() => this.addBudgetVsActualDetail(filter, widget?.id), box)
   }
 
   renderYTDSummary(box: WidgetBoundingBox): void {

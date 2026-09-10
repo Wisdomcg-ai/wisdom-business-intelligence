@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { isFxAccount, collectCommentaryTriggers } from '../commentary-triggers'
-import { annotateStandingLines } from '../standing-commentary'
+import { annotateStandingLines, pickStandingCommentaryHost } from '../standing-commentary'
 import type { GeneratedReport, ReportLine } from '../../types'
 
 const line = (name: string, actual: number, budget: number): ReportLine => ({
@@ -102,5 +102,50 @@ describe('WD.3 — standing-line gate', () => {
     expect(lines).toHaveLength(1)
     expect(lines[0].label).toBe('Note')
     expect(lines[0].in_pack).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Which table carries the lines.
+//
+// They rendered only under an UNFILTERED Budget-vs-Actual statement. The Calxa
+// page order has no unfiltered page — only the three section-scoped tables at
+// pages 4, 6 and 10 — so every standing line silently left the pack the moment
+// a client was put into that order, while the Calxa pack it reproduces prints
+// them under the expenses table.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('pickStandingCommentaryHost', () => {
+  const income = { id: 'w-income', filter: ['Revenue'] }
+  const cogs = { id: 'w-cogs', filter: ['Cost of Sales'] }
+  const expenses = { id: 'w-expense', filter: ['Operating Expenses'] }
+  const statement = { id: 'w-full', filter: null }
+
+  it('keeps the unfiltered statement as host when the pack has one', () => {
+    // The legacy behaviour, unchanged for every client not in the Calxa order.
+    expect(pickStandingCommentaryHost([statement])).toBe('w-full')
+    expect(pickStandingCommentaryHost([income, statement, expenses])).toBe('w-full')
+  })
+
+  it('puts them under the expenses table in the Calxa order', () => {
+    expect(pickStandingCommentaryHost([income, cogs, expenses])).toBe('w-expense')
+  })
+
+  it('picks exactly one host, never three', () => {
+    // Three copies of "refer to the Payroll Summary page" is its own defect.
+    const chosen = pickStandingCommentaryHost([income, cogs, expenses])
+    expect([income, cogs, expenses].filter((t) => t.id === chosen)).toHaveLength(1)
+  })
+
+  it('falls back to the last table when the pack has no expenses one', () => {
+    // Losing the lines again because a pack happens to omit one section is the
+    // failure this whole function exists to stop.
+    expect(pickStandingCommentaryHost([income, cogs])).toBe('w-cogs')
+  })
+
+  it('returns null when there is no statement in the pack at all', () => {
+    // The caller reads null as "use the legacy unfiltered-statement rule",
+    // which is what the default page order runs.
+    expect(pickStandingCommentaryHost([])).toBeNull()
   })
 })
