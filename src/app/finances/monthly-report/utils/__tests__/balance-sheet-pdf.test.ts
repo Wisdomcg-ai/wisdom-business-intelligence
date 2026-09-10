@@ -82,16 +82,16 @@ describe('WG.1 — assessBalanceSheetForPdf', () => {
     expect(v.ok).toBe(true)
     if (v.ok) {
       expect(v.data.rows).toHaveLength(11)
-      expect(v.warning).toContain('does not balance')
-      expect(v.warning).toContain('exceed')
-      expect(v.warning).toContain('$10,000')
+      expect(v.warnings.join(' ')).toContain('does not balance')
+      expect(v.warnings.join(' ')).toContain('exceed')
+      expect(v.warnings.join(' ')).toContain('$10,000')
     }
   })
 
   it('names the direction when assets fall short instead of exceeding', () => {
     const v = assessBalanceSheetForPdf(loaded(sheet({ equity: EQUITY + 10000 })), 'mom')
     expect(v.ok).toBe(true)
-    if (v.ok) expect(v.warning).toContain('fall short of')
+    if (v.ok) expect(v.warnings.join(' ')).toContain('fall short of')
   })
 
   it('warns on the same $2 the web tab warns on, and still shows the table', () => {
@@ -100,7 +100,7 @@ describe('WG.1 — assessBalanceSheetForPdf', () => {
     const v = assessBalanceSheetForPdf(loaded(sheet({ equity: EQUITY - 2 })), 'mom')
     expect(v.ok).toBe(true)
     if (v.ok) {
-      expect(v.warning).toBeTruthy()
+      expect(v.warnings).toHaveLength(1)
       expect(v.data.rows).toHaveLength(11)
     }
   })
@@ -108,7 +108,7 @@ describe('WG.1 — assessBalanceSheetForPdf', () => {
   it('says nothing at all when the sheet balances', () => {
     const v = assessBalanceSheetForPdf(loaded(sheet()), 'mom')
     expect(v.ok).toBe(true)
-    if (v.ok) expect(v.warning).toBeUndefined()
+    if (v.ok) expect(v.warnings).toEqual([])
   })
 
   it('tolerates sub-dollar rounding — the same threshold the web tab uses', () => {
@@ -116,7 +116,7 @@ describe('WG.1 — assessBalanceSheetForPdf', () => {
     expect(BS_EQUATION_TOLERANCE).toBe(1)
     const v = assessBalanceSheetForPdf(loaded(sheet({ equity: EQUITY - 0.6 })), 'mom')
     expect(v.ok).toBe(true)
-    if (v.ok) expect(v.warning).toBeUndefined()
+    if (v.ok) expect(v.warnings).toEqual([])
   })
 
   it('refuses when there is nothing in the comparison column', () => {
@@ -141,13 +141,70 @@ describe('WG.1 — assessBalanceSheetForPdf', () => {
     }
   })
 
-  it('refuses when the section totals cannot be identified at all', () => {
+  it('prints the sheet, unverified, when the totals cannot be identified', () => {
+    // A total we cannot name is a reason to omit the CHECK, not the figures.
     const v = assessBalanceSheetForPdf(
       loaded(sheet({ rows: [row({ type: 'line_item', label: 'Something', current: 1, prior: 1 })] })),
       'mom',
     )
-    expect(v.ok).toBe(false)
-    if (!v.ok) expect(v.reason).toContain('could not be identified')
+    expect(v.ok).toBe(true)
+    if (v.ok) {
+      expect(v.data.rows).toHaveLength(1)
+      expect(v.warnings.join(' ')).toContain('could not be checked')
+    }
+  })
+
+  it("keeps the four pages for an org whose equity says Total Owner's Funds", () => {
+    // The concrete shape. AU orgs label the equity block half a dozen ways;
+    // mapSubtotalLabel in Xero/balance-sheet/route.ts deliberately passes this
+    // one through because only the exact strings are normalised, so the
+    // `includes('equity')` predicate here misses it — on a sheet that adds up
+    // to the cent. Withholding four of twenty-seven pages over an unrecognised
+    // heading is the same defect as withholding them over $2, and the web tab
+    // shows the table in this exact case (it just skips its banner).
+    const rows: BalanceSheetRow[] = [
+      row({ type: 'section_header', label: 'Asset' }),
+      row({ type: 'subtotal', label: 'Total Asset', current: ASSETS, prior: 1 }),
+      row({ type: 'section_header', label: 'Liability' }),
+      row({ type: 'subtotal', label: 'Total Liability', current: LIABILITIES, prior: 1 }),
+      row({ type: 'net_assets', label: 'Net Assets', current: ASSETS - LIABILITIES, prior: 1 }),
+      row({ type: 'subtotal', label: "Total Owner's Funds", current: EQUITY, prior: 1 }),
+    ]
+    const v = assessBalanceSheetForPdf(loaded(sheet({ rows })), 'mom')
+    expect(v.ok).toBe(true)
+    if (v.ok) {
+      expect(v.data.rows).toHaveLength(6)
+      expect(v.warnings).toHaveLength(1)
+      expect(v.warnings[0]).toContain('could not be checked')
+      // And it does not also claim the sheet fails to balance — it does not
+      // know either way, and saying both would be two different claims.
+      expect(v.warnings.join(' ')).not.toContain('does not balance')
+    }
+  })
+
+  it('carries the API’s Net-Assets-vs-Equity badge through to the page', () => {
+    // A different check from the equation: route.ts compares two rows Xero
+    // printed, at a 0.01 threshold, and the tab renders it as an amber badge.
+    // The PDF never read it, so a sheet 13c out warned the coach on screen and
+    // handed the client a clean page.
+    const thirteenCentsOut: BalanceSheetData = { ...sheet(), balances: false }
+    const v = assessBalanceSheetForPdf(loaded(thirteenCentsOut), 'mom')
+    expect(v.ok).toBe(true)
+    if (v.ok) {
+      expect(v.data.rows).toHaveLength(11)
+      // Word for word what BalanceSheetTab's badge says.
+      expect(v.warnings).toEqual([
+        'Balance sheet does not balance — Net Assets and Total Equity differ. ' +
+        'This may indicate unreconciled transactions in Xero.',
+      ])
+    }
+  })
+
+  it('raises both banners when both checks fail', () => {
+    const both: BalanceSheetData = { ...sheet({ equity: EQUITY - 10000 }), balances: false }
+    const v = assessBalanceSheetForPdf(loaded(both), 'mom')
+    expect(v.ok).toBe(true)
+    if (v.ok) expect(v.warnings).toHaveLength(2)
   })
 
   it('refuses when Xero returns no rows', () => {

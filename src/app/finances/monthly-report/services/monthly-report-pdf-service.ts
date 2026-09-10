@@ -638,12 +638,14 @@ export class MonthlyReportPDFService {
       return
     }
 
-    // A sheet that does not add up still has figures, and withholding them
-    // makes the pack disagree with the tab the coach is looking at — which
-    // shows the full table under a red banner. State the discrepancy above the
-    // table and print the table. "Could not check" is a third state alongside
-    // the value, not a replacement for it.
-    if (verdict.warning) this.drawWarningCard(verdict.warning)
+    // A sheet that does not add up — or one whose totals we cannot identify well
+    // enough to check — still has figures, and withholding them makes the pack
+    // disagree with the tab the coach is looking at, which shows the full table
+    // under its banners. State what is wrong above the table and print the
+    // table. "Could not check" is a third state alongside the value, not a
+    // replacement for it. Both banners the tab can raise come through here, so
+    // a sheet 13c out cannot warn the coach and reassure the client.
+    if (verdict.warnings.length > 0) this.drawWarningCard(verdict.warnings.join(' '))
 
     const bs = verdict.data
     this.renderBalanceSheetTable(bs)

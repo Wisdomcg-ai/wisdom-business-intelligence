@@ -40,22 +40,27 @@ export const BS_EQUATION_TOLERANCE = 1
 /**
  * Three states, not two.
  *
- * `ok` with no warning is a sheet that adds up. `ok` WITH a warning is a sheet
- * that does not, printed anyway with the discrepancy stated above it — which is
- * exactly what BalanceSheetTab does on screen: a red banner on top of the full
- * table. Withholding the table instead cost a tenant out by $2 (Armstrong is
- * the known imbalanced one) four of the twenty-seven pages, replaced by one
- * sentence, while the coach's own screen showed them the figures — the tab and
- * the pack telling them different things about the same month.
+ * `ok` with no warnings is a sheet that adds up. `ok` WITH warnings is a sheet
+ * printed anyway, with what is wrong with it stated above it — which is exactly
+ * what BalanceSheetTab does on screen: banners on top of the full table.
+ * Withholding the table instead cost a tenant out by $2 (Armstrong is the known
+ * imbalanced one) four of the twenty-seven pages, replaced by one sentence,
+ * while the coach's own screen showed them the figures — the tab and the pack
+ * telling them different things about the same month.
+ *
+ * A total we cannot identify belongs here too. It is a reason to omit the
+ * CHECK, not the figures: Xero's own equity SummaryRow is labelled half a dozen
+ * ways by AU orgs, and an org whose sheet reads "Total Owner's Funds" balances
+ * perfectly well — we simply cannot prove it from the labels. Losing four pages
+ * over an unrecognised heading is the same defect as losing them over $2.
  *
  * `ok: false` is reserved for genuinely having nothing to print: Xero refused,
- * the month is empty, the comparison period does not exist, or the totals
- * cannot be identified well enough to say anything about the sheet at all.
- * "Could not check" is a third state alongside the value, not a replacement
- * for it.
+ * the month is empty, the comparison period does not exist. "Could not check"
+ * is a third state alongside the value, not a replacement for it.
  */
 export type BalanceSheetVerdict =
-  | { ok: true; data: BalanceSheetData; warning?: string }
+  /** `warnings` is every banner the tab would show, in the tab's own words. */
+  | { ok: true; data: BalanceSheetData; warnings: string[] }
   /** `reason` completes the sentence "This page couldn't be produced: …". */
   | { ok: false; reason: string }
 
@@ -76,8 +81,8 @@ function findSubtotal(rows: BalanceSheetRow[], predicate: (label: string) => boo
 }
 
 /**
- * Decide what this comparison can print: the table, the table with a stated
- * warning, or a stated reason and no table.
+ * Decide what this comparison can print: the table, the table under stated
+ * warnings, or a stated reason and no table.
  *
  * Order matters: check that we HAVE a sheet before checking that it balances,
  * and check the comparison column before the equation, so the reader is told
@@ -116,16 +121,40 @@ export function assessBalanceSheetForPdf(
     }
   }
 
+  const warnings: string[] = []
+
+  // The API's own Net-Assets-vs-Total-Equity check, computed at a 0.01
+  // threshold in Xero/balance-sheet/route.ts and rendered by BalanceSheetTab as
+  // an amber badge. It is a DIFFERENT check from the equation below — it
+  // compares two rows Xero printed, not the three totals — and reading only the
+  // equation left a sheet 13c out showing the coach a warning on screen and the
+  // client a clean page. Same sentence as the badge, deliberately.
+  if (entry.data.balances === false) {
+    warnings.push(
+      'Balance sheet does not balance — Net Assets and Total Equity differ. ' +
+      'This may indicate unreconciled transactions in Xero.',
+    )
+  }
+
   const totalAssets = findSubtotal(rows, (l) => l.startsWith('total asset') || l.includes('asset'))
   const totalLiabilities = findSubtotal(rows, (l) => l.startsWith('total liabilit') || l.includes('liabilit'))
   const totalEquity = findSubtotal(rows, (l) => l.includes('equity'))
 
   if (totalAssets === null || totalLiabilities === null || totalEquity === null) {
-    return {
-      ok: false,
-      reason:
-        'the Asset, Liability and Equity totals could not be identified in Xero’s balance sheet, so the sheet cannot be proved to balance',
-    }
+    // Not a reason to withhold the sheet. The predicate above is a label match
+    // against strings Xero lets each org choose: an equity block headed "Total
+    // Owner's Funds" — real enough that this file's own comment names it, and
+    // that mapSubtotalLabel in Xero/balance-sheet/route.ts passes it through
+    // untouched because only the exact strings are normalised — makes
+    // totalEquity null on a sheet that adds up perfectly. Print it and say the
+    // equation is unproven, which is what the tab does: it skips its banner and
+    // renders the table.
+    warnings.push(
+      'The Asset, Liability and Equity totals could not be identified in Xero’s balance ' +
+      'sheet, so the accounting equation could not be checked on this page. The figures ' +
+      'below are Xero’s, unverified.',
+    )
+    return { ok: true, data: entry.data, warnings }
   }
 
   const residual = totalAssets - (totalLiabilities + totalEquity)
@@ -134,15 +163,12 @@ export function assessBalanceSheetForPdf(
     // the equation does not close — the same call BalanceSheetTab makes, in
     // the same words and off the same threshold, because a coach reading the
     // tab and a client reading the pack must be told the same thing.
-    return {
-      ok: true,
-      data: entry.data,
-      warning:
-        `This balance sheet does not balance — assets ${residual > 0 ? 'exceed' : 'fall short of'} ` +
-        `liabilities plus equity by ${fmtDollars(residual)}. The figures below are Xero's; ` +
-        `the discrepancy is not.`,
-    }
+    warnings.push(
+      `This balance sheet does not balance — assets ${residual > 0 ? 'exceed' : 'fall short of'} ` +
+      `liabilities plus equity by ${fmtDollars(residual)}. The figures below are Xero's; ` +
+      `the discrepancy is not.`,
+    )
   }
 
-  return { ok: true, data: entry.data }
+  return { ok: true, data: entry.data, warnings }
 }
