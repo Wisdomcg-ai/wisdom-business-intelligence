@@ -73,6 +73,11 @@ export interface MonthlyReportSettings {
    */
   budget_source?: 'forecast' | 'budget_version'
   subscription_account_codes?: string[]
+  /**
+   * Xero account codes whose vendor detail feeds the Contractor Analysis page
+   * (Urban Road: 61400). Empty/absent = the page is not part of this pack.
+   */
+  contractor_account_codes?: string[] | null
   wages_account_names?: string[]
   pdf_layout?: import('./types/pdf-layout').PDFLayout | null
   /** WD.3 — standing commentary bullets; null/undefined = none. */
@@ -514,6 +519,11 @@ export interface SubscriptionVendorLine {
    * (Phase 71-05 / S2) and the UI should render a "not billed this month" badge.
    */
   transaction_count: number
+  /**
+   * The department this vendor belongs to, from `subscription_budgets.category`.
+   * Only the Contractor Analysis page reads it; subscriptions leave it null.
+   */
+  category?: string | null
 }
 
 export interface SubscriptionAccountGroup {

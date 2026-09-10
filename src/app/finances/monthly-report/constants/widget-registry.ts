@@ -52,6 +52,16 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     minColSpan: 2, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 3,
     dataDependency: 'subscriptions',
   },
+  contractor_detail: {
+    type: 'contractor_detail',
+    label: 'Contractor Analysis',
+    category: 'tables',
+    fullRow: true,
+    icon: 'Users',
+    defaultColSpan: 2, defaultRowSpan: 2,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 3,
+    dataDependency: 'contractors',
+  },
   wages_detail: {
     type: 'wages_detail',
     label: 'Wages Detail',

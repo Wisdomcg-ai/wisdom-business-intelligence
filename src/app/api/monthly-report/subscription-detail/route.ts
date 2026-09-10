@@ -22,6 +22,9 @@ import { withSchema } from '@/lib/api/with-schema'
 
 export const dynamic = 'force-dynamic'
 
+/** Thrown to leave the write-through block without reporting a failure. */
+class SkipWriteThrough extends Error {}
+
 // VALID-05a (observe mode): POST returns subscription detail lines for a report month.
 const SubscriptionDetailPostSchema = z.object({
   business_id: z.string(),
@@ -367,11 +370,19 @@ async function postHandler(request: Request) {
     // month bank txn should still surface with actual=$0 and a "not billed"
     // badge in the UI, rather than vanishing from the response entirely.
     const budgetMap = new Map<string, number>()
+    /**
+     * vendor_key → department, straight off the per-vendor budget row. Carried
+     * on the response so the Contractor Analysis page needs no second query
+     * for the one fact Xero does not hold about a contractor.
+     */
+    const categoryMap = new Map<string, string | null>()
     type BudgetRow = {
       vendor_name: string
       vendor_key: string
       monthly_budget: number
       account_codes: string[] | null
+      /** Department, for the Contractor Analysis rollup. Null for subscriptions. */
+      category?: string | null
       frequency: string | null
       renewal_month: number | null
     }
@@ -379,12 +390,13 @@ async function postHandler(request: Request) {
     try {
       const { data: budgets } = await supabase
         .from('subscription_budgets')
-        .select('vendor_name, vendor_key, monthly_budget, account_codes, frequency, renewal_month')
+        .select('vendor_name, vendor_key, monthly_budget, account_codes, frequency, renewal_month, category')
         .eq('business_id', business_id)
         .eq('is_active', true)
 
       budgetRows = (budgets || []) as BudgetRow[]
       for (const b of budgetRows) {
+        if (b.vendor_key) categoryMap.set(b.vendor_key, (b.category ?? null) || null)
         // CADENCE-AWARE expected figure, not the smoothed 1/12. The P&L
         // forecast smooths annual subs; the variance view must not — a $12k
         // renewal against a smoothed $1k budget reads as an $11k blowout in
@@ -475,12 +487,18 @@ async function postHandler(request: Request) {
 
     // ── Authoritative budget from forecast_pl_lines (matches main report) ──
     const plBudgets = new Map<string, number>()
+    /** The client's own subscription accounts — see the write-through guard. */
+    let configuredSubscriptionCodes: string[] = []
     try {
       const { data: settingsRow } = await supabase
         .from('monthly_report_settings')
-        .select('budget_forecast_id')
+        .select('budget_forecast_id, subscription_account_codes')
         .eq('business_id', business_id)
         .maybeSingle()
+
+      configuredSubscriptionCodes = Array.isArray(settingsRow?.subscription_account_codes)
+        ? (settingsRow!.subscription_account_codes as string[])
+        : []
 
       let forecastId: string | null = settingsRow?.budget_forecast_id || null
 
@@ -566,6 +584,7 @@ async function postHandler(request: Request) {
               budget: Math.round(budget * 100) / 100,
               variance: Math.round((budget - data.actual) * 100) / 100,
               transaction_count: data.transaction_count,
+              category: categoryMap.get(vendorKey) ?? null,
             }
           })
           .sort((a, b) => a.vendor_name.localeCompare(b.vendor_name))
@@ -639,7 +658,21 @@ async function postHandler(request: Request) {
     // The wizard's analyze crawl bulk-writes history; viewing a report keeps
     // the viewed month fresh. Failure never blocks the response, but is never
     // silent either (house rule: invariant-tagged capture on swallowed writes).
+    //
+    // ONLY for the client's own subscription accounts. This route takes its
+    // account codes from the caller, and the Contractor Analysis page calls it
+    // with the contractor account (Urban Road: 61400). subscription_vendor_actuals
+    // has no account dimension — it keys on (business, tenant, vendor, month) —
+    // so writing a contractor through it would file sixteen contractors as
+    // subscription history, and next month's leakage report would announce
+    // every one of them as a new unbudgeted vendor. A caller asking about
+    // accounts this client has not nominated as subscriptions gets its answer
+    // and writes nothing.
+    const subscriptionCodes = new Set(configuredSubscriptionCodes)
+    const isSubscriptionScope =
+      subscriptionCodes.size > 0 && account_codes.every((c) => subscriptionCodes.has(c))
     try {
+      if (!isSubscriptionScope) throw new SkipWriteThrough()
       const ids = await resolveBusinessProfileIds(supabase, business_id)
       const rows: { business_id: string; tenant_id: string; vendor_key: string; vendor_name: string; month: string; amount: number; source: string; updated_at: string }[] = []
       for (const [tenantId, vendorsOfTenant] of tenantMonthActuals) {
@@ -668,10 +701,13 @@ async function postHandler(request: Request) {
         }
       }
     } catch (persistErr) {
-      Sentry.captureException(persistErr, {
-        tags: { invariant: 'subscription-actuals-persist' },
-        extra: { context: '[SubscriptionDetail] write-through threw', business_id, report_month },
-      } as any)
+      // Not an error — this caller is outside the subscription scope by design.
+      if (!(persistErr instanceof SkipWriteThrough)) {
+        Sentry.captureException(persistErr, {
+          tags: { invariant: 'subscription-actuals-persist' },
+          extra: { context: '[SubscriptionDetail] write-through threw', business_id, report_month },
+        } as any)
+      }
     }
 
     return NextResponse.json({

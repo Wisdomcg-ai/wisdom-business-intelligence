@@ -37,6 +37,7 @@ import { WIDGET_METHOD_MAP } from './widget-renderer'
 import { assessBalanceSheetForPdf, type BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
 import { statementYardstick, wagesYardstick, wagesEmployeeYardstick, noBudgetNote } from '../utils/budget-yardstick'
 import { groupExpenseLines } from '@/lib/monthly-report/expense-groups'
+import type { ContractorRollup } from '@/lib/monthly-report/contractor-rollup'
 import { withoutSilentLines, withoutSilentFullYearLines } from '@/lib/monthly-report/empty-lines'
 import { GROUP_SHADE, BAND_LIGHT, periodBandRow, type BandGroup, SECTION_TEXT, RULE_STRONG, paintNegatives, packTableStyles } from './pack-style'
 import {
@@ -54,6 +55,8 @@ interface PDFOptions {
   commentary?: VarianceCommentary
   fullYearReport?: FullYearReport
   subscriptionDetail?: SubscriptionDetailData
+  /** The Contractor Analysis page's rows, already rolled up (see contractor-rollup). */
+  contractorDetail?: ContractorRollup
   wagesDetail?: WagesDetailData
   cashflowForecast?: CashflowForecastData
   /** WE.1b — external-metrics series with this month's values (entered data). */
@@ -3505,8 +3508,117 @@ export class MonthlyReportPDFService {
     this.renderWithSkipPage(this.addFullYearProjection, box)
   }
 
+  // =====================================================================
+  // Contractor Analysis (PORTRAIT) — Calxa page 14
+  // =====================================================================
+  /**
+   * Two tables on one page, the way the sheet this replaces sets them out:
+   * every contractor down the side with last month, this month and their
+   * budget; then the same rows rolled up by department underneath.
+   *
+   * The department rollup is the half a coach acts on — "Marketing is $844
+   * under, Operations is $315 over" is a sentence about the business, where
+   * sixteen individual variances are a list.
+   */
+  private addContractorDetailPage(): void {
+    const detail = this.options.contractorDetail
+    if (!detail || detail.contractors.length === 0) return
+    this.addPage('portrait')
+    this.drawPageTitle(`Contractor Analysis — ${this.formatMonth(this.report.report_month)}`)
+
+    const priorLabel = this.formatShortMonth(this.priorMonthOf(this.report.report_month))
+    const monthLabel = this.formatShortMonth(this.report.report_month)
+
+    const body: any[] = detail.contractors.map((c) => [
+      c.vendor_name,
+      c.category ?? '—',
+      this.fmtCurrency(c.prior_month_actual),
+      this.fmtCurrency(c.budget),
+      this.fmtCurrency(c.actual),
+      this.fmtVariance(c.variance),
+    ])
+    const gt = detail.grand_total
+    body.push([
+      { content: 'Total', styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
+      { content: '', styles: { fillColor: GP_BLUE } },
+      { content: this.fmtCurrency(gt.prior_month), styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
+      { content: this.fmtCurrency(gt.budget), styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
+      { content: this.fmtCurrency(gt.actual), styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
+      { content: this.fmtVariance(gt.variance), styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
+    ])
+
+    autoTable(this.doc, {
+      startY: this.yPosition,
+      head: [['Contractor', 'Department', priorLabel, 'Budget', monthLabel, 'Variance']],
+      body,
+      ...packTableStyles(8),
+      columnStyles: { 0: { cellWidth: 48 }, 1: { cellWidth: 30 } },
+      margin: { left: this.margin, right: this.margin },
+      didParseCell: (data) => {
+        if (data.column.index >= 2 && data.section !== 'head') data.cell.styles.halign = 'right'
+        paintNegatives(data as never)
+      },
+    })
+
+    // ── By department ──
+    this.yPosition = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 10
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setFontSize(9)
+    this.doc.setTextColor(26, 26, 26)
+    this.doc.text('BY DEPARTMENT', this.margin, this.yPosition)
+    this.doc.setTextColor(0, 0, 0)
+    this.yPosition += 5
+
+    const pivot: any[] = []
+    for (const g of detail.categories) {
+      for (const c of g.contractors) {
+        pivot.push([g.name ?? '—', c.vendor_name, this.fmtCurrency(c.budget), this.fmtCurrency(c.actual), this.fmtVariance(c.variance)])
+      }
+      // An uncategorised run gets no subtotal — a total under no heading is a
+      // number a reader cannot name.
+      if (!g.name) continue
+      pivot.push([
+        { content: `Total ${g.name}`, styles: { fontStyle: 'bold', fillColor: GROUP_SHADE } },
+        { content: '', styles: { fillColor: GROUP_SHADE } },
+        { content: this.fmtCurrency(g.subtotal.budget), styles: { fontStyle: 'bold', fillColor: GROUP_SHADE } },
+        { content: this.fmtCurrency(g.subtotal.actual), styles: { fontStyle: 'bold', fillColor: GROUP_SHADE } },
+        { content: this.fmtVariance(g.subtotal.variance), styles: { fontStyle: 'bold', fillColor: GROUP_SHADE } },
+      ])
+    }
+    pivot.push([
+      { content: 'Grand Total', styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
+      { content: '', styles: { fillColor: GP_BLUE } },
+      { content: this.fmtCurrency(gt.budget), styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
+      { content: this.fmtCurrency(gt.actual), styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
+      { content: this.fmtVariance(gt.variance), styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
+    ])
+
+    autoTable(this.doc, {
+      startY: this.yPosition,
+      head: [['Department', 'Contractor', 'Budget', monthLabel, 'Variance']],
+      body: pivot,
+      ...packTableStyles(8),
+      columnStyles: { 0: { cellWidth: 36 }, 1: { cellWidth: 44 } },
+      margin: { left: this.margin, right: this.margin },
+      didParseCell: (data) => {
+        if (data.column.index >= 2 && data.section !== 'head') data.cell.styles.halign = 'right'
+        paintNegatives(data as never)
+      },
+    })
+  }
+
+  /** "2026-08" → "2026-07". */
+  private priorMonthOf(month: string): string {
+    const [y, m] = month.split('-').map(Number)
+    return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`
+  }
+
   renderSubscriptionDetail(box: WidgetBoundingBox): void {
     this.renderWithSkipPage(this.addSubscriptionDetailPage, box)
+  }
+
+  renderContractorDetail(box: WidgetBoundingBox): void {
+    this.renderWithSkipPage(this.addContractorDetailPage, box)
   }
 
   renderWagesDetail(box: WidgetBoundingBox): void {

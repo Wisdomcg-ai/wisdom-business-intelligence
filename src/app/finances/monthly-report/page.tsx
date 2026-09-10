@@ -44,6 +44,7 @@ import { useMonthlyReport } from './hooks/useMonthlyReport'
 import { useConsolidatedReport } from './hooks/useConsolidatedReport'
 import { useFullYearReport } from './hooks/useFullYearReport'
 import { useSubscriptionDetail } from './hooks/useSubscriptionDetail'
+import { rollUpContractors } from '@/lib/monthly-report/contractor-rollup'
 import { useWagesDetail } from './hooks/useWagesDetail'
 import { useXeroConnection } from './hooks/useXeroConnection'
 import { useAccountMappings } from './hooks/useAccountMappings'
@@ -956,6 +957,7 @@ export default function MonthlyReportPage() {
   const loadPdfSections = async (): Promise<{
     fullYearReport?: import('./types').FullYearReport
     subscriptionDetail?: import('./types').SubscriptionDetailData
+    contractorDetail?: import('@/lib/monthly-report/contractor-rollup').ContractorRollup
     wagesDetail?: import('./types').WagesDetailData
     cashflowForecast?: CashflowForecastData
     externalMetrics?: import('./types').ExternalMetricSeriesData[]
@@ -977,6 +979,41 @@ export default function MonthlyReportPage() {
       const codes = settings.subscription_account_codes || []
       if (codes.length > 0) {
         subDetail = await loadSubscriptionDetail(selectedMonth, codes)
+      }
+    }
+
+    // Contractor Analysis (Calxa 14). Same vendor drill-down as Subscriptions,
+    // pointed at the client's contractor accounts, then rolled up by department.
+    // Loaded here rather than on a tab because the emailed PDF must carry the
+    // page whether or not a coach happened to open it (D-07).
+    let contractorRollup: import('@/lib/monthly-report/contractor-rollup').ContractorRollup | undefined
+    const contractorCodes = settings?.contractor_account_codes || []
+    if (contractorCodes.length > 0 && businessId) {
+      try {
+        const res = await fetch('/api/monthly-report/subscription-detail', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            business_id: businessId,
+            report_month: selectedMonth,
+            account_codes: contractorCodes,
+          }),
+        })
+        if (res.ok) {
+          const payload = await res.json()
+          // Alphabetical: the reference pack's own department order is
+          // alphabetical, so there is nothing here for a coach to state.
+          const rolled = rollUpContractors(payload.data)
+          if (rolled.contractors.length > 0) contractorRollup = rolled
+        } else {
+          throw new Error(`contractor detail ${res.status}`)
+        }
+      } catch (err) {
+        // Never block the export, never drop the page silently.
+        Sentry.captureException(err, {
+          tags: { invariant: 'contractor-detail-load' },
+          extra: { businessId, selectedMonth },
+        } as never)
       }
     }
 
@@ -1146,6 +1183,7 @@ export default function MonthlyReportPage() {
     return {
       fullYearReport: fyReport || undefined,
       subscriptionDetail: subDetail || undefined,
+      contractorDetail: contractorRollup,
       wagesDetail: wDetail || undefined,
       cashflowForecast: cfData,
       externalMetrics: extMetrics,

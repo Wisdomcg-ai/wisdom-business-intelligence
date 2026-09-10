@@ -23,6 +23,7 @@ export const WIDGET_METHOD_MAP: Record<WidgetType, string | null> = {
   ytd_summary: 'renderYTDSummary',
   full_year_projection: 'renderFullYearProjection',
   subscription_detail: 'renderSubscriptionDetail',
+  contractor_detail: 'renderContractorDetail',
   wages_detail: 'renderWagesDetail',
   cashflow_forecast_table: 'renderCashflowForecastTable',
   // WE.1b — renders every series with month values (config.series_key narrows)
