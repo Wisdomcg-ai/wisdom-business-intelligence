@@ -54,6 +54,12 @@ function serviceClient() {
       gt: (col: string, val: unknown) => build(table, [...filters, [col, val, 'gt']], ordered),
       order: (col: string, opts?: { ascending?: boolean }) =>
         build(table, filters, { col, ascending: opts?.ascending ?? true }),
+      // PostgREST caps a page at 1000 rows and the resolver pages through
+      // budget_lines with .range(); a harness without it would silently return
+      // every row on page one and prove nothing about the cap.
+      range: (from: number, to: number) => ({
+        then: (resolve: any) => Promise.resolve({ data: run().slice(from, to + 1), error: null }).then(resolve),
+      }),
       limit: (n: number) => ({
         maybeSingle: async () => ({ data: run().slice(0, n)[0] ?? null, error: null }),
         then: (resolve: any) => Promise.resolve({ data: run().slice(0, n), error: null }).then(resolve),

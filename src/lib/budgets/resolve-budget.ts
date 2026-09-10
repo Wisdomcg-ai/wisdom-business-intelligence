@@ -337,6 +337,57 @@ export async function resolveBudget(
  * missing relation reads as "could not read the budget", not a 500 on every
  * client's report.
  */
+interface BudgetLineRow {
+  id: string
+  account_code: string | null
+  account_name: string
+  category: string | null
+  month: string
+  amount: number | string
+  budget_version_id: string
+}
+
+/**
+ * Every budget line for these versions, paginated.
+ *
+ * Supabase/PostgREST caps a single SELECT at 1000 rows, and budget_lines is one
+ * row per account per month — twelve rows per budgeted account. Urban Road's
+ * version is 699 rows and Distinct Directions' 619, so 84 budgeted accounts is
+ * where the cap starts eating the tail: no error, no short-read warning, just a
+ * budget quietly missing its last accounts and an annual total that understates
+ * what the client was held to. The same cap dropped ~$5.3M of COGS on JDS in
+ * the Phase 44.1 hotfix, which is why forecast-read-service pages the identical
+ * way.
+ *
+ * Never throws — a caller that has already decided to fail closed needs an
+ * answer, not an exception — so a failed page comes back as `failed`.
+ */
+async function fetchAllBudgetLines(
+  supabase: SupabaseClient,
+  versionIds: string[],
+): Promise<{ rows: BudgetLineRow[]; failed: boolean }> {
+  const all: BudgetLineRow[] = []
+  const pageSize = 1000
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('budget_lines')
+      .select('id, account_code, account_name, category, month, amount, budget_version_id')
+      .in('budget_version_id', versionIds)
+      // Ordered so the pages partition the rows instead of overlapping them:
+      // without a total order PostgREST may return the same row on two pages
+      // and a budget line would be counted twice.
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error) return { rows: [], failed: true }
+    if (!data || data.length === 0) break
+    all.push(...(data as BudgetLineRow[]))
+    if (data.length < pageSize) break
+    from += pageSize
+  }
+  return { rows: all, failed: false }
+}
+
 async function resolveInForceVersion(
   supabase: SupabaseClient,
   businessId: string,
@@ -422,13 +473,10 @@ async function resolveInForceVersion(
       return noneBecause('multiple_versions_in_force')
     }
 
-    const { data: rows, error: linesError } = await supabase
-      .from('budget_lines')
-      .select('id, account_code, account_name, category, month, amount, budget_version_id')
-      .in('budget_version_id', Array.from(chosen.keys()))
+    const { rows, failed } = await fetchAllBudgetLines(supabase, Array.from(chosen.keys()))
 
-    if (linesError) return noneBecause('budget_read_failed')
-    if (!rows || rows.length === 0) return noneBecause('version_has_no_lines')
+    if (failed) return noneBecause('budget_read_failed')
+    if (rows.length === 0) return noneBecause('version_has_no_lines')
 
     // budget_lines is one row per account per month; the report wants one line
     // per account carrying a month map. A row counts only when its version is
@@ -442,15 +490,7 @@ async function resolveInForceVersion(
     // into one line and their budgets summed, and the merge was invisible in
     // the report because the row it produced looked perfectly ordinary.
     const byAccount = new Map<string, ResolvedBudgetLine>()
-    for (const row of rows as Array<{
-      id: string
-      account_code: string | null
-      account_name: string
-      category: string | null
-      month: string
-      amount: number | string
-      budget_version_id: string
-    }>) {
+    for (const row of rows) {
       if (versionForMonth.get(row.month) !== row.budget_version_id) continue
       const key = budgetLineKey(row)
       let line = byAccount.get(key)

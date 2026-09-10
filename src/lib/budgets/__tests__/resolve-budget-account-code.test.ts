@@ -56,13 +56,22 @@ function clientOver(tables: Record<string, any[]>) {
       not: (col: string, _op: string, val: unknown) => build(table, [...filters, [col, val, 'not-is']], ordered),
       order: (col: string, opts?: { ascending?: boolean }) =>
         build(table, filters, { col, ascending: opts?.ascending ?? true }),
+      // PostgREST caps a page at 1000 rows and the resolver pages through
+      // budget_lines with .range(); a harness without it would silently return
+      // every row on page one and prove nothing about the cap.
+      range: (from: number, to: number) => ({
+        then: (resolve: any) => Promise.resolve({ data: run().slice(from, to + 1), error: null }).then(resolve),
+      }),
       limit: (n: number) => ({
         maybeSingle: async () => ({ data: run().slice(0, n)[0] ?? null, error: null }),
         then: (resolve: any) => Promise.resolve({ data: run().slice(0, n), error: null }).then(resolve),
       }),
       single: async () => ({ data: run()[0] ?? null, error: run()[0] ? null : { message: 'not found' } }),
       maybeSingle: async () => ({ data: run()[0] ?? null, error: null }),
-      then: (resolve: any) => Promise.resolve({ data: run(), error: null }).then(resolve),
+      // An un-ranged read is capped at 1000 rows, because that is what
+      // PostgREST does. A harness that returned everything would let an
+      // unpaginated resolver pass this file's cap cases for free.
+      then: (resolve: any) => Promise.resolve({ data: run().slice(0, 1000), error: null }).then(resolve),
     }
     return self
   }
@@ -213,5 +222,72 @@ describe('resolveBudget — the forecast path is untouched', () => {
     // concerned; the budget-only pass must go on suppressing the second.
     const [a, b] = forecastTables.forecast_pl_lines
     expect(budgetLineKey(a)).toBe(budgetLineKey(b))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// budget_lines is one row per account per month, so the 1000-row PostgREST cap
+// is twelve times closer than it looks. Urban Road's version is already 699
+// rows and Distinct Directions' 619; 84 budgeted accounts is 1008, and an
+// unpaginated read would drop the tail with no error and no warning — an annual
+// budget quietly smaller than the one the client approved.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('resolveBudget — reading past the 1000-row page cap', () => {
+  const FY_MONTHS = [
+    '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12',
+    '2027-01', '2027-02', '2027-03', '2027-04', '2027-05', '2027-06',
+  ]
+
+  /** `accounts` budgeted accounts × 12 months, $100 a month each. */
+  function fullYearBudget(accounts: number) {
+    const rows: any[] = []
+    for (let a = 0; a < accounts; a++) {
+      const code = String(40000 + a)
+      for (const [i, month] of FY_MONTHS.entries()) {
+        rows.push(bLine(`l-${String(a).padStart(4, '0')}-${i}`, code, `Account ${code}`, month, 100))
+      }
+    }
+    return rows
+  }
+
+  const resolveFullYear = (budget_lines: any[]) =>
+    resolveBudget(clientOver({ budget_versions: [VERSION], budget_lines }), {
+      businessId: BIZ,
+      profileId: PROFILE,
+      fiscalYear: FY,
+      reportMonth: '2026-08',
+      months: FY_MONTHS,
+      budgetSource: 'budget_version',
+      pin: {},
+    })
+
+  it('keeps every account when the version is one account past the cap', async () => {
+    // 84 × 12 = 1008. Unpaginated, the last 8 rows never arrive.
+    const r = await resolveFullYear(fullYearBudget(84))
+    expect(r.source).toBe('budget_version')
+    expect(r.lines).toHaveLength(84)
+
+    const annual = r.lines.reduce(
+      (sum, line) => sum + Object.values(line.forecast_months).reduce((s, v) => s + v, 0),
+      0,
+    )
+    expect(annual).toBe(84 * 12 * 100)
+  })
+
+  it('keeps every account across several pages', async () => {
+    const r = await resolveFullYear(fullYearBudget(250)) // 3000 rows
+    expect(r.lines).toHaveLength(250)
+    expect(r.monthsCovered).toBe(12)
+  })
+
+  it('does not double-count a row that sits on a page boundary', async () => {
+    // The pages have to partition the rows, not overlap them — an ordered
+    // .range() is what makes that true, and a repeated row would silently
+    // inflate the very account it lands on.
+    const r = await resolveFullYear(fullYearBudget(84))
+    for (const line of r.lines) {
+      expect(Object.values(line.forecast_months).every((v) => v === 100)).toBe(true)
+    }
   })
 })
