@@ -433,8 +433,11 @@ async function postHandler(request: Request) {
       // Every tier lands here, the code tier included. The double-claim guard
       // below and the budget-only pass are both driven off these two sets, so a
       // tier that matched without registering here would have its line re-emitted
-      // as a duplicate budget-only row — the account printed twice, once with the
-      // actual and once with the budget, and both subtotals wrong.
+      // as a duplicate budget-only row: the account printed twice, once with the
+      // actual and a $0 budget and once with the budget and a $0 actual, each
+      // carrying a per-row variance that is a fact about nothing. The section
+      // subtotal survives that (it sums both halves back together) — what does
+      // not survive is a reader trying to tie the account list to Xero.
       if (budgetLine) {
         matchedBudgetLineIds.add(budgetLine.id)
         matchedBudgetLineKeys.add(budgetLineKey(budgetLine))

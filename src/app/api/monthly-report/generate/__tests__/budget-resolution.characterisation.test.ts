@@ -665,7 +665,16 @@ describe('monthly-report/generate — a revision does not restate earlier months
 // Those normalise to "and currency foreign gains losses" and "currency foreign
 // lossgain" — nothing in common — so the August pack printed the account TWICE:
 // once with the actual and a $0 budget, once budget-only with a $0 actual, both
-// inside Operating Expenses, and both subtotals wrong.
+// inside Operating Expenses.
+//
+// The SUBTOTAL is not the casualty. Both rows sit in the same section and
+// buildSubtotal sums it, so actual, budget, ytd, unspent_budget and
+// budget_annual_total all net back to the single-row answer. What is wrong is
+// each row's own variance — the whole actual as an overspend against nothing,
+// the whole budget as unspent against nothing — and an account list that has
+// one account on it twice and therefore cannot be tied back to Xero. The
+// subtotal cases below assert the totals stay right, which is the invariant;
+// the row cases assert the page becomes readable, which is the fix.
 //
 // The code is the same string on both sides. These cases pin that it is used,
 // that a code-matched line is CLAIMED like any other (or the budget-only pass
@@ -765,6 +774,47 @@ describe('monthly-report/generate — matching on the account code', () => {
     const subtotal = report.sections.find((s: any) => s.category === 'Operating Expenses').subtotal
     expect(subtotal.actual).toBe(919.25)
     expect(subtotal.budget).toBe(1000)
+  })
+
+  it('splitting the account never moved money — the subtotal was always right', async () => {
+    // Pinning the correction above. Same client, same budget, same actual, with
+    // the code removed from BOTH sides so the names have to carry the match and
+    // fail: two rows come out instead of one, and every summed field on the
+    // section subtotal is identical to the matched case. What differs is the
+    // per-row variances, which are facts about nothing, and an account list a
+    // reader cannot tie back to Xero.
+    compositeRows = [actual(null, FX_XERO, { '2026-07': 100, '2026-08': 919.25 })]
+    tables = baseTables({
+      account_mappings: [mapping(FX_XERO, null)],
+      monthly_report_settings: [onStore],
+      financial_forecasts: actualsRouting(),
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [
+        codedLine('l-1', null, FX_BUDGET, '2026-07', 800),
+        codedLine('l-2', null, FX_BUDGET, '2026-08', 1000),
+      ],
+    })
+
+    const { report } = await resolution()
+    const lines = opexLines(report)
+    expect(lines).toHaveLength(2)
+
+    const subtotal = report.sections.find((s: any) => s.category === 'Operating Expenses').subtotal
+    expect(subtotal.actual).toBe(919.25)
+    expect(subtotal.budget).toBe(1000)
+    expect(subtotal.ytd_actual).toBe(1019.25)
+    expect(subtotal.ytd_budget).toBe(1800)
+    expect(subtotal.budget_annual_total).toBe(1800)
+    expect(subtotal.unspent_budget).toBe(1800 - 1019.25)
+    expect(subtotal.variance_amount).toBe(1000 - 919.25)
+
+    // The damage, per row: the actual reported as an overspend against a budget
+    // of nothing, and the budget reported as entirely unspent against an actual
+    // of nothing.
+    const withActual = lines.find((l: any) => !l.is_budget_only)
+    const budgetOnly = lines.find((l: any) => l.is_budget_only)
+    expect(withActual.variance_amount).toBe(-919.25)
+    expect(budgetOnly.variance_amount).toBe(1000)
   })
 
   it('a code-matched line is CLAIMED — the budget-only pass must not re-emit it', async () => {

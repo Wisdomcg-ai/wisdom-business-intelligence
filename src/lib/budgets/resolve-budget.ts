@@ -50,8 +50,18 @@ export interface ResolvedBudgetLine {
    * one side only: Urban Road's P&L says "Foreign Currency Gains and Losses"
    * where its budget says "Foreign Currency Loss/Gain", which normalise to
    * nothing in common, so the report printed the account TWICE — once with the
-   * actual and a $0 budget, once budget-only with a $0 actual — and both
-   * Operating Expenses subtotals were wrong.
+   * actual and a $0 budget, once budget-only with a $0 actual.
+   *
+   * What that costs is the READING, not the totals. Both rows land in the same
+   * section, buildSubtotal sums the section, and every summed field — actual,
+   * budget, ytd, unspent_budget, budget_annual_total, even the variance —
+   * comes out identical to the single-row result. What is wrong is each row's
+   * own variance: one reports the whole actual as an overspend against a $0
+   * budget, the other the whole budget as unspent against a $0 actual, and
+   * neither is a fact about anything. And an account list with an account on it
+   * twice cannot be reconciled to Xero, which is what a management pack is for.
+   * The totals only break when the two rows land in DIFFERENT sections, which
+   * happens when the Xero row's category and the budget line's disagree.
    *
    * OPTIONAL, not `string | null`: the forecast path never selects it, so on
    * that path the property is absent rather than present-and-null, and the
