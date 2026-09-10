@@ -36,6 +36,18 @@ export interface TriggerLine {
   account_name: string
   xero_account_name: string
   trigger_reason: TriggerReason
+  /**
+   * The figures the statement prints for this line, carried so the commentary's
+   * ratio is a share of the same numbers rather than a second derivation. The
+   * report's budget has already been through the resolver, the effective-date
+   * stitching and the account-code matching; re-deriving it downstream is a
+   * second answer waiting to disagree with the first.
+   *
+   * `budget` is null when the report has no budget at all — distinct from a
+   * budget that is genuinely zero, which is a real plan of nothing.
+   */
+  actual: number
+  budget: number | null
 }
 
 export interface TriggerPayload {
@@ -83,11 +95,13 @@ export function isFxAccount(accountName: string): boolean {
   return FX_KEYWORDS.some(kw => lower.includes(kw))
 }
 
-function toTriggerLine(line: ReportLine, reason: TriggerReason): TriggerLine {
+function toTriggerLine(line: ReportLine, reason: TriggerReason, hasBudget = true): TriggerLine {
   return {
     account_name: line.account_name,
     xero_account_name: lineXeroName(line),
     trigger_reason: reason,
+    actual: line.actual,
+    budget: hasBudget ? line.budget : null,
   }
 }
 
@@ -101,6 +115,10 @@ export function collectCommentaryTriggers(
   const revenue_lines: TriggerLine[] = []
   const favourable_expense_lines: TriggerLine[] = []
   const bs_lines: TriggerLine[] = []
+  // A report with no budget still triggers commentary (the favourable and BS
+  // rules do not need one), but its lines must carry budget: null rather than
+  // the 0 the shape defaults to — downstream a 0 is a plan, an absence is not.
+  const hasBudget = report.has_budget !== false
 
   for (const section of report.sections) {
     const category = section.category as string
@@ -113,7 +131,7 @@ export function collectCommentaryTriggers(
 
         // (1) Expense over-budget — existing trigger, unchanged
         if (line.variance_amount <= -EXPENSE_OVER_DOLLAR) {
-          expense_lines.push(toTriggerLine(line, 'expense_over_budget_dollar'))
+          expense_lines.push(toTriggerLine(line, 'expense_over_budget_dollar', hasBudget))
           continue // mutually exclusive with favourable on the same row
         }
 
@@ -122,7 +140,7 @@ export function collectCommentaryTriggers(
           const pct = line.variance_amount / line.budget
           if (pct >= FAVOURABLE_EXPENSE_PCT) {
             favourable_expense_lines.push(
-              toTriggerLine(line, 'expense_favourable_significant'),
+              toTriggerLine(line, 'expense_favourable_significant', hasBudget),
             )
           }
         }
@@ -135,21 +153,29 @@ export function collectCommentaryTriggers(
         if (isFxAccount(line.account_name)) continue
 
         // (2) Revenue under-budget — shortfall ≥ $500 OR ≥ 10% of budget
-        // Convention: variance_amount = budget - actual. POSITIVE variance on
-        // a revenue line means actual < budget (a shortfall).
-        const shortfall = line.variance_amount
+        //
+        // The sign is the opposite of what this used to assume, and the comment
+        // that asserted otherwise is why it went unnoticed. calcVariance
+        // (src/lib/monthly-report/shared.ts:46) writes
+        //   amount = isRevenue ? actual - budget : budget - actual
+        // so a POSITIVE variance on a revenue line is a BEAT, not a shortfall.
+        // Reading it the other way fired commentary on every revenue account
+        // that did well and on none that missed: Urban Road's August tagged
+        // NZ Sales (+$48,338) "under budget" while Framed Prints (-$9,043),
+        // USA Sales (-$6,678) and Shipping (-$5,421) triggered nothing.
+        const shortfall = -line.variance_amount
         if (shortfall <= 0) continue // revenue beat / met budget — not a trigger
 
         const dollarFires = shortfall >= REVENUE_SHORTFALL_DOLLAR
         if (dollarFires) {
-          revenue_lines.push(toTriggerLine(line, 'revenue_under_budget_dollar'))
+          revenue_lines.push(toTriggerLine(line, 'revenue_under_budget_dollar', hasBudget))
           continue
         }
 
         if (line.budget > 0) {
           const pct = shortfall / line.budget
           if (pct >= REVENUE_SHORTFALL_PCT) {
-            revenue_lines.push(toTriggerLine(line, 'revenue_under_budget_percent'))
+            revenue_lines.push(toTriggerLine(line, 'revenue_under_budget_percent', hasBudget))
           }
         }
       }
@@ -187,5 +213,10 @@ function bsToTriggerLine(row: BalanceSheetRow, reason: TriggerReason): TriggerLi
     account_name: row.label,
     xero_account_name: row.label,
     trigger_reason: reason,
+    // A balance sheet is not budgeted, so `budget` is null rather than 0 — the
+    // difference between "no plan exists" and "the plan was nothing". A BS row
+    // never earns a ratio clause for the same reason.
+    actual: row.current ?? 0,
+    budget: null,
   }
 }

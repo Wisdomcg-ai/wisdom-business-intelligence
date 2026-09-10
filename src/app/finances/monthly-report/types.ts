@@ -458,6 +458,20 @@ export interface VarianceCommentaryEntry {
   // Phase 71-04 (S1): why this commentary row was surfaced. Optional for
   // backward-compat with pre-71-04 snapshots that lack the field.
   trigger_reason?: CommentaryTriggerReason
+  /**
+   * The generated facts: suppliers largest-first (converted, capped, credits
+   * named) and the ratio clause. Rebuilt from scratch on every generate, which
+   * is why it is separate from `coach_note` — facts that recompute cannot go
+   * stale, and prose that is never overwritten cannot be lost.
+   */
+  draft_note?: string
+  /**
+   * Coach-only. A document that could not be converted out of its currency, or
+   * a vendor list that sums past its own account. When this is non-empty the
+   * draft is NOT printed: the pack would be quoting a list we already know to
+   * be wrong.
+   */
+  draft_warnings?: string[]
 }
 
 export interface VarianceCommentary {

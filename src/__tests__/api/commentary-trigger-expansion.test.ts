@@ -93,8 +93,8 @@ function makeLine(overrides: Partial<{
 }> = {}) {
   const actual = overrides.actual ?? 0
   const budget = overrides.budget ?? 0
-  // Convention: variance_amount = budget - actual (positive = favourable for expenses, unfavourable for revenue)
-  // Aligns with existing page.tsx convention (line.variance_amount <= -500 → expense $500+ over)
+  // Expense convention. Revenue lines are re-signed by makeReport below, which
+  // is the only place that knows the category — see the note there.
   const variance_amount = overrides.variance_amount ?? budget - actual
   return {
     account_name: overrides.account_name ?? 'Test Account',
@@ -115,15 +115,30 @@ function makeLine(overrides: Partial<{
   }
 }
 
+/** The categories production treats as revenue — see collectCommentaryTriggers. */
+const REVENUE_CATEGORIES_FIXTURE = new Set(['Revenue', 'Other Income'])
+
 function makeReport(sections: Array<{ category: string; lines: any[] }>) {
   return {
     business_id: 'biz-abc',
     report_month: '2026-04',
     fiscal_year: 2026,
     settings: {} as any,
+    // Revenue variance carries the OPPOSITE sign to expense variance, and this
+    // fixture used to apply the expense convention to both. That is why the
+    // inverted revenue trigger passed its own tests for as long as it did: a
+    // wrong fixture and a wrong reader cancelled out, and the suite went green
+    // on a rule that fired on every revenue BEAT and no shortfall.
+    //
+    // The signing lives here rather than in makeLine because makeReport is the
+    // only place that knows the category — so a future revenue test cannot
+    // forget to opt in. Mirrors calcVariance in src/lib/monthly-report/shared.ts:
+    //   amount = isRevenue ? actual - budget : budget - actual
     sections: sections.map(s => ({
       category: s.category as any,
-      lines: s.lines,
+      lines: REVENUE_CATEGORIES_FIXTURE.has(s.category)
+        ? s.lines.map(l => ({ ...l, variance_amount: l.actual - l.budget }))
+        : s.lines,
       subtotal: makeLine({ account_name: `${s.category} Total` }),
     })),
     summary: {} as any,
@@ -244,6 +259,32 @@ describe('collectCommentaryTriggers — pure helper', () => {
       account_name: 'Consulting',
       trigger_reason: 'revenue_under_budget_percent',
     })
+  })
+
+  it('a revenue BEAT is not a shortfall — Urban Road, August 2026', async () => {
+    // The inversion this pins fired on every account that did well and none
+    // that missed. Figures are Urban Road's August 2026 actuals against its
+    // approved budget.
+    const { collectCommentaryTriggers } = await import(
+      '@/app/finances/monthly-report/utils/commentary-triggers'
+    )
+
+    const report = makeReport([
+      {
+        category: 'Revenue',
+        lines: [
+          // Beat by $48,338 — must NOT trigger.
+          makeLine({ account_name: 'NZ Sales', actual: 50838, budget: 2500 }),
+          // Missed by $9,043 — must trigger.
+          makeLine({ account_name: 'Framed Prints (41600)', actual: 50807, budget: 59850 }),
+        ],
+      },
+    ])
+
+    const result = collectCommentaryTriggers(report)
+    const names = result.revenue_lines.map(l => l.account_name)
+    expect(names).toContain('Framed Prints (41600)')
+    expect(names).not.toContain('NZ Sales')
   })
 
   it('Test 5: large favourable expense — variance ≥$500 AND ≥20%', async () => {
