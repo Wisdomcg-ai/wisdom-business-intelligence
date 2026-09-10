@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, FileText, Landmark } from 'lucide-react'
 import type { GeneratedReport, ReportLine, ReportSection, MonthlyReportSettings, VarianceCommentary, VendorSummary, VendorTransaction, ReportTab } from '../types'
+import { statementYardstick } from '../utils/budget-yardstick'
 
 interface BudgetVsActualTableProps {
   report: GeneratedReport
@@ -352,6 +353,13 @@ export { CommentaryLine }
 export default function BudgetVsActualTable({ report, commentary, commentaryLoading, onCommentaryChange, onCommitBlur, onTabChange, readOnly }: BudgetVsActualTableProps) {
   const settings = report.settings
 
+  // What "Budget" means here. For a client on the budget store it is the
+  // APPROVED budget, and the Full Year tab beside this one shows that under
+  // "Approved Budget" with "Forecast" on a different column. Same module as
+  // the exported pack's pages 4/6/10, so the tab and the pack cannot name one
+  // number two ways.
+  const yardstick = statementYardstick(report)
+
   const colCount =
     5 + // Account + Budget + Actual + Var$ + Var%
     (settings.show_ytd ? 4 : 0) +
@@ -376,9 +384,17 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
       {!report.has_budget && (
         <div className="p-4 bg-amber-50 border-b border-amber-200">
           <p className="text-sm text-amber-800">
-            No budget forecast found — Budget and Variance columns are shown as
-            &ldquo;—&rdquo;. Set up a financial forecast to enable budget comparison.
+            No budget forecast found — {yardstick.columnLabel} and Variance columns are shown
+            as &ldquo;—&rdquo;. Set up a financial forecast to enable budget comparison.
           </p>
+        </div>
+      )}
+      {/* Names the yardstick for the columns too narrow to rename — Unspent
+          Budget, Next Month, Annual Total. Absent for a client with only one
+          yardstick, whose "Budget" is unambiguous. */}
+      {yardstick.note && (
+        <div className="px-4 py-2 bg-slate-50 border-b border-slate-200">
+          <p className="text-xs text-gray-600">{yardstick.note}</p>
         </div>
       )}
       <div className="overflow-x-auto">
@@ -386,13 +402,13 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
           <thead>
             <tr className="bg-brand-navy text-white text-xs">
               <th className="px-3 py-3 text-left font-semibold">Account</th>
-              <th className="px-3 py-3 text-right font-semibold border-l-2 border-white/20">Budget</th>
+              <th className="px-3 py-3 text-right font-semibold border-l-2 border-white/20">{yardstick.columnLabel}</th>
               <th className="px-3 py-3 text-right font-semibold">Actual</th>
               <th className="px-3 py-3 text-right font-semibold">Var ($)</th>
               <th className="px-3 py-3 text-right font-semibold">Var (%)</th>
               {settings.show_ytd && (
                 <>
-                  <th className="px-3 py-3 text-right font-semibold border-l-2 border-white/20">YTD Budget</th>
+                  <th className="px-3 py-3 text-right font-semibold border-l-2 border-white/20">{yardstick.ytdColumnLabel}</th>
                   <th className="px-3 py-3 text-right font-semibold">YTD Actual</th>
                   <th className="px-3 py-3 text-right font-semibold">YTD Var ($)</th>
                   <th className="px-3 py-3 text-right font-semibold">YTD Var (%)</th>

@@ -35,6 +35,7 @@ import { GRID_CONFIG } from '../types/pdf-layout'
 import { calculateBoundingBox, normalizeLayoutPlacements } from '../utils/grid-helpers'
 import { WIDGET_METHOD_MAP } from './widget-renderer'
 import { assessBalanceSheetForPdf, type BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
+import { statementYardstick } from '../utils/budget-yardstick'
 import {
   hasApprovedBudget,
   formatApprovedAnnual,
@@ -847,6 +848,11 @@ export class MonthlyReportPDFService {
     const hasAnnual = settings.show_budget_annual_total
 
     // ── Build header rows ──
+    // The word over the money. For a client on the budget store these columns
+    // are the APPROVED budget, and the Full Year page later in the same pack
+    // gives "Forecast" to a different number — so an unqualified "Budget" here
+    // is two columns a reader can reconcile the wrong way round.
+    const yardstick = statementYardstick(report)
     const navyStyle = { fillColor: NAVY as number[], textColor: [255, 255, 255] as number[], fontStyle: 'bold' as const, fontSize: 7 }
 
     const headerRow1: any[] = [
@@ -861,13 +867,13 @@ export class MonthlyReportPDFService {
     if (hasAnnual) headerRow1.push({ content: 'Budget\nAnnual', rowSpan: 2, styles: { ...navyStyle, halign: 'center' as const, fontSize: 6 } })
 
     const headerRow2: any[] = [
-      { content: 'Budget', styles: navyStyle },
+      { content: yardstick.columnLabel, styles: navyStyle },
       { content: 'Actual', styles: navyStyle },
       { content: 'Variance', styles: navyStyle },
     ]
     if (hasYtd) {
       headerRow2.push(
-        { content: 'Budget', styles: navyStyle },
+        { content: yardstick.columnLabel, styles: navyStyle },
         { content: 'Actual', styles: navyStyle },
         { content: 'Variance', styles: navyStyle },
       )
@@ -1011,6 +1017,18 @@ export class MonthlyReportPDFService {
     const varianceCols: number[] = [3] // monthly variance
     if (hasYtd) varianceCols.push(6) // YTD variance
 
+    // Names the yardstick for the columns too narrow to rename — Unspent
+    // Budget, Budget Next Mth, Budget Annual. Null, and so absent, for every
+    // client with only one yardstick in their pack.
+    if (yardstick.note) {
+      this.doc.setFontSize(7.5)
+      this.doc.setFont('helvetica', 'normal')
+      this.doc.setTextColor(107, 114, 128)
+      this.doc.text(yardstick.note, this.margin, this.yPosition)
+      this.doc.setTextColor(0, 0, 0)
+      this.yPosition += 5
+    }
+
     autoTable(this.doc, {
       startY: this.yPosition,
       head: [headerRow1, headerRow2],
@@ -1116,12 +1134,26 @@ export class MonthlyReportPDFService {
     this.doc.text(`${title} — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
     this.yPosition += 8
 
-    const headers: string[] = ['Account', 'Budget', 'Actual', 'Var ($)', 'Var (%)']
+    // These are pack pages 4, 6 and 10 — the most-read pages in it. For a
+    // client on the budget store this column IS the approved budget, and the
+    // Full Year page at 16 reserves that name for it while giving "Forecast"
+    // to something else. Unqualified, the two invite the wrong reconciliation.
+    const yardstick = statementYardstick(this.report)
+    if (yardstick.note) {
+      this.doc.setFontSize(7.5)
+      this.doc.setFont('helvetica', 'normal')
+      this.doc.setTextColor(107, 114, 128)
+      this.doc.text(yardstick.note, this.margin, this.yPosition)
+      this.doc.setTextColor(0, 0, 0)
+      this.yPosition += 5
+    }
+
+    const headers: string[] = ['Account', yardstick.columnLabel, 'Actual', 'Var ($)', 'Var (%)']
     const varianceCols = [3, 4] // Var ($) and Var (%)
     let nextCol = 5
 
     if (settings.show_ytd) {
-      headers.push('YTD Budget', 'YTD Actual', 'YTD Var ($)', 'YTD Var (%)')
+      headers.push(yardstick.ytdColumnLabel, 'YTD Actual', 'YTD Var ($)', 'YTD Var (%)')
       varianceCols.push(nextCol + 2, nextCol + 3)
       nextCol += 4
     }
@@ -1284,7 +1316,8 @@ export class MonthlyReportPDFService {
     this.yPosition += 8
 
     const settings = this.report.settings
-    const headers = ['Account', 'YTD Budget', 'YTD Actual', 'YTD Var ($)', 'YTD Var (%)']
+    const ytdYardstick = statementYardstick(this.report)
+    const headers = ['Account', ytdYardstick.ytdColumnLabel, 'YTD Actual', 'YTD Var ($)', 'YTD Var (%)']
     const varianceCols = [3, 4]
     if (settings.show_unspent_budget) headers.push('Unspent')
     if (settings.show_budget_annual_total) headers.push('Annual')
