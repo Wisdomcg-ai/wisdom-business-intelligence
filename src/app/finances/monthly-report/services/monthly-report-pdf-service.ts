@@ -37,7 +37,7 @@ import { WIDGET_METHOD_MAP } from './widget-renderer'
 import { assessBalanceSheetForPdf, type BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
 import { statementYardstick, wagesYardstick, wagesEmployeeYardstick, noBudgetNote } from '../utils/budget-yardstick'
 import { withoutSilentLines, withoutSilentFullYearLines } from '@/lib/monthly-report/empty-lines'
-import { SECTION_TEXT, RULE_STRONG, paintNegatives, packTableStyles } from './pack-style'
+import { BAND_LIGHT, periodBandRow, type BandGroup, SECTION_TEXT, RULE_STRONG, paintNegatives, packTableStyles } from './pack-style'
 import {
   hasApprovedBudget,
   formatApprovedAnnual,
@@ -84,8 +84,8 @@ const A4_SHORT = 210
 const A4_LONG = 297
 
 // Variance cell tint colors
-const TINT_GREEN: [number, number, number] = [240, 253, 244]
-const TINT_RED: [number, number, number] = [254, 242, 242]
+/** Unfavourable figures. Calxa's red — the only colour it spends on a number. */
+const TEXT_NEGATIVE: [number, number, number] = [192, 0, 0]
 
 // =====================================================================
 // Phase 71-07 (S4) — Variance polarity helper
@@ -110,7 +110,16 @@ export function decideTintColor(
 ): 'red' | 'green' | 'none' {
   const text = String(displayText || '')
   // Zero is always neutral regardless of polarity metadata.
-  if (!text || text === '—' || text === '$0' || text === '($0)' || text === '+0.0%') return 'none'
+  //
+  // The old test was a list of literals — '$0', '($0)', '+0.0%' — and the pack
+  // stopped printing dollar signs, so a variance of -$0.004 came through as the
+  // string '0' with negative polarity and printed in red. A red nought is the
+  // clearest possible sign that a page is coloured by machinery rather than by
+  // meaning. Test the DIGITS instead: if nothing but zeros survives, there is
+  // no variance to have a polarity about.
+  if (!text || text === '—') return 'none'
+  const digits = text.replace(/[^0-9]/g, '')
+  if (digits === '' || /^0+$/.test(digits)) return 'none'
   // Prefer explicit polarity metadata when available.
   if (polarity === 'negative') return 'red'
   if (polarity === 'positive') return 'green'
@@ -122,10 +131,29 @@ export function decideTintColor(
   return 'none'
 }
 
-// Row highlight colors
-const NAVY: [number, number, number] = [30, 41, 59]
-const GP_BLUE: [number, number, number] = [219, 234, 254]
-const OP_BLUE: [number, number, number] = [235, 245, 255]
+/**
+ * The pack's palette, read off the Calxa pack it replaces.
+ *
+ * Calxa spends no colour on furniture. Its header bands are a muted
+ * grey-lavender, its section headings are grey text on near-white, its
+ * subtotals are bold black on a light grey, and the ONLY colour in the whole
+ * 27 pages is a red negative in parentheses. There is no green: a favourable
+ * variance is simply a number that is not red.
+ *
+ * Ours had navy headers, cornflower-blue subtotal bands, an orange band on the
+ * Subscriptions page and a green-vs-red tint behind every variance cell on the
+ * three most-read pages — four columns of pastel on every row of a
+ * fourteen-column table, which is most of what "hard to read" meant.
+ *
+ * These names are kept (NAVY is referenced in ~30 places) so the whole pack
+ * moves at once and no page is left in the old language.
+ */
+/** Header bands and grand-total rows. Dark enough to carry white text. */
+const NAVY: [number, number, number] = [120, 116, 130]
+/** Subtotal rows — Gross Profit, section totals. Bold black on light grey. */
+const GP_BLUE: [number, number, number] = [232, 232, 236]
+/** The lighter companion, for a second tier of subtotal. */
+const OP_BLUE: [number, number, number] = [244, 244, 246]
 
 export class MonthlyReportPDFService {
   private doc: jsPDF
@@ -414,9 +442,7 @@ export class MonthlyReportPDFService {
     const memo = (this.options.memo ?? '').trim()
     this.addPage('portrait')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text(`Memo — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
+    this.drawPageTitle(`Memo — ${this.formatMonth(this.report.report_month)}`)
     this.yPosition += 4
     this.doc.setDrawColor(200, 200, 200)
     this.doc.line(this.margin, this.yPosition, this.pageWidth - this.margin, this.yPosition)
@@ -457,9 +483,7 @@ export class MonthlyReportPDFService {
     const flow = this.options.moneyFlow!
     this.addPage('portrait')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text(`Where Did Our Money Go? — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
+    this.drawPageTitle(`Where Did Our Money Go? — ${this.formatMonth(this.report.report_month)}`)
     this.yPosition += 10
 
     if (!flow.comparable) {
@@ -867,25 +891,13 @@ export class MonthlyReportPDFService {
     const monthLong = this.formatMonth(report.report_month)
     const settings = report.settings
 
-    // Header
-    this.doc.setFontSize(18)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Actual vs Budget', this.pageWidth / 2, this.yPosition, { align: 'center' })
-    this.yPosition += 7
-
-    this.doc.setFontSize(11)
-    this.doc.setFont('helvetica', 'normal')
-    this.doc.text(`MONTH: ${monthLong.toUpperCase()}`, this.pageWidth / 2, this.yPosition, { align: 'center' })
-    this.yPosition += 5
-
-    this.doc.setFontSize(9)
-    this.doc.text(`FY${report.fiscal_year}`, this.pageWidth / 2, this.yPosition, { align: 'center' })
-    this.yPosition += 8
-
-    // Separator
-    this.doc.setDrawColor(200, 200, 200)
-    this.doc.line(this.margin, this.yPosition, this.pageWidth - this.margin, this.yPosition)
-    this.yPosition += 6
+    // Header — left-aligned like every other page in the pack. It was centred,
+    // which made page 1 the only page whose eye-line started in the middle.
+    this.drawPageTitle(`Actual vs Budget — ${monthLong}`)
+    this.doc.setFontSize(8.5)
+    this.doc.setTextColor(125, 125, 125)
+    this.doc.text(`FY${report.fiscal_year}`, this.margin, this.yPosition - 4)
+    this.doc.setTextColor(0, 0, 0)
 
     // ── Gather data ──
     const s = report.summary
@@ -918,14 +930,18 @@ export class MonthlyReportPDFService {
     // gives "Forecast" to a different number — so an unqualified "Budget" here
     // is two columns a reader can reconcile the wrong way round.
     const yardstick = statementYardstick(report)
-    const navyStyle = { fillColor: NAVY as number[], textColor: [255, 255, 255] as number[], fontStyle: 'bold' as const, fontSize: 7 }
+    // Two tones, as the reference pack sets them: the PERIOD band carries the
+    // weight, the column names underneath sit on near-white. One dark block
+    // covering both tiers is what made this header a slab.
+    const navyStyle = { fillColor: BAND_LIGHT as number[], textColor: [38, 38, 42] as number[], fontStyle: 'bold' as const, fontSize: 7 }
+    const bandStyle = { fillColor: NAVY as number[], textColor: [255, 255, 255] as number[], fontStyle: 'bold' as const, fontSize: 7 }
 
     const headerRow1: any[] = [
       { content: '', rowSpan: 2, styles: { ...navyStyle, cellWidth: 36 } },
-      { content: monthLabel, colSpan: 3, styles: { ...navyStyle, halign: 'center' as const } },
+      { content: monthLabel, colSpan: 3, styles: { ...bandStyle, halign: 'center' as const } },
     ]
     if (hasYtd) {
-      headerRow1.push({ content: `YTD FY${report.fiscal_year}`, colSpan: 3, styles: { ...navyStyle, halign: 'center' as const } })
+      headerRow1.push({ content: `YTD FY${report.fiscal_year}`, colSpan: 3, styles: { ...bandStyle, halign: 'center' as const } })
     }
     if (hasUnspent) headerRow1.push({ content: 'Unspent\nBudget', rowSpan: 2, styles: { ...navyStyle, halign: 'center' as const, fontSize: 6 } })
     if (hasNextMonth) headerRow1.push({ content: 'Budget\nNext Mth', rowSpan: 2, styles: { ...navyStyle, halign: 'center' as const, fontSize: 6 } })
@@ -1123,10 +1139,13 @@ export class MonthlyReportPDFService {
           data.cell.styles.fillColor = OP_BLUE
         }
 
-        // Net Profit row — dark navy
+        // Net Profit — the pack's most-read row. Calxa gives it bold black on
+        // the page's own ground with a rule above, not a reversed dark band:
+        // the figure carries the emphasis, not a block of colour behind it.
         if (rowData.style === 'np') {
-          data.cell.styles.fillColor = NAVY
-          data.cell.styles.textColor = [255, 255, 255]
+          data.cell.styles.fillColor = GP_BLUE
+          data.cell.styles.textColor = [26, 26, 26]
+          data.cell.styles.fontStyle = 'bold'
         }
 
         // Variance cell tinting (only for normal/income/expense rows)
@@ -1134,14 +1153,12 @@ export class MonthlyReportPDFService {
           this.applyVarianceTint(data)
         }
 
-        // Variance text color for highlighted rows (GP, OP)
+        // Unfavourable in red; favourable in plain black. There is no green in
+        // the reference pack, and a page that colours the good news as loudly
+        // as the bad gives a reader nothing to scan for.
         if (varianceCols.includes(colIdx) && (rowData.style === 'gp' || rowData.style === 'op')) {
           const text = String(data.cell.text || '')
-          if (text.startsWith('(')) {
-            data.cell.styles.textColor = [185, 28, 28]
-          } else if (text !== '$0' && text !== '') {
-            data.cell.styles.textColor = [21, 128, 61]
-          }
+          if (text.startsWith('(')) data.cell.styles.textColor = [...TEXT_NEGATIVE]
         }
       },
     })
@@ -1193,11 +1210,8 @@ export class MonthlyReportPDFService {
 
     const settings = this.report.settings
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
     const title = sectionTableTitle(filter) ?? 'Budget vs Actual Detail'
-    this.doc.text(`${title} — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
-    this.yPosition += 8
+    this.drawPageTitle(`${title} — ${this.formatMonth(this.report.report_month)}`)
 
     // These are pack pages 4, 6 and 10 — the most-read pages in it. For a
     // client on the budget store this column IS the approved budget, and the
@@ -1216,10 +1230,20 @@ export class MonthlyReportPDFService {
       varianceCols.push(nextCol + 2, nextCol + 3)
       nextCol += 4
     }
-    if (settings.show_unspent_budget) { headers.push('Unspent'); nextCol++ }
-    if (settings.show_budget_next_month) { headers.push('Next Mth'); nextCol++ }
-    if (settings.show_budget_annual_total) { headers.push('Annual'); nextCol++ }
-    if (settings.show_prior_year) { headers.push('Prior Yr'); nextCol++ }
+    // The period band above the column names — see periodBandRow.
+    const band: BandGroup[] = [
+      { label: '', colSpan: 1, tone: 'light' },
+      { label: this.formatShortMonth(this.report.report_month), colSpan: 4, tone: 'light' },
+    ]
+    if (settings.show_ytd) {
+      band.push({ label: `YTD FY${this.report.fiscal_year}`, colSpan: 4, tone: 'dark' })
+    }
+    let trailing = 0
+    if (settings.show_unspent_budget) { headers.push('Unspent'); nextCol++; trailing++ }
+    if (settings.show_budget_next_month) { headers.push('Next Mth'); nextCol++; trailing++ }
+    if (settings.show_budget_annual_total) { headers.push('Annual'); nextCol++; trailing++ }
+    if (settings.show_prior_year) { headers.push('Prior Yr'); nextCol++; trailing++ }
+    if (trailing > 0) band.push({ label: 'Budget', colSpan: trailing, tone: 'light' })
 
     const tableData: any[] = []
 
@@ -1233,6 +1257,15 @@ export class MonthlyReportPDFService {
     // Track which body-row indices are section headers, subtotals, GP, NP for tinting logic
     const specialRowIndices = new Set<number>()
     let currentBodyIdx = 0
+    /**
+     * Commentary is a BLOCK under the table, not rows inside it.
+     *
+     * It used to be full-width amber strips wedged between the account lines,
+     * which broke the statement in half wherever an account had something to
+     * say. Calxa keeps its statement intact and puts the prose beneath it under
+     * a "COMMENTARY" heading, as bullets — bold account name, then the facts.
+     */
+    const commentaryBullets: { account: string; body: string }[] = []
 
     const sectionsToRender = filter
       ? this.report.sections.filter((s) => filter.includes(s.category))
@@ -1283,10 +1316,17 @@ export class MonthlyReportPDFService {
         const commentaryLines = section.lines.filter(l => {
           const e = this.options.commentary![l.account_name]
           if (!e) return false
-          const hasDraft = (e.draft_warnings?.length ?? 0) === 0 && !!(e.draft_note ?? '').trim()
-          return hasDraft || !!(e.coach_note ?? '').trim()
+          // A suppressed supplier list is not a reason for the account to
+          // disappear from the pack. It used to be: `draft_warnings` fires when
+          // the suppliers sum past their own account, which on Urban Road's
+          // August was every one of the six accounts genuinely over budget —
+          // so the commentary block printed the five accounts with NO suppliers
+          // and none of the ones a reader needed. The row now prints and states
+          // why the breakdown is missing.
+          const hasDraft = !!(e.draft_note ?? '').trim()
+          const suppressed = (e.draft_warnings?.length ?? 0) > 0
+          return hasDraft || suppressed || !!(e.coach_note ?? '').trim()
         })
-        const amber = { fillColor: [255, 251, 235] as number[], textColor: [120, 53, 15] as number[], fontSize: 6.5, cellPadding: 2 }
         for (const l of commentaryLines) {
           const entry = this.options.commentary![l.account_name]
           // The facts come from the generated draft, not from re-joining
@@ -1301,14 +1341,11 @@ export class MonthlyReportPDFService {
           // account, and a pack must not quote a list we already know is wrong.
           // The coach's prose still prints — it is the half that was never in
           // doubt.
-          const vendors = (entry.draft_warnings?.length ?? 0) > 0 ? '' : (entry.draft_note ?? '')
+          const vendors = (entry.draft_warnings?.length ?? 0) > 0
+            ? 'Supplier detail withheld — the supplier list does not agree with this account this month.'
+            : (entry.draft_note ?? '')
           const note = entry.coach_note ? `${vendors ? ' — ' : ''}${entry.coach_note}` : ''
-          specialRowIndices.add(currentBodyIdx)
-          tableData.push([
-            { content: l.account_name, styles: { ...amber, fontStyle: 'bold' } },
-            { content: `${vendors}${note}` || '—', colSpan: headers.length - 1, styles: amber },
-          ])
-          currentBodyIdx++
+          commentaryBullets.push({ account: l.account_name, body: `${vendors}${note}` })
         }
       }
 
@@ -1327,14 +1364,14 @@ export class MonthlyReportPDFService {
     if (!filter) {
     specialRowIndices.add(currentBodyIdx)
     const npRow = this.buildLineRow(this.report.net_profit_row, settings)
-    npRow[0] = { content: 'Net Profit', styles: { fontStyle: 'bold', fillColor: NAVY, textColor: [255, 255, 255] } }
-    this.restyleRow(npRow, { fillColor: NAVY, textColor: [255, 255, 255], fontStyle: 'bold' })
+    npRow[0] = { content: 'Net Profit', styles: { fontStyle: 'bold', fillColor: GP_BLUE, textColor: [26, 26, 26] } }
+    this.restyleRow(npRow, { fillColor: GP_BLUE, textColor: [26, 26, 26], fontStyle: 'bold' })
     tableData.push(npRow)
     }
 
     autoTable(this.doc, {
       startY: this.yPosition,
-      head: [headers],
+      head: [periodBandRow(band), headers],
       body: tableData,
       // Calxa's grain: no vertical rules, a hairline under each row, a quiet
       // grey header. 'grid' drew a border round all fourteen columns of every
@@ -1355,6 +1392,8 @@ export class MonthlyReportPDFService {
         }
       },
     })
+
+    this.drawCommentaryBlock(commentaryBullets)
 
     // WD.3 — standing "refer to …" lines, under exactly ONE table in the pack.
     // Which one is standingHostWidgetId's call; under the Calxa page order
@@ -1415,10 +1454,7 @@ export class MonthlyReportPDFService {
   private addYTDSummary(): void {
     this.addPage('portrait')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text(`YTD Detail — FY${this.report.fiscal_year}`, this.margin, this.yPosition)
-    this.yPosition += 8
+    this.drawPageTitle(`YTD Detail — FY${this.report.fiscal_year}`)
 
     const settings = this.report.settings
     const ytdYardstick = statementYardstick(this.report)
@@ -1553,10 +1589,7 @@ export class MonthlyReportPDFService {
     const detail = this.options.subscriptionDetail!
     this.addPage('portrait')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text(`Subscription Analysis — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
-    this.yPosition += 8
+    this.drawPageTitle(`Subscription Analysis — ${this.formatMonth(this.report.report_month)}`)
 
     const reportMonth = detail.report_month || this.report.report_month
     const currentLabel = this.formatShortMonth(reportMonth)
@@ -1638,10 +1671,7 @@ export class MonthlyReportPDFService {
     const detail = this.options.wagesDetail!
     this.addPage('portrait')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text(`Wages Analysis — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
-    this.yPosition += 8
+    this.drawPageTitle(`Wages Analysis — ${this.formatMonth(this.report.report_month)}`)
 
     // The word over the money, from the resolution the ROUTE used — the same
     // helper, the same words as the browser tab. This page read
@@ -1757,10 +1787,7 @@ export class MonthlyReportPDFService {
   private addExternalMetricPage(series: import('../types').ExternalMetricSeriesData): void {
     this.addPage('portrait')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text(`${series.display_name} — ${this.formatMonth(this.report.report_month)}`, this.margin, this.yPosition)
-    this.yPosition += 8
+    this.drawPageTitle(`${series.display_name} — ${this.formatMonth(this.report.report_month)}`)
 
     // Only measures that actually carry values render as columns; a measure
     // gets a Budget + Variance pair only when budget values exist for it.
@@ -1878,9 +1905,7 @@ export class MonthlyReportPDFService {
     const cf = this.options.cashflowForecast!
     this.addPage('landscape')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Cashflow Forecast', this.margin, this.yPosition)
+    this.drawPageTitle('Cashflow Forecast')
     this.yPosition += 6
 
     // Alert if bank goes negative
@@ -2082,9 +2107,7 @@ export class MonthlyReportPDFService {
     this.addPage('landscape')
 
     // Title
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Cashflow Forecast', this.margin, this.yPosition)
+    this.drawPageTitle('Cashflow Forecast')
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
@@ -2268,9 +2291,7 @@ export class MonthlyReportPDFService {
     const fy = this.options.fullYearReport!
     this.addPage('landscape')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text(`Full Year Projection — FY${fy.fiscal_year}`, this.margin, this.yPosition)
+    this.drawPageTitle(`Full Year Projection — FY${fy.fiscal_year}`)
     this.yPosition += 6
 
     // The approved budget only earns a column when the budget store actually
@@ -2451,9 +2472,7 @@ export class MonthlyReportPDFService {
     if (data.length === 0) return
     this.addPage('portrait')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Where Your Revenue Goes', this.margin, this.yPosition)
+    this.drawPageTitle('Where Your Revenue Goes')
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
@@ -2560,9 +2579,7 @@ export class MonthlyReportPDFService {
     if (data.length === 0) return
     this.addPage('landscape')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Break-Even Analysis', this.margin, this.yPosition)
+    this.drawPageTitle('Break-Even Analysis')
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
@@ -2682,9 +2699,7 @@ export class MonthlyReportPDFService {
     if (data.length === 0) return
     this.addPage('landscape')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Revenue vs Expenses Trend', this.margin, this.yPosition)
+    this.drawPageTitle('Revenue vs Expenses Trend')
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
@@ -2771,9 +2786,7 @@ export class MonthlyReportPDFService {
     // client whose forecast does not exist.
     const unavailable = heatmapUnavailableReason(fy)
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text(unavailable ? HEATMAP_UNAVAILABLE_TITLE : heatmapTitle(fy), this.margin, this.yPosition)
+    this.drawPageTitle(unavailable ? HEATMAP_UNAVAILABLE_TITLE : heatmapTitle(fy))
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
@@ -2846,9 +2859,7 @@ export class MonthlyReportPDFService {
     // subtitle used to say "each annual budget" for every client — including
     // the ten whose tab says the bar is a forecast.
     const pctElapsed = data[0]?.pctElapsed || 0
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text(burnRateYardstick(this.report).title, this.margin, this.yPosition)
+    this.drawPageTitle(burnRateYardstick(this.report).title)
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
@@ -2905,9 +2916,7 @@ export class MonthlyReportPDFService {
     if (data.length === 0) return
     this.addPage('landscape')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Cash Runway', this.margin, this.yPosition)
+    this.drawPageTitle('Cash Runway')
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
@@ -2968,9 +2977,7 @@ export class MonthlyReportPDFService {
     if (data.length === 0) return
     this.addPage('landscape')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Cumulative Net Cash', this.margin, this.yPosition)
+    this.drawPageTitle('Cumulative Net Cash')
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
@@ -3035,9 +3042,7 @@ export class MonthlyReportPDFService {
     if (data.length === 0) return
     this.addPage('portrait')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Working Capital Gap', this.margin, this.yPosition)
+    this.drawPageTitle('Working Capital Gap')
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
@@ -3079,9 +3084,7 @@ export class MonthlyReportPDFService {
     if (data.length === 0 || wagesNames.length === 0) return
     this.addPage('landscape')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Team Cost as % of Revenue', this.margin, this.yPosition)
+    this.drawPageTitle('Team Cost as % of Revenue')
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
@@ -3120,9 +3123,7 @@ export class MonthlyReportPDFService {
     if (employees.length === 0) return
     this.addPage('portrait')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Cost per Employee', this.margin, this.yPosition)
+    this.drawPageTitle('Cost per Employee')
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
@@ -3179,9 +3180,7 @@ export class MonthlyReportPDFService {
     if (data.length === 0) return
     this.addPage('portrait')
 
-    this.doc.setFontSize(14)
-    this.doc.setFont('helvetica', 'bold')
-    this.doc.text('Subscription Creep', this.margin, this.yPosition)
+    this.drawPageTitle('Subscription Creep')
     this.yPosition += 5
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
@@ -3208,13 +3207,12 @@ export class MonthlyReportPDFService {
       columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
       margin: { left: this.margin, right: this.margin },
       didParseCell: (cellData) => {
-        // Change column tinting
+        // A rise in a subscription is stated in red; a fall is stated plainly.
+        // No block of colour behind either — see applyVarianceTint.
         if (cellData.section === 'body' && cellData.column.index === 3) {
           const text = String(cellData.cell.text || '')
           if (text.startsWith('+') && !text.includes('$0')) {
-            cellData.cell.styles.fillColor = [...TINT_RED]
-          } else if (text.startsWith('-')) {
-            cellData.cell.styles.fillColor = [...TINT_GREEN]
+            cellData.cell.styles.textColor = [...TEXT_NEGATIVE]
           }
         }
       },
@@ -3617,9 +3615,9 @@ export class MonthlyReportPDFService {
     // Legend — the middle entry drops out entirely when there is no series,
     // rather than standing over an empty column.
     const SERIES: Array<{ label: string; rgb: [number, number, number] }> = [
-      { label: 'Actuals', rgb: [34, 197, 94] },
+      { label: 'Actuals', rgb: [109, 212, 143] },
       ...(data.budgetLabel ? [{ label: data.budgetLabel, rgb: [251, 191, 36] as [number, number, number] }] : []),
-      { label: 'Last Year', rgb: [59, 130, 246] },
+      { label: 'Last Year', rgb: [102, 184, 238] },
     ]
     let legendX = this.margin
     for (const sSeries of SERIES) {
@@ -3751,6 +3749,124 @@ export class MonthlyReportPDFService {
   // =====================================================================
 
   /**
+   * The commentary block, the way the reference pack sets it.
+   *
+   * A heading in small caps, then one bullet per account: the account name in
+   * bold, a pipe, and the facts. Black on white — the amber strips this
+   * replaces were the loudest thing on a page whose job is to be read, and they
+   * sat INSIDE the statement, splitting it wherever an account had a note.
+   *
+   * Wraps across pages: a client with twenty commented accounts gets a second
+   * page, not a block running off the bottom.
+   */
+  private drawCommentaryBlock(items: readonly { account: string; body: string }[]): void {
+    if (items.length === 0) return
+    let y = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 8
+    const left = this.margin
+    const bulletIndent = 4
+    const available = this.pageWidth - this.margin * 2 - bulletIndent
+
+    const newPageIfNeeded = (needed: number) => {
+      if (y + needed > this.pageHeight - this.margin - 10) {
+        this.addPage('landscape')
+        y = this.yPosition
+      }
+    }
+
+    newPageIfNeeded(10)
+    this.doc.setFont('helvetica', 'bold')
+    this.doc.setFontSize(9)
+    this.doc.setTextColor(26, 26, 26)
+    this.doc.text('COMMENTARY', left, y)
+    y += 5.5
+
+    for (const item of items) {
+      this.doc.setFont('helvetica', 'bold')
+      this.doc.setFontSize(8)
+      const label = `${item.account} | `
+      const labelWidth = this.doc.getTextWidth(label)
+
+      // The first line shares its row with the bold label, so it gets less
+      // width than the ones that wrap under it.
+      this.doc.setFont('helvetica', 'normal')
+      const firstWidth = available - labelWidth
+      const words = item.body.split(/\s+/).filter(Boolean)
+      const lines: string[] = []
+      let current = ''
+      for (const word of words) {
+        const candidate = current ? `${current} ${word}` : word
+        const limit = lines.length === 0 ? firstWidth : available
+        if (this.doc.getTextWidth(candidate) > limit && current) {
+          lines.push(current)
+          current = word
+        } else {
+          current = candidate
+        }
+      }
+      if (current) lines.push(current)
+
+      newPageIfNeeded(4.2 * Math.max(lines.length, 1) + 2)
+      this.doc.setTextColor(60, 60, 60)
+      this.doc.text('•', left, y)
+      this.doc.setFont('helvetica', 'bold')
+      this.doc.setTextColor(26, 26, 26)
+      this.doc.text(label, left + bulletIndent, y)
+      this.doc.setFont('helvetica', 'normal')
+      this.doc.setTextColor(55, 55, 55)
+      this.doc.text(lines[0] ?? '', left + bulletIndent + labelWidth, y)
+      for (const extra of lines.slice(1)) {
+        y += 4.2
+        newPageIfNeeded(4.2)
+        this.doc.text(extra, left + bulletIndent, y)
+      }
+      y += 5.2
+    }
+    this.doc.setTextColor(0, 0, 0)
+    this.yPosition = y
+  }
+
+  /**
+   * A page's title block, in the pack's voice.
+   *
+   * Calxa heads every page the same way: the page's subject and the client's
+   * name on one large, LIGHT-weight line, and the period under it in small grey
+   * capitals. Ours were 14pt bold with the period welded into the same string —
+   * so a reader scanning the pack had to read the whole heading to find out
+   * which month they were looking at, and every page shouted at the same
+   * volume as the figures below it.
+   *
+   * Callers still pass one string ("Wages Analysis — August 2026"); the split
+   * happens here so twenty call sites did not each have to learn the rule.
+   */
+  private drawPageTitle(heading: string): void {
+    const cut = heading.lastIndexOf(' — ')
+    const subject = cut > 0 ? heading.slice(0, cut) : heading
+    const period = cut > 0 ? heading.slice(cut + 3) : null
+    const client = (this.options.businessName ?? '').trim()
+
+    this.doc.setFont('helvetica', 'normal')
+    this.doc.setFontSize(17)
+    this.doc.setTextColor(26, 26, 26)
+    this.doc.text(client ? `${subject} — ${client}` : subject, this.margin, this.yPosition)
+    this.yPosition += 5.5
+
+    if (period) {
+      // "MONTH: AUG 2026" for a month, the period verbatim for anything else
+      // (a fiscal year, a date range) — labelling "FY2027" as a month is worse
+      // than not labelling it.
+      const isMonth = /^[A-Za-z]{3,9} \d{4}$/.test(period)
+      this.doc.setFontSize(9)
+      this.doc.setTextColor(125, 125, 125)
+      this.doc.text((isMonth ? `MONTH: ${period}` : period).toUpperCase(), this.margin, this.yPosition)
+      this.yPosition += 3
+    }
+
+    this.doc.setTextColor(0, 0, 0)
+    this.doc.setFontSize(10)
+    this.yPosition += 6
+  }
+
+  /**
    * Apply green/red cell background tint based on variance polarity.
    *
    * Phase 71-07 (S4): polarity is sourced from structured cell metadata
@@ -3763,8 +3879,11 @@ export class MonthlyReportPDFService {
     const polarity = data?.cell?.raw?._polarity as VariancePolarity | undefined
     const text = String(data?.cell?.text || '')
     const color = decideTintColor(polarity, text)
-    if (color === 'red') data.cell.styles.fillColor = [...TINT_RED]
-    else if (color === 'green') data.cell.styles.fillColor = [...TINT_GREEN]
+    // The polarity is worth saying; a coloured BLOCK behind it is not. Calxa
+    // states an unfavourable figure in red parentheses and says nothing at all
+    // about a favourable one, which is why its pages read as a report and a
+    // page with four tinted columns per row reads as a heat map.
+    if (color === 'red') data.cell.styles.textColor = [...TEXT_NEGATIVE]
   }
 
   /**
@@ -3887,15 +4006,14 @@ export class MonthlyReportPDFService {
       this.doc.setFontSize(7)
       this.doc.setFont('helvetica', 'normal')
       this.doc.setTextColor(150, 150, 150)
-      this.doc.text(
-        `Generated by Business Coaching Platform | ${new Date().toLocaleDateString('en-AU')} | Page ${i} of ${totalPages}`,
-        pw / 2,
-        ph - 8,
-        { align: 'center' }
-      )
+      // "Page 7 of 27", right-aligned, and nothing else. The tool that built
+      // the pack and the date it was built are the client's least interesting
+      // facts; Calxa puts neither on the page, and the export's own cover
+      // states the preparation date once.
+      this.doc.text(`Page ${i} of ${totalPages}`, pw - this.margin, ph - 8, { align: 'right' })
       if (this.report.is_draft) {
         this.doc.setTextColor(185, 28, 28)
-        this.doc.text('PROVISIONAL', pw - this.margin, ph - 8, { align: 'right' })
+        this.doc.text('PROVISIONAL', this.margin, ph - 8, { align: 'left' })
       }
     }
     this.doc.setTextColor(0, 0, 0)
