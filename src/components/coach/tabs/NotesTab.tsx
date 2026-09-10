@@ -15,6 +15,8 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
+import { formatDate } from '@/lib/timezone'
+
 interface SessionNote {
   id: string
   business_id: string
@@ -99,14 +101,13 @@ export function NotesTab({ businessId, businessName }: NotesTabProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const formatDate = (dateString: string) => {
+  const formatLocalDate = (dateString: string) => {
     const date = new Date(dateString + 'T00:00:00')
-    return date.toLocaleDateString('en-AU', {
+    return formatDate(date, {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
-      day: 'numeric',
-    })
+      day: 'numeric' })
   }
 
   const handleToggleExpand = (noteId: string) => {
@@ -441,7 +442,7 @@ export function NotesTab({ businessId, businessName }: NotesTabProps) {
                     </div>
                     <div>
                       <h4 className="font-semibold text-gray-900">
-                        {formatDate(note.session_date)}
+                        {formatLocalDate(note.session_date)}
                       </h4>
                       <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
                         {note.duration_minutes && (

@@ -28,6 +28,8 @@ import { useXeroSync } from '@/app/finances/forecast/hooks/useXeroSync'
 import { useVersionManager } from '@/app/finances/forecast/hooks/useVersionManager'
 import { getForecastFiscalYear } from '@/app/finances/forecast/utils/fiscal-year'
 
+import { formatDateTime } from '@/lib/timezone'
+
 export default function CoachForecastPage() {
   const params = useParams()
   const router = useRouter()
@@ -583,7 +585,7 @@ export default function CoachForecastPage() {
                 {/* Last Saved Indicator */}
                 {!isSaving && forecast && forecast.updated_at && (
                   <div className="text-xs text-gray-500">
-                    Last saved {new Date(forecast.updated_at).toLocaleString('en-AU', {
+                    Last saved {formatDateTime(new Date(forecast.updated_at), {
                       day: 'numeric',
                       month: 'short',
                       hour: '2-digit',

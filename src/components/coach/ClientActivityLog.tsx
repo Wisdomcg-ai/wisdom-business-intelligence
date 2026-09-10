@@ -13,6 +13,8 @@ import {
   Loader2
 } from 'lucide-react'
 
+import { formatDate, formatDateTime } from '@/lib/timezone'
+
 interface AuditLogEntry {
   id: string
   user_id: string
@@ -118,7 +120,7 @@ export function ClientActivityLog({
     loadLogs(true)
   }, [businessId, tableFilter])
 
-  const formatTime = (timestamp: string) => {
+  const formatLocalTime = (timestamp: string) => {
     const date = new Date(timestamp)
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
@@ -132,7 +134,7 @@ export function ClientActivityLog({
     if (diffDays === 1) return 'Yesterday'
     if (diffDays < 7) return `${diffDays}d ago`
 
-    return date.toLocaleDateString('en-AU', {
+    return formatDate(date, {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -142,7 +144,7 @@ export function ClientActivityLog({
 
   const formatFullDate = (timestamp: string) => {
     const date = new Date(timestamp)
-    return date.toLocaleString('en-AU', {
+    return formatDateTime(date, {
       weekday: 'short',
       year: 'numeric',
       month: 'short',
@@ -301,7 +303,7 @@ export function ClientActivityLog({
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <span className="text-xs text-gray-400 whitespace-nowrap flex items-center gap-1">
                           <Clock className="w-3 h-3" />
-                          {formatTime(log.created_at)}
+                          {formatLocalTime(log.created_at)}
                         </span>
                         {changes && (
                           isExpanded ? (

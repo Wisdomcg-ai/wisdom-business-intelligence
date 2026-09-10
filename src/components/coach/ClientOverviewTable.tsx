@@ -22,6 +22,8 @@ import {
   ArrowUpRight
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 export interface ClientMetrics {
   id: string
   businessName: string
@@ -298,7 +300,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
       : <ChevronDown className="w-4 h-4 text-brand-orange" />
   }
 
-  const formatDate = (dateString: string | null): string => {
+  const formatLocalDate = (dateString: string | null): string => {
     if (!dateString) return '-'
     const date = new Date(dateString)
     const now = new Date()
@@ -309,7 +311,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
     if (diffDays < 7) return `${diffDays}d ago`
     if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`
 
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    return formatDate(date, { month: 'short', day: 'numeric' })
   }
 
   const getDateStatus = (dateString: string | null, warningDays: number = 7, criticalDays: number = 14): 'good' | 'warning' | 'critical' => {
@@ -647,7 +649,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
                     getDateStatus(client.lastLogin, 3, 7) === 'good' ? 'text-gray-600' :
                     getDateStatus(client.lastLogin, 3, 7) === 'warning' ? 'text-amber-600' : 'text-red-600'
                   }`}>
-                    {formatDate(client.lastLogin)}
+                    {formatLocalDate(client.lastLogin)}
                   </span>
                 </td>
 
@@ -657,7 +659,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
                     getDateStatus(client.lastWeeklyReview) === 'good' ? 'text-gray-600' :
                     getDateStatus(client.lastWeeklyReview) === 'warning' ? 'text-amber-600' : 'text-red-600'
                   }`}>
-                    {formatDate(client.lastWeeklyReview)}
+                    {formatLocalDate(client.lastWeeklyReview)}
                   </span>
                 </td>
 
@@ -667,7 +669,7 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
                     getDateStatus(client.lastDashboardUpdate) === 'good' ? 'text-gray-600' :
                     getDateStatus(client.lastDashboardUpdate) === 'warning' ? 'text-amber-600' : 'text-red-600'
                   }`}>
-                    {formatDate(client.lastDashboardUpdate)}
+                    {formatLocalDate(client.lastDashboardUpdate)}
                   </span>
                 </td>
 

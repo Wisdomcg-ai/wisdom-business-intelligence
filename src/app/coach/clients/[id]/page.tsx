@@ -28,6 +28,8 @@ import {
   Star
 } from 'lucide-react'
 
+import { formatTime } from '@/lib/timezone'
+
 interface BusinessData {
   id: string
   business_name: string
@@ -313,7 +315,6 @@ export default function ClientFilePage() {
       let overdueActions = 0
       let unreadMessages = 0
       let healthScore: number | null = null
-
 
       // Store businessProfileId at higher scope for activity queries
       let businessProfileId: string | null = null
@@ -1109,7 +1110,7 @@ export default function ClientFilePage() {
                 <span>Live</span>
                 {lastUpdated && (
                   <span className="text-gray-400">
-                    Updated {lastUpdated.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}
+                    Updated {formatTime(lastUpdated, { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 )}
               </div>

@@ -14,6 +14,8 @@ import {
   RefreshCw
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 interface CoachPerformanceData {
   sessionsThisMonth: number
   sessionsLastMonth: number
@@ -366,7 +368,7 @@ CLIENT PROGRESS REPORT
 =====================
 Business: ${client.businessName}
 Industry: ${client.industry || 'Not specified'}
-Generated: ${new Date().toLocaleDateString()}
+Generated: ${formatDate(new Date())}
 
 METRICS
 -------
@@ -377,7 +379,7 @@ Actions Completed: ${client.actionsCompleted}
 Actions Pending: ${client.actionsPending}
 Status: ${client.status}
 
-Last Session: ${client.lastSessionDate ? new Date(client.lastSessionDate).toLocaleDateString() : 'Never'}
+Last Session: ${client.lastSessionDate ? formatDate(new Date(client.lastSessionDate)) : 'Never'}
     `.trim()
 
     const blob = new Blob([report], { type: 'text/plain' })
