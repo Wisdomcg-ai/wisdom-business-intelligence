@@ -4,7 +4,7 @@
  * snapshot of our own output.
  */
 import { describe, it, expect } from 'vitest'
-import { buildRatioClause, pickDenominator } from '../commentary-clause'
+import { buildRatioClause, pickDenominator, extractRatioContext } from '../commentary-clause'
 
 const JUL_INCOME_ACTUAL = 497243
 const JUL_INCOME_BUDGET = 450000
@@ -149,5 +149,45 @@ describe('pickDenominator', () => {
 
   it('falls back to total income when the cost account has no name', () => {
     expect(pickDenominator('', revenue, totals).label).toBe('income')
+  })
+})
+
+describe('extractRatioContext', () => {
+  const report = {
+    has_budget: true,
+    summary: { revenue: { actual: 528415.71, budget: 450000 } },
+    sections: [
+      { category: 'Revenue', lines: [
+        { account_name: 'Canvas Sales', actual: 337402, budget: 279320 },
+        { account_name: 'Materialised', actual: 0, budget: 450, is_budget_only: true },
+      ] },
+      { category: 'Cost of Sales', lines: [{ account_name: 'Antons Canvas', actual: 208265, budget: 172488 }] },
+    ],
+  }
+
+  it('takes the denominator from the report, budget included', () => {
+    const ctx = extractRatioContext(report)!
+    expect(ctx.incomeActual).toBe(528415.71)
+    expect(ctx.incomeBudget).toBe(450000)
+  })
+
+  it('carries only revenue lines, and drops budget-only ones', () => {
+    // A budget-only revenue line has no actual, so it can never be a
+    // denominator — including it would offer a zero to divide by.
+    const ctx = extractRatioContext(report)!
+    expect(ctx.revenueLines.map(l => l.account_name)).toEqual(['Canvas Sales'])
+  })
+
+  it('reads a no-budget report as no budget, not as a budget of zero', () => {
+    // Dividing by an absent budget manufactures a 0% driver, which reads as a
+    // plan nobody made.
+    const ctx = extractRatioContext({ ...report, has_budget: false })!
+    expect(ctx.incomeBudget).toBeNull()
+    expect(ctx.revenueLines[0].budget).toBeNull()
+  })
+
+  it('returns null when there is no income figure at all', () => {
+    expect(extractRatioContext({ summary: {} })).toBeNull()
+    expect(extractRatioContext(null)).toBeNull()
   })
 })

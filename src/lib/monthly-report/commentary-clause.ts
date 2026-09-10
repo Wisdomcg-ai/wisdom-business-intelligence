@@ -157,3 +157,59 @@ export function pickDenominator(
 
   return { label: 'income', actual: totals.actual, budget: totals.budget }
 }
+
+/**
+ * The denominators, taken from the report the commentary sits inside.
+ *
+ * Deliberately extracted from the generated report rather than re-derived from
+ * the database. The commentary's percentage has to be a share of the SAME
+ * income the statement above it prints — and the report's own budget has
+ * already been through the resolver, the effective-date stitching and the
+ * account-code matching. Reading the numbers back out is the only way to
+ * guarantee the two agree; a second derivation is a second answer waiting to
+ * happen.
+ */
+export interface RatioContext {
+  incomeActual: number
+  incomeBudget: number | null
+  revenueLines: { account_name: string; actual: number; budget: number | null }[]
+}
+
+/** Structural, not the app's GeneratedReport, so this stays server-safe. */
+export interface ReportShapeForRatios {
+  summary?: { revenue?: { actual?: number; budget?: number } }
+  sections?: readonly {
+    category?: string
+    lines?: readonly { account_name?: string; actual?: number; budget?: number; is_budget_only?: boolean }[]
+  }[]
+  has_budget?: boolean
+}
+
+export function extractRatioContext(report: ReportShapeForRatios | null | undefined): RatioContext | null {
+  const incomeActual = report?.summary?.revenue?.actual
+  if (typeof incomeActual !== 'number' || !Number.isFinite(incomeActual)) return null
+
+  // `has_budget` is the report's own answer to "was there a budget at all". A
+  // budget of 0 on a report that HAS one is a real zero; on a report that does
+  // not, it is an absence, and dividing by it would manufacture a driver of 0%.
+  const rawBudget = report?.summary?.revenue?.budget
+  const incomeBudget =
+    report?.has_budget === false || typeof rawBudget !== 'number' || !Number.isFinite(rawBudget)
+      ? null
+      : rawBudget
+
+  const revenueLines: RatioContext['revenueLines'] = []
+  for (const section of report?.sections ?? []) {
+    if (section?.category !== 'Revenue') continue
+    for (const line of section.lines ?? []) {
+      if (!line?.account_name || line.is_budget_only) continue
+      revenueLines.push({
+        account_name: line.account_name,
+        actual: typeof line.actual === 'number' ? line.actual : 0,
+        budget: incomeBudget === null || typeof line.budget !== 'number' ? null : line.budget,
+      })
+    }
+  }
+
+  return { incomeActual, incomeBudget, revenueLines }
+}

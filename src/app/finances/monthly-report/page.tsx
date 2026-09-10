@@ -50,6 +50,7 @@ import { useAccountMappings } from './hooks/useAccountMappings'
 import { useReconciliation } from './hooks/useReconciliation'
 import { useReportTemplates } from './hooks/useReportTemplates'
 import { useBalanceSheet } from './hooks/useBalanceSheet'
+import { extractRatioContext } from '@/lib/monthly-report/commentary-clause'
 import { collectCommentaryTriggers, type TriggerLine } from './utils/commentary-triggers'
 import { useConsolidatedBalanceSheet } from './hooks/useConsolidatedBalanceSheet'
 import { useConsolidatedCashflow } from './hooks/useConsolidatedCashflow'
@@ -682,9 +683,15 @@ export default function MonthlyReportPage() {
       // consumes the reasons via the separate `trigger_reasons` map keyed
       // by account_name (avoids redundant payload + keeps line shape
       // backward-compatible with pre-71-04 callers).
+      // The reason travels in the separate `trigger_reasons` map; the FIGURES
+      // travel with the line, because the commentary's ratio has to be a share
+      // of the same numbers the statement above it prints. Re-deriving them
+      // server-side would be a second answer waiting to disagree with the first.
       const stripReason = (l: TriggerLine) => ({
         account_name: l.account_name,
         xero_account_name: l.xero_account_name,
+        actual: l.actual,
+        budget: l.budget,
       })
 
       const triggers = collectCommentaryTriggers(reportData, balanceSheet)
@@ -727,6 +734,7 @@ export default function MonthlyReportPage() {
           favourable_expense_lines: triggers.favourable_expense_lines.map(stripReason),
           bs_lines: triggers.bs_lines.map(stripReason),
           trigger_reasons,
+          ratio_context: extractRatioContext(reportData),
         }),
       })
 
@@ -1324,6 +1332,32 @@ export default function MonthlyReportPage() {
 
   const handleExportPDF = async () => {
     if (!report) return
+
+    // The pack must not be built from a report measured against a budget the
+    // client is no longer on.
+    //
+    // Switching budget_source regenerates nothing — the setting is read at
+    // Generate time and nowhere else — and exporting only PATCHes the
+    // snapshot's timestamp. So a coach who switches Urban Road onto its
+    // approved budget and then exports gets a pack built against the FORECAST,
+    // stamped with today's date, with no indication anywhere. It happened: the
+    // August 2026 pack shipped with Budget = Actual on every line, because the
+    // forecast's closed months carry actuals, and with Contractors and Wages at
+    // $0 budget because those accounts do not exist in the forecast under those
+    // names.
+    //
+    // Refusing is the only honest option. A warning would be read past, and
+    // silently regenerating would discard whatever the coach has on screen.
+    const settingsSource = settings?.budget_source ?? 'forecast'
+    const reportSource = report.budget_source ?? null
+    if (settingsSource === 'budget_version' && reportSource !== 'budget_version') {
+      toast.error(
+        'This report was measured against the forecast, not the approved budget. Regenerate before exporting.',
+        { duration: 10000 },
+      )
+      return
+    }
+
     setIsExporting(true)
     toast.info('Preparing PDF...')
 

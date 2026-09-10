@@ -36,6 +36,7 @@ import { calculateBoundingBox, normalizeLayoutPlacements } from '../utils/grid-h
 import { WIDGET_METHOD_MAP } from './widget-renderer'
 import { assessBalanceSheetForPdf, type BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
 import { statementYardstick, wagesYardstick, wagesEmployeeYardstick, noBudgetNote } from '../utils/budget-yardstick'
+import { withoutSilentLines, withoutSilentFullYearLines } from '@/lib/monthly-report/empty-lines'
 import {
   hasApprovedBudget,
   formatApprovedAnnual,
@@ -1251,7 +1252,11 @@ export class MonthlyReportPDFService {
       }])
       currentBodyIdx++
 
-      for (const line of section.lines) {
+      // A Xero chart of accounts accumulates, and every dormant account was
+      // printing a full row of zeros — three of the pack's most-read pages were
+      // mostly Commercial Sales, Furniture Sales and Canvas Jondo at $0/$0/$0.
+      // Display only: the lines stay in the payload and the snapshot.
+      for (const line of withoutSilentLines(section.lines)) {
         tableData.push(this.buildLineRow(line, settings))
         currentBodyIdx++
       }
@@ -1271,9 +1276,19 @@ export class MonthlyReportPDFService {
         const amber = { fillColor: [255, 251, 235] as number[], textColor: [120, 53, 15] as number[], fontSize: 6.5, cellPadding: 2 }
         for (const l of commentaryLines) {
           const entry = this.options.commentary![l.account_name]
-          const vendors = (entry.vendor_summary || [])
-            .map(v => `${v.vendor} ($${v.amount.toLocaleString()})`)
-            .join(', ')
+          // The facts come from the generated draft, not from re-joining
+          // vendor_summary here. The draft is already converted out of foreign
+          // currency, capped at three suppliers with a stated remainder, and
+          // renders credits as "less X credit" — none of which a join can do.
+          // Re-joining is what turned Contractors excl. Artists (16 vendors)
+          // and IT Costs Software (19) into a wall of 6.5pt text.
+          //
+          // A draft carrying warnings is suppressed outright: those fire when a
+          // line could not be converted or when the suppliers sum past their own
+          // account, and a pack must not quote a list we already know is wrong.
+          // The coach's prose still prints — it is the half that was never in
+          // doubt.
+          const vendors = (entry.draft_warnings?.length ?? 0) > 0 ? '' : (entry.draft_note ?? '')
           const note = entry.coach_note ? `${vendors ? ' — ' : ''}${entry.coach_note}` : ''
           specialRowIndices.add(currentBodyIdx)
           tableData.push([
@@ -1418,7 +1433,7 @@ export class MonthlyReportPDFService {
       }])
       currentBodyIdx++
 
-      for (const line of section.lines) {
+      for (const line of withoutSilentLines(section.lines)) {
         const row: any[] = [
           line.is_budget_only ? `${line.account_name} (budget only)` : line.account_name,
           this.budgetCell(line.ytd_budget),
@@ -2329,7 +2344,7 @@ export class MonthlyReportPDFService {
       }])
       currentBodyIdx++
 
-      for (const line of section.lines) {
+      for (const line of withoutSilentFullYearLines(section.lines)) {
         const row: any[] = [line.account_name]
         for (const md of line.months) {
           row.push(md.source === 'actual' ? this.fmtCurrency(md.actual) : fcst(md.budget))
