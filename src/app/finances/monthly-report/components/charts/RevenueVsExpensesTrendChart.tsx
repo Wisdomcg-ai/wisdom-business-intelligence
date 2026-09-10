@@ -6,6 +6,7 @@ import {
 import type { FullYearReport } from '../../types'
 import { CHART_COLORS } from './chart-colors'
 import { fmtCurrency, fmtAxisTick, getMonthLabel, ChartCard } from './chart-utils'
+import { hasForecastBudget, forwardSeriesAbsentNote } from '../../utils/full-year-approved'
 
 export interface RevenueVsExpensesDataPoint {
   month: string
@@ -15,13 +16,26 @@ export interface RevenueVsExpensesDataPoint {
   source: 'actual' | 'forecast'
 }
 
+/**
+ * Actual months always; forecast months only when there IS a forecast.
+ *
+ * The forecast half of every point reads `subtotal.months[i].budget`, which is
+ * 0 for the five clients with no effective FY2027 forecast — so the chart drew
+ * revenue AND expenses falling to zero from the first open month, which reads
+ * as a business stopping. An absence is not a projection: the series ends at
+ * the last closed month and the page says why.
+ */
 export function transformRevenueVsExpensesData(report: FullYearReport): RevenueVsExpensesDataPoint[] {
+  const forward = hasForecastBudget(report)
   const revSection = report.sections.find(s => s.category === 'Revenue')
   const cogsSection = report.sections.find(s => s.category === 'Cost of Sales')
   const opexSection = report.sections.find(s => s.category === 'Operating Expenses')
   const otherIncSection = report.sections.find(s => s.category === 'Other Income')
   const otherExpSection = report.sections.find(s => s.category === 'Other Expenses')
 
+  // Mapped over the WHOLE year first: `i` indexes the section month arrays, and
+  // filtering before the map would misalign them the moment a closed month is
+  // not the first one. The forward months are dropped after.
   return report.gross_profit.months.map((gpMonth, i) => {
     const isActual = gpMonth.source === 'actual'
     const revActual = (revSection?.subtotal.months[i]?.actual || 0) + (otherIncSection?.subtotal.months[i]?.actual || 0)
@@ -38,7 +52,7 @@ export function transformRevenueVsExpensesData(report: FullYearReport): RevenueV
       expenses: isActual ? (cogsActual + opexActual) : (cogsBudget + opexBudget),
       source: gpMonth.source,
     }
-  })
+  }).filter((point) => forward || point.source === 'actual')
 }
 
 function CustomTooltip({ active, payload, label }: any) {
@@ -75,6 +89,7 @@ interface Props {
 
 export default function RevenueVsExpensesTrendChart({ fullYearReport }: Props) {
   const data = transformRevenueVsExpensesData(fullYearReport)
+  const forwardAbsentNote = forwardSeriesAbsentNote(fullYearReport)
   if (data.length === 0) return null
 
   // Find the boundary between actual and forecast
@@ -84,6 +99,11 @@ export default function RevenueVsExpensesTrendChart({ fullYearReport }: Props) {
 
   return (
     <ChartCard title="Revenue vs Expenses Trend" subtitle="Monthly revenue and total expenses with profit gap" tooltip="Shows your total income vs total costs each month. The gap between the two lines is your profit. A widening gap means profitability is improving; if the lines cross, you're making a loss that month.">
+      {forwardAbsentNote && (
+        <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {forwardAbsentNote}
+        </p>
+      )}
       <ResponsiveContainer width="100%" height={300}>
         <AreaChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />

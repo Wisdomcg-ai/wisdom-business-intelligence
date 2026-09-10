@@ -116,3 +116,26 @@ export function forecastAbsentNote(report: FullYearReport | null | undefined): s
     ? `No forecast exists for ${fy}; the approved budget is the only yardstick on this page, and Projected is actuals to date.`
     : `No forecast exists for ${fy}, so this page has no yardstick to measure against and Projected is actuals to date.`
 }
+
+/**
+ * The line a FORWARD-LOOKING chart prints when there is nothing to project.
+ *
+ * Different sentence from forecastAbsentNote, which is about a table's Forecast
+ * and Projected columns. Three charts — break-even, revenue vs expenses, team
+ * cost — read `subtotal.months[i].budget` for every month the FY has not
+ * reached, with no availability guard. With no effective forecast that value is
+ * 0, so the pack plotted revenue, expenses and wages all collapsing to zero
+ * from September onward, and drew a break-even line derived from the same
+ * zeros. Live for Distinct Directions, Attaquer, IICT, Precision and Sydney
+ * Pressed Metal.
+ *
+ * The answer is not to withhold the page — actuals to date are a real
+ * comparison — but to stop the series at the last closed month and say why,
+ * which is what the analysis charts already do when their middle series is
+ * absent.
+ */
+export function forwardSeriesAbsentNote(report: FullYearReport | null | undefined): string | null {
+  if (!report || hasForecastBudget(report)) return null
+  const fy = report.fiscal_year ? `FY${report.fiscal_year}` : 'this fiscal year'
+  return `No forecast exists for ${fy}, so this chart stops at the last closed month — no forward series is shown.`
+}

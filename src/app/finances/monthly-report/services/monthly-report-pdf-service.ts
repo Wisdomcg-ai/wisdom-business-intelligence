@@ -42,6 +42,7 @@ import {
   hasForecastBudget,
   formatForecastValue,
   forecastAbsentNote,
+  forwardSeriesAbsentNote,
   VALUE_ABSENT,
 } from '../utils/full-year-approved'
 import type { BalanceSheetCompare, BalanceSheetData } from '../types'
@@ -2526,7 +2527,7 @@ export class MonthlyReportPDFService {
 
   private addBreakEvenChartPage(): void {
     const fy = this.options.fullYearReport!
-    const { data, summary } = transformBreakEvenData(fy)
+    const { data, summary, forwardAbsentNote } = transformBreakEvenData(fy)
     if (data.length === 0) return
     this.addPage('landscape')
 
@@ -2538,6 +2539,14 @@ export class MonthlyReportPDFService {
     this.doc.setFont('helvetica', 'normal')
     this.doc.text('Revenue needed to cover all costs each month', this.margin, this.yPosition)
     this.yPosition += 8
+
+    // Same series, same sentence as the browser tab: with no forecast the
+    // chart stops at the last closed month rather than drawing revenue and the
+    // break-even line falling to zero together.
+    if (forwardAbsentNote) {
+      this.drawNote(forwardAbsentNote, undefined, { fontSize: 9, color: [146, 96, 20] })
+      this.yPosition += 1.5
+    }
 
     // KPI row
     const isAbove = summary.marginOfSafety >= 0
@@ -2652,6 +2661,12 @@ export class MonthlyReportPDFService {
     this.doc.setFont('helvetica', 'normal')
     this.doc.text('Monthly revenue and total expenses with profit gap', this.margin, this.yPosition)
     this.yPosition += 10
+
+    const rveAbsentNote = forwardSeriesAbsentNote(fy)
+    if (rveAbsentNote) {
+      this.drawNote(rveAbsentNote, undefined, { fontSize: 9, color: [146, 96, 20] })
+      this.yPosition += 1.5
+    }
 
     // Legend
     let legendX = this.margin
@@ -3043,6 +3058,12 @@ export class MonthlyReportPDFService {
     this.doc.setFont('helvetica', 'normal')
     this.doc.text('Monthly wages spend vs percentage of revenue', this.margin, this.yPosition)
     this.yPosition += 10
+
+    const teamAbsentNote = forwardSeriesAbsentNote(fy)
+    if (teamAbsentNote) {
+      this.drawNote(teamAbsentNote, undefined, { fontSize: 9, color: [146, 96, 20] })
+      this.yPosition += 1.5
+    }
 
     const headers = ['Month', 'Wages', 'Revenue', '% of Revenue']
     const tableData = data.map(d => [
