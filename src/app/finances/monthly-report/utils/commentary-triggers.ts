@@ -135,9 +135,17 @@ export function collectCommentaryTriggers(
         if (isFxAccount(line.account_name)) continue
 
         // (2) Revenue under-budget — shortfall ≥ $500 OR ≥ 10% of budget
-        // Convention: variance_amount = budget - actual. POSITIVE variance on
-        // a revenue line means actual < budget (a shortfall).
-        const shortfall = line.variance_amount
+        //
+        // The sign is the opposite of what this used to assume, and the comment
+        // that asserted otherwise is why it went unnoticed. calcVariance
+        // (src/lib/monthly-report/shared.ts:46) writes
+        //   amount = isRevenue ? actual - budget : budget - actual
+        // so a POSITIVE variance on a revenue line is a BEAT, not a shortfall.
+        // Reading it the other way fired commentary on every revenue account
+        // that did well and on none that missed: Urban Road's August tagged
+        // NZ Sales (+$48,338) "under budget" while Framed Prints (-$9,043),
+        // USA Sales (-$6,678) and Shipping (-$5,421) triggered nothing.
+        const shortfall = -line.variance_amount
         if (shortfall <= 0) continue // revenue beat / met budget — not a trigger
 
         const dollarFires = shortfall >= REVENUE_SHORTFALL_DOLLAR
