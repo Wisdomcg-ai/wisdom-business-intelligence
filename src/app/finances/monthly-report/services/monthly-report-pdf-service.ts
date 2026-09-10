@@ -3325,10 +3325,17 @@ export class MonthlyReportPDFService {
   }
 
   /**
-   * WD.1 — one landscape page of 12 monthly bar groups: Actual, Budget,
+   * WD.1 — one landscape page of 12 monthly bar groups: Actual, the yardstick,
    * Last-Year Actual. Actual bars stop at the last completed month (null
-   * months draw no bar, not a zero bar); budget and prior-year run all 12 —
-   * matching the Calxa chart this replaces.
+   * months draw no bar, not a zero bar); the other two run all 12 — matching
+   * the Calxa chart this replaces.
+   *
+   * The middle series names itself. It is the approved budget for a client on
+   * the budget store and the forecast for everyone else (see
+   * analysis-chart-data), and this page sits directly above a Budget-vs-Actual
+   * table measured against the same thing — a legend saying "Budget" over the
+   * forecast, one page above a table holding the client to the approved
+   * budget, is two yardsticks under one word.
    */
   private addAnalysisChartPage(section: AnalysisChartSection, titleOverride?: string): void {
     const fy = this.options.fullYearReport
@@ -3345,13 +3352,27 @@ export class MonthlyReportPDFService {
     this.doc.setFontSize(9)
     this.doc.setFont('helvetica', 'normal')
     this.doc.setTextColor(107, 114, 128)
-    this.doc.text('Actuals vs Budget vs Last Year', this.margin, this.yPosition)
+    this.doc.text(
+      data.budgetLabel ? `Actuals vs ${data.budgetLabel} vs Last Year` : 'Actuals vs Last Year',
+      this.margin, this.yPosition,
+    )
     this.yPosition += 8
 
-    // Legend
+    // With no yardstick at all the page is still worth printing — actuals
+    // against last year is a real comparison — but the reader has to be told
+    // that the missing middle bar is an absence and not a run of zeros.
+    if (data.budgetAbsentNote) {
+      this.doc.setTextColor(146, 96, 20)
+      this.doc.text(data.budgetAbsentNote, this.margin, this.yPosition)
+      this.doc.setTextColor(107, 114, 128)
+      this.yPosition += 6
+    }
+
+    // Legend — the middle entry drops out entirely when there is no series,
+    // rather than standing over an empty column.
     const SERIES: Array<{ label: string; rgb: [number, number, number] }> = [
       { label: 'Actuals', rgb: [34, 197, 94] },
-      { label: 'Budget', rgb: [251, 191, 36] },
+      ...(data.budgetLabel ? [{ label: data.budgetLabel, rgb: [251, 191, 36] as [number, number, number] }] : []),
       { label: 'Last Year', rgb: [59, 130, 246] },
     ]
     let legendX = this.margin
@@ -3373,7 +3394,7 @@ export class MonthlyReportPDFService {
     const chartWidth = chartRight - chartLeft
 
     // Negative months (rebate-heavy COGS, contra revenue) get a floor.
-    const minRaw = Math.min(0, ...data.months.flatMap((m) => [m.actual ?? 0, m.budget, m.priorYear]))
+    const minRaw = Math.min(0, ...data.months.flatMap((m) => [m.actual ?? 0, m.budget ?? 0, m.priorYear]))
     const maxVal = data.maxValue * 1.08
     const minVal = minRaw * 1.08
     const range = maxVal - minVal || 1
@@ -3393,13 +3414,15 @@ export class MonthlyReportPDFService {
       this.doc.text(this.fmtCurrency(tick), chartLeft - 2, y + 1.5, { align: 'right' })
     }
 
-    // Bars: 12 groups × 3 series
+    // Bars: 12 groups × the series that exist
     const groupWidth = chartWidth / data.months.length
     const barWidth = Math.min(6, (groupWidth * 0.72) / SERIES.length)
     const zeroY = yFor(0)
     data.months.forEach((m, i) => {
       const groupLeft = chartLeft + i * groupWidth + (groupWidth - barWidth * SERIES.length) / 2
-      const values: Array<number | null> = [m.actual, m.budget, m.priorYear]
+      const values: Array<number | null> = data.budgetLabel
+        ? [m.actual, m.budget, m.priorYear]
+        : [m.actual, m.priorYear]
       values.forEach((v, si) => {
         if (v === null || v === 0) return
         const x = groupLeft + si * barWidth
