@@ -211,13 +211,20 @@ async function postHandler(request: Request) {
       unreconciled_count: unreconciled_count || 0,
       report_data,
       summary,
-      commentary: commentary || null,
       generated_by: generated_by || null,
       generated_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
     if (coach_notes !== undefined) {
       row.coach_notes = coach_notes || null
+    }
+    // Same rule for commentary — an absent key preserves, an explicit null
+    // clears. This used to be an unconditional `commentary: commentary || null`,
+    // which meant any save that did not happen to carry commentary BLANKED a
+    // month of coach notes. Clearing every note is still expressible: the UI
+    // sends `{}` (or a note map with empty strings), never `undefined`.
+    if (commentary !== undefined) {
+      row.commentary = commentary || null
     }
     const { data: snapshot, error } = await supabase
       .from('monthly_report_snapshots')

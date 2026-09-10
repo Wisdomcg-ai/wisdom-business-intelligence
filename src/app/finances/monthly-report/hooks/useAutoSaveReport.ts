@@ -13,6 +13,7 @@
 //   - Watches commentary ONLY — never report.report_data (Pitfall 6 / Phase 35 D-17)
 //   - Init guard via stateVersionRef (mirrors ForecastWizardV4 line 1196)
 //   - Month-change clears pending queue + resets status (Pitfall 2)
+//   - Month-mismatch guard: NEVER writes a month other than the one on screen
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -36,6 +37,18 @@ export interface SaveSnapshotOptions {
 export interface UseAutoSaveReportArgs {
   report: GeneratedReport | null
   commentary: VarianceCommentary | undefined
+  /**
+   * The month the coach currently has on screen (YYYY-MM).
+   *
+   * Required, and load-bearing: `saveSnapshot` derives business_id and
+   * report_month from the REPORT payload, so whenever `report` lags
+   * `selectedMonth` an auto-save would POST to the wrong month. That window is
+   * real — `handleMonthChange` flips selectedMonth and clears commentary
+   * synchronously, then awaits the snapshot GET, and `loadSnapshot` only
+   * replaces `report` when the new month actually has a saved snapshot. Every
+   * fire path below refuses to write while the two disagree.
+   */
+  selectedMonth: string
   userId: string | null
   /** true when monthly_report_snapshots.status === 'final' (D-06 Finalise lock) */
   isLocked: boolean
@@ -73,6 +86,8 @@ export function useAutoSaveReport(
   reportRef.current = args.report
   const commentaryRef = useRef(args.commentary)
   commentaryRef.current = args.commentary
+  const selectedMonthRef = useRef(args.selectedMonth)
+  selectedMonthRef.current = args.selectedMonth
   const userIdRef = useRef(args.userId)
   userIdRef.current = args.userId
   const isLockedRef = useRef(args.isLocked)
@@ -117,11 +132,23 @@ export function useAutoSaveReport(
     })
   }, [])
 
-  // Run the 3-attempt exponential backoff. Returns true on mid-retry success,
-  // false if all attempts failed (caller transitions status accordingly).
+  // The single rule this hook enforces about WHICH month it writes: the report
+  // in hand must be the month on screen. Checked at every fire point (schedule,
+  // flush, retryNow, performSave and each backoff attempt) because the month
+  // can move at any of them — mid-debounce, mid-flight, or mid-backoff.
+  const targetsMonthOnScreen = useCallback((): boolean => {
+    const reportNow = reportRef.current
+    if (!reportNow) return false
+    return reportNow.report_month === selectedMonthRef.current
+  }, [])
+
+  // Run the 3-attempt exponential backoff. Returns true when the save is done
+  // with (a mid-retry 2xx, or the month moved out from under it), false if all
+  // attempts failed (caller transitions status + toasts accordingly).
   const runRetries = useCallback(async (): Promise<boolean> => {
     const reportNow = reportRef.current
     if (!reportNow) return false
+    if (!targetsMonthOnScreen()) return true
 
     for (let attempt = 1; attempt <= 3; attempt++) {
       if (mountedRef.current) {
@@ -133,6 +160,14 @@ export function useAutoSaveReport(
       // Refresh refs on each attempt — month/commentary may have shifted.
       const reportForAttempt = reportRef.current
       if (!reportForAttempt) return false
+      // Month moved while we were sleeping. Abandon quietly: the coach is
+      // looking at a different month, so neither a write to the old one nor a
+      // terminal-failure toast about it is wanted. Returning true suppresses
+      // the toast; the month-change effect below owns the status reset.
+      if (!targetsMonthOnScreen()) {
+        if (mountedRef.current) setStatus({ kind: 'idle' })
+        return true
+      }
       try {
         await saveSnapshotRef.current(reportForAttempt, {
           status: 'draft',
@@ -149,7 +184,7 @@ export function useAutoSaveReport(
       }
     }
     return false
-  }, [sleep])
+  }, [sleep, targetsMonthOnScreen])
 
   // Core save routine — guarded, single-flight, queue-aware, retry-aware.
   const performSave = useCallback(async (): Promise<void> => {
@@ -157,6 +192,11 @@ export function useAutoSaveReport(
     if (isLockedRef.current) return
     const reportNow = reportRef.current
     if (!reportNow) return
+    // Never write a month the coach is not looking at. Without this, a
+    // debounce that fires during a month change POSTs the PREVIOUS month's
+    // report_month with the new month's (empty) commentary — rewriting a
+    // settled month as a draft with its coach notes blanked.
+    if (!targetsMonthOnScreen()) return
     // Phase B (CFO-only clients): consolidation reports now save through the
     // same snapshot path — the old guard existed only because saveSnapshot
     // used to throw for them.
@@ -202,7 +242,7 @@ export function useAutoSaveReport(
         pendingRef.current = false
       }
     }
-  }, [runRetries])
+  }, [runRetries, targetsMonthOnScreen])
 
   // 500ms debounced fire — D-02.
   const debouncedFire = useDebouncedCallback(() => {
@@ -212,24 +252,28 @@ export function useAutoSaveReport(
   const schedule = useCallback(() => {
     if (isLockedRef.current) return
     if (!reportRef.current) return
+    // Do not even arm the debounce for a month that is no longer on screen.
+    if (!targetsMonthOnScreen()) return
     debouncedFire()
-  }, [debouncedFire])
+  }, [debouncedFire, targetsMonthOnScreen])
 
   const flushImmediately = useCallback(() => {
     if (isLockedRef.current) return
     if (!reportRef.current) return
+    if (!targetsMonthOnScreen()) return
     // D-01 (blur): cancel pending debounce by replacing it with an
     // immediate fire. The performSave path is single-flight-safe so even
     // if a debounce fire races, only one POST goes out.
     void performSave()
-  }, [performSave])
+  }, [performSave, targetsMonthOnScreen])
 
   const retryNow = useCallback(() => {
     if (isLockedRef.current) return
     if (!reportRef.current) return
+    if (!targetsMonthOnScreen()) return
     if (mountedRef.current) setStatus({ kind: 'saving' })
     void performSave()
-  }, [performSave])
+  }, [performSave, targetsMonthOnScreen])
 
   // ------------------------------------------------------------------
   // Watched-state effect — Pitfall 6: commentary ONLY, never report_data.
@@ -271,10 +315,16 @@ export function useAutoSaveReport(
   // When the coach switches months, drop any pending queue + retry timer
   // and reset status. Re-arm the init guard so the post-load setReport
   // doesn't trigger a save.
+  //
+  // Keyed on `selectedMonth`, NOT `report.report_month`. The report's month is
+  // the wrong signal: it lags the coach's click by a network round-trip, and
+  // when the new month has no saved snapshot it never changes at all — so this
+  // guard used to sleep through exactly the transition it exists to cover.
+  // selectedMonth flips in the same render as the commentary reset.
   // ------------------------------------------------------------------
   const lastMonthRef = useRef<string | undefined>(undefined)
   useEffect(() => {
-    const month = args.report?.report_month
+    const month = args.selectedMonth
     if (lastMonthRef.current !== undefined && month !== lastMonthRef.current) {
       pendingRef.current = false
       if (retryTimeoutRef.current) {
@@ -285,7 +335,7 @@ export function useAutoSaveReport(
       stateVersionRef.current = 0
     }
     lastMonthRef.current = month
-  }, [args.report?.report_month])
+  }, [args.selectedMonth])
 
   return { status, schedule, flushImmediately, retryNow }
 }

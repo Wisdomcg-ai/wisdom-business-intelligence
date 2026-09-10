@@ -386,22 +386,30 @@ export function useMonthlyReport(businessId: string) {
           ...reportData,
           sections: serializeReportSections(reportData.sections),
         }
+        // `commentary` is sent ONLY when the caller actually has one. It used
+        // to go as `options?.commentary || null`, so a save made while
+        // commentary was undefined (mid month-change, or a load that had not
+        // landed) told the route to blank the month's notes. Absent now means
+        // "don't touch it"; clearing is expressed as an explicit `{}`.
+        const payload: Record<string, unknown> = {
+          business_id: reportData.business_id,
+          report_month: reportData.report_month,
+          fiscal_year: reportData.fiscal_year,
+          status: options?.status || (reportData.is_draft ? 'draft' : 'final'),
+          is_draft: options?.status === 'final' ? false : reportData.is_draft,
+          unreconciled_count: reportData.unreconciled_count,
+          report_data: serializedReportData,
+          summary: reportData.summary,
+          coach_notes: options?.coachNotes,
+          generated_by: options?.generatedBy,
+        }
+        if (options?.commentary !== undefined) {
+          payload.commentary = options.commentary
+        }
         const res = await fetch('/api/monthly-report/snapshot', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            business_id: reportData.business_id,
-            report_month: reportData.report_month,
-            fiscal_year: reportData.fiscal_year,
-            status: options?.status || (reportData.is_draft ? 'draft' : 'final'),
-            is_draft: options?.status === 'final' ? false : reportData.is_draft,
-            unreconciled_count: reportData.unreconciled_count,
-            report_data: serializedReportData,
-            summary: reportData.summary,
-            coach_notes: options?.coachNotes,
-            generated_by: options?.generatedBy,
-            commentary: options?.commentary || null,
-          }),
+          body: JSON.stringify(payload),
         })
 
         const data = await res.json()
