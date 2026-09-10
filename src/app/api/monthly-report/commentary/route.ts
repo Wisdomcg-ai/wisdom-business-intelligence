@@ -8,6 +8,7 @@ import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { extractVendorInfo, createVendorKey } from '@/lib/utils/vendor-normalization'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import * as Sentry from '@sentry/nextjs'
+import { toBaseAmount } from '@/lib/monthly-report/commentary-money'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 import { z } from 'zod'
@@ -56,14 +57,21 @@ interface VendorTransaction {
   date: string
   vendor: string
   context: string | null
+  /** Signed, in the ORGANISATION's currency. Negative = a credit note. */
   amount: number
   type: 'invoice' | 'bank'
+  /** False when the source document was foreign and carried no exchange rate. */
+  converted?: boolean
+  /** The document's currency, when it is not the organisation's. */
+  sourceCurrency?: string
 }
 
 interface VendorSummary {
   vendor: string
   amount: number
   transactions: VendorTransaction[]
+  converted?: boolean
+  sourceCurrency?: string
 }
 
 function sleep(ms: number): Promise<void> {
@@ -253,6 +261,10 @@ async function postHandler(request: Request) {
 
     const accessToken = tokenResult.accessToken
     const tenantId = connection.tenant_id
+    // The currency the P&L is stated in. Every supplier amount is converted into
+    // it before it is quoted, because the commentary sits underneath a statement
+    // line and the two have to be the same money.
+    const baseCurrency: string | null = connection.functional_currency ?? null
     const xeroHeaders = {
       'Authorization': `Bearer ${accessToken}`,
       'xero-tenant-id': tenantId,
@@ -390,16 +402,32 @@ async function postHandler(request: Request) {
       // B2 (Phase 71-01): key by createVendorKey(vendor) so a budgeted vendor
       // ("Stripe Au") matches an extracted Xero vendor ("STRIPE AU"). Preserve
       // the human display name on first insert for UI rendering.
-      const vendorData = new Map<string, { display_name: string; total: number; transactions: VendorTransaction[] }>()
+      const vendorData = new Map<string, { display_name: string; total: number; transactions: VendorTransaction[]; converted?: boolean; sourceCurrency?: string }>()
 
+      // A vendor's total EXCLUDES any line we could not convert: a foreign
+      // amount added to a dollar total is not a total, it is a wrong number
+      // that looks right. The unconvertible line still rides along on
+      // `transactions` so the coach can see it and chase the rate.
       function addToVendor(vendor: string, txn: VendorTransaction) {
         const key = createVendorKey(vendor)
+        const contribution = txn.converted === false ? 0 : txn.amount
         const existing = vendorData.get(key)
         if (existing) {
-          existing.total += txn.amount
+          existing.total += contribution
           existing.transactions.push(txn)
+          if (txn.converted === false) {
+            existing.converted = false
+            existing.sourceCurrency = existing.sourceCurrency ?? txn.sourceCurrency
+          }
         } else {
-          vendorData.set(key, { display_name: vendor, total: txn.amount, transactions: [txn] })
+          vendorData.set(key, {
+            display_name: vendor,
+            total: contribution,
+            transactions: [txn],
+            ...(txn.converted === false
+              ? { converted: false, sourceCurrency: txn.sourceCurrency }
+              : {}),
+          })
         }
       }
 
@@ -410,13 +438,15 @@ async function postHandler(request: Request) {
         for (const li of (inv.LineItems || [])) {
           if (li.AccountCode === accountCode) {
             const info = extractVendorInfo(contactName, li.Description || '')
-            const amount = Math.abs(li.LineAmount || 0)
+            const converted = toBaseAmount(li.LineAmount, inv, baseCurrency)
             addToVendor(info.vendor, {
               date: dateStr,
               vendor: info.vendor,
               context: info.context,
-              amount,
+              amount: converted.amount,
               type: 'invoice',
+              converted: converted.converted,
+              sourceCurrency: converted.sourceCurrency,
             })
           }
         }
@@ -429,13 +459,15 @@ async function postHandler(request: Request) {
         for (const li of (bt.LineItems || [])) {
           if (li.AccountCode === accountCode) {
             const info = extractVendorInfo(contactName, li.Description || bt.Reference || '')
-            const amount = Math.abs(li.LineAmount || 0)
+            const converted = toBaseAmount(li.LineAmount, bt, baseCurrency)
             addToVendor(info.vendor, {
               date: dateStr,
               vendor: info.vendor,
               context: info.context,
-              amount,
+              amount: converted.amount,
               type: 'bank',
+              converted: converted.converted,
+              sourceCurrency: converted.sourceCurrency,
             })
           }
         }
@@ -447,9 +479,15 @@ async function postHandler(request: Request) {
         .map(data => ({
           vendor: data.display_name,
           amount: Math.round(data.total),
-          transactions: data.transactions.sort((a, b) => b.amount - a.amount),
+          transactions: data.transactions.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
+          ...(data.converted === false
+            ? { converted: false, sourceCurrency: data.sourceCurrency }
+            : {}),
         }))
-        .sort((a, b) => b.amount - a.amount)
+        // Largest FIRST by magnitude — a $1,571 credit is a bigger part of the
+        // story than a $200 charge, and sorting on the signed value would bury
+        // every credit at the bottom under the rollup.
+        .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
 
       // Group small vendors (< $100) as "Others"
       const OTHERS_THRESHOLD = 100
@@ -458,7 +496,11 @@ async function postHandler(request: Request) {
       let othersTransactions: VendorTransaction[] = []
 
       for (const entry of sorted) {
-        if (entry.amount >= OTHERS_THRESHOLD) {
+        // Magnitude, not signed value. On the signed test every credit is below
+        // the floor, so it would be swallowed into "Others" — where it silently
+        // reduces a total the reader takes for charges, and the explanatory
+        // "less X credit" is lost.
+        if (Math.abs(entry.amount) >= OTHERS_THRESHOLD || entry.converted === false) {
           significant.push(entry)
         } else {
           othersTotal += entry.amount
