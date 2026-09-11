@@ -317,4 +317,65 @@ describe('requireSectionPermission', () => {
     expect(verdict.allow).toBe(true)  // because `finances` key is MISSING, defaults to true
     expect(verdict.reason).toBe('permission_granted')
   })
+
+  // ── Dual-ID: businessId passed as a business_profiles.id ───────────────────
+  // The forecast/cashflow routes pass a business_profiles.id. Without resolution
+  // the helper flags the OWNER and the assigned COACH as not_a_member — the
+  // false positive that blocked enforcing this gate (Sentry WISDOM-BI-E).
+  const PROFILE_ID = 'profile-ccc-333'
+  const REAL_BIZ_ID = 'real-biz-ddd-444'
+
+  it('resolves a business_profiles.id → owner (dual-ID)', async () => {
+    const supabase = buildMockSupabase({
+      businesses: [
+        { data: null, error: null },                  // owner query by profile id → miss
+        { data: { owner_id: USER_ID }, error: null }, // re-read owner by resolved businesses.id
+      ],
+      business_profiles: { data: { business_id: REAL_BIZ_ID }, error: null },
+    })
+
+    const verdict = await requireSectionPermission(supabase, USER_ID, PROFILE_ID, SECTION_KEY)
+
+    expect(verdict.allow).toBe(true)
+    if (verdict.allow) expect(verdict.reason).toBe('owner')
+  })
+
+  it('resolves a business_profiles.id → coach (dual-ID)', async () => {
+    const supabase = buildMockSupabase({
+      businesses: [
+        { data: null, error: null },                           // owner by profile id → miss
+        { data: { owner_id: 'other-owner' }, error: null },    // resolved owner → not this user
+        { data: { assigned_coach_id: USER_ID }, error: null }, // coach on resolved id → match
+      ],
+      business_profiles: { data: { business_id: REAL_BIZ_ID }, error: null },
+      business_users: { data: null, error: null },
+      system_roles: { data: null, error: null },
+    })
+
+    const verdict = await requireSectionPermission(supabase, USER_ID, PROFILE_ID, SECTION_KEY)
+
+    expect(verdict.allow).toBe(true)
+    if (verdict.allow) expect(verdict.reason).toBe('coach')
+  })
+
+  it('resolves a business_profiles.id before the business_users lookup (member finances=false → permission_denied, not not_a_member)', async () => {
+    const supabase = buildMockSupabase({
+      businesses: [
+        { data: null, error: null },                                 // owner by profile id → miss
+        { data: { owner_id: 'other-owner' }, error: null },          // resolved owner → not user
+        { data: { assigned_coach_id: 'other-coach' }, error: null }, // coach on resolved id → no
+      ],
+      business_profiles: { data: { business_id: REAL_BIZ_ID }, error: null },
+      business_users: {
+        data: { role: 'member', status: 'active', section_permissions: { finances: false } },
+        error: null,
+      },
+      system_roles: { data: null, error: null },
+    })
+
+    const verdict = await requireSectionPermission(supabase, USER_ID, PROFILE_ID, SECTION_KEY)
+
+    expect(verdict.allow).toBe(false)
+    if (!verdict.allow) expect(verdict.reason).toBe('permission_denied')
+  })
 })
