@@ -86,10 +86,18 @@ export function packTableStyles(fontSize = 7) {
     theme: 'plain' as const,
     styles: {
       fontSize,
-      cellPadding: { top: 1.8, right: 2, bottom: 1.8, left: 2 },
+      // Tighter than it was, and no rule under each row.
+      //
+      // The reference pack puts NO line between body rows — the eye tracks a
+      // row on its own, and a hairline under every one of forty accounts is
+      // forty horizontal lines competing with the numbers. Dropping them, and
+      // taking half a millimetre off the padding, is most of the difference
+      // between a thirty-page pack and a twenty-six page one carrying the same
+      // figures.
+      cellPadding: { top: 1.3, right: 2, bottom: 1.3, left: 2 },
       textColor: rgb(TEXT),
       lineColor: rgb(RULE),
-      lineWidth: { top: 0, right: 0, bottom: 0.1, left: 0 },
+      lineWidth: { top: 0, right: 0, bottom: 0, left: 0 },
       overflow: 'linebreak' as const,
     },
     headStyles: {
@@ -121,6 +129,11 @@ export function paintNegatives(data: {
 }): void {
   if (data.section !== 'body') return
   const text = (data.cell.text ?? []).join('')
+  // A percentage is never coloured. The dollar variance beside it already
+  // carries the signal, and colouring both doubles the red on the page for no
+  // second fact — the reference pack reddens the figure and leaves the ratio
+  // black. Urban Road's expense page had twice the red it needed.
+  if (text.trim().endsWith('%')) return
   if (text.startsWith('(') && text.endsWith(')')) {
     data.cell.styles.textColor = rgb(NEGATIVE)
   }

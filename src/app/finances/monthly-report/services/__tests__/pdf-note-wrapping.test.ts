@@ -39,11 +39,14 @@ describe('the yardstick note fits the page it is drawn on', () => {
     expect(runs.slice(1).join(' ')).toContain('yardstick')
   })
 
-  it('keeps it on one line where it fits — the landscape statement pages', () => {
+  it('is NOT repeated on the statement pages', () => {
+    // Said once, on the executive summary. Repeating it on all four statement
+    // pages put a developer's sentence in a client's pack four times over;
+    // those pages carry the meaning in their column head instead.
     const doc: any = new MonthlyReportPDFService(budgetStoreReport(), {}).generate()
     const bva = pageContaining(doc, 'Budget vs Actual Detail')
     expect(bva).toBeGreaterThan(0)
-    expect(noteRuns(doc, bva)[0]).toContain('yardstick')
+    expect(noteRuns(doc, bva)).toEqual([])
   })
 
   it('renames the YTD column AND prints the note under it', () => {
