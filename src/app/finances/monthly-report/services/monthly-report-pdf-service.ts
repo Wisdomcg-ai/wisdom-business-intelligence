@@ -20,6 +20,7 @@ import {
   burnRateSubtitle,
 } from '../components/charts/BudgetBurnRateChart'
 import { transformAnalysisChartData, type AnalysisChartSection } from '../components/charts/analysis-chart-data'
+import { pagesWithContent } from '../utils/layout-pages'
 import { resolveSectionFilter, sectionTableTitle } from './section-table-config'
 import { annotateStandingLines, pickStandingCommentaryHost } from '../utils/standing-commentary'
 import { buildConsolidatedRows } from '../utils/consolidated-rows'
@@ -3295,7 +3296,13 @@ export class MonthlyReportPDFService {
     this.standingHostId = undefined
     let isFirstPage = true
 
-    for (const page of layout.pages) {
+    // A layout says what a client's pack CAN contain; this month says what it
+    // does. A page whose every widget has nothing to show is not rendered at
+    // all — see pagesWithContent for why that is safe to decide here, and why
+    // the balance sheet and money-flow pages are not affected by it.
+    const pages = pagesWithContent(layout.pages, (type: WidgetType) => this.hasDataForWidget(type))
+
+    for (const page of pages) {
       if (!Array.isArray(page.widgets) || page.widgets.length === 0) continue
 
       // Add page (first page is already created by the constructor)
