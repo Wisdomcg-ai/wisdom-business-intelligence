@@ -6,6 +6,7 @@ import {
   equationImbalanceSentence,
   NET_ASSETS_EQUITY_SENTENCE,
   BS_EQUATION_TOLERANCE,
+  balanceSheetClassTotals,
 } from '../utils/balance-sheet-pdf'
 import type { BalanceSheetData, BalanceSheetRow, BalanceSheetCompare } from '../types'
 
@@ -184,15 +185,10 @@ export default function BalanceSheetTab({
   // Derive Assets / Liabilities / Equity from the existing subtotal rows
   // (label-matched per Calxa convention). If any total is missing or null,
   // skip the banner — the legacy `balanceSheet.balances` amber badge still covers it.
-  const findSubtotal = (predicate: (label: string) => boolean): number | null => {
-    const row = balanceSheet.rows.find(
-      (r) => r.type === 'subtotal' && predicate(r.label.toLowerCase()),
-    )
-    return row?.current ?? null
-  }
-  const totalAssets = findSubtotal((l) => l.startsWith('total asset') || l.includes('asset'))
-  const totalLiabilities = findSubtotal((l) => l.startsWith('total liabilit') || l.includes('liabilit'))
-  const totalEquity = findSubtotal((l) => l.startsWith('total equity') || l.includes('equity'))
+  // The identical rule the pack uses — see balanceSheetClassTotals. The tab and
+  // the PDF telling a coach different things about the same month is the defect.
+  const { assets: totalAssets, liabilities: totalLiabilities, equity: totalEquity } =
+    balanceSheetClassTotals(balanceSheet.rows)
 
   const canComputeResidual =
     totalAssets !== null && totalLiabilities !== null && totalEquity !== null

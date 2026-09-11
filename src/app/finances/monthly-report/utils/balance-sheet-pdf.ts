@@ -104,15 +104,57 @@ export const NET_ASSETS_EQUITY_SENTENCE =
   'This may indicate unreconciled transactions in Xero.'
 
 /**
- * Locate a section total by label. Copied verbatim from BalanceSheetTab's
- * `findSubtotal` — including the loose `includes(...)` fallbacks, which exist
- * because AU orgs label the equity block half a dozen ways ("Total Equity",
- * "Total Owner's Funds"…). Keeping the two identical is the point: if the tab
- * can find the totals, the PDF must find the same ones.
+ * The GRAND total for a class, not the first subtotal that mentions it.
+ *
+ * The old version took one predicate — `startsWith('total asset') ||
+ * includes('asset')` — and handed it to `rows.find`, which walks the sheet in
+ * order and stops at the first row satisfying EITHER branch. Xero prints "Total
+ * Bank", "Total Current Assets", "Total Fixed Assets", "Total Non-current
+ * Assets" and only then "Total Asset", so the loose branch always won on an
+ * early row and the strict branch never got a chance. A fallback that runs
+ * before the thing it is a fallback for is not a fallback.
+ *
+ * Urban Road, August 2026: it read Total Current Assets (249,232) and Total
+ * Current Liabilities (226,068) against Total Equity (425,242) and printed, in
+ * a red box on two pages of the client's pack, "Balance Sheet does not balance
+ * — residual of $402,078". The sheet balances exactly, and the proof was on the
+ * same page: 710,867 = 285,625 + 425,242.
  */
-function findSubtotal(rows: BalanceSheetRow[], predicate: (label: string) => boolean): number | null {
-  const row = rows.find((r) => r.type === 'subtotal' && predicate(r.label.toLowerCase()))
-  return row?.current ?? null
+function findClassTotal(
+  rows: BalanceSheetRow[],
+  strict: (label: string) => boolean,
+  loose: (label: string) => boolean,
+): number | null {
+  const subtotals = rows.filter((r) => r.type === 'subtotal')
+  // Last exact match rather than first: the grand total is the closing row of
+  // its class, and a sheet that repeats the heading means the later one.
+  const exact = [...subtotals].reverse().find((r) => strict(r.label.toLowerCase()))
+  if (exact) return exact.current ?? null
+  const fallback = subtotals.find((r) => loose(r.label.toLowerCase()))
+  return fallback?.current ?? null
+}
+
+/**
+ * The three totals the accounting equation needs, by the same rules on both
+ * surfaces. Exported so BalanceSheetTab reads the identical numbers the pack
+ * does — the two disagreeing about the same month is the defect this file
+ * exists to prevent, and they disagreed for as long as each kept its own copy.
+ */
+export function balanceSheetClassTotals(rows: BalanceSheetRow[]): {
+  assets: number | null
+  liabilities: number | null
+  equity: number | null
+} {
+  return {
+    assets: findClassTotal(rows, (l) => l.startsWith('total asset'), (l) => l.includes('asset')),
+    liabilities: findClassTotal(rows, (l) => l.startsWith('total liabilit'), (l) => l.includes('liabilit')),
+    // The loose branch catches "Equity" and "Total Shareholders Equity"; it
+    // does NOT catch "Total Owner's Funds", which contains the word nowhere.
+    // That label yields null and the caller says the equation could not be
+    // checked — which is the designed third state, and better than a residual
+    // derived from a total we did not actually identify.
+    equity: findClassTotal(rows, (l) => l.startsWith('total equity'), (l) => l.includes('equity')),
+  }
 }
 
 /**
@@ -168,9 +210,8 @@ export function assessBalanceSheetForPdf(
     warnings.push(NET_ASSETS_EQUITY_SENTENCE)
   }
 
-  const totalAssets = findSubtotal(rows, (l) => l.startsWith('total asset') || l.includes('asset'))
-  const totalLiabilities = findSubtotal(rows, (l) => l.startsWith('total liabilit') || l.includes('liabilit'))
-  const totalEquity = findSubtotal(rows, (l) => l.includes('equity'))
+  const { assets: totalAssets, liabilities: totalLiabilities, equity: totalEquity } =
+    balanceSheetClassTotals(rows)
 
   if (totalAssets === null || totalLiabilities === null || totalEquity === null) {
     // Not a reason to withhold the sheet. The predicate above is a label match
