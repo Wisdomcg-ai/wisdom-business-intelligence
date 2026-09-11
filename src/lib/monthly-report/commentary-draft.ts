@@ -119,8 +119,18 @@ export function buildDraftNote(input: {
     )
   }
 
-  let body = parts.join(', ')
-  if (clause) body = body ? `${body} - ${clause.text}` : clause.text
+  // A ratio with no suppliers under it is not commentary.
+  //
+  // "Accounting Fees | 0.0% of income against a 0.2% driver" is a true
+  // sentence that tells a reader nothing, and Urban Road's August pack printed
+  // four of them. The value of this page is the supplier list; the clause
+  // qualifies that list, it does not stand in for one. Where the spend was a
+  // journal rather than a bill there are no suppliers to name, and the honest
+  // output is nothing at all — leaving the coach a blank line to write on,
+  // which is what the reference pack's author does by hand.
+  const body = parts.length > 0
+    ? (clause ? `${parts.join(', ')} - ${clause.text}` : parts.join(', '))
+    : ''
 
   return { account: accountName, body, warnings }
 }

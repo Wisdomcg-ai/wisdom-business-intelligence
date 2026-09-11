@@ -170,11 +170,43 @@ export function toStatementAmount(
 export function vendorsExceedAccount(
   vendorTotal: number,
   accountActual: number,
-  tolerance = 0.01,
+  tolerance = defaultVendorTolerance(accountActual),
 ): boolean {
   if (!Number.isFinite(vendorTotal) || !Number.isFinite(accountActual)) return false
   // Compare magnitudes: an expense account is positive here, but a net-credit
   // month is legitimately negative and |vendors| > |account| is still the
   // condition that matters.
   return Math.abs(vendorTotal) - Math.abs(accountActual) > tolerance
+}
+
+/**
+ * How far apart the two sides may be before the list is called wrong.
+ *
+ * A cent was the right answer when both sides came from the same figures. It
+ * is the wrong answer now that the supplier side is built by subtracting each
+ * line's own tax and converting each document at its own rate: every line
+ * rounds, and the roundings do not cancel. Urban Road's August, AFTER the tax
+ * and FX arithmetic was corrected:
+ *
+ *   Employ - Staff Amenities   $1,241 quoted against $1,241
+ *   Marketing Digital Ad Spend $23,144 against $23,144
+ *   Wallpaper                  $3,041 against $3,041
+ *   T/E - Air Fares O'seas     $583 against $583
+ *
+ * Four accounts that agree to the dollar, all four suppressed with "the list is
+ * wrong — do not send this line", because they disagree in the cents. Seven of
+ * the eleven flagged accounts were within $30.
+ *
+ * So: a dollar, or half a percent of the account, whichever is larger. Half a
+ * percent is small enough that the two cases worth catching still are — Urban
+ * Road's Freight list runs $808 over a $50,925 account (1.6%) and its
+ * Contractors list $801 over $31,029 (2.6%), both real extras and both still
+ * refused — while a page is no longer silenced by arithmetic that rounds.
+ *
+ * The floor matters as much as the rate. Half a percent of a $200 account is a
+ * dollar, and a list that is a dollar out on $200 is not wrong; it has rounded.
+ */
+export function defaultVendorTolerance(accountActual: number): number {
+  if (!Number.isFinite(accountActual)) return 1
+  return Math.max(1, Math.abs(accountActual) * 0.005)
 }
