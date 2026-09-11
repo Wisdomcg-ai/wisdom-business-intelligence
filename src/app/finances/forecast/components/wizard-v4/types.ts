@@ -420,7 +420,8 @@ export interface VendorBudget {
   // Frequency the vendor charges at — used for display + reconciliation.
   // Note: Step6Subscriptions allows 'ad-hoc' as a UI label; both shapes are
   // accepted here for back-compat with existing component state.
-  frequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc' | 'one-time';
+  /** 'one-time' is legacy and still read; see lib/subscriptions/frequency. */
+  frequency: 'monthly' | 'quarterly' | 'bi-annual' | 'annual' | 'ad-hoc' | 'one-time';
   monthlyBudget: number;
   // Active flag — only active vendors contribute to the rollup (T07).
   isActive: boolean;

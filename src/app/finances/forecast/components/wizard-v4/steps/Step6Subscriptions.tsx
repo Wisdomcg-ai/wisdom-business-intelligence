@@ -15,6 +15,12 @@ import {
 } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency } from '../types';
 import { CommitNumberInput } from '../components/CommitNumberInput';
+import {
+  FREQUENCY_OPTIONS as SHARED_FREQUENCY_OPTIONS,
+  monthlyFromPeriod, periodFromMonthly, periodSuffix, isLumpy,
+  type VendorFrequency,
+} from '@/lib/subscriptions/frequency';
+import { lastChargedMonthTotal } from '@/lib/subscriptions/recent-month';
 
 /**
  * Budget cell for the vendor table — the same local-draft pattern proven by
@@ -119,9 +125,9 @@ const VendorBudgetInput = memo(function VendorBudgetInput({
   // commit-on-blur primitive — the parse/revert/Enter-keeps-focus semantics
   // live in ONE place, not per step.
   return (
-    <div className={prefix || suffix ? 'relative flex-1 max-w-[110px]' : undefined}>
+    <div className={prefix || suffix ? 'relative flex-1 min-w-[130px] max-w-[170px]' : undefined}>
       {prefix && (
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{prefix}</span>
+        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{prefix}</span>
       )}
       <CommitNumberInput
         value={value}
@@ -130,10 +136,14 @@ const VendorBudgetInput = memo(function VendorBudgetInput({
         disabled={disabled}
         title={title}
         onCommit={onCommit}
-        className="w-full pl-7 pr-9 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100 tabular-nums"
+        // 110px of box with 16px of padding each side left about seven
+        // characters for the number — "$168,882" did not fit, and an annual
+        // figure is exactly where the big numbers are. Wider box, tighter
+        // padding, and the suffix sits closer in.
+        className="w-full pl-6 pr-8 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100 tabular-nums"
       />
       {suffix && (
-        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">{suffix}</span>
+        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">{suffix}</span>
       )}
     </div>
   );
@@ -196,8 +206,8 @@ interface VendorBudget {
   budgetTouched?: boolean;
   vendorName: string;
   vendorKey: string;
-  suggestedFrequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc';
-  frequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc';
+  suggestedFrequency: VendorFrequency;
+  frequency: VendorFrequency;
   confidence: 'high' | 'medium' | 'low';
   totalAmount: number;
   avgAmount: number;
@@ -284,16 +294,13 @@ interface AnalysisSummary {
 
 type Phase = 'select-accounts' | 'analyzing' | 'review';
 
-const FREQUENCY_OPTIONS = [
-  { value: 'monthly', label: 'Monthly' },
-  { value: 'quarterly', label: 'Quarterly' },
-  { value: 'annual', label: 'Annual' },
-  { value: 'ad-hoc', label: 'Ad-hoc' },
-];
+/** One list, shared with everything else that speaks about billing rhythm. */
+const FREQUENCY_OPTIONS = SHARED_FREQUENCY_OPTIONS;
 
 const FREQUENCY_COLORS: Record<string, string> = {
   monthly: 'bg-green-100 text-green-700 border-green-200',
   quarterly: 'bg-purple-100 text-purple-700 border-purple-200',
+  'bi-annual': 'bg-indigo-100 text-indigo-700 border-indigo-200',
   annual: 'bg-blue-100 text-blue-700 border-blue-200',
   'ad-hoc': 'bg-gray-100 text-gray-600 border-gray-200',
 };
@@ -811,7 +818,19 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         lastTransaction: v.lastTransaction,
         monthsSpan: v.monthsSpan,
         suggestedMonthlyBudget: v.suggestedMonthlyBudget,
-        monthlyBudget: v.suggestedMonthlyBudget,
+        // What it charged LAST month, not the year's average.
+        //
+        // A vendor whose seat count doubled in March is budgeted at the mean
+        // of the old price and the new one, and is wrong in every remaining
+        // month. The latest month it actually billed carries the price rise
+        // the average dilutes. Only for vendors that bill every month —
+        // treating one annual lump as a monthly figure would multiply their
+        // budget by twelve. Falls back to the analyzer's own suggestion when
+        // there are no dated transactions to read.
+        monthlyBudget:
+          (v.suggestedFrequency === 'monthly' || v.suggestedFrequency === 'ad-hoc')
+            ? (lastChargedMonthTotal(v.transactions) ?? v.suggestedMonthlyBudget)
+            : v.suggestedMonthlyBudget,
         transactions: v.transactions || [],
         isExpanded: false,
         // Silent inclusion is how budgets rot: a monthly that STOPPED mid-year
@@ -1025,10 +1044,13 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
     setVendors(prev => prev.map(v => {
       if (v.vendorKey !== vendorKey) return v;
       if (v.budgetTouched) return { ...v, frequency };
+      // One conversion, from one place — see lib/subscriptions/frequency.
+      // A lumpy rhythm is derived from the whole period's spend; a recurring
+      // one from a single period's charge.
       let monthlyBudget = v.monthlyBudget;
-      if (frequency === 'annual') monthlyBudget = (v.totalAmount || 0) / 12;
+      if (isLumpy(frequency)) monthlyBudget = monthlyFromPeriod(v.totalAmount || 0, frequency);
       else if (frequency === 'monthly') monthlyBudget = v.avgAmount || v.monthlyBudget;
-      else if (frequency === 'quarterly') monthlyBudget = (v.avgAmount || 0) / 3;
+      else if (frequency === 'quarterly') monthlyBudget = monthlyFromPeriod(v.avgAmount || 0, frequency);
       return { ...v, frequency, monthlyBudget: monthlyBudget || v.monthlyBudget };
     }));
   };
@@ -1038,9 +1060,10 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
     updateVendor(vendorKey, { monthlyBudget: numValue, budgetTouched: true });
   };
 
-  const handleAnnualBudgetChange = (vendorKey: string, value: string) => {
+  /** The operator typed what the invoice says; store the monthly equivalent. */
+  const handlePeriodBudgetChange = (vendorKey: string, value: string, frequency: VendorFrequency) => {
     const numValue = parseFloat(value) || 0;
-    updateVendor(vendorKey, { monthlyBudget: numValue / 12, budgetTouched: true });
+    updateVendor(vendorKey, { monthlyBudget: monthlyFromPeriod(numValue, frequency), budgetTouched: true });
   };
 
   const handleRenewalMonthChange = (vendorKey: string, monthString: string) => {
@@ -1799,7 +1822,7 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                       frequency. The operator enters "$1,200/yr" for an
                       annual sub directly — no monthly/annual mental math. */}
                   <label className="col-span-2 flex flex-col gap-1 text-xs font-medium text-gray-700">
-                    Amount {newVendor.frequency === 'annual' ? '($/yr)' : newVendor.frequency === 'quarterly' ? '($/qtr)' : '($/mo)'}
+                    Amount ({periodSuffix(newVendor.frequency)})
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                       <input
@@ -1979,15 +2002,15 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                           {/* Phase 63: render in native rhythm. Annual subs
                               show as "$X/yr" with a renewal-month dropdown
                               alongside; all others stay as "$X/mo". */}
-                          {vendor.frequency === 'annual' ? (
+                          {isLumpy(vendor.frequency) ? (
                             <div className="flex items-center justify-end gap-1.5">
                               <VendorBudgetInput
-                                value={vendor.monthlyBudget * 12}
+                                value={periodFromMonthly(vendor.monthlyBudget, vendor.frequency)}
                                 disabled={!vendor.isActive}
-                                onCommit={(annual) => handleAnnualBudgetChange(vendor.vendorKey, String(annual))}
+                                onCommit={(period) => handlePeriodBudgetChange(vendor.vendorKey, String(period), vendor.frequency)}
                                 prefix="$"
-                                suffix="/yr"
-                                title="Annual cost — smoothed to monthly for forecasting"
+                                suffix={periodSuffix(vendor.frequency)}
+                                title="Cost per billing period — smoothed to monthly for forecasting"
                               />
                               <select
                                 value={vendor.renewalMonth ?? ''}
