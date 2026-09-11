@@ -8,7 +8,7 @@ import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { extractVendorInfo, createVendorKey } from '@/lib/utils/vendor-normalization'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import * as Sentry from '@sentry/nextjs'
-import { toBaseAmount } from '@/lib/monthly-report/commentary-money'
+import { toStatementAmount } from '@/lib/monthly-report/commentary-money'
 import { buildRatioClause, pickDenominator, type RatioContext } from '@/lib/monthly-report/commentary-clause'
 import { buildDraftNote } from '@/lib/monthly-report/commentary-draft'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -502,7 +502,7 @@ async function postHandler(request: Request) {
         for (const li of (inv.LineItems || [])) {
           if (li.AccountCode === accountCode) {
             const info = extractVendorInfo(contactName, li.Description || '')
-            const converted = toBaseAmount(li.LineAmount, inv, baseCurrency)
+            const converted = toStatementAmount(li, inv, baseCurrency)
             addToVendor(info.vendor, {
               date: dateStr,
               vendor: info.vendor,
@@ -523,7 +523,7 @@ async function postHandler(request: Request) {
         for (const li of (bt.LineItems || [])) {
           if (li.AccountCode === accountCode) {
             const info = extractVendorInfo(contactName, li.Description || bt.Reference || '')
-            const converted = toBaseAmount(li.LineAmount, bt, baseCurrency)
+            const converted = toStatementAmount(li, bt, baseCurrency)
             addToVendor(info.vendor, {
               date: dateStr,
               vendor: info.vendor,
