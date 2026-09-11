@@ -45,6 +45,7 @@ import { useConsolidatedReport } from './hooks/useConsolidatedReport'
 import { useFullYearReport } from './hooks/useFullYearReport'
 import { useSubscriptionDetail } from './hooks/useSubscriptionDetail'
 import { rollUpContractors } from '@/lib/monthly-report/contractor-rollup'
+import { buildPackCashflowLines, packCashflowBasis } from '@/lib/monthly-report/pack-cashflow-lines'
 import { useWagesDetail } from './hooks/useWagesDetail'
 import { useXeroConnection } from './hooks/useXeroConnection'
 import { useAccountMappings } from './hooks/useAccountMappings'
@@ -378,7 +379,16 @@ export default function MonthlyReportPage() {
   } = useBalanceSheet(businessId)
 
   // Load cashflow forecast (reusable for tab, charts, and PDF)
-  const loadCashflowForecast = useCallback(async () => {
+  /**
+   * @param fullYear when given, the cash page is built from ACTUALS to the end
+   *   of the reporting period and the approved BUDGET thereafter, rather than
+   *   projecting every month of the year from the forecast. See
+   *   buildPackCashflowLines — the engine needs no change, only a truer input.
+   */
+  const loadCashflowForecast = useCallback(async (
+    fullYear?: import('./types').FullYearReport | null,
+    reportMonth?: string,
+  ) => {
     if (!businessId || !userId || cashflowLoading) return
     setCashflowLoading(true)
     setCashflowError(null)
@@ -391,7 +401,12 @@ export default function MonthlyReportPage() {
         return null
       }
       if (forecast?.id) {
-        const plLines = await ForecastService.loadPLLines(forecast.id)
+        const forecastLines = await ForecastService.loadPLLines(forecast.id)
+        // Actuals for the months already banked, the approved budget for the
+        // rest. Falls back to the forecast's own lines when the Full Year
+        // report is not to hand, which is what every caller did before.
+        const composed = buildPackCashflowLines(fullYear ?? null, reportMonth ?? selectedMonth)
+        const plLines = composed.lines.length > 0 ? composed.lines : forecastLines
         if (plLines.length > 0) {
           let assumptions = getDefaultCashflowAssumptions()
           const assumptionsRes = await fetch(`/api/forecast/cashflow/assumptions?forecast_id=${forecast.id}`)
@@ -418,7 +433,7 @@ export default function MonthlyReportPage() {
       setCashflowLoading(false)
     }
     return null
-  }, [businessId, userId, cashflowLoading])
+  }, [businessId, userId, cashflowLoading, selectedMonth])
 
   // Save active tab
   useEffect(() => {
@@ -626,9 +641,19 @@ export default function MonthlyReportPage() {
   // Lazy load cashflow forecast when cashflow tab or charts tab is active
   useEffect(() => {
     if ((activeTab === 'cashflow' || activeTab === 'charts') && !cashflowForecast && !cashflowLoading && businessId && userId) {
-      loadCashflowForecast()
+      // The Full Year report carries the actuals and the approved budget this
+      // page is now built from, so it is loaded FIRST rather than left to
+      // chance — a tab and a pack that disagree about the same month is the
+      // defect this whole rebuild keeps running into.
+      void (async () => {
+        // One argument, so this compiles both before and after #509 adds the
+        // report month to loadFullYear. The export path passes the month; this
+        // tab path picks it up once #509 is in.
+        const fy = fullYearReport ?? (await loadFullYear(fiscalYear)) ?? null
+        await loadCashflowForecast(fy, selectedMonth)
+      })()
     }
-  }, [activeTab, cashflowForecast, cashflowLoading, businessId, userId, loadCashflowForecast])
+  }, [activeTab, cashflowForecast, cashflowLoading, businessId, userId, fullYearReport, fiscalYear, selectedMonth, loadFullYear, loadCashflowForecast])
 
   // Phase 34 (MLTE-04): when the consolidated tab is active and this business
   // is a consolidation parent, fetch the consolidated report. The tab + banner
@@ -962,6 +987,7 @@ export default function MonthlyReportPage() {
     fullYearReport?: import('./types').FullYearReport
     subscriptionDetail?: import('./types').SubscriptionDetailData
     contractorDetail?: import('@/lib/monthly-report/contractor-rollup').ContractorRollup
+    cashflowBasis?: string | null
     payrollGrid?: import('@/lib/monthly-report/payroll-grid').PayrollGrid
     wagesDetail?: import('./types').WagesDetailData
     cashflowForecast?: CashflowForecastData
@@ -1059,7 +1085,7 @@ export default function MonthlyReportPage() {
 
     let cfData: CashflowForecastData | undefined = cashflowForecast || undefined
     if (!cfData && businessId) {
-      cfData = (await loadCashflowForecast()) || undefined
+      cfData = (await loadCashflowForecast(fyReport ?? null, selectedMonth)) || undefined
     }
 
     // WE.1b — the entered external-data inserts. A fetch failure must not
@@ -1216,6 +1242,14 @@ export default function MonthlyReportPage() {
       fullYearReport: fyReport || undefined,
       subscriptionDetail: subDetail || undefined,
       contractorDetail: contractorRollup,
+      // Computed here, from the report this function already holds — NOT read
+      // back off React state that `loadCashflowForecast` just set. A setState
+      // is not visible to the pass that made it, and the pack would have
+      // described the previous month's split.
+      cashflowBasis: packCashflowBasis(
+        buildPackCashflowLines(fyReport ?? null, selectedMonth),
+        (m) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-AU', { month: 'short', year: 'numeric' }),
+      ),
       payrollGrid: payroll,
       wagesDetail: wDetail || undefined,
       cashflowForecast: cfData,

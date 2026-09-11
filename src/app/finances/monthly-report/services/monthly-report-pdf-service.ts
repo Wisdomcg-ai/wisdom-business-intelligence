@@ -57,6 +57,13 @@ interface PDFOptions {
   commentary?: VarianceCommentary
   fullYearReport?: FullYearReport
   subscriptionDetail?: SubscriptionDetailData
+  /**
+   * Which months on the cash page are actuals and which are budget. Printed
+   * under the title, because a reader cannot otherwise tell which half of the
+   * row is history — and a projection of a month that has already happened is
+   * exactly the defect this page had.
+   */
+  cashflowBasis?: string | null
   /** The Contractor Analysis page's rows, already rolled up (see contractor-rollup). */
   contractorDetail?: ContractorRollup
   /** The two-month payroll grid (see payroll-grid). */
@@ -1944,6 +1951,15 @@ export class MonthlyReportPDFService {
     this.addPage('landscape')
 
     this.drawPageTitle('Cashflow Forecast')
+    const basis = (this.options.cashflowBasis ?? '').trim()
+    if (basis) {
+      this.doc.setFontSize(8)
+      this.doc.setFont('helvetica', 'normal')
+      this.doc.setTextColor(120, 120, 120)
+      this.doc.text(basis, this.margin, this.yPosition)
+      this.doc.setTextColor(0, 0, 0)
+      this.yPosition += 5
+    }
     this.yPosition += 6
 
     // Alert if bank goes negative
