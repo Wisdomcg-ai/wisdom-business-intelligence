@@ -20,6 +20,8 @@ import { withSchema } from '@/lib/api/with-schema'
 const FullYearPostSchema = z.object({
   business_id: z.string(),
   fiscal_year: z.union([z.string(), z.number()]).optional(),
+  /** The month the pack is FOR. See lastActualMonth. */
+  report_month: z.string().optional(),
 })
 
 export const dynamic = 'force-dynamic'
@@ -144,7 +146,7 @@ async function postHandler(request: Request) {
     }
 
     const body = await request.json()
-    const { business_id, fiscal_year } = body
+    const { business_id, fiscal_year, report_month } = body
 
     if (!business_id || !fiscal_year) {
       return NextResponse.json(
@@ -195,13 +197,28 @@ async function postHandler(request: Request) {
     const fyStart = allFYMonths[0]
     const fyEnd = allFYMonths[allFYMonths.length - 1]
 
-    // Determine the last actual month (previous month — current month hasn't ended yet)
-    const now = new Date()
-    const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth() // getMonth() is 0-indexed
-    const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
-    const previousMonth = `${prevYear}-${String(prevMonth).padStart(2, '0')}`
-    // Last actual month is the lesser of previous month and FY end
-    const lastActualMonth = previousMonth <= fyEnd ? previousMonth : fyEnd
+    // The last month whose figures are ACTUALS rather than forecast.
+    //
+    // This is the REPORT's month, not today's. Deriving it from the clock meant
+    // the answer changed with the calendar and not with the pack: re-exporting
+    // August in October would have silently promoted September and October to
+    // actuals, restating a month a client had already been sent and moving the
+    // Projected Total with it. A pack is a statement about a period, and every
+    // boundary in it has to come from that period.
+    //
+    // The clock remains the fallback for a caller that does not say which month
+    // it wants — the old behaviour, kept so an older client cannot break, and
+    // no longer relied on by this app's own pages.
+    let lastActualMonth: string
+    if (typeof report_month === 'string' && /^\d{4}-\d{2}$/.test(report_month)) {
+      lastActualMonth = report_month <= fyEnd ? report_month : fyEnd
+    } else {
+      const now = new Date()
+      const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth() // getMonth() is 0-indexed
+      const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+      const previousMonth = `${prevYear}-${String(prevMonth).padStart(2, '0')}`
+      lastActualMonth = previousMonth <= fyEnd ? previousMonth : fyEnd
+    }
 
     // 1. Load settings to determine budget forecast
     const { data: settingsRow } = await supabase

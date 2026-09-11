@@ -599,9 +599,9 @@ export default function MonthlyReportPage() {
   // Lazy load full year data when tab is active
   useEffect(() => {
     if ((activeTab === 'full-year' || activeTab === 'trends' || activeTab === 'charts') && !fullYearReport && !fullYearLoading && !fullYearError && businessId) {
-      loadFullYear(fiscalYear)
+      loadFullYear(fiscalYear, selectedMonth)
     }
-  }, [activeTab, fullYearReport, fullYearLoading, fullYearError, businessId, fiscalYear, loadFullYear])
+  }, [activeTab, fullYearReport, fullYearLoading, fullYearError, businessId, fiscalYear, selectedMonth, loadFullYear])
 
   // Lazy load subscription detail when tab is active
   useEffect(() => {
@@ -864,6 +864,10 @@ export default function MonthlyReportPage() {
     setCommentary(undefined)
     clearSubscription()
     clearWages()
+    // The Full Year page is scoped to the fiscal year, but WHICH months it
+    // treats as actual is scoped to the report month — so a month change
+    // invalidates it just as a fiscal-year change does.
+    clearFullYear()
     // Restore persisted commentary from snapshot if one exists
     const snapshot = await loadSnapshot(month)
     if (snapshot?.commentary) {
@@ -972,7 +976,7 @@ export default function MonthlyReportPage() {
   }> => {
     let fyReport = fullYearReport
     if (!fyReport && businessId) {
-      fyReport = await loadFullYear(fiscalYear)
+      fyReport = await loadFullYear(fiscalYear, selectedMonth)
     }
 
     let subDetail = subscriptionDetail
