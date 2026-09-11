@@ -27,6 +27,18 @@
 export interface XeroDocumentMoney {
   CurrencyCode?: string | null
   CurrencyRate?: number | string | null
+  /**
+   * Xero's document-level tax treatment: 'Inclusive', 'Exclusive' or 'NoTax'.
+   * On an Inclusive document `LineAmount` CONTAINS the GST, while the P&L the
+   * commentary sits under is stated net of it.
+   */
+  LineAmountTypes?: string | null
+}
+
+/** The fields we need off one line of such a document. */
+export interface XeroLineMoney {
+  LineAmount?: number | string | null
+  TaxAmount?: number | string | null
 }
 
 export interface ConvertedAmount {
@@ -87,12 +99,59 @@ export function toBaseAmount(
     }
   }
 
-  // Xero states CurrencyRate as base-per-foreign, so base = amount x rate.
+  // DIVIDE. Xero states CurrencyRate as FOREIGN-per-base — how many units of
+  // the document's currency one unit of the org's buys — so base = amount /
+  // rate. Verified against Urban Road's own ledger: bill 2026UR-0801, PHP
+  // 22,750 at CurrencyRate 42.879, posted by Xero at AUD 530.56.
+  //
+  // Multiplying instead was this module's original reading, and the unit test
+  // that "proved" it passed a rate of 0.023321 — a number invented to make the
+  // multiplication work, not one Xero ever sent. It put Ailene Alfonso at
+  // $3,946,249 under an account that spent $31,029, which the vendors-exceed
+  // guard then correctly refused to print. The guard was doing its job; the
+  // arithmetic above it was not.
   return {
-    amount: raw * rate,
+    amount: raw / rate,
     converted: true,
     sourceCurrency: docCurrency !== base ? docCurrency : undefined,
   }
+}
+
+/**
+ * One line's contribution to the statement figure above it: net of tax, in the
+ * organisation's currency.
+ *
+ * Both corrections in one place, in the order that matters — tax comes off in
+ * the DOCUMENT's currency, because `TaxAmount` is denominated there too, and
+ * only then is the remainder converted.
+ *
+ * The tax half is not a rounding difference. Urban Road's freight bills are
+ * entered Inclusive, so Allied Express's August `LineAmount`s total $25,954
+ * while the P&L carries $23,594 — and the client's own hand-written commentary
+ * says $23,594. Quoting the gross under a net line is how a supplier list sums
+ * past its own account by a tidy 10%.
+ */
+export function toStatementAmount(
+  line: XeroLineMoney | null | undefined,
+  doc: XeroDocumentMoney | null | undefined,
+  baseCurrency: string | null | undefined,
+): ConvertedAmount {
+  const gross = typeof line?.LineAmount === 'number' ? line.LineAmount : Number(line?.LineAmount ?? 0)
+  if (!Number.isFinite(gross)) {
+    return { amount: 0, converted: false, reason: 'the line had no amount' }
+  }
+
+  // 'Inclusive' is the only treatment where LineAmount carries the tax.
+  // 'Exclusive' and 'NoTax' are already net, and so is a document that does not
+  // say — treating an unstated treatment as inclusive would quietly shave 10%
+  // off every line on it.
+  const inclusive = (doc?.LineAmountTypes ?? '').trim().toLowerCase() === 'inclusive'
+  const taxRaw = typeof line?.TaxAmount === 'number' ? line.TaxAmount : Number(line?.TaxAmount ?? 0)
+  const tax = Number.isFinite(taxRaw) ? taxRaw : 0
+  // Signed subtraction, so a credit note's negative tax moves the right way.
+  const net = inclusive ? gross - tax : gross
+
+  return toBaseAmount(net, doc, baseCurrency)
 }
 
 /**

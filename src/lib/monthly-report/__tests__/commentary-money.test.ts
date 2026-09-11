@@ -4,12 +4,16 @@
  * as "$91,000" underneath an account that spent $31,029.30 for the month.
  */
 import { describe, it, expect } from 'vitest'
-import { toBaseAmount, vendorsExceedAccount } from '../commentary-money'
+import { toBaseAmount, toStatementAmount, vendorsExceedAccount } from '../commentary-money'
 
 describe('toBaseAmount', () => {
   it('converts a foreign bill at the rate the document itself carries', () => {
     // Ailene Alfonso, August 2026: PHP 22,750 posted at A$530.56.
-    const r = toBaseAmount(22750, { CurrencyCode: 'PHP', CurrencyRate: 0.023321 }, 'AUD')
+    // Urban Road bill 2026UR-0801: PHP 22,750 at CurrencyRate 42.879, which
+    // Xero itself posted at AUD 530.56. The rate is foreign-per-base, so the
+    // conversion DIVIDES. The previous version of this test passed 0.023321 —
+    // its reciprocal, a number invented to make a multiplication work.
+    const r = toBaseAmount(22750, { CurrencyCode: 'PHP', CurrencyRate: 42.879 }, 'AUD')
     expect(r.converted).toBe(true)
     expect(r.amount).toBeCloseTo(530.55, 1)
     expect(r.sourceCurrency).toBe('PHP')
@@ -49,8 +53,9 @@ describe('toBaseAmount', () => {
   })
 
   it('converts a foreign credit and keeps it negative', () => {
+    // USD 1,000 at 1.5 USD per AUD is A$666.67 out, not A$1,500.
     const r = toBaseAmount(-1000, { CurrencyCode: 'USD', CurrencyRate: 1.5 }, 'AUD')
-    expect(r.amount).toBe(-1500)
+    expect(r.amount).toBeCloseTo(-666.67, 2)
   })
 
   it('reads an absent amount as zero, not as a failure', () => {
@@ -67,9 +72,92 @@ describe('toBaseAmount', () => {
   })
 
   it('still converts when the org currency is unknown but the document has a rate', () => {
-    const r = toBaseAmount(100, { CurrencyCode: 'USD', CurrencyRate: 1.5 }, null)
-    expect(r.amount).toBe(150)
+    const r = toBaseAmount(150, { CurrencyCode: 'USD', CurrencyRate: 1.5 }, null)
+    expect(r.amount).toBe(100)
     expect(r.converted).toBe(true)
+  })
+})
+
+describe('toStatementAmount', () => {
+  it('nets the GST off an Inclusive line', () => {
+    // Allied Express bill 2026/32: gross 3,766.31, tax 342.39, and the P&L
+    // carries 3,423.92. The client's own commentary quotes the net.
+    const r = toStatementAmount(
+      { LineAmount: 3766.31, TaxAmount: 342.39 },
+      { CurrencyCode: 'AUD', CurrencyRate: 1, LineAmountTypes: 'Inclusive' },
+      'AUD',
+    )
+    expect(r.amount).toBeCloseTo(3423.92, 2)
+    expect(r.converted).toBe(true)
+  })
+
+  it("Allied Express's whole August foots to the client's own figure", () => {
+    const bills: [number, number][] = [
+      [3766.31, 342.39], [6336.97, 576.09], [5487.06, 498.82], [10363.2, 942.11],
+    ]
+    const total = bills.reduce((t, [gross, tax]) => t + toStatementAmount(
+      { LineAmount: gross, TaxAmount: tax },
+      { CurrencyCode: 'AUD', CurrencyRate: 1, LineAmountTypes: 'Inclusive' },
+      'AUD',
+    ).amount, 0)
+    // $23,594 — the figure in the client's hand-written pack. The gross,
+    // $25,954, is what the pack quoted before this change.
+    expect(total).toBeCloseTo(23594.13, 2)
+  })
+
+  it('leaves an Exclusive line alone — it is already net', () => {
+    const r = toStatementAmount(
+      { LineAmount: 1000, TaxAmount: 100 },
+      { CurrencyCode: 'AUD', LineAmountTypes: 'Exclusive' },
+      'AUD',
+    )
+    expect(r.amount).toBe(1000)
+  })
+
+  it('treats an unstated treatment as already net, never as inclusive', () => {
+    // Guessing "inclusive" would shave 10% off every line on such a document.
+    const r = toStatementAmount({ LineAmount: 1000, TaxAmount: 100 }, { CurrencyCode: 'AUD' }, 'AUD')
+    expect(r.amount).toBe(1000)
+  })
+
+  it('takes tax off in the DOCUMENT currency, then converts', () => {
+    // PHP 22,750 with no tax at 42.879 — Urban Road's contractor bills are
+    // Inclusive but GST-free, so the whole correction is the FX one.
+    const r = toStatementAmount(
+      { LineAmount: 22750, TaxAmount: 0 },
+      { CurrencyCode: 'PHP', CurrencyRate: 42.879, LineAmountTypes: 'Inclusive' },
+      'AUD',
+    )
+    expect(r.amount).toBeCloseTo(530.56, 1)
+  })
+
+  it('nets and converts together when a foreign bill does carry tax', () => {
+    // 110 USD inclusive of 10 USD tax, at 1.5 USD per AUD → A$66.67.
+    const r = toStatementAmount(
+      { LineAmount: 110, TaxAmount: 10 },
+      { CurrencyCode: 'USD', CurrencyRate: 1.5, LineAmountTypes: 'Inclusive' },
+      'AUD',
+    )
+    expect(r.amount).toBeCloseTo(66.67, 2)
+  })
+
+  it('moves a credit note the right way', () => {
+    const r = toStatementAmount(
+      { LineAmount: -1728.1, TaxAmount: -157.1 },
+      { CurrencyCode: 'AUD', LineAmountTypes: 'Inclusive' },
+      'AUD',
+    )
+    expect(r.amount).toBeCloseTo(-1571, 1)
+  })
+
+  it('still refuses a foreign line with no rate', () => {
+    const r = toStatementAmount(
+      { LineAmount: 22750, TaxAmount: 0 },
+      { CurrencyCode: 'PHP', CurrencyRate: null, LineAmountTypes: 'Inclusive' },
+      'AUD',
+    )
+    expect(r.converted).toBe(false)
+    expect(r.reason).toContain('PHP')
   })
 })
 
