@@ -136,7 +136,7 @@ describe('buildDraftNote — what it refuses to send', () => {
     expect(draftNoteToText(note)).toBe('Bank Fees')
   })
 
-  it('renders the clause alone when there are no vendors', () => {
+  it('says NOTHING when there are no vendors, whatever the clause says', () => {
     const clause = buildRatioClause({
       accountActual: 50304, accountBudget: null,
       denominatorActual: 497243, denominatorBudget: null,
@@ -146,6 +146,10 @@ describe('buildDraftNote — what it refuses to send', () => {
     const note = buildDraftNote({
       accountName: 'Freight to Customer', vendors: [], accountActual: 50304, clause,
     })
-    expect(note.body).toBe('10.1% of income against 8.9% in June')
+    // A ratio with no suppliers under it is not commentary. Urban Road's
+    // August pack printed four lines like "Accounting Fees | 0.0% of income
+    // against a 0.2% driver" — true, and worth nothing to the reader. The
+    // clause qualifies a supplier list; it does not stand in for one.
+    expect(note.body).toBe('')
   })
 })

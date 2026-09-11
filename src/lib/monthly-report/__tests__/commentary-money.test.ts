@@ -172,9 +172,28 @@ describe('vendorsExceedAccount', () => {
     expect(vendorsExceedAccount(28000, 31029.3)).toBe(false)
   })
 
-  it('tolerates a cent of rounding', () => {
-    expect(vendorsExceedAccount(31029.305, 31029.3)).toBe(false)
-    expect(vendorsExceedAccount(31129.3, 31029.3)).toBe(true)
+  it('tolerates the rounding that per-line tax and FX arithmetic creates', () => {
+    // Urban Road's August, after the tax and FX correction. Four accounts
+    // agreed to the DOLLAR and were suppressed for disagreeing in the cents.
+    expect(vendorsExceedAccount(1241.32, 1240.81)).toBe(false)   // Staff Amenities
+    expect(vendorsExceedAccount(23144.02, 23143.86)).toBe(false) // Marketing Ad Spend
+    expect(vendorsExceedAccount(3041.11, 3040.56)).toBe(false)   // Wallpaper
+    expect(vendorsExceedAccount(14754, 14725.73)).toBe(false)    // IT Costs, $28 on $14.7k
+  })
+
+  it('still refuses a list with a real extra in it', () => {
+    // The two worth catching, and both still are: the client's own pack foots
+    // Freight to $50,926 where ours quotes $51,733.
+    expect(vendorsExceedAccount(51733, 50924.95)).toBe(true)   // Freight, 1.6%
+    expect(vendorsExceedAccount(31830, 31029.3)).toBe(true)    // Contractors, 2.6%
+    expect(vendorsExceedAccount(3974812, 31029.3)).toBe(true)  // the FX blow-up
+  })
+
+  it('keeps a floor, so a small account is not held to a fraction of a cent', () => {
+    // Half a percent of $200 is a dollar, and a list a dollar out on $200 has
+    // rounded, not gone wrong.
+    expect(vendorsExceedAccount(200.9, 200)).toBe(false)
+    expect(vendorsExceedAccount(205, 200)).toBe(true)
   })
 
   it('compares magnitudes so a net-credit month still works', () => {
