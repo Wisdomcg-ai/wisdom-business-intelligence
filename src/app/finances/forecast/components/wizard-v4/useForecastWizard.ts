@@ -53,6 +53,7 @@ import type {
   SubscriptionAuditSummary,
   SubscriptionVendorSnapshot,
 } from './types/assumptions';
+import { normaliseName as normaliseTeamName } from './utils/merge-saved-team';
 
 // Bump this to force all users to re-init from APIs (invalidates stale localStorage)
 //
@@ -1037,13 +1038,38 @@ export function useForecastWizard(
     (member: Omit<TeamMember, 'id' | 'newSalary' | 'superAmount'>) => {
       const newSalary = calculateNewSalary(member.currentSalary, member.increasePct);
       const superAmount = calculateSuper(newSalary, member.type);
-      setState((prev) => ({
-        ...prev,
-        teamMembers: [
-          ...prev.teamMembers,
-          { ...member, id: generateId(), newSalary, superAmount },
-        ],
-      }));
+      setState((prev) => {
+        // Adding somebody who is already on the team is not an add.
+        //
+        // This appended unconditionally, and the Xero refresh loop calls it
+        // once per employee with no idea what the team already holds. Urban
+        // Road's FY2027 forecast ended up with 25 members for 6 employees and
+        // 13 contractors — every salaried person twice, once from the restored
+        // draft and once from Xero — which put SYS-TEAM-WAGES at $121,699 a
+        // month against a real payroll of $52,519, and the Full Year page's
+        // wages forecast $546,000 above the budget beside it.
+        //
+        // Fixed at the append rather than in the callers: there are several
+        // paths in (first load, restore, "Refresh from Xero"), and getting the
+        // orchestration right in each is how this happened in the first place.
+        // Identity is Xero's employee id where there is one, the normalised
+        // name otherwise — the same two keys mergeSavedTeamMembers dedupes on.
+        const xeroId = member._xeroEmployeeId
+        const nameKey = normaliseTeamName(member.name)
+        const already = prev.teamMembers.some((m) =>
+          (xeroId && m._xeroEmployeeId === xeroId) ||
+          (!!nameKey && normaliseTeamName(m.name) === nameKey),
+        )
+        if (already) return prev
+
+        return {
+          ...prev,
+          teamMembers: [
+            ...prev.teamMembers,
+            { ...member, id: generateId(), newSalary, superAmount },
+          ],
+        }
+      });
     },
     []
   );
