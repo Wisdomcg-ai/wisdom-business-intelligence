@@ -4,6 +4,7 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
+import { sysCodeForXeroAccount, type SysBridgeConfig } from '@/lib/monthly-report/sys-line-bridge'
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { resolveBudget, budgetLineKey } from '@/lib/budgets/resolve-budget'
@@ -267,7 +268,7 @@ async function postHandler(request: Request) {
     if (budgetForecast) {
       const { data: bLines } = await supabase
         .from('forecast_pl_lines')
-        .select('id, account_name, category, forecast_months')
+        .select('id, account_name, category, account_code, forecast_months')
         .eq('forecast_id', budgetForecast.id)
       budgetPLLines = bLines || []
 
@@ -467,18 +468,32 @@ async function postHandler(request: Request) {
     }
     const findBudgetByName = buildFuzzyLookup(budgetPLLines, (bl) => bl.account_name)
 
-    // Forecast lines by Xero account code. EMPTY today, because the select
-    // above does not ask for forecast_pl_lines.account_code — the column
-    // exists, and this route deliberately reads the same fields
-    // generate/route.ts reads on the forecast path so the two cannot diverge.
-    // The tier is written out rather than left implicit so that adding the
-    // column to one route's select and not the other's is a visible change
-    // instead of a silent one.
+    // Forecast lines by account code. The select above now asks for
+    // `account_code`, so this tier is live: it was written out and left empty
+    // precisely so that switching it on would be a visible change, and this is
+    // that change. The code is the one key both sides genuinely share — the
+    // name match below is a guess, and a guess is what printed Urban Road's
+    // wages twice.
     const budgetByCode = new Map<string, any>()
     for (const bl of budgetPLLines) {
       const code = String(bl.account_code ?? '').trim().toLowerCase()
       if (!code) continue
       if (!budgetByCode.has(code)) budgetByCode.set(code, bl)
+    }
+
+    /**
+     * What the SYS bridge needs, from the settings row this route already read.
+     * The Wages page and the Subscription page are configured with exactly
+     * these two lists; the Full Year join reads the same ones rather than
+     * asking a coach to state the mapping a second time.
+     */
+    const sysBridgeConfig: SysBridgeConfig = {
+      wagesAccountNames: Array.isArray(settingsRow?.wages_account_names)
+        ? (settingsRow!.wages_account_names as string[])
+        : null,
+      subscriptionAccountCodes: Array.isArray(settingsRow?.subscription_account_codes)
+        ? (settingsRow!.subscription_account_codes as string[])
+        : null,
     }
 
     const matchedBudgetLineIds = new Set<string>()
@@ -525,6 +540,18 @@ async function postHandler(request: Request) {
       }
       if (!budgetLine && xeroCode) {
         budgetLine = budgetByCode.get(xeroCode)
+      }
+      // The forecast engine's synthetic team/subscription lines. Their codes
+      // are structural (SYS-TEAM-WAGES), so neither the code tier above nor
+      // the name guesses below can reach them — see sys-line-bridge for what
+      // that cost. Resolved from configuration the client already holds, and
+      // placed AFTER the code tier so a real code always wins.
+      if (!budgetLine) {
+        const sysCode = sysCodeForXeroAccount(
+          { account_code: xeroCode || mapping?.xero_account_code || null, account_name: xero.account_name },
+          sysBridgeConfig,
+        )
+        if (sysCode) budgetLine = budgetByCode.get(sysCode.toLowerCase())
       }
       if (!budgetLine && mapping?.forecast_pl_line_name) {
         budgetLine = findBudgetByName(mapping.forecast_pl_line_name)
