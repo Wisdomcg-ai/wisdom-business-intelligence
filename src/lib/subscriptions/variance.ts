@@ -16,7 +16,7 @@ export interface BudgetRowForVariance {
   vendor_name: string
   /** Smoothed monthly figure as stored on subscription_budgets. */
   monthly_budget: number
-  frequency?: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc' | null
+  frequency?: 'monthly' | 'quarterly' | 'bi-annual' | 'annual' | 'ad-hoc' | null
   /** Calendar month 1-12 for annual subs; null otherwise. */
   renewal_month?: number | null
 }
@@ -35,8 +35,14 @@ export interface BudgetRowForVariance {
  */
 export function expectedMonthlyBudget(row: BudgetRowForVariance, reportMonth: string): number {
   const monthNum = parseInt(reportMonth.slice(5, 7), 10)
-  if (row.frequency === 'annual' && row.renewal_month) {
-    return row.renewal_month === monthNum ? row.monthly_budget * 12 : 0
+  // A lumpy vendor is budgeted in the month it renews and nowhere else —
+  // comparing a $14,000 charge against a smoothed $1,167 would report a price
+  // rise every renewal and a lapse every other month. Six-monthly bills twice
+  // a year, so its second renewal is six months after the first.
+  if (row.renewal_month && (row.frequency === 'annual' || row.frequency === 'bi-annual')) {
+    const period = row.frequency === 'bi-annual' ? 6 : 12
+    const isRenewal = ((monthNum - row.renewal_month) % period + period) % period === 0
+    return isRenewal ? row.monthly_budget * period : 0
   }
   return row.monthly_budget
 }

@@ -48,7 +48,7 @@ const supabase = createClient(
 interface SubscriptionBudgetInput {
   vendorName: string;
   vendorKey: string;
-  frequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc';
+  frequency: 'monthly' | 'quarterly' | 'bi-annual' | 'annual' | 'ad-hoc';
   monthlyBudget: number;
   last12MonthsSpend?: number;
   // Phase 61 (B2): current-FY YTD spend captured at analyze time. Persisted

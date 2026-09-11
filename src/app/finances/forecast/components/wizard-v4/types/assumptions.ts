@@ -295,7 +295,8 @@ export interface SubscriptionVendorSnapshot {
   vendorKey: string;
   vendorName: string;
   monthlyBudget: number;
-  frequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc' | 'one-time';
+  /** 'one-time' is legacy and still read; see lib/subscriptions/frequency. */
+  frequency: 'monthly' | 'quarterly' | 'bi-annual' | 'annual' | 'ad-hoc' | 'one-time';
   category?: string;
   accountCodes?: string[];
 }
