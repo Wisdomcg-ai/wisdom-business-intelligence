@@ -10,6 +10,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server';
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
+import { onlySubscriptionVendors } from '@/lib/subscriptions/vendor-scope'
 
 export const dynamic = 'force-dynamic';
 
@@ -192,15 +193,31 @@ async function getHandler(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch subscription budgets' }, { status: 500 });
     }
 
+    // Only the rows that are actually subscriptions. `subscription_budgets` is
+    // the platform's only per-vendor budget store, so the Contractor Analysis
+    // page keeps its contractors here too — and without this, the forecast
+    // wizard's Step 6 listed fifteen of Urban Road's contractors as software
+    // subscriptions. See vendor-scope for why an unconfigured client and a row
+    // with no account codes are both left alone.
+    const { data: settingsRow } = await supabase
+      .from('monthly_report_settings')
+      .select('subscription_account_codes')
+      .eq('business_id', businessId)
+      .maybeSingle();
+    const scoped = onlySubscriptionVendors(
+      (data || []) as { account_codes?: string[] | null }[],
+      (settingsRow?.subscription_account_codes as string[] | null) ?? null,
+    ) as typeof data;
+
     // Calculate totals
-    const totalMonthly = (data || []).reduce((sum, item) => sum + (item.monthly_budget || 0), 0);
+    const totalMonthly = (scoped || []).reduce((sum, item) => sum + (item.monthly_budget || 0), 0);
     const totalAnnual = totalMonthly * 12;
 
     return NextResponse.json({
       success: true,
-      budgets: data || [],
+      budgets: scoped || [],
       summary: {
-        count: data?.length || 0,
+        count: scoped?.length || 0,
         totalMonthly: Math.round(totalMonthly * 100) / 100,
         totalAnnual: Math.round(totalAnnual * 100) / 100,
       },
