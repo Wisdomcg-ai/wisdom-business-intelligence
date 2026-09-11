@@ -20,6 +20,7 @@ import {
   burnRateSubtitle,
 } from '../components/charts/BudgetBurnRateChart'
 import { transformAnalysisChartData, type AnalysisChartSection } from '../components/charts/analysis-chart-data'
+import { LOGO_COVER, LOGO_CORNER, LOGO_COVER_SIZE, LOGO_CORNER_SIZE } from './pack-logo'
 import { pagesWithContent } from '../utils/layout-pages'
 import { resolveSectionFilter, sectionTableTitle } from './section-table-config'
 import { annotateStandingLines, pickStandingCommentaryHost } from '../utils/standing-commentary'
@@ -95,6 +96,17 @@ interface PDFOptions {
 }
 
 // A4 dimensions in mm
+/**
+ * Where content starts down the page.
+ *
+ * Higher than the left/right margin on purpose: the corner mark is drawn at
+ * 10mm and is about 9mm tall, so a table that began at the margin ran straight
+ * through it — which is exactly what happened on the CONTINUATION pages, where
+ * there is no title to push the table down and the column headers landed under
+ * the logo.
+ */
+const CONTENT_TOP = 22
+
 const A4_SHORT = 210
 const A4_LONG = 297
 
@@ -363,7 +375,7 @@ export class MonthlyReportPDFService {
       this.pageWidth = A4_SHORT
       this.pageHeight = A4_LONG
     }
-    this.yPosition = this.margin
+    this.yPosition = CONTENT_TOP
   }
 
   // =====================================================================
@@ -377,6 +389,16 @@ export class MonthlyReportPDFService {
     const { report } = this
     const centerX = this.pageWidth / 2
     let y = this.pageHeight * 0.32
+
+    // The mark, above the name. A cover with no mark on it is the one page a
+    // client is certain to look at and the one that says least.
+    try {
+      const w = 46
+      const h = (LOGO_COVER_SIZE.h / LOGO_COVER_SIZE.w) * w
+      this.doc.addImage(LOGO_COVER, 'PNG', centerX - w / 2, y - h - 14, w, h)
+    } catch {
+      // A pack without its logo is still a pack. Never the other way round.
+    }
 
     this.doc.setFontSize(24)
     this.doc.setFont('helvetica', 'bold')
@@ -1120,6 +1142,13 @@ export class MonthlyReportPDFService {
     // Budget, Budget Next Mth, Budget Annual. Null, and so absent, for every
     // client with only one yardstick in their pack.
     this.drawNoBudgetNotice()
+    // ONCE, here, on the first statement page — not on all four.
+    //
+    // The distinction is real: this pack's budget column is the APPROVED
+    // budget and the Full Year page gives that name to something else. But a
+    // 179-character sentence repeated on every statement page is a developer
+    // explaining himself in a client's pack, and every other page carries the
+    // meaning in its column head ("Approved Budget") without the paragraph.
     if (yardstick.note) this.drawNote(yardstick.note)
 
     autoTable(this.doc, {
@@ -1234,15 +1263,17 @@ export class MonthlyReportPDFService {
     // to something else. Unqualified, the two invite the wrong reconciliation.
     const yardstick = statementYardstick(this.report)
     this.drawNoBudgetNotice()
-    if (yardstick.note) this.drawNote(yardstick.note)
 
     const headers: string[] = ['Account', yardstick.columnLabel, 'Actual', 'Var ($)', 'Var (%)']
-    const varianceCols = [3, 4] // Var ($) and Var (%)
+    // The DOLLAR variance only. The percentage beside it carries no second
+    // fact, and colouring both doubled the red on a page that already has
+    // fourteen columns. See paintNegatives.
+    const varianceCols = [3]
     let nextCol = 5
 
     if (settings.show_ytd) {
       headers.push(yardstick.ytdColumnLabel, 'YTD Actual', 'YTD Var ($)', 'YTD Var (%)')
-      varianceCols.push(nextCol + 2, nextCol + 3)
+      varianceCols.push(nextCol + 2)
       nextCol += 4
     }
     // The period band above the column names — see periodBandRow.
@@ -1510,7 +1541,7 @@ export class MonthlyReportPDFService {
     this.drawNoBudgetNotice()
     if (ytdYardstick.note) this.drawNote(ytdYardstick.note)
     const headers = ['Account', ytdYardstick.ytdColumnLabel, 'YTD Actual', 'YTD Var ($)', 'YTD Var (%)']
-    const varianceCols = [3, 4]
+    const varianceCols = [3] // the dollar variance only — see above
     if (settings.show_unspent_budget) headers.push('Unspent')
     if (settings.show_budget_annual_total) headers.push('Annual')
 
@@ -1651,7 +1682,9 @@ export class MonthlyReportPDFService {
       tableData.push([{
         content: account.account_name,
         colSpan: 5,
-        styles: { fillColor: [245, 158, 11], textColor: 255, fontStyle: 'bold', fontSize: 8 },
+        // The one page the restyle never reached. An orange band here made the
+        // Subscription page the most obviously off-brand sheet in the pack.
+        styles: { fillColor: GROUP_SHADE, textColor: SECTION_TEXT, fontStyle: 'bold', fontSize: 8 },
       }])
       currentBodyIdx++
 
@@ -3343,7 +3376,7 @@ export class MonthlyReportPDFService {
         this.pageHeight = A4_LONG
       }
       this.margin = 15
-      this.yPosition = this.margin
+      this.yPosition = CONTENT_TOP
 
       // Render each widget on this page
       for (const widget of page.widgets) {
@@ -4146,6 +4179,8 @@ export class MonthlyReportPDFService {
   private applyVarianceTint(data: any): void {
     const polarity = data?.cell?.raw?._polarity as VariancePolarity | undefined
     const text = String(data?.cell?.text || '')
+    // See paintNegatives: the ratio is not coloured, only the figure.
+    if (text.trim().endsWith('%')) return
     const color = decideTintColor(polarity, text)
     // The polarity is worth saying; a coloured BLOCK behind it is not. Calxa
     // states an unfavourable figure in red parentheses and says nothing at all
@@ -4268,6 +4303,18 @@ export class MonthlyReportPDFService {
         if (!stamped) {
           this.doc.setTextColor(246, 226, 226)
           this.doc.text('DRAFT', pw / 2, ph / 2, { align: 'center', angle: 35 })
+        }
+      }
+
+      // The corner mark, on every page but the cover — which carries the full
+      // lockup already, and would otherwise wear both.
+      if (i > 1) {
+        try {
+          const w = 17
+          const h = (LOGO_CORNER_SIZE.h / LOGO_CORNER_SIZE.w) * w
+          this.doc.addImage(LOGO_CORNER, 'PNG', pw - this.margin - w, 9, w, h)
+        } catch {
+          // See addCoverPage.
         }
       }
 
