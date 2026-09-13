@@ -206,17 +206,19 @@ export function invoiceTypesFor(sides: Iterable<AccountSide>): InvoiceType[] {
  * rather than a fifth keeps the route under Xero's five-concurrent-per-tenant
  * limit.
  *
- * Status is filtered in the `where` clause, not with `Statuses=`: that query
- * parameter is documented for Invoices, and whether CreditNotes honours it
- * could not be verified. A `where` on Status is honoured by every endpoint that
- * has one, and `isPostedCreditNote` re-checks each document regardless.
+ * The `where` clause uses only the shape the Invoices request already proves
+ * against live Xero — `Type=="X" AND <date range>` — or the date range alone
+ * when both types are wanted. No code in this repo had sent Xero an OR or a
+ * parenthesis, and a clause Xero rejects fails as an empty list, which would
+ * quietly put every commentary list back to gross of credits. Status and type
+ * are enforced per document instead: `isPostedCreditNote` drops drafts and
+ * voids, and `lineSign` gives a credit note of the other side a 0. Unposted
+ * credit notes cost a few extra rows on a page, nothing more.
  */
 export function commentaryCreditNotesUrl(month: string, types: readonly CreditNoteType[]): string | null {
   const range = monthRangeWhere(month)
   if (!range || types.length === 0) return null
-  const typeClause = types.map(t => `Type=="${t}"`).join(' OR ')
-  const statusClause = POSTED_CREDIT_NOTE_STATUSES.map(s => `Status=="${s}"`).join(' OR ')
-  const where = `(${typeClause}) AND (${statusClause}) AND ${range}`
+  const where = types.length === 1 ? `Type=="${types[0]}" AND ${range}` : range
   return `https://api.xero.com/api.xro/2.0/CreditNotes?where=${encodeURIComponent(where)}`
 }
 

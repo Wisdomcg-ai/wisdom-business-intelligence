@@ -476,14 +476,16 @@ describe('credit notes', () => {
 
     const pay = commentaryCreditNotesUrl('2026-08', ['ACCPAYCREDIT'])!
     expect(pay).toContain('/api.xro/2.0/CreditNotes?')
-    expect(where(pay)).toBe(
-      '(Type=="ACCPAYCREDIT") AND (Status=="AUTHORISED" OR Status=="PAID") AND Date>=DateTime(2026,8,1) AND Date<=DateTime(2026,8,31)',
-    )
+    // The Invoices request's proven shape: no OR, no parentheses, no Status.
+    expect(where(pay)).toBe('Type=="ACCPAYCREDIT" AND Date>=DateTime(2026,8,1) AND Date<=DateTime(2026,8,31)')
 
+    // Both types: the date range alone; type and status are checked per document.
     const both = commentaryCreditNotesUrl('2026-08', ['ACCPAYCREDIT', 'ACCRECCREDIT'])!
-    expect(where(both)).toBe(
-      '(Type=="ACCPAYCREDIT" OR Type=="ACCRECCREDIT") AND (Status=="AUTHORISED" OR Status=="PAID") AND Date>=DateTime(2026,8,1) AND Date<=DateTime(2026,8,31)',
-    )
+    expect(where(both)).toBe('Date>=DateTime(2026,8,1) AND Date<=DateTime(2026,8,31)')
+    for (const url of [pay, both]) {
+      expect(where(url)).not.toMatch(/\bOR\b|Status/)
+      expect(where(url).startsWith('(')).toBe(false)
+    }
 
     expect(commentaryCreditNotesUrl('2026-13', ['ACCPAYCREDIT'])).toBeNull()
     expect(commentaryCreditNotesUrl('2026-08', [])).toBeNull()

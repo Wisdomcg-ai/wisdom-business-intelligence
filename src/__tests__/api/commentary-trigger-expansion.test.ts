@@ -544,7 +544,6 @@ describe('POST /api/monthly-report/commentary — expanded payload + trigger_rea
     const expenseCreditCalls = urls().filter(u => u.includes('/CreditNotes?'))
     expect(expenseCreditCalls).toHaveLength(1)
     expect(expenseCreditCalls[0]).toContain('Type=="ACCPAYCREDIT"')
-    expect(expenseCreditCalls[0]).toContain('Status=="PAID"')
     expect(expenseCreditCalls[0]).not.toContain('ACCRECCREDIT')
 
     mockFetch.mockClear()
@@ -561,10 +560,11 @@ describe('POST /api/monthly-report/commentary — expanded payload + trigger_rea
     expect((await POST(withRevenue)).status).toBe(200)
     const types = urls().filter(u => u.includes('/Invoices?')).map(u => /Type=="(\w+)"/.exec(u)?.[1])
     expect(types.sort()).toEqual(['ACCPAY', 'ACCREC'])
-    // Still one credit-note request, now carrying both types.
+    // Still one credit-note request: both types, so the month alone, with type
+    // and status checked per document.
     const creditCalls = urls().filter(u => u.includes('/CreditNotes?'))
     expect(creditCalls).toHaveLength(1)
-    expect(creditCalls[0]).toContain('Type=="ACCPAYCREDIT"')
-    expect(creditCalls[0]).toContain('Type=="ACCRECCREDIT"')
+    expect(creditCalls[0]).not.toContain('Type==')
+    expect(creditCalls[0]).toContain('DateTime(2026,8,1)')
   })
 })
