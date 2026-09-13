@@ -253,8 +253,8 @@ function TransactionDrillDown({ vendors }: { vendors: VendorSummary[] }) {
                         <div className="text-gray-500 truncate max-w-[300px]" title={txn.context}>{txn.context}</div>
                       )}
                     </td>
-                    <td className="px-3 py-1.5 text-gray-400" title={txn.type === 'invoice' ? 'Invoice' : 'Bank Transaction'}>
-                      {txn.type === 'invoice' ? (
+                    <td className="px-3 py-1.5 text-gray-400" title={txn.type === 'invoice' ? 'Invoice' : txn.type === 'credit_note' ? 'Credit Note' : 'Bank Transaction'}>
+                      {txn.type === 'invoice' || txn.type === 'credit_note' ? (
                         <FileText className="w-3 h-3" />
                       ) : (
                         <Landmark className="w-3 h-3" />

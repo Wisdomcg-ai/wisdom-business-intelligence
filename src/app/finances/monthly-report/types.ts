@@ -462,7 +462,7 @@ export interface VendorTransaction {
   vendor: string          // Clean vendor name for this specific transaction
   context: string | null  // Additional detail only when it adds value (e.g. invoice description)
   amount: number
-  type: 'invoice' | 'bank'
+  type: 'invoice' | 'bank' | 'credit_note'
 }
 
 export interface VendorSummary {

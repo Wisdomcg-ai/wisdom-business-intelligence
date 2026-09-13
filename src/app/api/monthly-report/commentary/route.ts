@@ -10,7 +10,9 @@ import * as Sentry from '@sentry/nextjs'
 import {
   collectAccountTransactions,
   commentaryBankTransactionsUrl,
+  commentaryCreditNotesUrl,
   commentaryInvoicesUrl,
+  creditNoteTypesFor,
   invoiceTypesFor,
   summariseVendors,
   type AccountSide,
@@ -100,10 +102,11 @@ async function fetchAllXeroPages(
   const all: any[] = []
   let page = 1
   // A 429 used to retry the same page forever. Harmless-looking with one fetch,
-  // but this route now runs up to three concurrently (ACCPAY, ACCREC, bank
-  // transactions) against Xero's 60-calls-a-minute and 5-concurrent limits, and
-  // an unbounded loop there holds the request open until the function is killed
-  // — with nothing on the page to say the commentary never finished.
+  // but this route now runs up to four concurrently (ACCPAY, ACCREC, bank
+  // transactions, credit notes) against Xero's 60-calls-a-minute and
+  // 5-concurrent limits, and an unbounded loop there holds the request open
+  // until the function is killed — with nothing on the page to say the
+  // commentary never finished.
   const MAX_RATE_LIMIT_RETRIES = 3
   let rateLimitRetries = 0
 
@@ -421,20 +424,31 @@ async function postHandler(request: Request) {
     // accounts can use — see commentary-documents.ts for the two Urban Road
     // August lists (Freight, Contractors) that each ran ~$800 over their
     // account on drafts, voids and a refund signed as spend.
+    //
+    // And the month's posted credit notes, which this route never fetched:
+    // Urban Road's August Rolled Prints list stood $957.03 over its account
+    // because the customer credits that reduced it in the ledger were not in
+    // the list. Same pager, so the same 429 cap and page-cap invariant apply,
+    // labelled CreditNotes in Sentry.
     const bankUrl = commentaryBankTransactionsUrl(report_month)!
     const pageContext = { tenantId, reportMonth: report_month }
-    const invoiceTypes = invoiceTypesFor(sideByAccount.values())
+    const sides = [...sideByAccount.values()]
+    const invoiceTypes = invoiceTypesFor(sides)
+    const creditNotesUrl = commentaryCreditNotesUrl(report_month, creditNoteTypesFor(sides))
 
-    const [invoicePages, bankTransactions] = await Promise.all([
+    const [invoicePages, bankTransactions, creditNotes] = await Promise.all([
       Promise.all(invoiceTypes.map(type =>
         fetchAllXeroPages(commentaryInvoicesUrl(report_month, type)!, xeroHeaders, 'Invoices', { ...pageContext, label: `Invoices (${type})` })
       )),
       fetchAllXeroPages(bankUrl, xeroHeaders, 'BankTransactions', pageContext),
+      creditNotesUrl
+        ? fetchAllXeroPages(creditNotesUrl, xeroHeaders, 'CreditNotes', { ...pageContext, label: 'CreditNotes' })
+        : Promise.resolve([]),
     ])
     const invoices = invoicePages.flat()
 
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`[Commentary] Fetched ${invoices.length} invoices, ${bankTransactions.length} bank transactions for ${report_month}`)
+      console.log(`[Commentary] Fetched ${invoices.length} invoices, ${bankTransactions.length} bank transactions, ${creditNotes.length} credit notes for ${report_month}`)
     }
 
     // Load settings for detail tab cross-references
@@ -502,6 +516,7 @@ async function postHandler(request: Request) {
         side: sideByAccount.get(line.account_name) ?? 'expense',
         invoices,
         bankTransactions,
+        creditNotes,
         baseCurrency,
       }))
 
