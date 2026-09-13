@@ -81,8 +81,9 @@ export function buildDraftNote(input: {
   const warnings: string[] = []
 
   // Credits read differently and are quoted differently: "less X credit ($Y)".
-  // They are also few and always explanatory, so they are never rolled up into
-  // "others" — a credit hidden inside a remainder explains nothing.
+  // They are never rolled into the charges' "+N others" — a credit hidden
+  // inside that remainder explains nothing, and its sign would silently shrink
+  // a total the reader takes for charges.
   const charges = vendors.filter(v => v.amount > 0).sort((a, b) => b.amount - a.amount)
   const credits = vendors.filter(v => v.amount < 0).sort((a, b) => a.amount - b.amount)
 
@@ -95,14 +96,32 @@ export function buildDraftNote(input: {
     parts.push(`+${rest.length} ${rest.length === 1 ? 'other' : 'others'} (${money(restTotal)})`)
   }
 
-  for (const c of credits) {
-    // The supplier grouping rolls sub-materiality suppliers into a remainder
-    // named "Others", and now that refunds are signed that remainder can net
-    // negative. "less Others credit ($50)" names a supplier that does not
-    // exist; the remainder is several small credits, and says so.
-    parts.push(c.vendor === 'Others'
-      ? `less other credits (${money(c.amount)})`
-      : `less ${c.vendor} credit (${money(c.amount)})`)
+  // But credits are capped at the same N, in their own remainder. This loop
+  // used to name every credit on the assumption that credits are few. Once
+  // customer credit notes were fetched that stopped being true: Urban Road's
+  // Zoho integration raises about thirty ACCRECCREDITs a month, many to
+  // individual retail customers, and an uncapped revenue line would print a
+  // "less <customer> credit" clause for each of them straight into the client
+  // pack — the wall of 6.5pt text DEFAULT_TOP_N exists to prevent, made of
+  // private individuals' names.
+  //
+  // The supplier grouping rolls sub-materiality suppliers into a remainder
+  // named "Others", and now that refunds are signed that remainder can net
+  // negative. "less Others credit ($50)" names a supplier that does not
+  // exist, so it is never one of the named credits; it joins the credit
+  // remainder, which then says "other credits" without a count, because
+  // "Others" is itself an unknown number of suppliers.
+  const namedCredits = credits.filter(c => c.vendor !== 'Others').slice(0, topN)
+  const restCredits = credits.filter(c => !namedCredits.includes(c))
+  for (const c of namedCredits) {
+    parts.push(`less ${c.vendor} credit (${money(c.amount)})`)
+  }
+  if (restCredits.length > 0) {
+    const restTotal = restCredits.reduce((s, v) => s + v.amount, 0)
+    const label = restCredits.some(c => c.vendor === 'Others')
+      ? 'other credits'
+      : `${restCredits.length} other ${restCredits.length === 1 ? 'credit' : 'credits'}`
+    parts.push(`less ${label} (${money(restTotal)})`)
   }
 
   // A document we could not convert is named rather than quietly included at a

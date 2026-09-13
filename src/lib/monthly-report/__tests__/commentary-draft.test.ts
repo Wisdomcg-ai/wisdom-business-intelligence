@@ -104,6 +104,68 @@ describe('buildDraftNote — the cap', () => {
     expect(note.body).toContain('+1 other ($2,000)')
     expect(note.body).toContain('less Refund Co credit ($900)')
   })
+
+  it('caps credits the same way it caps charges', () => {
+    // Urban Road's customer side raises about thirty ACCRECCREDITs a month,
+    // many to individual retail customers. Uncapped, one revenue line printed a
+    // "less X credit" clause per customer into the client pack.
+    const note = buildDraftNote({
+      accountName: 'Framed Prints',
+      vendors: [
+        { vendor: 'Big A', amount: 20000 }, { vendor: 'Big B', amount: 10000 },
+        { vendor: 'Big C', amount: 5000 }, { vendor: 'Big D', amount: 3000 },
+        { vendor: 'Customer 1', amount: -900 },
+        { vendor: 'Customer 2', amount: -800 },
+        { vendor: 'Customer 3', amount: -700 },
+        { vendor: 'Customer 4', amount: -600 },
+        { vendor: 'Customer 5', amount: -500 },
+      ],
+      accountActual: 34500,
+      clause: null,
+    })
+    expect(note.body).toBe(
+      'Big A ($20,000), Big B ($10,000), Big C ($5,000), +1 other ($3,000), '
+      + 'less Customer 1 credit ($900), less Customer 2 credit ($800), less Customer 3 credit ($700), '
+      + 'less 2 other credits ($1,100)',
+    )
+    expect(note.body).not.toContain('Customer 4')
+  })
+
+  it('says "credit" not "credits" for a single credit remainder', () => {
+    const note = buildDraftNote({
+      accountName: 'X',
+      vendors: [
+        { vendor: 'A', amount: 5000 },
+        { vendor: 'C1', amount: -400 }, { vendor: 'C2', amount: -300 },
+        { vendor: 'C3', amount: -200 }, { vendor: 'C4', amount: -100 },
+      ],
+      accountActual: 4000,
+      clause: null,
+    })
+    expect(note.body).toBe(
+      'A ($5,000), less C1 credit ($400), less C2 credit ($300), less C3 credit ($200), less 1 other credit ($100)',
+    )
+  })
+
+  it('folds the "Others" remainder into the credit rollup rather than naming it', () => {
+    // "Others" is already several small suppliers; it is never a named credit,
+    // and once there is a credit remainder it joins it instead of standing
+    // beside it as a second "other credits" clause.
+    const note = buildDraftNote({
+      accountName: 'X',
+      vendors: [
+        { vendor: 'A', amount: 5000 },
+        { vendor: 'Others', amount: -1000 },
+        { vendor: 'C1', amount: -400 }, { vendor: 'C2', amount: -300 },
+        { vendor: 'C3', amount: -200 }, { vendor: 'C4', amount: -100 },
+      ],
+      accountActual: 3000,
+      clause: null,
+    })
+    expect(note.body).toBe(
+      'A ($5,000), less C1 credit ($400), less C2 credit ($300), less C3 credit ($200), less other credits ($1,100)',
+    )
+  })
 })
 
 describe('buildDraftNote — what it refuses to send', () => {
