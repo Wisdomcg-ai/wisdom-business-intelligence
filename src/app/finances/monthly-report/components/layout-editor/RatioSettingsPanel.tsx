@@ -240,20 +240,20 @@ export default function RatioSettingsPanel({ widget, businessId, onCancel, onApp
                         onClick={() => setForm(moveRatio(form, index, -1))}
                         disabled={index === 0}
                         aria-label={`Move ratio ${index + 1} up`}
-                        title="Move up"
-                        className="p-1 text-gray-500 hover:text-gray-800 disabled:opacity-30 rounded"
+                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] text-gray-500 hover:text-gray-800 disabled:opacity-30 rounded"
                       >
-                        <ArrowUp className="w-3.5 h-3.5" />
+                        <ArrowUp className="w-3 h-3" />
+                        Move up
                       </button>
                       <button
                         type="button"
                         onClick={() => setForm(moveRatio(form, index, 1))}
                         disabled={index === form.ratios.length - 1}
                         aria-label={`Move ratio ${index + 1} down`}
-                        title="Move down"
-                        className="p-1 text-gray-500 hover:text-gray-800 disabled:opacity-30 rounded"
+                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] text-gray-500 hover:text-gray-800 disabled:opacity-30 rounded"
                       >
-                        <ArrowDown className="w-3.5 h-3.5" />
+                        <ArrowDown className="w-3 h-3" />
+                        Move down
                       </button>
                       <button
                         type="button"
@@ -368,8 +368,12 @@ function AccountListStatus({ state, onRetry }: { state: AccountListState; onRetr
   if (state.status === 'loading') return <p className={helpClass}>Loading this business’s accounts…</p>
   if (state.status === 'unavailable') {
     return (
+      // The export refuses the whole page for such a business (more than one
+      // Xero organisation, or not AUD) before any ratio is built — totals too.
+      // So this is about the page, not about picking accounts.
       <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-2">
-        Accounts can’t be picked for this business: {state.reason}.
+        This page can’t show figures for this business yet: {state.reason}. Anything set up here will print that
+        sentence instead.
       </p>
     )
   }
@@ -470,9 +474,11 @@ function OperandEditor({ idPrefix, legend, operand, accountList, nameFor, onChan
                       type="button"
                       onClick={() => onToggleAccount(code, false)}
                       aria-label={`Remove account ${code}`}
-                      className="text-gray-400 hover:text-red-600 shrink-0"
+                      // Words, not an X: an icon-only control on a row reads as
+                      // anything (a misread trash icon once deleted an employee).
+                      className="text-[11px] text-gray-500 hover:text-red-600 shrink-0"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      Remove
                     </button>
                   </li>
                 )

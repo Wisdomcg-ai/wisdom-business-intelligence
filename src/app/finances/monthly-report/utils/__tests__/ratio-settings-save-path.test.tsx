@@ -82,9 +82,69 @@ describe('UPDATE_WIDGET', () => {
 
     const undone = editorReducer(after, { type: 'UNDO' })
     expect(ratioWidget(undone.layout).config).toBeUndefined()
-    // REDO is not asserted: pushHistory stores the PRE-change layout, so the
-    // editor's redo restores that same copy for every action type. A
-    // pre-existing history defect, not this action's.
+    const redone = editorReducer(undone, { type: 'REDO' })
+    expect(ratioWidget(redone.layout).config).toEqual(URBAN_ROAD_CONFIG)
+    expect(ratioWidget(redone.layout).titleOverride).toBe(URBAN_ROAD_TITLE)
+  })
+
+  // The panel's own flow is two edits in a row — drop the page, then Apply its
+  // settings. History used to record the layout from BEFORE each edit, so one
+  // Undo stepped back two: it removed the whole page, and Redo brought it back
+  // with the config the coach had just built nowhere in history.
+  it('drop, Apply, Undo takes back only the Apply — and Redo restores the config', () => {
+    const empty: PDFLayout = { version: 1, pages: [{ id: 'ratio-page', orientation: 'portrait', widgets: [] }] }
+    let s = editorReducer(
+      { layout: empty, selectedPageId: null, selectedWidgetId: null, isDirty: false, history: [], historyIndex: 0 },
+      { type: 'SET_LAYOUT', layout: empty },
+    )
+    s = editorReducer(s, {
+      type: 'ADD_WIDGET', pageId: 'ratio-page',
+      widget: { id: 'ratio-1', type: 'ratio_analysis', col: 0, row: 0, colSpan: 2, rowSpan: 2 },
+    })
+    s = applyUrbanRoad(s)
+
+    const undone = editorReducer(s, { type: 'UNDO' })
+    expect(undone.layout.pages[0].widgets).toHaveLength(1)
+    expect(ratioWidget(undone.layout).config).toBeUndefined()
+
+    const redone = editorReducer(undone, { type: 'REDO' })
+    expect(ratioWidget(redone.layout).config).toEqual(URBAN_ROAD_CONFIG)
+    expect(editorReducer(redone, { type: 'REDO' })).toBe(redone)
+
+    const twice = editorReducer(undone, { type: 'UNDO' })
+    expect(twice.layout.pages[0].widgets).toEqual([])
+    expect(editorReducer(twice, { type: 'UNDO' })).toBe(twice)
+  })
+
+  it('Apply, then a stray Delete, then Undo brings the widget back WITH its config', () => {
+    let s = applyUrbanRoad(startState())
+    s = editorReducer(s, { type: 'DELETE_WIDGET', pageId: 'ratio-page', widgetId: 'ratio-1' })
+    expect(s.layout.pages.flatMap((p) => p.widgets).some((w) => w.id === 'ratio-1')).toBe(false)
+    const undone = editorReducer(s, { type: 'UNDO' })
+    expect(ratioWidget(undone.layout).config).toEqual(URBAN_ROAD_CONFIG)
+    expect(ratioWidget(undone.layout).titleOverride).toBe(URBAN_ROAD_TITLE)
+  })
+
+  it('Apply, Apply again, Undo returns to the FIRST Apply, not the unconfigured page', () => {
+    const first = applyUrbanRoad(startState())
+    const second = editorReducer(first, {
+      type: 'UPDATE_WIDGET', pageId: 'ratio-page', widgetId: 'ratio-1', config: URBAN_ROAD_CONFIG, titleOverride: 'Margins',
+    })
+    const undone = editorReducer(second, { type: 'UNDO' })
+    expect(ratioWidget(undone.layout).titleOverride).toBe(URBAN_ROAD_TITLE)
+    expect(ratioWidget(undone.layout).config).toEqual(URBAN_ROAD_CONFIG)
+  })
+
+  it('history stays capped, and the cap drops the oldest entry, not the newest', () => {
+    let s = startState()
+    for (let i = 0; i < 60; i++) {
+      s = editorReducer(s, {
+        type: 'UPDATE_WIDGET', pageId: 'ratio-page', widgetId: 'ratio-1', config: URBAN_ROAD_CONFIG, titleOverride: `T${i}`,
+      })
+    }
+    expect(s.history.length).toBeLessThanOrEqual(50)
+    expect(s.historyIndex).toBe(s.history.length - 1)
+    expect(ratioWidget(editorReducer(s, { type: 'UNDO' }).layout).titleOverride).toBe('T58')
   })
 
   it('a blank title removes the key rather than storing an empty string', () => {

@@ -46,14 +46,39 @@ import RatioSettingsPanel from './RatioSettingsPanel'
 
 const MAX_HISTORY = 50
 
-function pushHistory(state: EditorState): EditorState {
+/** Every layout edit starts here; editorReducer records the result into history. */
+function beginEdit(state: EditorState): EditorState {
+  return { ...state, isDirty: true }
+}
+
+/**
+ * history[historyIndex] is ALWAYS the layout on screen: SET_LAYOUT seeds it,
+ * every edit appends the layout AFTER the change, and UNDO/REDO step one entry.
+ *
+ * It used to append the layout from BEFORE each edit, so the newest layout was
+ * never in history. One Undo stepped back two edits and Redo could not return
+ * to where it started. The ratio settings panel walked coaches straight into
+ * it: drop the page, Apply its settings, Undo — and the whole page went, with
+ * the config just built recoverable from nowhere.
+ */
+function recordHistory(state: EditorState): EditorState {
   const newHistory = state.history.slice(0, state.historyIndex + 1)
   newHistory.push(JSON.parse(JSON.stringify(state.layout)))
   if (newHistory.length > MAX_HISTORY) newHistory.shift()
-  return { ...state, history: newHistory, historyIndex: newHistory.length - 1, isDirty: true }
+  return { ...state, history: newHistory, historyIndex: newHistory.length - 1 }
 }
 
+const HISTORY_OWNERS = new Set<EditorAction['type']>(['SET_LAYOUT', 'UNDO', 'REDO'])
+
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
+  const next = applyAction(state, action)
+  // An action that returned the same layout object changed nothing to undo
+  // (a selection, a no-op edit); the history owners manage history themselves.
+  if (next.layout === state.layout || HISTORY_OWNERS.has(action.type)) return next
+  return recordHistory(next)
+}
+
+function applyAction(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case 'SET_LAYOUT': {
       return {
@@ -74,7 +99,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return { ...state, selectedWidgetId: action.widgetId }
 
     case 'ADD_PAGE': {
-      const s = pushHistory(state)
+      const s = beginEdit(state)
       const newPage: LayoutPage = {
         id: generateId(),
         orientation: action.orientation,
@@ -87,7 +112,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'DELETE_PAGE': {
       if (state.layout.pages.length <= 1) return state
-      const s = pushHistory(state)
+      const s = beginEdit(state)
       const idx = s.layout.pages.findIndex(p => p.id === action.pageId)
       s.layout = {
         ...s.layout,
@@ -100,7 +125,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'REORDER_PAGES': {
-      const s = pushHistory(state)
+      const s = beginEdit(state)
       const pageMap = new Map(s.layout.pages.map(p => [p.id, p]))
       s.layout = {
         ...s.layout,
@@ -110,7 +135,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'SET_PAGE_ORIENTATION': {
-      const s = pushHistory(state)
+      const s = beginEdit(state)
       s.layout = {
         ...s.layout,
         pages: s.layout.pages.map(p => {
@@ -131,7 +156,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'ADD_WIDGET': {
-      const s = pushHistory(state)
+      const s = beginEdit(state)
       s.layout = {
         ...s.layout,
         pages: s.layout.pages.map(p => {
@@ -143,7 +168,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'MOVE_WIDGET': {
-      const s = pushHistory(state)
+      const s = beginEdit(state)
       s.layout = {
         ...s.layout,
         pages: s.layout.pages.map(p => {
@@ -163,7 +188,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'RESIZE_WIDGET': {
-      const s = pushHistory(state)
+      const s = beginEdit(state)
       s.layout = {
         ...s.layout,
         pages: s.layout.pages.map(p => {
@@ -185,7 +210,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'UPDATE_WIDGET': {
       const page = state.layout.pages.find(p => p.id === action.pageId)
       if (!page?.widgets.some(w => w.id === action.widgetId)) return state
-      const s = pushHistory(state)
+      const s = beginEdit(state)
       s.layout = {
         ...s.layout,
         pages: s.layout.pages.map(p => {
@@ -208,7 +233,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'DELETE_WIDGET': {
-      const s = pushHistory(state)
+      const s = beginEdit(state)
       s.layout = {
         ...s.layout,
         pages: s.layout.pages.map(p => {
@@ -242,7 +267,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const pos = findFirstAvailablePosition(toPage, clampedColSpan, clampedRowSpan)
       if (!pos) return state // no room
 
-      const s = pushHistory(state)
+      const s = beginEdit(state)
       const movedWidget: LayoutWidget = {
         ...widget,
         col: pos.col,
@@ -363,6 +388,8 @@ export default function PDFLayoutEditorModal({
   // The placement whose settings panel is open. UI state, not editor state:
   // it is neither undoable nor saved.
   const [settingsWidgetId, setSettingsWidgetId] = useState<string | null>(null)
+  // "Close without saving?" is showing.
+  const [confirmingClose, setConfirmingClose] = useState(false)
   const [draggedItem, setDraggedItem] = useState<{
     type: 'palette-widget' | 'placed-widget' | 'page'
     widgetType?: WidgetType
@@ -387,6 +414,7 @@ export default function PDFLayoutEditorModal({
   useEffect(() => {
     if (!isOpen) return
     setSettingsWidgetId(null)
+    setConfirmingClose(false)
 
     if (initialLayout && sections) {
       const { layout: synced, added, removed } = syncLayoutWithSettings(initialLayout, sections)
@@ -655,6 +683,23 @@ export default function PDFLayoutEditorModal({
     dispatch({ type: 'SET_LAYOUT', layout: defaultLayout })
   }, [defaultLayout])
 
+  // Nothing is kept until Save Layout. The X and Escape used to close straight
+  // away, which was survivable while every edit was a drag; a ratio page's
+  // settings are a long form, and after Apply a coach reasonably thinks he is
+  // done — so unsaved changes are confirmed before they are thrown away.
+  const requestClose = useCallback(() => {
+    if (state.isDirty) setConfirmingClose(true)
+    else onClose()
+  }, [state.isDirty, onClose])
+
+  // Closing a settings panel also drops the selection. "Edit ratios" selects
+  // the placement, and focus falls to the page when the panel unmounts, so a
+  // stray Backspace after Apply deleted the page it had just configured.
+  const closeSettings = useCallback(() => {
+    setSettingsWidgetId(null)
+    dispatch({ type: 'SELECT_WIDGET', widgetId: null })
+  }, [])
+
   // ── Keyboard Shortcuts ────────────────────────────────────────
 
   useEffect(() => {
@@ -664,6 +709,14 @@ export default function PDFLayoutEditorModal({
       // A settings panel owns the keyboard while it is open — including Escape,
       // which closes the panel, not the editor and every unsaved edit with it.
       if (settingsWidgetId) return
+      // So does the close confirmation: Escape there means "keep editing".
+      if (confirmingClose) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          setConfirmingClose(false)
+        }
+        return
+      }
       // Cmd+Z in a text field undoes the typing, not the layout.
       const typing = isTypingTarget(e.target)
       // Undo
@@ -689,13 +742,13 @@ export default function PDFLayoutEditorModal({
       // Escape to close
       if (e.key === 'Escape') {
         e.preventDefault()
-        onClose()
+        requestClose()
       }
     }
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [isOpen, state.selectedWidgetId, state.selectedPageId, onClose, settingsWidgetId])
+  }, [isOpen, state.selectedWidgetId, state.selectedPageId, requestClose, settingsWidgetId, confirmingClose])
 
   if (!isOpen) return null
 
@@ -717,7 +770,7 @@ export default function PDFLayoutEditorModal({
           canRedo={state.historyIndex < state.history.length - 1}
           onSave={handleSave}
           onReset={handleReset}
-          onClose={onClose}
+          onClose={requestClose}
           onUndo={() => dispatch({ type: 'UNDO' })}
           onRedo={() => dispatch({ type: 'REDO' })}
         />
@@ -782,7 +835,7 @@ export default function PDFLayoutEditorModal({
           key={settingsTarget.widget.id}
           widget={settingsTarget.widget}
           businessId={businessId}
-          onCancel={() => setSettingsWidgetId(null)}
+          onCancel={closeSettings}
           onApply={({ config, titleOverride }) => {
             dispatch({
               type: 'UPDATE_WIDGET',
@@ -791,9 +844,47 @@ export default function PDFLayoutEditorModal({
               config,
               titleOverride,
             })
-            setSettingsWidgetId(null)
+            closeSettings()
           }}
         />
+      )}
+
+      {confirmingClose && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" aria-hidden="true" onClick={() => setConfirmingClose(false)} />
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="layout-close-heading"
+            aria-describedby="layout-close-body"
+            className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3"
+          >
+            <h2 id="layout-close-heading" className="text-sm font-semibold text-gray-900">Close without saving?</h2>
+            <p id="layout-close-body" className="text-xs text-gray-600">
+              The changes made since the last Save Layout — including any ratio page settings you applied — will be lost.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setConfirmingClose(false)}
+                className="px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 rounded-md"
+              >
+                Keep editing
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmingClose(false)
+                  onClose()
+                }}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md"
+              >
+                Close without saving
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

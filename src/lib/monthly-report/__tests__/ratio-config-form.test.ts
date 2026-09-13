@@ -119,6 +119,18 @@ describe('averages', () => {
     const own = { ...URBAN_ROAD_CONFIG, ratios: [{ ...URBAN_ROAD_CONFIG.ratios[0], trailing_averages: [9] }] }
     expect((applied(formFromWidget(own, undefined).form).config as typeof own).ratios[0].trailing_averages).toEqual([9])
   })
+
+  it('ticking then unticking "No averages" gives a hand-written per-ratio list back, not the page’s', () => {
+    const own = { ...URBAN_ROAD_CONFIG, ratios: [{ ...URBAN_ROAD_CONFIG.ratios[0], trailing_averages: [9] }] }
+    let f = formFromWidget(own, undefined).form
+    f = setRatioNoAverages(f, 0, true)
+    expect((applied(f).config as typeof own).ratios[0].trailing_averages).toEqual([])
+    f = setRatioNoAverages(f, 0, false)
+    expect((applied(f).config as typeof own).ratios[0].trailing_averages).toEqual([9])
+    // Stored as [] (Urban Road's Posters ratio): unticking means the page's averages.
+    const posters = setRatioNoAverages(formFromWidget(URBAN_ROAD_CONFIG, undefined).form, 1, false)
+    expect((applied(posters).config as typeof URBAN_ROAD_CONFIG).ratios[1]).not.toHaveProperty('trailing_averages')
+  })
 })
 
 describe('the round-trip rule', () => {
@@ -172,6 +184,53 @@ describe('the round-trip rule', () => {
     expect(form.monthsShown).toBe(3)
     expect(form.ratios).toHaveLength(1)
     expect(notes).toHaveLength(2)
+  })
+
+  const withNumerator = (numerator: unknown, extra: Record<string, unknown> = {}) => ({
+    ...URBAN_ROAD_CONFIG,
+    ratios: [{ ...URBAN_ROAD_CONFIG.ratios[0], numerator, ...extra }],
+  })
+
+  it('a null account entry is left out with a note — never turned into the code "null"', () => {
+    const { form, notes } = formFromWidget(withNumerator({ accounts: ['55000', null], label: 'Freight to Customer' }), undefined)
+    expect(form.ratios[0].numerator.accounts).toEqual(['55000'])
+    expect(notes).toEqual(["Ratio 1's top line had an account entry that is not a code (null); it was left out."])
+    // A numeric code is still a code, kept as text.
+    const numeric = formFromWidget(withNumerator({ accounts: [55000] }), undefined)
+    expect(numeric.form.ratios[0].numerator.accounts).toEqual(['55000'])
+    expect(numeric.notes).toHaveLength(1)
+  })
+
+  it('accounts stored as one string are kept as that one code, with a note', () => {
+    const { form, notes } = formFromWidget(withNumerator({ accounts: '55000' }), undefined)
+    expect(form.ratios[0].numerator.mode).toBe('accounts')
+    expect(form.ratios[0].numerator.accounts).toEqual(['55000'])
+    expect(notes).toEqual(["Ratio 1's top line had its accounts stored as a single value; it is kept as account 55000."])
+  })
+
+  it('accounts that cannot be read at all are named in a note', () => {
+    const { notes } = formFromWidget(withNumerator({ accounts: { code: '55000' } }), undefined)
+    expect(notes).toEqual(['Ratio 1\'s top line had accounts that could not be read ({"code":"55000"}); the line starts empty.'])
+  })
+
+  it('a display name or ratio name of the wrong type, or a blank one, is cleared with a note', () => {
+    const numeric = formFromWidget(withNumerator({ accounts: ['55000'], label: 123 }), undefined)
+    expect(numeric.form.ratios[0].numerator.label).toBe('')
+    expect(numeric.notes).toEqual(["Ratio 1's top line had a display name that could not be read (123); it was cleared."])
+
+    const blank = formFromWidget({ ...URBAN_ROAD_CONFIG, ratios: [{ ...URBAN_ROAD_CONFIG.ratios[0], denominator: { total: 'income', label: '' } }] }, undefined)
+    expect(blank.notes).toEqual(["Ratio 1's bottom line had a blank display name; it was removed."])
+
+    const ratioName = formFromWidget(withNumerator({ accounts: ['55000'] }, { label: 12 }), undefined)
+    expect(ratioName.form.ratios[0].label).toBe('')
+    expect(ratioName.notes).toEqual(["Ratio 1's name could not be read (12); it was cleared."])
+  })
+
+  it('a title of the wrong type is cleared with a note instead of crashing the panel', () => {
+    const { form, notes } = formFromWidget(URBAN_ROAD_CONFIG, 42 as unknown as string)
+    expect(form.title).toBe('')
+    expect(notes).toEqual(['The page title could not be read (42); it was cleared.'])
+    expect(validateRatioForm(form).ok).toBe(true)
   })
 
   it('a freshly placed widget (no config) opens as a blank page with one ratio', () => {

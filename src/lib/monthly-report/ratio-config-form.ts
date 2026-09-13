@@ -27,7 +27,12 @@
  *   - account codes are kept whether or not the chart still has them — a code
  *     that was renamed away is shown as not found, never dropped;
  *   - blank display names and a blank title are OMITTED, not written as '' —
- *     the schema refuses an empty label, and the renderer already falls back;
+ *     the schema refuses an empty label, and the renderer already falls back
+ *     (a blank display name that was STORED gets a note: the page refused it,
+ *     and Apply would otherwise make it work without a word);
+ *   - a stored value of the wrong type is reset WITH A NOTE naming what was
+ *     there — a label that is not text, accounts that are not a list, an entry
+ *     that is not a code. Never String()-ed into something that looks valid;
  *   - keys this module does not model are carried through verbatim. The schema
  *     is strict, so such a config does not validate: the panel shows parse's
  *     reason and will not Apply it, rather than quietly deleting the key.
@@ -64,6 +69,13 @@ export interface RatioForm {
   denominator: OperandForm
   /** undefined = the page's averages; [] = none for this ratio; else as stored. */
   trailing: number[] | undefined
+  /**
+   * The ratio's own stored list, when it had one that was not []. Held like
+   * OperandForm holds both choices: ticking "No averages" and unticking it
+   * again gives a hand-written [9] back, instead of quietly swapping it for the
+   * page's averages. UI-only — never written.
+   */
+  ownTrailing: number[] | undefined
   extra: Record<string, unknown>
 }
 
@@ -105,6 +117,7 @@ export function blankRatio(): RatioForm {
     numerator: blankOperand('accounts'),
     denominator: blankOperand('total', 'income'),
     trailing: undefined,
+    ownTrailing: undefined,
     extra: {},
   }
 }
@@ -144,17 +157,59 @@ export interface LoadedRatioPageForm {
   notes: string[]
 }
 
+/** A value as it was stored, for a note — so the coach can see what was there. */
+const shown = (v: unknown): string => JSON.stringify(v) ?? String(v)
+
+/**
+ * A stored label: kept when it is text, cleared with a note when it is not —
+ * and a blank one is noted too, because the schema refused it and the panel
+ * omits it, so Apply would otherwise turn a refused page into a working one
+ * without a word.
+ */
+function labelFromConfig(raw: unknown, what: string, notes: string[]): string {
+  if (raw === undefined) return ''
+  if (typeof raw !== 'string') {
+    notes.push(`${what} could not be read (${shown(raw)}); it was cleared.`)
+    return ''
+  }
+  return raw
+}
+
 function operandFromConfig(raw: unknown, where: string, notes: string[]): OperandForm {
   if (!isRecord(raw)) {
     if (raw !== undefined) notes.push(`${where} could not be read and was reset.`)
     return blankOperand('accounts')
   }
-  const hasAccounts = Array.isArray(raw.accounts)
-  const rawAccounts = hasAccounts ? (raw.accounts as unknown[]) : []
-  if (rawAccounts.some((c) => typeof c !== 'string')) {
-    notes.push(`${where} had an account code stored as a number; it is kept as text.`)
+  let hasAccounts = Array.isArray(raw.accounts)
+  let rawAccounts: unknown[] = hasAccounts ? (raw.accounts as unknown[]) : []
+  if (typeof raw.accounts === 'string') {
+    // One code where a list belongs: keep it as that one code rather than
+    // showing an empty line with no clue what was stored.
+    hasAccounts = true
+    rawAccounts = [raw.accounts]
+    notes.push(`${where} had its accounts stored as a single value; it is kept as account ${raw.accounts}.`)
+  } else if (raw.accounts !== undefined && !hasAccounts) {
+    notes.push(`${where} had accounts that could not be read (${shown(raw.accounts)}); the line starts empty.`)
   }
-  const accounts = rawAccounts.map((c) => String(c))
+  // Only a number is a code written without quotes. String(null) is "null",
+  // which passes the account-code rule — so a null entry once became a real-
+  // looking code the page then printed as not found.
+  const accounts: string[] = []
+  const unreadable: unknown[] = []
+  let numeric = false
+  for (const c of rawAccounts) {
+    if (typeof c === 'string') accounts.push(c)
+    else if (typeof c === 'number' && Number.isFinite(c)) {
+      numeric = true
+      accounts.push(String(c))
+    } else unreadable.push(c)
+  }
+  if (numeric) notes.push(`${where} had an account code stored as a number; it is kept as text.`)
+  if (unreadable.length > 0) {
+    notes.push(
+      `${where} had ${unreadable.length === 1 ? 'an account entry' : `${unreadable.length} account entries`} that ${unreadable.length === 1 ? 'is' : 'are'} not a code (${unreadable.map(shown).join(', ')}); ${unreadable.length === 1 ? 'it was' : 'they were'} left out.`,
+    )
+  }
   const validTotal = (STATEMENT_TOTALS as readonly unknown[]).includes(raw.total)
   if (raw.total !== undefined && !validTotal) {
     notes.push(`${where} named a total this page does not know (${JSON.stringify(raw.total)}); it was reset to Total Income.`)
@@ -166,16 +221,26 @@ function operandFromConfig(raw: unknown, where: string, notes: string[]): Operan
     mode: hasAccounts ? 'accounts' : raw.total !== undefined ? 'total' : 'accounts',
     accounts,
     total: validTotal ? (raw.total as StatementTotal) : 'income',
-    label: typeof raw.label === 'string' ? raw.label : '',
+    label: operandLabelFromConfig(raw.label, where, notes),
     extra: extrasOf(raw, OPERAND_KEYS),
   }
+}
+
+function operandLabelFromConfig(raw: unknown, where: string, notes: string[]): string {
+  const label = labelFromConfig(raw, `${where} had a display name that`, notes)
+  if (raw === '' || (typeof raw === 'string' && raw.trim() === '')) {
+    notes.push(`${where} had a blank display name; it was removed.`)
+  }
+  return label
 }
 
 /** Read a placed widget into the form. Tolerant: nothing stored is dropped silently. */
 export function formFromWidget(config: unknown, titleOverride: string | undefined): LoadedRatioPageForm {
   const notes: string[] = []
   const form = emptyRatioPageForm()
-  form.title = titleOverride ?? ''
+  // Typed as a string, but pdf_layout is hand-editable JSON: a number here once
+  // meant form.title.trim() threw inside the panel's render.
+  form.title = labelFromConfig(titleOverride, 'The page title', notes)
   if (config === undefined || config === null) return { form, notes }
   if (!isRecord(config)) {
     notes.push('The stored settings could not be read; the page starts again from blank.')
@@ -204,10 +269,11 @@ export function formFromWidget(config: unknown, titleOverride: string | undefine
       else if (raw.trailing_averages !== undefined) notes.push(`${where}'s averages could not be read; it now uses the page's averages.`)
       form.ratios.push({
         key: nextKey(),
-        label: typeof raw.label === 'string' ? raw.label : '',
+        label: labelFromConfig(raw.label, `${where}'s name`, notes),
         numerator: operandFromConfig(raw.numerator, `${where}'s top line`, notes),
         denominator: operandFromConfig(raw.denominator, `${where}'s bottom line`, notes),
         trailing,
+        ownTrailing: trailing && trailing.length > 0 ? [...trailing] : undefined,
         extra: extrasOf(raw, RATIO_KEYS),
       })
     })
@@ -389,9 +455,15 @@ export function setPageAverage(form: RatioPageForm, window: number, on: boolean)
   return { ...form, trailing: withAverage(form.trailing, window, on) }
 }
 
-/** "No averages for this ratio": [] when ticked, back to the page's averages when not. */
+/**
+ * "No averages for this ratio": [] when ticked. Unticked, the ratio's own
+ * stored list comes back if it had one, otherwise the page's averages.
+ */
 export function setRatioNoAverages(form: RatioPageForm, index: number, on: boolean): RatioPageForm {
-  return mapRatio(form, index, (r) => ({ ...r, trailing: on ? [] : undefined }))
+  return mapRatio(form, index, (r) => ({
+    ...r,
+    trailing: on ? [] : r.ownTrailing ? [...r.ownTrailing] : undefined,
+  }))
 }
 
 /** Windows in a list that have no checkbox — shown as kept, so a [9] is not a mystery. */

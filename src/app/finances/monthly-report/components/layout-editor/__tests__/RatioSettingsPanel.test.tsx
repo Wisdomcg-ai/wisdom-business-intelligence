@@ -10,6 +10,8 @@
  *   - Urban Road's stored config survives open → Apply → Save unchanged
  *   - a code missing from the ledger is shown as not found, and kept
  *   - typing in the panel cannot delete the widget; Escape closes only the panel
+ *   - after the panel closes, a stray Backspace cannot delete the page, and
+ *     closing the editor with unsaved changes asks first
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
@@ -143,6 +145,11 @@ describe('the account list, fail-open', () => {
     renderEditor(layoutWith({}))
     await user.click(screen.getByRole('button', { name: 'Set up ratios' }))
     await waitFor(() => expect(screen.getByText(/2 Xero organisations connected/)).toBeInTheDocument())
+    // The export refuses the WHOLE page for such a business, totals included —
+    // so the panel must not suggest totals are a way round it.
+    expect(screen.getByText(/This page can’t show figures for this business yet/)).toBeInTheDocument()
+    expect(screen.getByText(/Anything set up here will print that sentence instead/)).toBeInTheDocument()
+    expect(screen.queryByText(/You can still use the statement totals/)).toBeNull()
   })
 })
 
@@ -201,6 +208,72 @@ describe('Urban Road', () => {
     await user.click(screen.getByRole('button', { name: 'Apply' }))
     await user.click(screen.getByRole('button', { name: /Save Layout/ }))
     expect((savedWidget(onSave).config as typeof config).ratios[0].numerator.accounts).toEqual(['59999'])
+  })
+
+  it('every control in a ratio says in words what it does — no bare icons', async () => {
+    accountsOk()
+    const user = userEvent.setup()
+    renderEditor(layoutWith({ config: URBAN_ROAD_CONFIG, titleOverride: URBAN_ROAD_TITLE }))
+    await user.click(screen.getByRole('button', { name: 'Edit ratios' }))
+    const dialog = screen.getByRole('dialog')
+    await waitFor(() => expect(within(dialog).getByText(/— Freight to Customer/)).toBeInTheDocument())
+
+    const top = within(dialog).getAllByRole('group', { name: 'What to measure (top line)' })[0]
+    const removeAccount = within(top).getByRole('button', { name: /Remove account 55000/ })
+    expect(removeAccount).toHaveTextContent('Remove')
+    expect(within(dialog).getByRole('button', { name: /Move ratio 2 up/ })).toHaveTextContent('Move up')
+    expect(within(dialog).getByRole('button', { name: /Move ratio 1 down/ })).toHaveTextContent('Move down')
+  })
+})
+
+describe('after the panel closes', () => {
+  it('the ratio page is no longer selected, so a stray Backspace cannot delete it and its config', async () => {
+    accountsOk()
+    const user = userEvent.setup()
+    const { onSave } = renderEditor(layoutWith({ config: URBAN_ROAD_CONFIG, titleOverride: URBAN_ROAD_TITLE }))
+    await user.click(screen.getByRole('button', { name: 'Edit ratios' }))
+    const dialog = screen.getByRole('dialog')
+    const title = within(dialog).getByPlaceholderText('Ratio Analysis')
+    await user.clear(title)
+    await user.type(title, 'Margins')
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    // Focus is back on the page, not in a field.
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    await user.keyboard('{Backspace}')
+    expect(screen.getByText('Margins · 2 ratios')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Save Layout/ }))
+    expect(savedWidget(onSave).titleOverride).toBe('Margins')
+  })
+
+  it('closing the editor with unsaved changes asks first — Escape and the close button alike', async () => {
+    accountsOk()
+    const user = userEvent.setup()
+    const { onClose } = renderEditor(layoutWith({ config: URBAN_ROAD_CONFIG, titleOverride: URBAN_ROAD_TITLE }))
+    await user.click(screen.getByRole('button', { name: 'Edit ratios' }))
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
+
+    await user.keyboard('{Escape}')
+    expect(onClose).not.toHaveBeenCalled()
+    const confirm = screen.getByRole('alertdialog', { name: 'Close without saving?' })
+    await user.click(within(confirm).getByRole('button', { name: 'Keep editing' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
+
+    await user.click(screen.getByTitle('Close'))
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Close without saving' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('with nothing unsaved, the editor closes straight away', async () => {
+    accountsOk()
+    const user = userEvent.setup()
+    const { onClose } = renderEditor(layoutWith({ config: URBAN_ROAD_CONFIG, titleOverride: URBAN_ROAD_TITLE }))
+    await user.click(screen.getByTitle('Close'))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
 
