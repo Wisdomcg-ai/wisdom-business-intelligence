@@ -1915,7 +1915,12 @@ export default function MonthlyReportPage() {
               </div>
             )}
             {fullYearReport && !fullYearLoading && (
-              <FullYearProjectionTable report={fullYearReport} />
+              <FullYearProjectionTable
+                report={fullYearReport}
+                // The heading order the Actual vs Budget tab groups with, so
+                // the two tabs list the expense groups identically.
+                expenseGroupOrder={report?.settings?.expense_group_order ?? settings?.expense_group_order ?? null}
+              />
             )}
           </>
         )}

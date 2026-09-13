@@ -11,6 +11,9 @@ import { resolveBudget, budgetLineKey } from '@/lib/budgets/resolve-budget'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import { getPriorYearMonth } from '@/lib/monthly-report/shared'
 import { compareStatementLines, looksLikeWizardCode, realStatementCodes, statementAccountCode } from '@/lib/monthly-report/statement-order'
+import { mappingGroup } from '@/lib/monthly-report/expense-groups'
+import { buildFullYearSubtotal } from '@/lib/monthly-report/full-year-subtotal'
+import type { FullYearLine, FullYearMonthData } from '@/app/finances/monthly-report/types'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -59,80 +62,11 @@ function mapTypeToCategory(accountType: string): string {
   }
 }
 
-interface FullYearMonthData {
-  month: string
-  actual: number
-  /**
-   * The FORECAST for this month. It is what the italic cells render and what
-   * projected_total uses for months that have not closed — "where will we
-   * land". Deliberately not renamed: swapping its source would silently turn
-   * the projection into "what we approved in July", which the budget-store plan
-   * lists as a non-goal.
-   */
-  budget: number
-  /**
-   * The approved BUDGET for this month, from budget_versions/budget_lines —
-   * "what were we held to". Null unless the client is on the budget store, so
-   * nothing changes for a client still measured against their forecast.
-   */
-  approved_budget: number | null
-  prior_year: number
-  source: 'actual' | 'forecast'
-}
-
-interface FullYearLine {
-  account_name: string
-  category: string
-  months: FullYearMonthData[]
-  projected_total: number
-  annual_budget: number
-  /** Sum of approved_budget across the year; null when not on the budget store. */
-  approved_annual_budget: number | null
-  variance_amount: number
-  variance_percent: number
-  /** Real Xero code or null — orders the section; see statement-order.ts. */
-  account_code?: string | null
-}
-
-/**
- * Sum the approved budget across lines for one month, or null when none of them
- * carry one. Null is deliberate: a subtotal of "no approved budget" must not
- * read as $0, which a reader takes for a real budget of nothing.
- */
-function sumApproved(lines: FullYearLine[], i: number): number | null {
-  const present = lines.filter((l) => l.months[i]?.approved_budget !== null && l.months[i]?.approved_budget !== undefined)
-  if (present.length === 0) return null
-  return present.reduce((s, l) => s + (l.months[i].approved_budget ?? 0), 0)
-}
-
-function buildFullYearSubtotal(lines: FullYearLine[], label: string, category: string, allMonths: string[]): FullYearLine {
-  const months: FullYearMonthData[] = allMonths.map((m, i) => ({
-    month: m,
-    actual: lines.reduce((s, l) => s + l.months[i].actual, 0),
-    budget: lines.reduce((s, l) => s + l.months[i].budget, 0),
-    approved_budget: sumApproved(lines, i),
-    prior_year: lines.reduce((s, l) => s + (l.months[i].prior_year || 0), 0),
-    source: lines.length > 0 ? lines[0].months[i].source : 'forecast' as const,
-  }))
-
-  const projectedTotal = lines.reduce((s, l) => s + l.projected_total, 0)
-  const annualBudget = lines.reduce((s, l) => s + l.annual_budget, 0)
-  const varianceAmount = projectedTotal - annualBudget
-  const variancePercent = annualBudget !== 0 ? (varianceAmount / Math.abs(annualBudget)) * 100 : 0
-
-  return {
-    account_name: label,
-    category,
-    months,
-    projected_total: projectedTotal,
-    annual_budget: annualBudget,
-    approved_annual_budget: months.some((md) => md.approved_budget !== null)
-      ? months.reduce((sum, md) => sum + (md.approved_budget ?? 0), 0)
-      : null,
-    variance_amount: varianceAmount,
-    variance_percent: variancePercent,
-  }
-}
+// The line shapes are the page's own types — one definition, so a field the
+// renderers read (the expense `group`) cannot be missing from the payload
+// type the route builds. The section subtotal lives in lib/monthly-report
+// because the PDF and the browser tab build group subtotals with it too, and a
+// route module may export only its handlers.
 
 /**
  * POST /api/monthly-report/full-year
@@ -643,6 +577,9 @@ async function postHandler(request: Request) {
         // The row's own code first — the fact — then the mapping's. Not
         // xeroCode: that is lower-cased for matching, and this is sorted on.
         account_code: statementAccountCode([xero.account_code, mapping?.xero_account_code], realCodes),
+        // The same reader generate/route.ts uses, so this page and the Actual
+        // vs Budget page put the account under the same heading.
+        group: mappingGroup(mapping),
         category,
         months,
         projected_total: projectedTotal,
@@ -709,6 +646,11 @@ async function postHandler(request: Request) {
           [bl.account_code, mappingByXeroName.get(bl.account_name)?.xero_account_code],
           realCodes,
         ),
+        // No Xero account behind it, so the group comes from the mapping its
+        // name resolves to — the rule generate/route.ts applies to its
+        // budget-only lines. Unmapped (Urban Road's Bank Revaluations, General
+        // Expenses) means null, the ungrouped run, on both pages.
+        group: mappingGroup(mappingByXeroName.get(bl.account_name)),
         category,
         months,
         projected_total: projectedTotal,
@@ -772,6 +714,7 @@ async function postHandler(request: Request) {
             [al.account_code, mappingByXeroName.get(al.account_name)?.xero_account_code],
             realCodes,
           ),
+          group: mappingGroup(mappingByXeroName.get(al.account_name)),
           category,
           months,
           projected_total: 0,
@@ -800,16 +743,15 @@ async function postHandler(request: Request) {
         // Xero account-code order, compared as text, codeless lines A-Z after —
         // the order the reference pack prints, and the same comparator the
         // Monthly route uses. See statement-order.ts for why text.
+        //
+        // Lines stay FLAT here, each carrying its `group`. The renderers gather
+        // them under headings (groupFullYearLines), and because that preserves
+        // input order, every group comes out in code order too.
         const lines = categoryLines[cat].sort(compareStatementLines)
+        // The variance sign convention (favourable = over for income, under for
+        // costs) is applied inside buildFullYearSubtotal now, so a group
+        // subtotal gets the same sign as the section total it sums into.
         const subtotal = buildFullYearSubtotal(lines, `Total ${cat}`, cat, allFYMonths)
-
-        // Recalculate variance with correct sign convention for expense subtotals
-        const isRevenue = cat === 'Revenue' || cat === 'Other Income'
-        subtotal.variance_amount = isRevenue
-          ? subtotal.projected_total - subtotal.annual_budget
-          : subtotal.annual_budget - subtotal.projected_total
-        subtotal.variance_percent = subtotal.annual_budget !== 0
-          ? (subtotal.variance_amount / Math.abs(subtotal.annual_budget)) * 100 : 0
 
         return { category: cat, lines, subtotal }
       })
@@ -933,6 +875,12 @@ async function postHandler(request: Request) {
       // tell "no forecast" from "a forecast of zero" renders a missing number
       // as a favourable variance.
       forecast_available: forecastAvailable,
+      // The coach's heading order, for a renderer that holds only this payload.
+      // The pack and the tab prefer the monthly report's own settings — the
+      // source the Actual vs Budget page in the same pack reads.
+      expense_group_order: Array.isArray(settingsRow?.expense_group_order)
+        ? (settingsRow!.expense_group_order as string[])
+        : null,
     }
 
     return NextResponse.json({

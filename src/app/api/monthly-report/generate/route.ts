@@ -23,6 +23,7 @@ import {
   type ReportLine,
 } from '@/lib/monthly-report/shared'
 import { compareStatementLines, looksLikeWizardCode, realStatementCodes, statementAccountCode } from '@/lib/monthly-report/statement-order'
+import { mappingGroup } from '@/lib/monthly-report/expense-groups'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 
@@ -511,7 +512,7 @@ async function postHandler(request: Request) {
       const line: ReportLine = {
         account_name: xero.account_name,
         xero_account_name: xero.account_name,
-        group: mapping?.report_subcategory ?? null,
+        group: mappingGroup(mapping),
         // The row's own code first — the fact — then the mapping's. Close to the
         // match cascade above but not identical: the cascade uses
         // `xero.account_code ?? mapping.xero_account_code`, so a blank-string row
@@ -582,7 +583,9 @@ async function postHandler(request: Request) {
           // A budget-only line has no Xero account behind it, so its group has
           // to come from the name the budget uses. Matched the same way the
           // rest of the row is: by the mapping the name resolves to, if any.
-          group: mappingByXeroName.get(bl.account_name)?.report_subcategory ?? null,
+          // mappingGroup is shared with the Full Year route, so both pages of
+          // one pack put this account under the same heading.
+          group: mappingGroup(mappingByXeroName.get(bl.account_name)),
           // The line's own code only if it is a real Xero code — on the forecast
           // path it can be a wizard code — else the code of the mapping its
           // name resolves to, else none.

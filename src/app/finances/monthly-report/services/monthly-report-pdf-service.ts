@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as Sentry from '@sentry/nextjs'
-import type { GeneratedReport, ReportSection, ReportLine, MonthlyReportSettings, ReportSections, VarianceCommentary, FullYearReport, SubscriptionDetailData, WagesDetailData } from '../types'
+import type { GeneratedReport, ReportSection, ReportLine, MonthlyReportSettings, ReportSections, VarianceCommentary, FullYearReport, FullYearLine, SubscriptionDetailData, WagesDetailData } from '../types'
 import type { CashflowForecastData } from '@/app/finances/forecast/types'
 import { transformCashflowToChartData, CASHFLOW_CHART_COLORS, CASHFLOW_CHART_SERIES } from '@/app/finances/forecast/utils/cashflow-chart-data'
 import { transformRevenueBreakdownData } from '../components/charts/RevenueBreakdownChart'
@@ -39,6 +39,7 @@ import { WIDGET_METHOD_MAP } from './widget-renderer'
 import { assessBalanceSheetForPdf, type BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
 import { statementYardstick, wagesYardstick, wagesEmployeeYardstick, noBudgetNote } from '../utils/budget-yardstick'
 import { groupExpenseLines } from '@/lib/monthly-report/expense-groups'
+import { groupFullYearLines } from '@/lib/monthly-report/full-year-groups'
 import type { ContractorRollup } from '@/lib/monthly-report/contractor-rollup'
 import type { PayrollGrid } from '@/lib/monthly-report/payroll-grid'
 import {
@@ -2463,6 +2464,28 @@ export class MonthlyReportPDFService {
     const fcstVar = (v: number) => formatForecastValue(v, showForecast, (n) => this.fmtVariance(n))
     const fcstPct = (v: number) => formatForecastValue(v, showForecast, (n) => this.fmtPct(n))
 
+    // One account row: name, twelve months (actual, or the forecast for a month
+    // that has not closed), projected, forecast, [approved], variance $ and %.
+    // With cell styles every cell carries them — the group subtotal row.
+    const fyRow = (line: FullYearLine, cellStyles?: Record<string, unknown>): any[] => {
+      const cells: string[] = [
+        line.account_name,
+        ...line.months.map((md) => (md.source === 'actual' ? this.fmtCurrency(md.actual) : fcst(md.budget))),
+        this.fmtCurrency(line.projected_total),
+        fcst(line.annual_budget),
+        ...(showApproved ? [formatApprovedAnnual(line, (n) => this.fmtCurrency(n))] : []),
+        fcstVar(line.variance_amount),
+        fcstPct(line.variance_percent),
+      ]
+      return cellStyles ? cells.map((content) => ({ content, styles: { ...cellStyles } })) : cells
+    }
+
+    // The heading order the Actual vs Budget page of this pack uses — the
+    // report's own settings — so the two pages list the groups identically.
+    // The full-year payload's copy is only the fallback for a pack built
+    // without them.
+    const groupOrder = this.report.settings.expense_group_order ?? fy.expense_group_order ?? null
+
     for (const section of fy.sections) {
       specialRowIndices.add(currentBodyIdx)
       tableData.push([{
@@ -2479,18 +2502,43 @@ export class MonthlyReportPDFService {
       }])
       currentBodyIdx++
 
-      for (const line of withoutSilentFullYearLines(section.lines)) {
-        const row: any[] = [line.account_name]
-        for (const md of line.months) {
-          row.push(md.source === 'actual' ? this.fmtCurrency(md.actual) : fcst(md.budget))
+      // Expense accounts print under their group headings with a subtotal
+      // each, exactly as the Actual vs Budget page of this same pack prints
+      // them: same membership (the line's `group`, from mappingGroup), same
+      // heading order, same shading. This page used to be one flat run of
+      // Urban Road's 49 expense accounts while the page two before it showed
+      // nine headings — and Calxa's Full Year page groups them too. A client
+      // that has grouped nothing takes the ungrouped branch: one run, no
+      // headings, the page it got before.
+      for (const g of groupFullYearLines(withoutSilentFullYearLines(section.lines), groupOrder, section.category)) {
+        if (g.name) {
+          specialRowIndices.add(currentBodyIdx)
+          tableData.push([{
+            content: g.name,
+            colSpan: headers.length,
+            styles: {
+              fillColor: [GROUP_SHADE[0], GROUP_SHADE[1], GROUP_SHADE[2]] as [number, number, number],
+              textColor: [60, 60, 60] as [number, number, number],
+              fontStyle: 'bold',
+              fontSize: 5.5,
+            },
+          }])
+          currentBodyIdx++
         }
-        row.push(this.fmtCurrency(line.projected_total))
-        row.push(fcst(line.annual_budget))
-        if (showApproved) row.push(formatApprovedAnnual(line, (n) => this.fmtCurrency(n)))
-        row.push(fcstVar(line.variance_amount))
-        row.push(fcstPct(line.variance_percent))
-        tableData.push(row)
-        currentBodyIdx++
+        for (const line of g.lines) {
+          tableData.push(fyRow(line))
+          currentBodyIdx++
+        }
+        if (g.subtotal) {
+          // Special row: a subtotal is not tinted as a variance, like the
+          // section total below it.
+          specialRowIndices.add(currentBodyIdx)
+          const groupStyle = { fontStyle: 'bold' as const, fillColor: GROUP_SHADE }
+          const groupRow = fyRow(g.subtotal, groupStyle)
+          groupRow[0] = { content: `Total ${g.name}`, styles: groupStyle }
+          tableData.push(groupRow)
+          currentBodyIdx++
+        }
       }
 
       specialRowIndices.add(currentBodyIdx)
