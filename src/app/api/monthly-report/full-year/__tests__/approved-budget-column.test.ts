@@ -494,3 +494,62 @@ describe('full-year — whether a forecast exists at all', () => {
     expect(body.report.forecast_available).toBe(true)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Statement order, on the Full Year page too.
+//
+// The pack lists accounts in Xero account-code order compared as TEXT (Stripe
+// Fees 100000 prints before Bank Fees 60550), codeless accounts A-Z after. The
+// forecast's account_code is not always a Xero code — the wizard writes
+// 'opex-28', 'SYS-TEAM-WAGES', 'ACCT-MISSING-<uuid>' there — so a forecast-only
+// or approved-only row's own code is used only when this business's actuals or
+// mappings vouch for it. See src/lib/monthly-report/statement-order.ts.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('full-year — statement order', () => {
+  beforeEach(() => {
+    captureMessage.mockClear()
+  })
+
+  it('orders by real Xero code as text; wizard codes sort with the codeless tail', async () => {
+    const opex = (code: string | null, name: string) =>
+      ({ account_code: code, account_name: name, account_type: 'opex', section: '', monthly_values: { '2026-07': 100 } })
+    compositeRows = [
+      opex('60550', 'Bank Fees'),
+      opex('100000', 'Stripe Fees'),
+      opex(null, 'Accountancy'),
+    ]
+    const map = (name: string, code: string | null) =>
+      ({ business_id: BIZ, xero_account_name: name, xero_account_code: code, report_category: 'Operating Expenses' })
+    tables = baseTables({
+      monthly_report_settings: [onStore],
+      account_mappings: [
+        map('Bank Fees', '60550'),
+        map('Stripe Fees', '100000'),
+        map('Accountancy', null),
+        // Never posted to, but on the Xero chart — its mapping vouches for 497.
+        map('Bank Revaluations', '497'),
+      ],
+      forecast_pl_lines: [
+        { id: 'f-1', forecast_id: 'fc-1', account_code: 'opex-28', account_name: 'Bank Revaluations', category: 'Operating Expenses', forecast_months: { '2026-09': 50 } },
+        { id: 'f-2', forecast_id: 'fc-1', account_code: 'SYS-TEAM-WAGES', account_name: 'Wages', category: 'Operating Expenses', forecast_months: { '2026-09': 50 } },
+      ],
+      budget_versions: [version('v1', '2026-07')],
+      budget_lines: [
+        { ...budgetLine('bl-1', 'v1', '2026-07', 900), account_code: 'ACCT-MISSING-abc', account_name: 'Donations', category: 'Operating Expenses' },
+      ],
+    })
+
+    const { status, body } = await fullYear()
+    expect(status).toBe(200)
+    const section = (body.report?.sections ?? []).find((s: any) => s.category === 'Operating Expenses')
+    expect(section.lines.map((l: any) => [l.account_code, l.account_name])).toEqual([
+      ['100000', 'Stripe Fees'],
+      ['497', 'Bank Revaluations'],
+      ['60550', 'Bank Fees'],
+      [null, 'Accountancy'],
+      [null, 'Donations'],
+      [null, 'Wages'],
+    ])
+  })
+})
