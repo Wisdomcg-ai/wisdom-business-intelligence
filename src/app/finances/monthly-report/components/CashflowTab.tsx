@@ -10,9 +10,15 @@ interface CashflowTabProps {
   data: CashflowForecastData | null
   isLoading: boolean
   error?: string | null
+  /**
+   * What the balances start from and which months are actuals — the line the
+   * pack prints under its cashflow title. Includes "Opening bank balance
+   * unavailable" when the balance sheet could not be read.
+   */
+  basis?: string | null
 }
 
-export default function CashflowTab({ data, isLoading, error }: CashflowTabProps) {
+export default function CashflowTab({ data, isLoading, error, basis }: CashflowTabProps) {
   const [viewMode, setViewMode] = useState<'table' | 'chart'>('table')
 
   if (isLoading) {
@@ -47,7 +53,8 @@ export default function CashflowTab({ data, isLoading, error }: CashflowTabProps
   return (
     <div>
       {/* View mode toggle */}
-      <div className="flex justify-end mb-4">
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <p className="text-xs text-gray-500">{basis ?? ''}</p>
         <div className="inline-flex rounded-lg border border-gray-200 bg-white">
           <button
             onClick={() => setViewMode('table')}
