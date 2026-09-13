@@ -14,21 +14,28 @@ import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId'
 import {
   accountActualsRefusal,
   buildAccountActuals,
+  listLedgerAccounts,
   type AccountActuals,
   type ConnectionRow,
+  type LedgerAccountList,
   type MappingRow,
   type PlLineRow,
 } from './account-actuals'
 
 export type AccountActualsResult = { data: AccountActuals } | { unavailable_reason: string }
+export type LedgerAccountsResult = { data: LedgerAccountList } | { unavailable_reason: string }
 
-export async function loadAccountActuals(
-  supabase: { from: (table: string) => any },
+type Client = { from: (table: string) => any }
+
+/**
+ * One read for both the figures and the account list, so the settings panel
+ * refuses exactly the businesses the page refuses — Dragon and IICT are told
+ * while the coach is setting the page up, not after the export.
+ */
+async function readLedger(
+  supabase: Client,
   businessId: string,
-  endMonth: string,
-  months: number,
-  codes: readonly string[],
-): Promise<AccountActualsResult> {
+): Promise<{ rows: PlLineRow[]; mappings: MappingRow[] } | { unavailable_reason: string }> {
   const ids = await resolveBusinessProfileIds(supabase, businessId)
 
   // xero_pl_lines_wide_compat is accruals-only by definition (the view filters
@@ -75,5 +82,24 @@ export async function loadAccountActuals(
     .slice()
     .sort((a, b) => Number(a.business_id === ids.businessId) - Number(b.business_id === ids.businessId))
 
-  return { data: buildAccountActuals(plRows, mappings, endMonth, months, codes) }
+  return { rows: plRows, mappings }
+}
+
+export async function loadAccountActuals(
+  supabase: Client,
+  businessId: string,
+  endMonth: string,
+  months: number,
+  codes: readonly string[],
+): Promise<AccountActualsResult> {
+  const ledger = await readLedger(supabase, businessId)
+  if ('unavailable_reason' in ledger) return ledger
+  return { data: buildAccountActuals(ledger.rows, ledger.mappings, endMonth, months, codes) }
+}
+
+/** The coded P&L accounts the Ratio Analysis settings panel may offer. */
+export async function loadLedgerAccounts(supabase: Client, businessId: string): Promise<LedgerAccountsResult> {
+  const ledger = await readLedger(supabase, businessId)
+  if ('unavailable_reason' in ledger) return ledger
+  return { data: listLedgerAccounts(ledger.rows, ledger.mappings) }
 }

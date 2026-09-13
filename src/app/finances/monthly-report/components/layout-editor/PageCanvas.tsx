@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import type { LayoutPage } from '../../types/pdf-layout'
+import type { LayoutPage, LayoutWidget } from '../../types/pdf-layout'
 import { GRID_CONFIG } from '../../types/pdf-layout'
 import GridCell from './GridCell'
 import PlacedWidget from './PlacedWidget'
@@ -16,6 +16,8 @@ interface PageCanvasProps {
   onDeleteWidget: (widgetId: string) => void
   onResizeWidget: (widgetId: string, deltaCol: number, deltaRow: number) => void
   onMoveWidgetToPage: (widgetId: string, toPageId: string) => void
+  onOpenWidgetSettings?: (widgetId: string) => void
+  hasSettings?: (type: LayoutWidget['type']) => boolean
 }
 
 // A4 aspect ratios for visual display
@@ -34,6 +36,8 @@ export default function PageCanvas({
   onDeleteWidget,
   onResizeWidget,
   onMoveWidgetToPage,
+  onOpenWidgetSettings,
+  hasSettings,
 }: PageCanvasProps) {
   const config = GRID_CONFIG[page.orientation]
 
@@ -101,6 +105,11 @@ export default function PageCanvas({
               onDelete={() => onDeleteWidget(widget.id)}
               onResize={(dc, dr) => onResizeWidget(widget.id, dc, dr)}
               onMoveToPage={(toPageId) => onMoveWidgetToPage(widget.id, toPageId)}
+              onOpenSettings={
+                onOpenWidgetSettings && hasSettings?.(widget.type)
+                  ? () => onOpenWidgetSettings(widget.id)
+                  : undefined
+              }
             />
           ))}
         </div>

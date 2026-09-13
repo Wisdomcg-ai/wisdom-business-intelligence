@@ -2153,6 +2153,7 @@ export default function MonthlyReportPage() {
         sections={settings?.sections}
         onSave={saveLayout}
         isSaving={layoutSaving}
+        businessId={businessId || undefined}
         availableData={{
           report: !!report,
           fullYear: !!fullYearReport,

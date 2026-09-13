@@ -107,6 +107,24 @@ function totalFor(category: string): StatementTotal | null {
 }
 
 /**
+ * The mapping-then-type rule for one ledger row, keyed by account NAME. Shared
+ * by the totals below and the account list the settings panel offers, so the
+ * group a coach picks an account from is the subtotal that account is summed
+ * into.
+ */
+function mappingIndex(mappings: readonly MappingRow[]): Map<string, string | null> {
+  // Last writer wins, as in generate/route.ts's mappingByXeroName. The caller
+  // orders the rows so the one the statement reads is last.
+  const categoryByName = new Map<string, string | null>()
+  for (const m of mappings) categoryByName.set(m.xero_account_name, m.report_category)
+  return categoryByName
+}
+
+function bucketFor(row: Pick<PlLineRow, 'account_name' | 'account_type'>, categoryByName: Map<string, string | null>): StatementTotal | null {
+  return totalFor(categoryByName.get(row.account_name) || mapTypeToCategory(row.account_type))
+}
+
+/**
  * Refuse the businesses this page cannot yet describe honestly.
  *
  * Account codes are per Xero org: Dragon Roofing's two orgs and IICT's three
@@ -164,10 +182,7 @@ export function buildAccountActuals(
   const months = monthsEndingAt(endMonth, monthCount)
   const inWindow = new Set(months)
 
-  // Last writer wins, as in generate/route.ts's mappingByXeroName. The caller
-  // orders the rows so the one the statement reads is last.
-  const categoryByName = new Map<string, string | null>()
-  for (const m of mappings) categoryByName.set(m.xero_account_name, m.report_category)
+  const categoryByName = mappingIndex(mappings)
 
   const wanted = new Set(codes.map((c) => c.trim()))
   const accounts: AccountActuals['accounts'] = {}
@@ -183,7 +198,7 @@ export function buildAccountActuals(
     const values = row.monthly_values ?? {}
     if (row.updated_at && (!syncedAt || row.updated_at > syncedAt)) syncedAt = row.updated_at
 
-    const bucket = totalFor(categoryByName.get(row.account_name) || mapTypeToCategory(row.account_type))
+    const bucket = bucketFor(row, categoryByName)
     const code = (row.account_code ?? '').trim()
     const tracked = code !== '' && wanted.has(code)
 
@@ -226,4 +241,60 @@ export function buildAccountActuals(
   for (const t of Object.values(totals)) for (const m of Object.keys(t)) t[m] = cents(t[m])
 
   return { months, first_synced_month: firstSynced, synced_at: syncedAt, accounts, totals }
+}
+
+export interface LedgerAccount {
+  code: string
+  /** The name Xero shows today — the newest row's, for a renamed account. */
+  name: string
+  /** The statement subtotal it is summed into; null for Other Income/Expenses. */
+  bucket: StatementTotal | null
+}
+
+export interface LedgerAccountList {
+  /** In Xero code order, compared as text (as the statement pages sort, #517). */
+  accounts: LedgerAccount[]
+  /** Accounts on the ledger with no code — they exist, but a ratio cannot name them. */
+  codeless_count: number
+}
+
+/**
+ * The accounts a Ratio Analysis page can name — read from the SAME ledger rows
+ * buildAccountActuals sums, so a code the settings panel offers is a code the
+ * page will find.
+ *
+ * Not the chart of accounts and not account_mappings. Urban Road's mapping for
+ * 'Foreign Currency Gains and Losses' carries code 62700 while its ledger row
+ * has no code at all, so offering the mapping's code would have printed
+ * "account 62700 not found" on the page the coach had just set up. And the
+ * chart lists ~160 active P&L accounts against the 88 that have ever posted.
+ *
+ * Pure, like the builder: the caller reads, and must have run
+ * accountActualsRefusal first.
+ */
+export function listLedgerAccounts(rows: readonly PlLineRow[], mappings: readonly MappingRow[]): LedgerAccountList {
+  const categoryByName = mappingIndex(mappings)
+  const byCode = new Map<string, LedgerAccount & { updated_at: string }>()
+  const codelessNames = new Set<string>()
+
+  for (const row of rows) {
+    const code = (row.account_code ?? '').trim()
+    if (code === '') {
+      codelessNames.add(row.account_name)
+      continue
+    }
+    const updated = row.updated_at ?? ''
+    const seen = byCode.get(code)
+    // A renamed account arrives as two rows under one code; the newest row's
+    // name is the one Xero shows today — the builder's rule, so the panel and
+    // the page print the same name.
+    if (!seen || updated > seen.updated_at) {
+      byCode.set(code, { code, name: row.account_name, bucket: bucketFor(row, categoryByName), updated_at: updated })
+    }
+  }
+
+  const accounts = [...byCode.values()]
+    .map(({ code, name, bucket }) => ({ code, name, bucket }))
+    .sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0))
+  return { accounts, codeless_count: codelessNames.size }
 }

@@ -155,7 +155,7 @@ export function monthLabel(month: string): string {
   return `${MONTH_NAMES[m - 1]} ${y}`
 }
 
-const TOTAL_LABELS: Record<StatementTotal, string> = {
+export const TOTAL_LABELS: Record<StatementTotal, string> = {
   income: 'Total Income',
   cost_of_sales: 'Total Cost of Sales',
   gross_profit: 'Gross Profit',
@@ -171,15 +171,27 @@ function accountLabel(name: string, code: string): string {
   return name.trim().endsWith(`(${code})`) ? name.trim() : `${name} (${code})`
 }
 
-function operandLabel(op: RatioOperand, actuals: AccountActuals | null): string {
-  if (op.label) return op.label
+/**
+ * The row label an operand prints when the coach has not named it. Exported so
+ * the settings panel can show it as the placeholder — the name the page WILL
+ * print, not a second guess at it.
+ */
+export function defaultOperandLabel(
+  op: { accounts: readonly string[] } | { total: StatementTotal },
+  nameFor: (code: string) => string | undefined,
+): string {
   if ('total' in op) return TOTAL_LABELS[op.total]
   return op.accounts
     .map((code) => {
-      const name = actuals?.accounts[code]?.name
+      const name = nameFor(code)
       return name ? accountLabel(name, code) : code
     })
     .join(' + ')
+}
+
+function operandLabel(op: RatioOperand, actuals: AccountActuals | null): string {
+  if (op.label) return op.label
+  return defaultOperandLabel(op, (code) => actuals?.accounts[code]?.name)
 }
 
 type Amount = { kind: 'value'; value: number } | { kind: 'empty'; reason: string }
