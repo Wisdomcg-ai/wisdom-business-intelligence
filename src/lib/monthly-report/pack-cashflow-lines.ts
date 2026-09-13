@@ -23,7 +23,8 @@
  */
 
 import type { FullYearReport } from '@/app/finances/monthly-report/types'
-import type { PLLine } from '@/app/finances/forecast/types'
+import type { CashflowAssumptions, PLLine } from '@/app/finances/forecast/types'
+import type { OpeningBank } from './opening-bank'
 
 export interface PackCashflowLines {
   lines: PLLine[]
@@ -113,12 +114,121 @@ export function buildPackCashflowLines(
 }
 
 /**
- * The sentence the page prints under its title, so a reader knows which half of
- * the row is history and which is a plan.
+ * The opening balances the pack's cashflow runs from.
+ *
+ * Bank comes from the balance sheet on the day before the year starts. Every
+ * OTHER opening balance is zeroed, deliberately.
+ *
+ * `/finances/cashflow` auto-syncs balances from Xero the first time it opens on
+ * a forecast with none set, and saves them — for Urban Road, opening debtors
+ * ~$267k, creditors ~$479k (misfiled), GST ~$28k, super ~$1.3k. The pack
+ * merges those saved assumptions. The engine collects opening debtors and pays
+ * opening creditors in the first month, and remits the ATO balances on their
+ * schedule: right for a projection, wrong here, because the pack's early months
+ * are ACTUALS. July's receipts already include the debtors collected in July;
+ * July's payments already include the creditors paid. Adding the opening
+ * balances on top counts the same cash twice. The ATO rows are no better a
+ * signal: GST $31,515, GST adjustments −$3,080, ATO Creditors −$48,970 and
+ * PAYG $16,674 net to about −$3,861 — nothing actually owed.
+ *
+ * Every other saved setting (DSO, DPO, GST registration, loans) is kept; only
+ * the balances this page would double count are overridden.
+ *
+ * `balance_date` records the verdict: the date the bank was read at, or ''
+ * when it could not be read. That is the forecast module's own "balances never
+ * read" test (`opening_bank_balance === 0 && !balance_date`), and it means a
+ * date saved by an earlier sync can never vouch for a balance this page did
+ * not read.
  */
-export function packCashflowBasis(built: PackCashflowLines, fmtMonth: (m: string) => string): string | null {
+export function applyPackOpening(
+  assumptions: CashflowAssumptions,
+  opening: OpeningBank,
+  /**
+   * The engine's first month (`forecast.actual_start_month`). A balance only
+   * opens the month straight after the day it was read: the forecast is picked
+   * by the clock (`getForecastFiscalYear`), so in planning season it can be next
+   * year's, and 30 June 2026 printed over a row starting July 2027 would be a
+   * real figure in the wrong place. A mismatch is treated as unavailable.
+   */
+  firstMonth?: string,
+): CashflowAssumptions {
+  const usable = opening.status === 'read' &&
+    (!firstMonth || firstMonth === monthAfter(opening.asAt))
+    ? opening
+    : null
+  return {
+    ...assumptions,
+    // Unavailable stays at 0 — the engine needs a number — and the basis line
+    // says so, rather than letting the result pass for a real balance.
+    opening_bank_balance: usable ? usable.amount : 0,
+    balance_date: usable ? usable.asAt : '',
+    opening_trade_debtors: 0,
+    opening_trade_creditors: 0,
+    opening_gst_liability: 0,
+    opening_payg_wh_liability: 0,
+    opening_payg_instalment_liability: 0,
+    opening_super_liability: 0,
+  }
+}
+
+/** 'YYYY-MM-DD' → the 'YYYY-MM' that follows its month. */
+function monthAfter(iso: string): string {
+  const [y, m] = iso.split('-').map(Number)
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
+}
+
+/** A read opening bank balance, or the explicit fact that it could not be read. */
+export type PackOpening = { amount: number; asAt: string } | 'unavailable'
+
+/**
+ * What the basis line should say about the opening, read back off assumptions
+ * `applyPackOpening` produced. Undefined when there is no cashflow at all.
+ */
+export function packOpeningFromAssumptions(
+  assumptions: CashflowAssumptions | null | undefined,
+): PackOpening | undefined {
+  if (!assumptions) return undefined
+  return assumptions.balance_date
+    ? { amount: assumptions.opening_bank_balance, asAt: assumptions.balance_date }
+    : 'unavailable'
+}
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** 'YYYY-MM-DD' → '30 Jun 2026', by string, so no timezone can move the day. */
+function fmtBalanceDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  if (!y || !m || !d || m > 12) return iso
+  return `${d} ${MONTH_ABBR[m - 1]} ${y}`
+}
+
+/** Whole dollars; an overdrawn opening keeps its sign. */
+function fmtDollars(amount: number): string {
+  const rounded = Math.round(amount)
+  const body = `$${Math.abs(rounded).toLocaleString('en-AU')}`
+  return rounded < 0 ? `-${body}` : body
+}
+
+/**
+ * The sentence the page prints under its title, so a reader knows what the
+ * balances start from, and which half of the row is history and which a plan.
+ *
+ * @param opening omit when there is no opening to describe. 'unavailable' is
+ *   printed as such: a projection that starts from $0 looks exactly like one
+ *   that starts from a real balance.
+ */
+export function packCashflowBasis(
+  built: PackCashflowLines,
+  fmtMonth: (m: string) => string,
+  opening?: PackOpening,
+): string | null {
   if (built.actualMonths.length === 0 && built.budgetMonths.length === 0) return null
   const parts: string[] = []
+  if (opening === 'unavailable') {
+    parts.push('Opening bank balance unavailable — balances start from $0')
+  } else if (opening) {
+    parts.push(`Opening bank ${fmtDollars(opening.amount)} at ${fmtBalanceDate(opening.asAt)}`)
+  }
   if (built.actualMonths.length > 0) {
     const first = built.actualMonths[0]
     const last = built.actualMonths[built.actualMonths.length - 1]
