@@ -206,6 +206,14 @@ export interface ReportLine {
    * changes for anyone until a coach opts in.
    */
   group?: string | null
+  /**
+   * The account's Xero code, and ONLY a Xero code — null when the line has no
+   * code this business's Xero data vouches for (a forecast wizard's
+   * 'opex-28' or 'SYS-TEAM-WAGES' is not one). Drives statement order: the
+   * pack lists accounts by code, compared as text. Absent on snapshots saved
+   * before it existed. See src/lib/monthly-report/statement-order.ts.
+   */
+  account_code?: string | null
 }
 
 export interface ReportSection {
@@ -389,6 +397,8 @@ export interface FullYearLine {
   approved_annual_budget: number | null
   variance_amount: number        // projection vs FORECAST, not vs the approved budget
   variance_percent: number
+  /** Real Xero code or null, on the same terms as ReportLine.account_code. */
+  account_code?: string | null
 }
 
 export interface FullYearSection {
