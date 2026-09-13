@@ -9,9 +9,16 @@ import {
   formatForecastValue,
   forecastAbsentNote,
 } from '../utils/full-year-approved'
+import { groupFullYearLines } from '@/lib/monthly-report/full-year-groups'
 
 interface FullYearProjectionTableProps {
   report: FullYearReport
+  /**
+   * The coach's expense heading order, from the monthly report's settings —
+   * the same value the Actual vs Budget tab groups with. Falls back to the copy
+   * on the full-year payload, then to A-Z.
+   */
+  expenseGroupOrder?: readonly string[] | null
 }
 
 function fmt(value: number): string {
@@ -118,12 +125,15 @@ function LineRow({
 
 function SubtotalRow({
   line,
+  label,
   bgClass,
   textClass,
   showApproved,
   hasForecast,
 }: {
   line: FullYearLine
+  /** Defaults to the line's own name; a group subtotal says "Total <group>". */
+  label?: string
   bgClass: string
   textClass: string
   showApproved: boolean
@@ -132,7 +142,7 @@ function SubtotalRow({
   return (
     <tr className={`${bgClass} font-semibold`}>
       <td className={`px-3 py-2 text-sm ${textClass} sticky left-0 z-10 ${bgClass}`}>
-        {line.account_name}
+        {label ?? line.account_name}
       </td>
       {line.months.map((md) => (
         <td key={md.month} className={`px-2 py-2 text-xs text-right ${textClass} whitespace-nowrap`}>
@@ -162,7 +172,7 @@ function SubtotalRow({
   )
 }
 
-export default function FullYearProjectionTable({ report }: FullYearProjectionTableProps) {
+export default function FullYearProjectionTable({ report, expenseGroupOrder }: FullYearProjectionTableProps) {
   const monthHeaders = report.sections[0]?.lines[0]?.months.map(m => m.month) ||
     report.gross_profit.months.map(m => m.month)
 
@@ -181,6 +191,8 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
 
   // account + months + projected + forecast + [approved] + var$ + var%
   const colCount = 1 + monthHeaders.length + (showApproved ? 5 : 4)
+
+  const groupOrder = expenseGroupOrder ?? report.expense_group_order ?? null
 
   return (
     <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -254,15 +266,39 @@ export default function FullYearProjectionTable({ report }: FullYearProjectionTa
                       {section.category}
                     </td>
                   </tr>
-                  {/* Lines */}
-                  {section.lines.map((line, idx) => (
-                    <LineRow
-                      key={`${section.category}-${idx}`}
-                      line={line}
-                      lastActualMonth={report.last_actual_month}
-                      showApproved={showApproved}
-                      hasForecast={hasForecast}
-                    />
+                  {/* Lines, under their expense group headings — the same
+                      groups, order and shading as the Actual vs Budget tab and
+                      the pack's Full Year page. Ungrouped clients take the
+                      flat branch and render exactly as before. */}
+                  {groupFullYearLines(section.lines, groupOrder, section.category).map((g, gi) => (
+                    <React.Fragment key={`${section.category}-g${gi}`}>
+                      {g.name && (
+                        <tr className="bg-gray-50">
+                          <td colSpan={colCount} className="px-3 py-1.5 text-xs font-semibold text-gray-600">
+                            {g.name}
+                          </td>
+                        </tr>
+                      )}
+                      {g.lines.map((line, idx) => (
+                        <LineRow
+                          key={`${section.category}-${gi}-${idx}`}
+                          line={line}
+                          lastActualMonth={report.last_actual_month}
+                          showApproved={showApproved}
+                          hasForecast={hasForecast}
+                        />
+                      ))}
+                      {g.subtotal && (
+                        <SubtotalRow
+                          line={g.subtotal}
+                          label={`Total ${g.name}`}
+                          bgClass="bg-gray-50"
+                          textClass="text-gray-800 font-semibold"
+                          showApproved={showApproved}
+                          hasForecast={hasForecast}
+                        />
+                      )}
+                    </React.Fragment>
                   ))}
                   {/* Subtotal */}
                   <SubtotalRow

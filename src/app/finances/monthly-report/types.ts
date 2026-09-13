@@ -399,6 +399,14 @@ export interface FullYearLine {
   variance_percent: number
   /** Real Xero code or null, on the same terms as ReportLine.account_code. */
   account_code?: string | null
+  /**
+   * The expense group heading this account prints under, on the same terms as
+   * ReportLine.group and from the same reader (mappingGroup in
+   * lib/monthly-report/expense-groups), so the Full Year page and the Actual vs
+   * Budget page of one pack group every account identically. Absent on a
+   * payload built before the route emitted it, which renders as a flat list.
+   */
+  group?: string | null
 }
 
 export interface FullYearSection {
@@ -429,6 +437,13 @@ export interface FullYearReport {
    * value; hasForecastBudget reads the evidence in that case.
    */
   forecast_available?: boolean
+  /**
+   * The coach's heading order, copied from monthly_report_settings. A FALLBACK
+   * only: the renderers prefer the monthly report's own settings, which is what
+   * the Actual vs Budget page in the same pack reads. Null/absent = headings
+   * sort A-Z, exactly as they would there.
+   */
+  expense_group_order?: string[] | null
 }
 
 // ============================================

@@ -82,17 +82,52 @@ function subtotalOf(name: string, lines: readonly ReportLine[]): ReportLine {
 }
 
 /**
+ * The group an account belongs to, read off its mapping row.
+ *
+ * Group assignment is a property of the ACCOUNT (account_mappings.
+ * report_subcategory), and this is the only function that reads it: the
+ * Actual vs Budget route and the Full Year route both call it, for Xero lines
+ * and for budget-only / forecast-only lines alike, so an account cannot sit
+ * under one heading on one page and under another two pages later.
+ *
+ * That is deliberately NOT what Calxa does. Urban Road's August 2026 Calxa pack
+ * puts Bank Revaluations under Other Operating Expenses on its Actual vs Budget
+ * page and under Bank and Other Fees on its Full Year page, and Memberships &
+ * Registrations the other way round — so two pages of one pack disagree about
+ * what "Bank and Other Fees" contains. WisdomBI does not copy that: the two
+ * pages of a WisdomBI pack agree with each other, and where that makes a Full
+ * Year group subtotal differ from Calxa's, the difference is Calxa's
+ * inconsistency, not a mis-mapped account.
+ *
+ * No trimming here — partitionByGroup trims — so the payload carries what the
+ * mapping row actually holds.
+ */
+export function mappingGroup(
+  m: { report_subcategory?: string | null } | null | undefined,
+): string | null {
+  return m?.report_subcategory ?? null
+}
+
+/**
+ * Split lines into their groups: membership and heading order, no arithmetic.
+ *
+ * Shared by the Actual vs Budget page (ReportLine) and the Full Year page
+ * (FullYearLine). Their subtotals are shaped differently, but the headings must
+ * come out in the same order with the same members, so that decision is made
+ * once. Input order is preserved inside each group — lines handed in statement
+ * order stay in statement order under their heading.
+ *
  * @param lines the section's lines, in the order the statement would print them
  * @param order the coach's heading order; groups outside it sort after,
  *              alphabetically, so a newly-grouped account appears rather than
  *              silently vanishing into the ungrouped run
  */
-export function groupExpenseLines(
-  lines: readonly ReportLine[],
+export function partitionByGroup<T extends { group?: string | null }>(
+  lines: readonly T[],
   order: readonly string[] | null | undefined,
-): ExpenseGroup[] {
-  const named = new Map<string, ReportLine[]>()
-  const ungrouped: ReportLine[] = []
+): { name: string | null; lines: T[] }[] {
+  const named = new Map<string, T[]>()
+  const ungrouped: T[] = []
 
   for (const line of lines) {
     const g = (line.group ?? '').trim()
@@ -104,23 +139,35 @@ export function groupExpenseLines(
 
   // Nothing is grouped — hand back the flat list untouched. This is the path
   // every client that has not opted in takes, and it must be a no-op.
-  if (named.size === 0) return [{ name: null, lines: [...lines], subtotal: null }]
+  if (named.size === 0) return [{ name: null, lines: [...lines] }]
 
   const declared = (order ?? []).filter(name => named.has(name))
   const undeclared = [...named.keys()]
     .filter(name => !declared.includes(name))
     .sort((a, b) => a.localeCompare(b))
 
-  const groups: ExpenseGroup[] = [...declared, ...undeclared].map(name => {
-    const groupLines = named.get(name)!
-    return { name, lines: groupLines, subtotal: subtotalOf(name, groupLines) }
-  })
+  const groups: { name: string | null; lines: T[] }[] = [...declared, ...undeclared]
+    .map(name => ({ name, lines: named.get(name)! }))
 
   // The accounts nobody has grouped yet run last, under no heading. Naming that
   // run "Other" would claim a grouping decision the coach has not made.
-  if (ungrouped.length > 0) groups.push({ name: null, lines: ungrouped, subtotal: null })
+  if (ungrouped.length > 0) groups.push({ name: null, lines: ungrouped })
 
   return groups
+}
+
+/**
+ * @param lines the section's lines, in the order the statement would print them
+ * @param order the coach's heading order; see partitionByGroup
+ */
+export function groupExpenseLines(
+  lines: readonly ReportLine[],
+  order: readonly string[] | null | undefined,
+): ExpenseGroup[] {
+  return partitionByGroup(lines, order).map(g => ({
+    ...g,
+    subtotal: g.name ? subtotalOf(g.name, g.lines) : null,
+  }))
 }
 
 /** True when this section should render headings at all. */
