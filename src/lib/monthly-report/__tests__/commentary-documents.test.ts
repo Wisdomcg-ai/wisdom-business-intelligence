@@ -13,9 +13,12 @@ import { describe, it, expect } from 'vitest'
 import {
   collectAccountTransactions,
   commentaryBankTransactionsUrl,
+  commentaryCreditNotesUrl,
   commentaryInvoicesUrl,
+  creditNoteTypesFor,
   invoiceTypesFor,
   isPostedBankTransaction,
+  isPostedCreditNote,
   isPostedInvoice,
   lineSign,
   summariseVendors,
@@ -23,6 +26,7 @@ import {
   type XeroCommentaryDocument,
 } from '../commentary-documents'
 import { vendorsExceedAccount } from '../commentary-money'
+import { buildDraftNote } from '../commentary-draft'
 
 const AUG_2 = '/Date(1785628800000+0000)/'
 
@@ -272,5 +276,243 @@ describe('the requests', () => {
     expect(invoiceTypesFor(['revenue'])).toEqual(['ACCREC'])
     expect(invoiceTypesFor(['expense', 'revenue'])).toEqual(['ACCPAY', 'ACCREC'])
     expect(invoiceTypesFor([])).toEqual([])
+  })
+})
+
+/**
+ * Credit notes. The route fetched Invoices and BankTransactions and never
+ * CreditNotes, so every list stood gross of the credits the ledger had already
+ * taken off. Urban Road, August 2026: Rolled Prints (41200) quoted $4,178.56 of
+ * posted sales-invoice lines under an accrual P&L of $3,221.53, and was refused.
+ */
+function creditNote(
+  contact: string,
+  lineAmount: number,
+  tax: number,
+  code: string,
+  type: string,
+  status = 'AUTHORISED',
+  opts: { currency?: string; rate?: number | null; lineAmountTypes?: string } = {},
+): XeroCommentaryDocument {
+  return {
+    Type: type,
+    Status: status,
+    Date: AUG_2,
+    CurrencyCode: opts.currency ?? 'AUD',
+    CurrencyRate: opts.rate === undefined ? 1 : opts.rate,
+    LineAmountTypes: opts.lineAmountTypes ?? 'Inclusive',
+    Contact: { Name: contact },
+    LineItems: [{ AccountCode: code, LineAmount: lineAmount, TaxAmount: tax, Description: '' }],
+  }
+}
+
+describe('credit notes', () => {
+  // The 47 posted ACCREC lines on 41200, net, as Xero's
+  // line_amount_net_base_currency gives them: the named customers counted off
+  // the inline pages, and the remainder of the $4,178.56 carried as one row.
+  const rolledPrintsInvoices = ([
+    ['Lloyd Young', 680.72], ['Lloyd Young', 130.18], ['Amber Wedlake', 203.57],
+    ['Leah Goodsell', 129.82], ['Steve Duke', 99.27], ['Tamarin Whittaker', 43.64],
+    ['Ebony Johnston', 53.45], ['Brittany Dragonetti', 83.73], ['Jeanette Matthews', 53.45],
+    ['Remaining Rolled Prints customers', 2700.73],
+  ] as const).map(([c, n]) => bill(c, n, '41200', 'PAID', 'ACCREC'))
+
+  // Sized to the verified $957.03 gap between the posted invoice lines and the
+  // P&L. Jeanette Matthews's INV-017450 is settled by a credit in Xero; the
+  // second note stands for the rest of the month's Zoho credits on 41200 until
+  // the individual CN numbers are pulled from Sales > Credit notes.
+  const rolledPrintsCredits = [
+    creditNote('Jeanette Matthews', 48.11, 4.37, '41200', 'ACCRECCREDIT'),
+    creditNote('Zoho Replacement Credits', 1004.62, 91.33, '41200', 'ACCRECCREDIT'),
+  ]
+
+  it('Rolled Prints: the posted invoices less the month\'s customer credits tie to the P&L', () => {
+    const txns = collectAccountTransactions({
+      accountCode: '41200',
+      side: 'revenue',
+      invoices: rolledPrintsInvoices,
+      bankTransactions: [],
+      creditNotes: rolledPrintsCredits,
+      baseCurrency: 'AUD',
+    })
+
+    expect(sum(txns)).toBeCloseTo(3221.53, 2)
+    const credits = txns.filter(t => t.type === 'credit_note').map(t => t.amount)
+    expect(credits).toHaveLength(2)
+    expect(credits[0]).toBeCloseTo(-43.74, 2)
+    expect(credits[1]).toBeCloseTo(-913.29, 2)
+
+    const quoted = summariseVendors(txns).reduce((t, v) => t + v.amount, 0)
+    expect(vendorsExceedAccount(quoted, 3221.53)).toBe(false)
+  })
+
+  it('and without them the list still over-states the account — the defect, pinned', () => {
+    const txns = collectAccountTransactions({
+      accountCode: '41200', side: 'revenue', invoices: rolledPrintsInvoices, bankTransactions: [], baseCurrency: 'AUD',
+    })
+    expect(sum(txns)).toBeCloseTo(4178.56, 2)
+    const quoted = summariseVendors(txns).reduce((t, v) => t + v.amount, 0)
+    expect(vendorsExceedAccount(quoted, 3221.53)).toBe(true)
+  })
+
+  it('a supplier credit nets against the supplier\'s own bill, Inclusive tax off both', () => {
+    // Hardware Concepts INV-0507: $2,200 Inclusive on Marketing Digital Ad
+    // Spend, settled in full by a $2,200 credit note rather than a payment.
+    const txns = collectAccountTransactions({
+      accountCode: '64600',
+      side: 'expense',
+      invoices: [{
+        ...bill('Hardware Concepts', 2200, '64600', 'PAID'),
+        LineAmountTypes: 'Inclusive',
+        LineItems: [{ AccountCode: '64600', LineAmount: 2200, TaxAmount: 200, Description: '' }],
+      }],
+      bankTransactions: [],
+      creditNotes: [creditNote('Hardware Concepts', 2200, 200, '64600', 'ACCPAYCREDIT', 'PAID')],
+      baseCurrency: 'AUD',
+    })
+
+    expect(txns.map(t => t.amount).sort((a, b) => a - b)).toEqual([-2000, 2000])
+    expect(summariseVendors(txns)).toEqual([])
+  })
+
+  it('a supplier credit with no bill beside it is quoted as "less X credit"', () => {
+    const txns = collectAccountTransactions({
+      accountCode: '64600',
+      side: 'expense',
+      invoices: [],
+      bankTransactions: [],
+      creditNotes: [creditNote('Hardware Concepts', 1728.1, 157.1, '64600', 'ACCPAYCREDIT')],
+      baseCurrency: 'AUD',
+    })
+    const vendors = summariseVendors(txns)
+    expect(vendors).toEqual([expect.objectContaining({ vendor: 'Hardware Concepts', amount: -1571 })])
+    expect(vendors[0].transactions[0].type).toBe('credit_note')
+
+    const draft = buildDraftNote({ accountName: 'Marketing Digital Ad Spend', vendors, accountActual: 23143.86, clause: null })
+    expect(draft.body).toContain('less Hardware Concepts credit ($1,571)')
+    expect(draft.warnings).toEqual([])
+  })
+
+  it('a foreign credit note is converted at its own rate, and one with no rate is named, not summed', () => {
+    // Accor Refurbishments is billed in NZD; 1.19777 is INV-017363's own rate.
+    const nzd = { currency: 'NZD', rate: 1.19777, lineAmountTypes: 'Exclusive' }
+    const invoice: XeroCommentaryDocument = {
+      ...bill('Accor Refurbishments', 1312, '41150', 'AUTHORISED', 'ACCREC'),
+      CurrencyCode: 'NZD',
+      CurrencyRate: 1.19777,
+    }
+    const credit = creditNote('Accor Refurbishments', 328, 0, '41150', 'ACCRECCREDIT', 'AUTHORISED', nzd)
+
+    const txns = collectAccountTransactions({
+      accountCode: '41150', side: 'revenue', invoices: [invoice], bankTransactions: [], creditNotes: [credit], baseCurrency: 'AUD',
+    })
+    const byType = Object.fromEntries(txns.map(t => [t.type, t]))
+    expect(byType.invoice.amount).toBeCloseTo(1095.37, 2)
+    expect(byType.credit_note.amount).toBeCloseTo(-273.84, 2)
+    expect(byType.credit_note.sourceCurrency).toBe('NZD')
+    expect(summariseVendors(txns)).toEqual([
+      expect.objectContaining({ vendor: 'Accor Refurbishments', amount: 822 }),
+    ])
+
+    const unrated = creditNote('Accor Refurbishments', 150, 0, '41150', 'ACCRECCREDIT', 'AUTHORISED', { ...nzd, rate: null })
+    const withUnrated = collectAccountTransactions({
+      accountCode: '41150', side: 'revenue', invoices: [invoice], bankTransactions: [], creditNotes: [credit, unrated], baseCurrency: 'AUD',
+    })
+    expect(withUnrated.find(t => t.converted === false)?.sourceCurrency).toBe('NZD')
+    const vendors = summariseVendors(withUnrated)
+    // The unrated credit rides along but is not in the $822.
+    expect(vendors).toEqual([
+      expect.objectContaining({ vendor: 'Accor Refurbishments', amount: 822, converted: false, sourceCurrency: 'NZD' }),
+    ])
+    const draft = buildDraftNote({ accountName: 'NZ Sales', vendors, accountActual: 821.53, clause: null })
+    expect(draft.warnings.join(' ')).toContain('billed in NZD')
+  })
+
+  it('AUTHORISED and PAID credit notes are posted; DRAFT, SUBMITTED, VOIDED and DELETED are not', () => {
+    for (const s of ['AUTHORISED', 'PAID']) expect(isPostedCreditNote({ Status: s })).toBe(true)
+    for (const s of ['DRAFT', 'SUBMITTED', 'VOIDED', 'DELETED', '', undefined]) {
+      expect(isPostedCreditNote({ Status: s })).toBe(false)
+    }
+
+    for (const [type, side] of [['ACCPAYCREDIT', 'expense'], ['ACCRECCREDIT', 'revenue']] as const) {
+      const txns = collectAccountTransactions({
+        accountCode: '64600',
+        side,
+        invoices: [],
+        bankTransactions: [],
+        creditNotes: ['DRAFT', 'SUBMITTED', 'VOIDED', 'DELETED', 'AUTHORISED', 'PAID']
+          .map(status => creditNote('Hardware Concepts', 110, 10, '64600', type, status)),
+        baseCurrency: 'AUD',
+      })
+      expect(txns).toHaveLength(2)
+      expect(sum(txns)).toBe(-200)
+    }
+  })
+
+  it('a credit note takes back what its own invoice type put in, and nothing on the other side', () => {
+    expect(lineSign('expense', 'credit_note', 'ACCPAYCREDIT')).toBe(-1)
+    expect(lineSign('expense', 'credit_note', 'ACCRECCREDIT')).toBe(0)
+    expect(lineSign('revenue', 'credit_note', 'ACCRECCREDIT')).toBe(-1)
+    expect(lineSign('revenue', 'credit_note', 'ACCPAYCREDIT')).toBe(0)
+    expect(lineSign('balance_sheet', 'credit_note', 'ACCPAYCREDIT')).toBe(-1)
+    expect(lineSign('balance_sheet', 'credit_note', 'ACCRECCREDIT')).toBe(0)
+    expect(lineSign('expense', 'credit_note', undefined)).toBe(0)
+  })
+
+  it('a cross-side credit note is left out of the list entirely', () => {
+    const txns = collectAccountTransactions({
+      accountCode: '41200',
+      side: 'revenue',
+      invoices: [],
+      bankTransactions: [],
+      creditNotes: [creditNote('Hardware Concepts', 110, 10, '41200', 'ACCPAYCREDIT')],
+      baseCurrency: 'AUD',
+    })
+    expect(txns).toEqual([])
+  })
+
+  it('the both-types page, every status, one account code: only the posted same-side notes count', () => {
+    // What the date-range-only request actually returns: both types, all six
+    // statuses, mixed on one page. Each account must see exactly its own.
+    const page = ['ACCPAYCREDIT', 'ACCRECCREDIT'].flatMap(type =>
+      ['DRAFT', 'SUBMITTED', 'VOIDED', 'DELETED', 'AUTHORISED', 'PAID']
+        .map(status => creditNote(`${type} ${status}`, 110, 10, '50000', type, status)))
+
+    for (const [side, type] of [['expense', 'ACCPAYCREDIT'], ['revenue', 'ACCRECCREDIT']] as const) {
+      const txns = collectAccountTransactions({
+        accountCode: '50000', side, invoices: [], bankTransactions: [], creditNotes: page, baseCurrency: 'AUD',
+      })
+      expect(txns.map(t => t.vendor.toUpperCase()).sort()).toEqual([`${type} AUTHORISED`, `${type} PAID`])
+      expect(sum(txns)).toBe(-200)
+      expect(summariseVendors(txns).reduce((t, v) => t + v.transactions.length, 0)).toBe(2)
+    }
+  })
+
+  it('asks for posted credit notes of one month, both types in one request', () => {
+    const where = (url: string) => decodeURIComponent(new URL(url).searchParams.get('where')!)
+
+    const pay = commentaryCreditNotesUrl('2026-08', ['ACCPAYCREDIT'])!
+    expect(pay).toContain('/api.xro/2.0/CreditNotes?')
+    // The Invoices request's proven shape: no OR, no parentheses, no Status.
+    expect(where(pay)).toBe('Type=="ACCPAYCREDIT" AND Date>=DateTime(2026,8,1) AND Date<=DateTime(2026,8,31)')
+
+    // Both types: the date range alone; type and status are checked per document.
+    const both = commentaryCreditNotesUrl('2026-08', ['ACCPAYCREDIT', 'ACCRECCREDIT'])!
+    expect(where(both)).toBe('Date>=DateTime(2026,8,1) AND Date<=DateTime(2026,8,31)')
+    for (const url of [pay, both]) {
+      expect(where(url)).not.toMatch(/\bOR\b|Status/)
+      expect(where(url).startsWith('(')).toBe(false)
+    }
+
+    expect(commentaryCreditNotesUrl('2026-13', ['ACCPAYCREDIT'])).toBeNull()
+    expect(commentaryCreditNotesUrl('2026-08', [])).toBeNull()
+  })
+
+  it('wants supplier credits wherever bills are, customer credits only for revenue lines', () => {
+    expect(creditNoteTypesFor(['expense'])).toEqual(['ACCPAYCREDIT'])
+    expect(creditNoteTypesFor(['balance_sheet'])).toEqual(['ACCPAYCREDIT'])
+    expect(creditNoteTypesFor(['revenue'])).toEqual(['ACCRECCREDIT'])
+    expect(creditNoteTypesFor(['expense', 'revenue'])).toEqual(['ACCPAYCREDIT', 'ACCRECCREDIT'])
+    expect(creditNoteTypesFor([])).toEqual([])
   })
 })

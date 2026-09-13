@@ -28,6 +28,20 @@
  * the side of the statement the account sits on. A refund received against an
  * expense reduces spend; a refund paid out against revenue reduces income.
  *
+ * 3. CREDIT NOTES THE ROUTE NEVER ASKED FOR. With both of those fixed, the same
+ *    pack still refused Rolled Prints (41200): its 47 posted sales-invoice lines
+ *    come to $4,178.56 and Xero's accrual P&L says $3,221.53. The $957.03
+ *    between them is credit, not error — Urban Road's Zoho integration raises
+ *    about thirty ACCRECCREDITs a month (replacement orders, Freedom Furniture
+ *    marketplace reversals) and they post to the same revenue accounts the
+ *    invoices do. The route fetched Invoices and BankTransactions and never
+ *    CreditNotes, so every list stood gross of its credits: Rolled Prints and
+ *    Framed Prints (41600, at least $2,476 over) were refused, and Shipping
+ *    (44000) printed $186 over its account, just inside the tolerance. The
+ *    supplier side has them too — Hardware Concepts' $2,200 credit against a
+ *    Marketing Digital Ad Spend bill. A credit note is fetched now, and signed
+ *    against its own side: it takes back what the matching invoice type put in.
+ *
  * The `LineAmount` arithmetic itself — tax off in the document's currency, then
  * divide by its own `CurrencyRate` — is `toStatementAmount`'s, untouched. The
  * sign is applied to its result, which is the same number because that
@@ -48,6 +62,12 @@ export type AccountSide = 'expense' | 'revenue' | 'balance_sheet'
 
 export type InvoiceType = 'ACCPAY' | 'ACCREC'
 
+/** A supplier credit note (against bills) or a customer one (against sales). */
+export type CreditNoteType = 'ACCPAYCREDIT' | 'ACCRECCREDIT'
+
+/** Which kind of Xero document a line came from. */
+export type CommentaryDocumentKind = 'invoice' | 'bank' | 'credit_note'
+
 /**
  * An invoice is in the ledger once it is approved. DRAFT and SUBMITTED have
  * not been posted yet; VOIDED and DELETED have been taken back out. Urban
@@ -63,7 +83,15 @@ export const POSTED_INVOICE_STATUSES = ['AUTHORISED', 'PAID'] as const
  */
 export const POSTED_BANK_TRANSACTION_STATUS = 'AUTHORISED'
 
-/** The fields we read off a Xero invoice or bank transaction. */
+/**
+ * A credit note follows the invoice lifecycle: DRAFT and SUBMITTED are not yet
+ * in the ledger, VOIDED and DELETED have been taken back out. PAID is a credit
+ * note that has been fully allocated or refunded — still posted, and still
+ * reducing the account on the date it carries.
+ */
+export const POSTED_CREDIT_NOTE_STATUSES = ['AUTHORISED', 'PAID'] as const
+
+/** The fields we read off a Xero invoice, credit note or bank transaction. */
 export interface XeroCommentaryDocument extends XeroDocumentMoney {
   Type?: string | null
   Status?: string | null
@@ -84,7 +112,7 @@ export interface VendorTransaction {
   context: string | null
   /** Signed, in the ORGANISATION's currency, the way the ledger moved the account. */
   amount: number
-  type: 'invoice' | 'bank'
+  type: CommentaryDocumentKind
   /** False when the source document was foreign and carried no exchange rate. */
   converted?: boolean
   /** The document's currency, when it is not the organisation's. */
@@ -114,6 +142,17 @@ export function isPostedInvoice(inv: XeroCommentaryDocument): boolean {
 
 export function isPostedBankTransaction(bt: XeroCommentaryDocument): boolean {
   return upper(bt.Status) === POSTED_BANK_TRANSACTION_STATUS
+}
+
+/**
+ * Posted, and therefore in the P&L. The same test as `isPostedInvoice`, kept
+ * under its own name so a change to one document's lifecycle cannot quietly
+ * move the other. This is the ONLY status guard: the CreditNotes request does
+ * not filter on Status (see `commentaryCreditNotesUrl`), so drafts and voids
+ * arrive on the page and stop here.
+ */
+export function isPostedCreditNote(cn: XeroCommentaryDocument): boolean {
+  return (POSTED_CREDIT_NOTE_STATUSES as readonly string[]).includes(upper(cn.Status))
 }
 
 /**
@@ -160,13 +199,60 @@ export function invoiceTypesFor(sides: Iterable<AccountSide>): InvoiceType[] {
 }
 
 /**
+ * The CreditNotes request for one month. Every status comes back, and with
+ * both types wanted both types do too; the posted, same-side ones are picked
+ * out per document.
+ *
+ * One request for both types rather than one per type, unlike Invoices. Credit
+ * notes are few — Urban Road, the heaviest user in the fleet, raises about
+ * thirty a month — so both types fit on one page, and a fourth concurrent call
+ * rather than a fifth keeps the route under Xero's five-concurrent-per-tenant
+ * limit.
+ *
+ * The `where` clause uses only the shape the Invoices request already proves
+ * against live Xero — `Type=="X" AND <date range>` — or the date range alone
+ * when both types are wanted. No code in this repo had sent Xero an OR or a
+ * parenthesis, and a clause Xero rejects fails as an empty list, which would
+ * quietly put every commentary list back to gross of credits. Status and type
+ * are enforced per document instead: `isPostedCreditNote` drops drafts and
+ * voids, and `lineSign` gives a credit note of the other side a 0. Unposted
+ * credit notes cost a few extra rows on a page, nothing more.
+ */
+export function commentaryCreditNotesUrl(month: string, types: readonly CreditNoteType[]): string | null {
+  const range = monthRangeWhere(month)
+  if (!range || types.length === 0) return null
+  const where = types.length === 1 ? `Type=="${types[0]}" AND ${range}` : range
+  return `https://api.xero.com/api.xro/2.0/CreditNotes?where=${encodeURIComponent(where)}`
+}
+
+/**
+ * Which credit-note types a set of commented accounts needs — the mirror of
+ * `invoiceTypesFor`. A supplier credit takes back a bill, so it is wanted
+ * wherever bills are; a customer credit takes back a sales invoice.
+ */
+export function creditNoteTypesFor(sides: Iterable<AccountSide>): CreditNoteType[] {
+  const s = new Set(sides)
+  const types: CreditNoteType[] = []
+  if (s.has('expense') || s.has('balance_sheet')) types.push('ACCPAYCREDIT')
+  if (s.has('revenue')) types.push('ACCRECCREDIT')
+  return types
+}
+
+/**
  * +1, -1, or 0 — how one document's line moves an account on this side of the
  * statement. 0 means the document does not belong in this account's list.
  *
  * Expense side: a bill and money spent are spend (+); money received is a
- * refund and reduces it (−).
+ * refund and reduces it (−), and so does a supplier credit note (ACCPAYCREDIT).
  * Revenue side: a sales invoice and money received are income (+); money paid
- * out is a refund and reduces it (−).
+ * out is a refund and reduces it (−), and so does a customer credit note
+ * (ACCRECCREDIT).
+ *
+ * A credit note's `LineAmount` is positive, exactly like the invoice it takes
+ * back — Xero carries the direction in the document's Type, as it does for bank
+ * lines — so the minus comes from here and nowhere else. Signed from
+ * `LineAmount` alone, Urban Road's August customer credits would have ADDED
+ * $957.03 to Rolled Prints instead of taking it off.
  *
  * Invoices are matched to a side by type rather than signed across sides. Only
  * bills are fetched for an expense account and only sales invoices for a
@@ -175,7 +261,8 @@ export function invoiceTypesFor(sides: Iterable<AccountSide>): InvoiceType[] {
  * the sales fetch. A list that changes with the rest of the page is worse than
  * one that consistently leaves the rare cross-coded document out — and leaving
  * a document out only ever under-quotes, which is the side the vendors-exceed
- * guard tolerates.
+ * guard tolerates. Credit notes follow the same rule: an ACCRECCREDIT coded to
+ * an expense account, or an ACCPAYCREDIT to a revenue one, is left out.
  *
  * A bank type we do not recognise is left out for the same reason: we cannot
  * tell which way it points, and guessing is how the Contractors list doubled
@@ -184,14 +271,23 @@ export function invoiceTypesFor(sides: Iterable<AccountSide>): InvoiceType[] {
  * Balance sheet: out of scope. A balance-sheet account's polarity depends on
  * whether it is an asset or a liability, which this route is not told, so its
  * lines keep the sign `LineAmount` gives them, exactly as before this change.
- * Only the posted-status filter and the bills-only invoice scope apply.
+ * Only the posted-status filter and the bills-only invoice scope apply. The one
+ * exception is a supplier credit note, which is signed against the bill it
+ * takes back (−1 where the bill is +1): whatever a bill does to the account, its
+ * credit undoes, whether the account is an asset or a liability. Leaving it at
+ * +1 would count a credit as a second bill.
  */
 export function lineSign(
   side: AccountSide,
-  kind: 'invoice' | 'bank',
+  kind: CommentaryDocumentKind,
   type: string | null | undefined,
 ): 1 | -1 | 0 {
   const t = upper(type)
+
+  if (kind === 'credit_note') {
+    if (side === 'revenue') return t === 'ACCRECCREDIT' ? -1 : 0
+    return t === 'ACCPAYCREDIT' ? -1 : 0
+  }
 
   if (kind === 'invoice') {
     if (side === 'revenue') return t === 'ACCREC' ? 1 : 0
@@ -217,18 +313,25 @@ function xeroDate(raw: string | null | undefined): string {
 /**
  * Every posted line coded to one account, signed for its side, in the
  * organisation's currency.
+ *
+ * `creditNotes` is optional so a caller that has none to give is unchanged. A
+ * credit note is keyed to its supplier exactly the way the bill was (contact,
+ * then line description), so a credit against a supplier's own bill nets inside
+ * that supplier's total, and one with nothing to net against becomes its own
+ * negative row — "less Hardware Concepts credit ($1,571)" in the draft.
  */
 export function collectAccountTransactions(input: {
   accountCode: string
   side: AccountSide
   invoices: readonly XeroCommentaryDocument[]
   bankTransactions: readonly XeroCommentaryDocument[]
+  creditNotes?: readonly XeroCommentaryDocument[]
   baseCurrency: string | null
 }): VendorTransaction[] {
-  const { accountCode, side, invoices, bankTransactions, baseCurrency } = input
+  const { accountCode, side, invoices, bankTransactions, creditNotes = [], baseCurrency } = input
   const out: VendorTransaction[] = []
 
-  const take = (doc: XeroCommentaryDocument, kind: 'invoice' | 'bank') => {
+  const take = (doc: XeroCommentaryDocument, kind: CommentaryDocumentKind) => {
     const sign = lineSign(side, kind, doc.Type)
     if (sign === 0) return
     const contactName = doc.Contact?.Name || ''
@@ -258,6 +361,9 @@ export function collectAccountTransactions(input: {
   }
   for (const bt of bankTransactions) {
     if (isPostedBankTransaction(bt)) take(bt, 'bank')
+  }
+  for (const cn of creditNotes) {
+    if (isPostedCreditNote(cn)) take(cn, 'credit_note')
   }
 
   return out

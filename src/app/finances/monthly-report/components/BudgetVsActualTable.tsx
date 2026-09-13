@@ -183,10 +183,13 @@ function SubtotalRow({
   )
 }
 
+// Signed. Vendor amounts are signed the way the ledger moved the account, and
+// this used to print Math.abs — so a customer credit note or a supplier refund
+// read "$500", indistinguishable from a $500 charge beside it. A rounded zero
+// stays unsigned rather than reading "-$0".
 function formatVendorAmount(amount: number): string {
-  const abs = Math.abs(amount)
-  const formatted = abs.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
-  return `$${formatted}`
+  const formatted = Math.abs(amount).toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  return amount < 0 && formatted !== '0' ? `-$${formatted}` : `$${formatted}`
 }
 
 function formatDate(dateStr: string): string {
@@ -253,8 +256,8 @@ function TransactionDrillDown({ vendors }: { vendors: VendorSummary[] }) {
                         <div className="text-gray-500 truncate max-w-[300px]" title={txn.context}>{txn.context}</div>
                       )}
                     </td>
-                    <td className="px-3 py-1.5 text-gray-400" title={txn.type === 'invoice' ? 'Invoice' : 'Bank Transaction'}>
-                      {txn.type === 'invoice' ? (
+                    <td className="px-3 py-1.5 text-gray-400" title={txn.type === 'invoice' ? 'Invoice' : txn.type === 'credit_note' ? 'Credit Note' : 'Bank Transaction'}>
+                      {txn.type === 'invoice' || txn.type === 'credit_note' ? (
                         <FileText className="w-3 h-3" />
                       ) : (
                         <Landmark className="w-3 h-3" />
