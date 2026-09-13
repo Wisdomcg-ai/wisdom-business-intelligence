@@ -27,6 +27,8 @@ export interface ReportLine {
   prior_year: number | null
   /** Expense group heading — see the same field on the UI's ReportLine. */
   group?: string | null
+  /** Real Xero account code, or null — see the same field on the UI's ReportLine. */
+  account_code?: string | null
 }
 
 // Map xero account_type to report_category

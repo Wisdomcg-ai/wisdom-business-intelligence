@@ -1075,3 +1075,72 @@ describe('monthly-report/generate — a pin outranks the account code', () => {
     expect(entry.budget).toBe('BATHURST: General Expenses')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Statement order — not characterisation either.
+//
+// Sections used to print A-Z by account name; the reference pack prints them in
+// Xero account-code order, compared as text. These cases pin the route end of
+// that: the code a line carries is a REAL Xero code (the actuals row's, then
+// the mapping's), and a budget-only line's own code is believed only when this
+// business's Xero data vouches for it — forecast_pl_lines holds wizard codes
+// such as 'opex-28', which would otherwise sort the row somewhere meaningless.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('monthly-report/generate — statement order', () => {
+  beforeEach(() => {
+    captureMessage.mockClear()
+    tables = baseTables()
+  })
+
+  it('orders a section by Xero code as text, codeless lines A-Z after', async () => {
+    compositeRows = [
+      actual('60550', 'Bank Fees', { '2026-08': 10 }),
+      actual('497', 'Bank Revaluations', { '2026-08': 20 }),
+      actual(null, 'Accountancy', { '2026-08': 30 }),
+      actual('100000', 'Stripe Fees', { '2026-08': 40 }),
+      // Blank code on the row, real code on the mapping — Urban Road's FX shape.
+      actual(null, FX_XERO, { '2026-08': 50 }),
+    ]
+    tables = baseTables({
+      account_mappings: [
+        mapping('Bank Fees', '60550'),
+        mapping('Bank Revaluations', '497'),
+        mapping('Accountancy', null),
+        mapping('Stripe Fees', '100000'),
+        mapping(FX_XERO, '62700'),
+      ],
+      financial_forecasts: actualsRouting(),
+    })
+
+    const lines = opexLines((await resolution()).report)
+    expect(lines.map((l: any) => [l.account_code, l.account_name])).toEqual([
+      ['100000', 'Stripe Fees'],
+      ['497', 'Bank Revaluations'],
+      ['60550', 'Bank Fees'],
+      ['62700', FX_XERO],
+      [null, 'Accountancy'],
+    ])
+  })
+
+  it('a budget-only line with a wizard code is codeless unless its mapping supplies a real one', async () => {
+    compositeRows = [actual('60550', 'Bank Fees', { '2026-08': 10 })]
+    tables = baseTables({
+      account_mappings: [mapping('Bank Fees', '60550'), mapping('Consulting', '61000')],
+      financial_forecasts: [forecast('active', 'FY27', { active: true })],
+      forecast_pl_lines: [
+        { ...plLine('p-1', 'active', 'Wages', { '2026-08': 500 }, 'Operating Expenses'), account_code: 'SYS-TEAM-WAGES' },
+        { ...plLine('p-2', 'active', 'Consulting', { '2026-08': 300 }, 'Operating Expenses'), account_code: 'opex-28' },
+        { ...plLine('p-3', 'active', 'Advertising', { '2026-08': 200 }, 'Operating Expenses'), account_code: '1779341224375-5rkezjw0y' },
+      ],
+    })
+
+    const lines = opexLines((await resolution()).report)
+    expect(lines.map((l: any) => [l.account_code, l.account_name])).toEqual([
+      ['60550', 'Bank Fees'],
+      ['61000', 'Consulting'],
+      [null, 'Advertising'],
+      [null, 'Wages'],
+    ])
+  })
+})

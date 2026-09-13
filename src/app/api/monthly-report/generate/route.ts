@@ -22,6 +22,7 @@ import {
   deriveProfitRows,
   type ReportLine,
 } from '@/lib/monthly-report/shared'
+import { compareStatementLines, realStatementCodes, statementAccountCode } from '@/lib/monthly-report/statement-order'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 
@@ -277,6 +278,16 @@ async function postHandler(request: Request) {
       mappingByXeroName.set(m.xero_account_name, m)
     }
 
+    // The Xero codes this business actually uses, for statement ORDER. Only a
+    // code the actuals or the Xero-sourced mappings vouch for is put on a line:
+    // a budget line's own code can be a forecast wizard's ('opex-28' is on
+    // Urban Road's Foreign Currency Gains and Losses), and sorting by that
+    // would print the row somewhere meaningless. See statement-order.ts.
+    const realCodes = realStatementCodes([
+      ...(xeroLines || []).map(x => x.account_code),
+      ...mappings.map((m: any) => m.xero_account_code),
+    ])
+
     // Budget lines lookup by various keys
     const budgetById = new Map<string, any>()
     for (const bl of budgetPLLines) {
@@ -491,6 +502,10 @@ async function postHandler(request: Request) {
         account_name: xero.account_name,
         xero_account_name: xero.account_name,
         group: mapping?.report_subcategory ?? null,
+        // The row's own code first — the fact — then the mapping's, the same
+        // precedence as the match cascade above. Carried as Xero spells it
+        // (not the lower-cased match key) because it is what the section sorts on.
+        account_code: statementAccountCode([xero.account_code, mapping?.xero_account_code], realCodes),
         is_budget_only: false,
         actual,
         budget,
@@ -554,6 +569,13 @@ async function postHandler(request: Request) {
           // to come from the name the budget uses. Matched the same way the
           // rest of the row is: by the mapping the name resolves to, if any.
           group: mappingByXeroName.get(bl.account_name)?.report_subcategory ?? null,
+          // The line's own code only if it is a real Xero code — on the forecast
+          // path it can be a wizard code — else the code of the mapping its
+          // name resolves to, else none.
+          account_code: statementAccountCode(
+            [bl.account_code, mappingByXeroName.get(bl.account_name)?.xero_account_code],
+            realCodes,
+          ),
           is_budget_only: true,
           actual: 0,
           budget,
@@ -582,7 +604,10 @@ async function postHandler(request: Request) {
     const sections = sectionOrder
       .filter(cat => categoryLines[cat] && categoryLines[cat].length > 0)
       .map(cat => {
-        const lines = categoryLines[cat].sort((a, b) => a.account_name.localeCompare(b.account_name))
+        // Xero account-code order, compared as text, codeless lines A-Z after —
+        // the order the reference pack prints. See statement-order.ts for why
+        // text and not numeric. The Full Year route uses the same comparator.
+        const lines = categoryLines[cat].sort(compareStatementLines)
         const isRev = cat === 'Revenue' || cat === 'Other Income'
         const subtotal = buildSubtotal(lines, `Total ${cat}`)
         // Calculate subtotal variance percent

@@ -10,6 +10,7 @@ import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfile
 import { resolveBudget, budgetLineKey } from '@/lib/budgets/resolve-budget'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import { getPriorYearMonth } from '@/lib/monthly-report/shared'
+import { compareStatementLines, realStatementCodes, statementAccountCode } from '@/lib/monthly-report/statement-order'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -89,6 +90,8 @@ interface FullYearLine {
   approved_annual_budget: number | null
   variance_amount: number
   variance_percent: number
+  /** Real Xero code or null — orders the section; see statement-order.ts. */
+  account_code?: string | null
 }
 
 /**
@@ -479,6 +482,16 @@ async function postHandler(request: Request) {
       mappingByXeroName.set(m.xero_account_name, m)
     }
 
+    // The Xero codes this business actually uses, for statement ORDER. Built
+    // from the actuals and the Xero-sourced mappings only, because
+    // forecast_pl_lines.account_code — selected above — is not always a Xero
+    // code: the wizard writes 'SYS-TEAM-WAGES', 'opex-28' and timestamp codes
+    // there. See statement-order.ts.
+    const realCodes = realStatementCodes([
+      ...(xeroLines || []).map((x: any) => x.account_code),
+      ...(mappings || []).map((m: any) => m.xero_account_code),
+    ])
+
     const budgetById = new Map<string, any>()
     for (const bl of budgetPLLines) {
       budgetById.set(bl.id, bl)
@@ -618,6 +631,9 @@ async function postHandler(request: Request) {
 
       const line: FullYearLine = {
         account_name: xero.account_name,
+        // The row's own code first — the fact — then the mapping's. Not
+        // xeroCode: that is lower-cased for matching, and this is sorted on.
+        account_code: statementAccountCode([xero.account_code, mapping?.xero_account_code], realCodes),
         category,
         months,
         projected_total: projectedTotal,
@@ -678,6 +694,12 @@ async function postHandler(request: Request) {
 
       const line: FullYearLine = {
         account_name: bl.account_name,
+        // A forecast line's own code only when it is a real Xero code, else the
+        // code of the mapping its name resolves to, else none.
+        account_code: statementAccountCode(
+          [bl.account_code, mappingByXeroName.get(bl.account_name)?.xero_account_code],
+          realCodes,
+        ),
         category,
         months,
         projected_total: projectedTotal,
@@ -735,6 +757,12 @@ async function postHandler(request: Request) {
 
         const line: FullYearLine = {
           account_name: al.account_name,
+          // Held to the same test as a forecast line's code, so one rule decides
+          // what counts as a Xero code on both routes.
+          account_code: statementAccountCode(
+            [al.account_code, mappingByXeroName.get(al.account_name)?.xero_account_code],
+            realCodes,
+          ),
           category,
           months,
           projected_total: 0,
@@ -760,7 +788,10 @@ async function postHandler(request: Request) {
     const sections = sectionOrder
       .filter(cat => categoryLines[cat] && categoryLines[cat].length > 0)
       .map(cat => {
-        const lines = categoryLines[cat].sort((a, b) => a.account_name.localeCompare(b.account_name))
+        // Xero account-code order, compared as text, codeless lines A-Z after —
+        // the order the reference pack prints, and the same comparator the
+        // Monthly route uses. See statement-order.ts for why text.
+        const lines = categoryLines[cat].sort(compareStatementLines)
         const subtotal = buildFullYearSubtotal(lines, `Total ${cat}`, cat, allFYMonths)
 
         // Recalculate variance with correct sign convention for expense subtotals
