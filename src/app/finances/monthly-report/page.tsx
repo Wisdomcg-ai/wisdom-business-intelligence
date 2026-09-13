@@ -45,7 +45,8 @@ import { useConsolidatedReport } from './hooks/useConsolidatedReport'
 import { useFullYearReport } from './hooks/useFullYearReport'
 import { useSubscriptionDetail } from './hooks/useSubscriptionDetail'
 import { rollUpContractors } from '@/lib/monthly-report/contractor-rollup'
-import { buildPackCashflowLines, packCashflowBasis } from '@/lib/monthly-report/pack-cashflow-lines'
+import { applyPackOpening, buildPackCashflowLines, packCashflowBasis, packOpeningFromAssumptions } from '@/lib/monthly-report/pack-cashflow-lines'
+import type { OpeningBank } from '@/lib/monthly-report/opening-bank'
 import { useWagesDetail } from './hooks/useWagesDetail'
 import { useXeroConnection } from './hooks/useXeroConnection'
 import { useAccountMappings } from './hooks/useAccountMappings'
@@ -81,6 +82,30 @@ const PDFLayoutEditorModal = dynamic(
   () => import('./components/layout-editor/PDFLayoutEditorModal'),
   { ssr: false }
 )
+
+/**
+ * Total Bank on the day before the report's fiscal year starts, from the synced
+ * balance-sheet mirror. Never throws: a failed lookup is 'unavailable', which
+ * the cashflow basis line prints, rather than a $0 opening passed off as real.
+ */
+async function loadOpeningBank(businessId: string, reportMonth: string): Promise<OpeningBank> {
+  try {
+    const res = await fetch(
+      `/api/monthly-report/opening-bank?business_id=${encodeURIComponent(businessId)}&report_month=${encodeURIComponent(reportMonth)}`
+    )
+    if (res.ok) {
+      const body = await res.json()
+      if (body?.opening?.status === 'read' || body?.opening?.status === 'unavailable') {
+        return body.opening as OpeningBank
+      }
+    }
+    console.warn(`[MonthlyReport] opening bank lookup failed (${res.status}) — the cashflow will say so`)
+    return { status: 'unavailable', asAt: null, reason: 'the balance sheet could not be reached' }
+  } catch (err) {
+    Sentry.captureException(err, { tags: { invariant: 'pack-opening-bank-load' } } as any)
+    return { status: 'unavailable', asAt: null, reason: 'the balance sheet could not be reached' }
+  }
+}
 
 export default function MonthlyReportPage() {
   const supabase = createClient()
@@ -408,8 +433,12 @@ export default function MonthlyReportPage() {
         const composed = buildPackCashflowLines(fullYear ?? null, reportMonth ?? selectedMonth)
         const plLines = composed.lines.length > 0 ? composed.lines : forecastLines
         if (plLines.length > 0) {
+          const month = reportMonth ?? selectedMonth
+          const [assumptionsRes, opening] = await Promise.all([
+            fetch(`/api/forecast/cashflow/assumptions?forecast_id=${forecast.id}`),
+            loadOpeningBank(businessId, month),
+          ])
           let assumptions = getDefaultCashflowAssumptions()
-          const assumptionsRes = await fetch(`/api/forecast/cashflow/assumptions?forecast_id=${forecast.id}`)
           if (assumptionsRes.ok) {
             const { data: savedAssumptions } = await assumptionsRes.json()
             if (savedAssumptions) {
@@ -421,7 +450,11 @@ export default function MonthlyReportPage() {
               }
             }
           }
-          const result = generateCashflowForecast(plLines, null, assumptions, forecast)
+          // AFTER the merge, so a balance saved by the forecast module's Xero
+          // sync can neither replace the real opening bank nor put debtors,
+          // creditors and ATO balances back on top of months that are actuals.
+          // Urban Road's pack opened at $0 without this. See applyPackOpening.
+          const result = generateCashflowForecast(plLines, null, applyPackOpening(assumptions, opening, forecast.actual_start_month), forecast)
           setCashflowForecast(result)
           return result
         }
@@ -1245,10 +1278,13 @@ export default function MonthlyReportPage() {
       // Computed here, from the report this function already holds — NOT read
       // back off React state that `loadCashflowForecast` just set. A setState
       // is not visible to the pass that made it, and the pack would have
-      // described the previous month's split.
+      // described the previous month's split. The opening is read off the
+      // cashflow that will actually be printed, so the sentence and the
+      // numbers beneath it cannot describe two different starting balances.
       cashflowBasis: packCashflowBasis(
         buildPackCashflowLines(fyReport ?? null, selectedMonth),
         (m) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-AU', { month: 'short', year: 'numeric' }),
+        packOpeningFromAssumptions(cfData?.assumptions),
       ),
       payrollGrid: payroll,
       wagesDetail: wDetail || undefined,
@@ -1896,6 +1932,16 @@ export default function MonthlyReportPage() {
             data={cashflowForecast}
             isLoading={cashflowLoading}
             error={cashflowError}
+            // The same sentence the pack prints, so the tab also says when the
+            // opening bank could not be read instead of showing $0-based
+            // balances as if they were real.
+            basis={cashflowForecast
+              ? packCashflowBasis(
+                  buildPackCashflowLines(fullYearReport ?? null, selectedMonth),
+                  (m) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-AU', { month: 'short', year: 'numeric' }),
+                  packOpeningFromAssumptions(cashflowForecast.assumptions),
+                )
+              : null}
           />
         )}
 

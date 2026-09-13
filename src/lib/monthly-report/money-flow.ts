@@ -21,6 +21,8 @@
  * Pure — the route is a thin IO wrapper.
  */
 
+import { isBankRow } from './opening-bank'
+
 export interface BsRowInput {
   account_name: string
   /** 'asset' | 'liability' | 'equity' (canonical, from the BS mirror). */
@@ -136,8 +138,6 @@ export function deriveMoneyFlow(
     }
   }
 
-  const isBank = (r: BsRowInput) => r.section === 'Bank' && r.account_type === 'asset'
-
   let bankStart = 0
   let bankEnd = 0
   const sources: FlowItem[] = []
@@ -146,7 +146,8 @@ export function deriveMoneyFlow(
   for (const r of rows) {
     const start = num(r.balances_by_date[startKey])
     const end = num(r.balances_by_date[endKey])
-    if (isBank(r)) {
+    // One definition of bank, shared with the cashflow page's opening balance.
+    if (isBankRow(r)) {
       bankStart += start
       bankEnd += end
       continue
