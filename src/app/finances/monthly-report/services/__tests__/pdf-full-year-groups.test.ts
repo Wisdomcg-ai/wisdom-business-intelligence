@@ -89,6 +89,24 @@ describe('Full Year page — expense groups', () => {
     expect(indexOf(runs, 'Employment Expense')).toBeLessThan(indexOf(runs, 'Bank and Other Fees'))
   })
 
+  it('keeps a long group total on one line of the 38mm Account column', () => {
+    // Urban Road's real FX heading. "Total Foreign Currency Gains and Losses"
+    // wrapped to two lines — "Losses" alone underneath — making it the only
+    // double-height subtotal on the page.
+    const fy = groupedFullYear()
+    const opex = fy.sections.find((s) => s.category === 'Operating Expenses')!
+    opex.lines = [
+      ...opex.lines,
+      { ...opex.lines[1], account_name: 'Realised Currency Gains', account_code: '499', group: 'Foreign Currency Gains and Losses' },
+    ]
+    const runs = fullYearRuns(fy)
+    const total = runs.filter((r) => r.startsWith('Total Foreign Currency'))
+    expect(total).toHaveLength(1)
+    expect(runs).not.toContain('Losses')
+    // The heading row spans the table, so the full name is still printed.
+    expect(runs).toContain('Foreign Currency Gains and Losses')
+  })
+
   it('prints no headings and no group totals for a client that has grouped nothing', () => {
     const runs = fullYearRuns(groupedFullYear(false))
     expect(runs).not.toContain('Total Employment Expense')

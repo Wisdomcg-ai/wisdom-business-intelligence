@@ -2535,7 +2535,12 @@ export class MonthlyReportPDFService {
           specialRowIndices.add(currentBodyIdx)
           const groupStyle = { fontStyle: 'bold' as const, fillColor: GROUP_SHADE }
           const groupRow = fyRow(g.subtotal, groupStyle)
-          groupRow[0] = { content: `Total ${g.name}`, styles: groupStyle }
+          // Ellipsized, not wrapped: Urban Road's "Total Foreign Currency
+          // Gains and Losses" overran the 38mm Account column and printed as
+          // the page's only double-height subtotal, "Losses" alone underneath.
+          // The heading row above spans the table, so the full name is still
+          // on the page (Calxa shortens the same label on its Full Year page).
+          groupRow[0] = { content: `Total ${g.name}`, styles: { ...groupStyle, overflow: 'ellipsize' as const } }
           tableData.push(groupRow)
           currentBodyIdx++
         }
