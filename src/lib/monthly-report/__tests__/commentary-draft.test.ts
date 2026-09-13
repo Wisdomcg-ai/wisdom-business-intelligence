@@ -41,6 +41,22 @@ describe('buildDraftNote — the July pack lines', () => {
     expect(note.body).toBe('Aircall ($4,536), On the Net ($299), less Hardware Concepts credit ($1,571)')
     expect(note.warnings).toEqual([])
   })
+
+  it('does not name a supplier called "Others" when the remainder nets to a credit', () => {
+    // Now that refunds are signed, the sub-materiality remainder can net
+    // negative. "less Others credit" would name a supplier that does not exist.
+    const note = buildDraftNote({
+      accountName: 'Telephone & Internet',
+      vendors: [
+        { vendor: 'Aircall', amount: 4536 },
+        { vendor: 'Others', amount: -50 },
+      ],
+      accountActual: 4486,
+      clause: null,
+    })
+    expect(note.body).toBe('Aircall ($4,536), less other credits ($50)')
+    expect(note.body).not.toContain('Others credit')
+  })
 })
 
 describe('buildDraftNote — the cap', () => {

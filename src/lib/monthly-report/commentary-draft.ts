@@ -96,7 +96,13 @@ export function buildDraftNote(input: {
   }
 
   for (const c of credits) {
-    parts.push(`less ${c.vendor} credit (${money(c.amount)})`)
+    // The supplier grouping rolls sub-materiality suppliers into a remainder
+    // named "Others", and now that refunds are signed that remainder can net
+    // negative. "less Others credit ($50)" names a supplier that does not
+    // exist; the remainder is several small credits, and says so.
+    parts.push(c.vendor === 'Others'
+      ? `less other credits (${money(c.amount)})`
+      : `less ${c.vendor} credit (${money(c.amount)})`)
   }
 
   // A document we could not convert is named rather than quietly included at a
