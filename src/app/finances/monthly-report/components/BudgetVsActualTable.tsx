@@ -183,10 +183,13 @@ function SubtotalRow({
   )
 }
 
+// Signed. Vendor amounts are signed the way the ledger moved the account, and
+// this used to print Math.abs — so a customer credit note or a supplier refund
+// read "$500", indistinguishable from a $500 charge beside it. A rounded zero
+// stays unsigned rather than reading "-$0".
 function formatVendorAmount(amount: number): string {
-  const abs = Math.abs(amount)
-  const formatted = abs.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
-  return `$${formatted}`
+  const formatted = Math.abs(amount).toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  return amount < 0 && formatted !== '0' ? `-$${formatted}` : `$${formatted}`
 }
 
 function formatDate(dateStr: string): string {

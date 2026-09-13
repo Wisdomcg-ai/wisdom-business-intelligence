@@ -112,4 +112,29 @@ describe('CommentaryLine (Phase 42)', () => {
     textarea = screen.getByTestId(`commentary-textarea-${ACCOUNT}`) as HTMLTextAreaElement
     expect(textarea.value).toBe('second')
   })
+
+  // A credit note is a negative vendor amount. Printed as Math.abs it read
+  // exactly like a charge — "Cust B $500" beside "Cust A $5,000".
+  it('a credit reads as negative in the vendor pill and the transaction row', () => {
+    const txn = (vendor: string, amount: number, type: 'invoice' | 'credit_note') => ({
+      date: '2026-08-02', vendor, context: null, amount, type,
+    })
+    renderLine({
+      vendors: [
+        { vendor: 'Cust A', amount: 5000, transactions: [txn('Cust A', 5000, 'invoice')] },
+        { vendor: 'Cust B', amount: -500, transactions: [txn('Cust B', -500.4, 'credit_note')] },
+        { vendor: 'Cust C', amount: 0, transactions: [txn('Cust C', -0.3, 'credit_note')] },
+      ],
+    })
+
+    expect(screen.getByText('$5,000')).toBeTruthy()
+    expect(screen.getByText('-$500')).toBeTruthy()
+    expect(screen.queryByText('$500')).toBeNull()
+
+    fireEvent.click(screen.getByText(/Show 3 transactions/))
+    expect(screen.getAllByText('-$500')).toHaveLength(2)
+    expect(screen.getAllByTitle('Credit Note')).toHaveLength(2)
+    // A credit that rounds to nothing is not "-$0".
+    expect(screen.queryByText('-$0')).toBeNull()
+  })
 })

@@ -147,8 +147,9 @@ export function isPostedBankTransaction(bt: XeroCommentaryDocument): boolean {
 /**
  * Posted, and therefore in the P&L. The same test as `isPostedInvoice`, kept
  * under its own name so a change to one document's lifecycle cannot quietly
- * move the other. Re-checked per document for the same reason: the request
- * filters on Status, and that filter must not be the only guard.
+ * move the other. This is the ONLY status guard: the CreditNotes request does
+ * not filter on Status (see `commentaryCreditNotesUrl`), so drafts and voids
+ * arrive on the page and stop here.
  */
 export function isPostedCreditNote(cn: XeroCommentaryDocument): boolean {
   return (POSTED_CREDIT_NOTE_STATUSES as readonly string[]).includes(upper(cn.Status))
@@ -198,7 +199,9 @@ export function invoiceTypesFor(sides: Iterable<AccountSide>): InvoiceType[] {
 }
 
 /**
- * The CreditNotes request for one month, posted only, for the given types.
+ * The CreditNotes request for one month. Every status comes back, and with
+ * both types wanted both types do too; the posted, same-side ones are picked
+ * out per document.
  *
  * One request for both types rather than one per type, unlike Invoices. Credit
  * notes are few — Urban Road, the heaviest user in the fleet, raises about

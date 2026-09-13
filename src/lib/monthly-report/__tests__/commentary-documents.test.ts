@@ -471,6 +471,23 @@ describe('credit notes', () => {
     expect(txns).toEqual([])
   })
 
+  it('the both-types page, every status, one account code: only the posted same-side notes count', () => {
+    // What the date-range-only request actually returns: both types, all six
+    // statuses, mixed on one page. Each account must see exactly its own.
+    const page = ['ACCPAYCREDIT', 'ACCRECCREDIT'].flatMap(type =>
+      ['DRAFT', 'SUBMITTED', 'VOIDED', 'DELETED', 'AUTHORISED', 'PAID']
+        .map(status => creditNote(`${type} ${status}`, 110, 10, '50000', type, status)))
+
+    for (const [side, type] of [['expense', 'ACCPAYCREDIT'], ['revenue', 'ACCRECCREDIT']] as const) {
+      const txns = collectAccountTransactions({
+        accountCode: '50000', side, invoices: [], bankTransactions: [], creditNotes: page, baseCurrency: 'AUD',
+      })
+      expect(txns.map(t => t.vendor.toUpperCase()).sort()).toEqual([`${type} AUTHORISED`, `${type} PAID`])
+      expect(sum(txns)).toBe(-200)
+      expect(summariseVendors(txns).reduce((t, v) => t + v.transactions.length, 0)).toBe(2)
+    }
+  })
+
   it('asks for posted credit notes of one month, both types in one request', () => {
     const where = (url: string) => decodeURIComponent(new URL(url).searchParams.get('where')!)
 
