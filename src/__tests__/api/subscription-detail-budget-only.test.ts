@@ -309,6 +309,7 @@ describe('S2 — subscription-detail budget-only vendor visibility', () => {
     xeroFixtures.currentBankTxns = [
       {
         Type: 'SPEND',
+        Status: 'AUTHORISED',
         Contact: { Name: 'Stripe Au' },
         LineItems: [{ AccountCode: '440', LineAmount: 50, Description: '' }],
       },
@@ -348,6 +349,7 @@ describe('S2 — subscription-detail budget-only vendor visibility', () => {
     xeroFixtures.currentBankTxns = [
       {
         Type: 'SPEND',
+        Status: 'AUTHORISED',
         Contact: { Name: 'Stripe Au' },
         LineItems: [{ AccountCode: '440', LineAmount: 50, Description: '' }],
       },
@@ -401,6 +403,7 @@ describe('S2 — subscription-detail budget-only vendor visibility', () => {
     xeroFixtures.currentBankTxns = [
       {
         Type: 'SPEND',
+        Status: 'AUTHORISED',
         Contact: { Name: 'Adobe' },
         LineItems: [{ AccountCode: '440', LineAmount: 50, Description: '' }],
       },
@@ -443,6 +446,7 @@ describe('S2 — subscription-detail budget-only vendor visibility', () => {
     xeroFixtures.currentBills = [
       {
         Type: 'ACCPAY',
+        Status: 'AUTHORISED',
         Contact: { Name: 'Vultr.com' },
         LineItems: [{ AccountCode: '440', LineAmount: 777, Description: 'Cloud hosting' }],
       },
@@ -476,6 +480,7 @@ describe('S2 — subscription-detail budget-only vendor visibility', () => {
     xeroFixtures.currentBankTxns = [
       {
         Type: 'SPEND',
+        Status: 'AUTHORISED',
         Contact: { Name: 'Adobe' },
         LineItems: [{ AccountCode: '440', LineAmount: 50, Description: '' }],
       },
@@ -483,6 +488,7 @@ describe('S2 — subscription-detail budget-only vendor visibility', () => {
     xeroFixtures.currentBills = [
       {
         Type: 'ACCPAY',
+        Status: 'AUTHORISED',
         Contact: { Name: 'Adobe' },
         LineItems: [{ AccountCode: '440', LineAmount: 30, Description: 'Extra seat' }],
       },
@@ -505,6 +511,7 @@ describe('S2 — subscription-detail budget-only vendor visibility', () => {
     xeroFixtures.priorBills = [
       {
         Type: 'ACCPAY',
+        Status: 'AUTHORISED',
         Contact: { Name: 'Vultr.com' },
         LineItems: [{ AccountCode: '440', LineAmount: 750, Description: '' }],
       },

@@ -171,16 +171,45 @@ export function isPostedCreditNote(cn: XeroCommentaryDocument): boolean {
 export function commentaryInvoicesUrl(month: string, type: InvoiceType): string | null {
   const range = monthRangeWhere(month)
   if (!range) return null
-  const where = `Type=="${type}" AND ${range}`
-  return `https://api.xero.com/api.xro/2.0/Invoices?where=${encodeURIComponent(where)}&Statuses=${POSTED_INVOICE_STATUSES.join(',')}`
+  return postedInvoicesUrl(`Type=="${type}" AND ${range}`)
 }
 
 /** The BankTransactions request for one month, posted only. */
 export function commentaryBankTransactionsUrl(month: string): string | null {
   const range = monthRangeWhere(month)
   if (!range) return null
-  const where = `Status=="${POSTED_BANK_TRANSACTION_STATUS}" AND ${range}`
-  return `https://api.xero.com/api.xro/2.0/BankTransactions?where=${encodeURIComponent(where)}`
+  return postedBankTransactionsUrl(range)
+}
+
+/**
+ * An Invoices request for any where-clause, posted documents only.
+ *
+ * Shared with the subscription page and the forecast wizard's Step 6 crawl,
+ * which asked for bills by Type and Date alone on the belief that "Xero
+ * excludes DELETED and VOIDED by default". It does not: the two Team Global
+ * Express lines above — a DRAFT and a VOIDED bill — came back from exactly
+ * that request.
+ */
+export function postedInvoicesUrl(where: string): string {
+  return `https://api.xero.com/api.xro/2.0/Invoices?where=${encodeURIComponent(where)}&Statuses=${POSTED_INVOICE_STATUSES.join(',')}`
+}
+
+/**
+ * A BankTransactions request for any where-clause, posted only.
+ *
+ * No Type filter. Money received against an expense account is a refund, and
+ * the monthly report's subscription page asked for `Type=="SPEND"` only.
+ * Urban Road's Issuu charged $3,279.14 in January 2026 (by bank, it has no
+ * bills) and Calxa shows −$3,258 against it in February; the page quoted the
+ * charge and never the refund.
+ *
+ * Not used by the forecast wizard's Step 6 crawl, which reads charges only
+ * until a refund can be matched to the charge it reverses — see the bank fetch
+ * in `api/Xero/subscription-transactions`.
+ */
+export function postedBankTransactionsUrl(where: string): string {
+  const posted = `Status=="${POSTED_BANK_TRANSACTION_STATUS}" AND ${where}`
+  return `https://api.xero.com/api.xro/2.0/BankTransactions?where=${encodeURIComponent(posted)}`
 }
 
 /**
@@ -303,6 +332,25 @@ export function lineSign(
   return isReceive ? 1 : -1
 }
 
+/**
+ * The whole rule in one call: 0 for a document the ledger never posted,
+ * otherwise `lineSign`. The commentary, the subscription page and the wizard's
+ * Step 6 crawl all go through this, so a draft cannot be left out in one place
+ * and quoted in another.
+ */
+export function postedLineSign(
+  doc: XeroCommentaryDocument,
+  kind: CommentaryDocumentKind,
+  side: AccountSide,
+): 1 | -1 | 0 {
+  const posted =
+    kind === 'invoice' ? isPostedInvoice(doc)
+    : kind === 'bank' ? isPostedBankTransaction(doc)
+    : isPostedCreditNote(doc)
+  if (!posted) return 0
+  return lineSign(side, kind, doc.Type)
+}
+
 /** Xero's `/Date(1754092800000+0000)/` as `YYYY-MM-DD`, or '' when absent. */
 function xeroDate(raw: string | null | undefined): string {
   if (!raw) return ''
@@ -332,7 +380,7 @@ export function collectAccountTransactions(input: {
   const out: VendorTransaction[] = []
 
   const take = (doc: XeroCommentaryDocument, kind: CommentaryDocumentKind) => {
-    const sign = lineSign(side, kind, doc.Type)
+    const sign = postedLineSign(doc, kind, side)
     if (sign === 0) return
     const contactName = doc.Contact?.Name || ''
     const date = xeroDate(doc.Date)
@@ -356,15 +404,9 @@ export function collectAccountTransactions(input: {
     }
   }
 
-  for (const inv of invoices) {
-    if (isPostedInvoice(inv)) take(inv, 'invoice')
-  }
-  for (const bt of bankTransactions) {
-    if (isPostedBankTransaction(bt)) take(bt, 'bank')
-  }
-  for (const cn of creditNotes) {
-    if (isPostedCreditNote(cn)) take(cn, 'credit_note')
-  }
+  for (const inv of invoices) take(inv, 'invoice')
+  for (const bt of bankTransactions) take(bt, 'bank')
+  for (const cn of creditNotes) take(cn, 'credit_note')
 
   return out
 }

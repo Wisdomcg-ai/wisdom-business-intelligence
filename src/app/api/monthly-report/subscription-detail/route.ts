@@ -5,6 +5,11 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { extractVendorName, createVendorKey } from '@/lib/utils/vendor-normalization'
+import {
+  commentaryBankTransactionsUrl,
+  commentaryInvoicesUrl,
+} from '@/lib/monthly-report/commentary-documents'
+import { subscriptionLinesOf } from '@/lib/subscriptions/posted-subscription-lines'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId'
@@ -41,21 +46,33 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-/** Fetch all pages from a paginated Xero endpoint */
+const XERO_PAGE_CAP = 10
+const MAX_RATE_LIMIT_RETRIES = 3
+
+/**
+ * Fetch all pages from a paginated Xero endpoint, and say whether that was
+ * all of them.
+ *
+ * `complete` is false when a page failed, the rate limit never cleared, or the
+ * page cap was reached with a full page. The vendor rows are still returned —
+ * a partial table is better than none — but the write-through will not delete
+ * history on the strength of a list it knows is short. This used to stop at
+ * five pages and on any error without a word, and a 429 retried forever.
+ */
 async function fetchAllPages(
   url: string,
-  whereClause: string,
   accessToken: string,
   tenantId: string,
   resultKey: string,
-): Promise<any[]> {
-  const allResults: any[] = []
+  ctx: { tenantId: string; month: string; label: string },
+): Promise<{ items: any[]; complete: boolean }> {
+  const items: any[] = []
   let page = 1
-  const maxPages = 5 // safety cap
+  let rateLimitRetries = 0
 
-  while (page <= maxPages) {
+  while (page <= XERO_PAGE_CAP) {
     const res = await fetch(
-      `${url}?where=${encodeURIComponent(whereClause)}&page=${page}`,
+      `${url}${url.includes('?') ? '&' : '?'}page=${page}`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -66,24 +83,43 @@ async function fetchAllPages(
     )
 
     if (res.status === 429) {
+      if (rateLimitRetries >= MAX_RATE_LIMIT_RETRIES) {
+        Sentry.captureMessage(`[SubscriptionDetail] ${ctx.label} still rate limited after ${MAX_RATE_LIMIT_RETRIES} retries`, {
+          level: 'warning',
+          tags: { route: 'monthly-report/subscription-detail', invariant: 'subscription_xero_rate_limit' },
+          extra: { tenantId: ctx.tenantId, month: ctx.month, page, fetched: items.length },
+        } as any)
+        return { items, complete: false }
+      }
+      rateLimitRetries++
       await sleep(10000)
       continue // retry same page
     }
+    rateLimitRetries = 0
 
-    if (!res.ok) break
+    if (!res.ok) return { items, complete: false }
 
     const data = await res.json()
-    const items = data[resultKey] || []
-    allResults.push(...items)
+    const pageItems = data[resultKey] || []
+    items.push(...pageItems)
 
     // Xero returns 100 per page; fewer means last page
-    if (items.length < 100) break
+    if (pageItems.length < 100) return { items, complete: true }
+
+    if (page === XERO_PAGE_CAP) {
+      Sentry.captureMessage(`[SubscriptionDetail] ${ctx.label} reached the ${XERO_PAGE_CAP}-page cap`, {
+        level: 'warning',
+        tags: { route: 'monthly-report/subscription-detail', invariant: 'subscription_xero_page_cap' },
+        extra: { tenantId: ctx.tenantId, month: ctx.month },
+      } as any)
+      return { items, complete: false }
+    }
 
     page++
     await sleep(300)
   }
 
-  return allResults
+  return { items, complete: false }
 }
 
 /**
@@ -162,10 +198,19 @@ async function postHandler(request: Request) {
 
     // Parse report month for date ranges
     const [year, monthNum] = report_month.split('-').map(Number)
-    const nextMonth = monthNum === 12 ? 1 : monthNum + 1
-    const nextYear = monthNum === 12 ? year + 1 : year
     const priorMonth = monthNum === 1 ? 12 : monthNum - 1
     const priorYear = monthNum === 1 ? year - 1 : year
+    const priorMonthKey = `${priorYear}-${String(priorMonth).padStart(2, '0')}`
+
+    // Posted documents only (#516's rule, shared). A malformed month has no
+    // range to ask Xero for.
+    const currentBankUrl = commentaryBankTransactionsUrl(report_month)
+    const priorBankUrl = commentaryBankTransactionsUrl(priorMonthKey)
+    const currentBillsUrl = commentaryInvoicesUrl(report_month, 'ACCPAY')
+    const priorBillsUrl = commentaryInvoicesUrl(priorMonthKey, 'ACCPAY')
+    if (!currentBankUrl || !priorBankUrl || !currentBillsUrl || !priorBillsUrl) {
+      return NextResponse.json({ error: 'report_month must be YYYY-MM' }, { status: 400 })
+    }
 
     const accountNameMap = new Map<string, string>()
 
@@ -203,9 +248,6 @@ async function postHandler(request: Request) {
       }
     }
 
-    const priorNextMonth = priorMonth === 12 ? 1 : priorMonth + 1
-    const priorNextYear = priorMonth === 12 ? priorYear + 1 : priorYear
-
     // Per-tenant current-month vendor totals for the phase-2 write-through:
     // tenant → vendorKey → { name, amount }. Kept per-tenant so multi-org rows
     // land separably in subscription_vendor_actuals.
@@ -231,15 +273,17 @@ async function postHandler(request: Request) {
       }
     }
 
+    // Posted lines only, signed by document type — see posted-subscription-lines.ts.
+    // transaction_count counts every posted line, a refund included: a refund
+    // is evidence the vendor is still active this month, not an absence.
+    const requestedCodes = new Set(account_codes)
+
     // Process bank transactions into vendor breakdown
     function processBankTxns(txns: any[], isCurrent: boolean, txnTenantId: string) {
       for (const bt of txns) {
-        const contactName = bt.Contact?.Name || ''
-        for (const li of (bt.LineItems || [])) {
-          if (account_codes.includes(li.AccountCode)) {
-            const vendorName = extractVendorName(contactName, li.Description || bt.Reference || '')
-            accumulateLine(li.AccountCode, vendorName, li.LineAmount || 0, isCurrent, txnTenantId)
-          }
+        for (const line of subscriptionLinesOf(bt, 'bank', requestedCodes)) {
+          const vendorName = extractVendorName(line.contactName, line.description)
+          accumulateLine(line.accountCode, vendorName, line.amount, isCurrent, txnTenantId)
         }
       }
     }
@@ -256,13 +300,10 @@ async function postHandler(request: Request) {
     function processInvoices(invoices: any[], isCurrent: boolean, txnTenantId: string) {
       let sawLineItems = false
       for (const inv of invoices) {
-        const contactName = inv.Contact?.Name || ''
-        for (const li of (inv.LineItems || [])) {
-          sawLineItems = true
-          if (account_codes.includes(li.AccountCode)) {
-            const vendorName = extractVendorName(contactName, li.Description || '')
-            accumulateLine(li.AccountCode, vendorName, li.LineAmount || 0, isCurrent, txnTenantId)
-          }
+        if ((inv.LineItems || []).length > 0) sawLineItems = true
+        for (const line of subscriptionLinesOf(inv, 'invoice', requestedCodes)) {
+          const vendorName = extractVendorName(line.contactName, line.description)
+          accumulateLine(line.accountCode, vendorName, line.amount, isCurrent, txnTenantId)
         }
       }
       // Xero includes LineItems on paged Invoices responses (same contract the
@@ -275,6 +316,9 @@ async function postHandler(request: Request) {
         )
       }
     }
+
+    /** Orgs whose current and prior month were read in full — see the write-through. */
+    const completeTenants = new Set<string>()
 
     // Crawl EVERY active org: COA (merged code→name lookup) + current and prior
     // month bank transactions. One dead org's token must not blank the others.
@@ -308,14 +352,23 @@ async function postHandler(request: Request) {
         Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch accounts", tenantId } } as any)
       }
 
+      // Every fetch must finish, whole, before this org's crawl counts as a
+      // complete picture of the month — the write-through only deletes stale
+      // history for an org whose picture is complete.
+      let crawlComplete = true
+
+      // Bank transactions for both months: posted only, and EVERY type. The
+      // old `Type=="SPEND"` filter threw away money received — Issuu's Feb 2026
+      // refund, and one half of Reena Rosales's cancelling pair in Aug 2026.
       try {
         const txns = await fetchAllPages(
-          'https://api.xero.com/api.xro/2.0/BankTransactions',
-          `Date>=DateTime(${year},${monthNum},1)&&Date<DateTime(${nextYear},${nextMonth},1)&&Type=="SPEND"`,
-          accessToken, tenantId, 'BankTransactions'
+          currentBankUrl, accessToken, tenantId, 'BankTransactions',
+          { tenantId, month: report_month, label: 'BankTransactions (current month)' },
         )
-        processBankTxns(txns, true, tenantId)
+        if (!txns.complete) crawlComplete = false
+        processBankTxns(txns.items, true, tenantId)
       } catch (err) {
+        crawlComplete = false
         Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch current bank txns", tenantId } } as any)
       }
 
@@ -323,28 +376,32 @@ async function postHandler(request: Request) {
 
       try {
         const txns = await fetchAllPages(
-          'https://api.xero.com/api.xro/2.0/BankTransactions',
-          `Date>=DateTime(${priorYear},${priorMonth},1)&&Date<DateTime(${priorNextYear},${priorNextMonth},1)&&Type=="SPEND"`,
-          accessToken, tenantId, 'BankTransactions'
+          priorBankUrl, accessToken, tenantId, 'BankTransactions',
+          { tenantId, month: priorMonthKey, label: 'BankTransactions (prior month)' },
         )
-        processBankTxns(txns, false, tenantId)
+        if (!txns.complete) crawlComplete = false
+        processBankTxns(txns.items, false, tenantId)
       } catch (err) {
+        crawlComplete = false
         Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch prior bank txns", tenantId } } as any)
       }
 
       await sleep(300)
 
-      // Supplier bills for both months — same window shape as the bank fetches.
-      // No status filter, mirroring the wizard's crawl (Xero excludes DELETED
-      // and VOIDED by default), so the budget basis and the actuals basis agree.
+      // Supplier bills for both months, AUTHORISED and PAID only. This used to
+      // send no status at all, on the belief that "Xero excludes DELETED and
+      // VOIDED by default". It does not: the same request put a DRAFT and a
+      // VOIDED Team Global Express bill into Urban Road's August 2026
+      // commentary (#516). subscriptionLinesOf re-checks each document anyway.
       try {
         const bills = await fetchAllPages(
-          'https://api.xero.com/api.xro/2.0/Invoices',
-          `Type=="ACCPAY"&&Date>=DateTime(${year},${monthNum},1)&&Date<DateTime(${nextYear},${nextMonth},1)`,
-          accessToken, tenantId, 'Invoices'
+          currentBillsUrl, accessToken, tenantId, 'Invoices',
+          { tenantId, month: report_month, label: 'Invoices (current month)' },
         )
-        processInvoices(bills, true, tenantId)
+        if (!bills.complete) crawlComplete = false
+        processInvoices(bills.items, true, tenantId)
       } catch (err) {
+        crawlComplete = false
         Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch current bills", tenantId } } as any)
       }
 
@@ -352,14 +409,17 @@ async function postHandler(request: Request) {
 
       try {
         const bills = await fetchAllPages(
-          'https://api.xero.com/api.xro/2.0/Invoices',
-          `Type=="ACCPAY"&&Date>=DateTime(${priorYear},${priorMonth},1)&&Date<DateTime(${priorNextYear},${priorNextMonth},1)`,
-          accessToken, tenantId, 'Invoices'
+          priorBillsUrl, accessToken, tenantId, 'Invoices',
+          { tenantId, month: priorMonthKey, label: 'Invoices (prior month)' },
         )
-        processInvoices(bills, false, tenantId)
+        if (!bills.complete) crawlComplete = false
+        processInvoices(bills.items, false, tenantId)
       } catch (err) {
+        crawlComplete = false
         Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch prior bills", tenantId } } as any)
       }
+
+      if (crawlComplete) completeTenants.add(tenantId)
 
       await sleep(300)
     }
@@ -452,7 +512,6 @@ async function postHandler(request: Request) {
     // ── Authoritative P&L actuals from xero_pl_lines (matches main report) ──
     const plActuals = new Map<string, number>()
     const plPriorActuals = new Map<string, number>()
-    const priorMonthKey = `${priorYear}-${String(priorMonth).padStart(2, '0')}`
     try {
       const accountNames = account_codes
         .map(code => accountNameMap.get(code))
@@ -698,10 +757,64 @@ async function postHandler(request: Request) {
             `[SubscriptionDetail] vendor-actuals write-through failed: ${persistError.message}`,
             { level: 'warning' as any, tags: { invariant: 'subscription-actuals-persist' }, extra: { business_id, report_month, rows: rows.length } } as any,
           )
+          throw new SkipWriteThrough()
+        }
+      }
+
+      // An upsert never deletes. A vendor that is no longer in this month's
+      // posted documents — a bill since voided, a spend since deleted, or a row
+      // written before the posted-only rule — kept its old amount forever.
+      // Urban Road 2026-08 still holds avocadoblvd $6,500 (written 11 Sep
+      // 07:22), a USD marketing bill on 64610 that is not a subscription at
+      // all, and it inflates that month's history by that much.
+      //
+      // So, per org, delete this month's rows for vendors the crawl did not
+      // emit — but only when the crawl can vouch for the whole month: every
+      // page of every fetch arrived (completeTenants), and the caller asked for
+      // EVERY configured subscription account. A caller asking about 63700
+      // alone never saw 63706's vendors, and must not delete them.
+      //
+      // And only this page's own ('report') rows. The wizard's Step 6 analyses
+      // whatever accounts the operator picks, which in prod is wider than the
+      // report settings for two businesses (eight extra codes each); its rows
+      // for this month may be vendors this page never looks for, and Step 6
+      // does not prune them either — its history is only ever added to.
+      const coversEverySubscriptionCode = configuredSubscriptionCodes.every((c) => requestedCodes.has(c))
+      if (!coversEverySubscriptionCode) throw new SkipWriteThrough()
+      for (const tenantId of completeTenants) {
+        const emitted = tenantMonthActuals.get(tenantId) ?? new Map()
+        const { data: existing, error: readError } = await supabase
+          .from('subscription_vendor_actuals')
+          .select('id, vendor_key')
+          .eq('business_id', ids.businessId)
+          .eq('tenant_id', tenantId)
+          .eq('month', report_month)
+          .eq('source', 'report')
+        if (readError) {
+          Sentry.captureMessage(
+            `[SubscriptionDetail] stale vendor-actuals read failed: ${readError.message}`,
+            { level: 'warning' as any, tags: { invariant: 'subscription-actuals-persist' }, extra: { business_id, report_month, tenantId } } as any,
+          )
+          continue
+        }
+        const staleIds = ((existing || []) as { id: string; vendor_key: string }[])
+          .filter((r) => !emitted.has(r.vendor_key))
+          .map((r) => r.id)
+        if (staleIds.length === 0) continue
+        const { error: deleteError } = await supabase
+          .from('subscription_vendor_actuals')
+          .delete()
+          .in('id', staleIds)
+        if (deleteError) {
+          Sentry.captureMessage(
+            `[SubscriptionDetail] stale vendor-actuals delete failed: ${deleteError.message}`,
+            { level: 'warning' as any, tags: { invariant: 'subscription-actuals-persist' }, extra: { business_id, report_month, tenantId, stale: staleIds.length } } as any,
+          )
         }
       }
     } catch (persistErr) {
-      // Not an error — this caller is outside the subscription scope by design.
+      // Not an error — this caller is outside the subscription scope by design,
+      // or the failure that stopped the block has already been reported.
       if (!(persistErr instanceof SkipWriteThrough)) {
         Sentry.captureException(persistErr, {
           tags: { invariant: 'subscription-actuals-persist' },
