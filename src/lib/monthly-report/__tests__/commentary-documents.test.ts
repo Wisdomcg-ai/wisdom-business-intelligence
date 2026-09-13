@@ -21,6 +21,9 @@ import {
   isPostedCreditNote,
   isPostedInvoice,
   lineSign,
+  postedBankTransactionsUrl,
+  postedInvoicesUrl,
+  postedLineSign,
   summariseVendors,
   type VendorTransaction,
   type XeroCommentaryDocument,
@@ -129,6 +132,13 @@ describe('signed by document type and account side', () => {
     expect(lineSign('expense', 'bank', 'SPEND-PREPAYMENT')).toBe(1)
     expect(lineSign('expense', 'bank', 'RECEIVE')).toBe(-1)
     expect(lineSign('expense', 'bank', 'RECEIVE-OVERPAYMENT')).toBe(-1)
+  })
+
+  it('postedLineSign is lineSign behind the posted check — one rule for every reader', () => {
+    expect(postedLineSign({ Type: 'ACCPAY', Status: 'PAID' }, 'invoice', 'expense')).toBe(1)
+    expect(postedLineSign({ Type: 'ACCPAY', Status: 'DRAFT' }, 'invoice', 'expense')).toBe(0)
+    expect(postedLineSign({ Type: 'RECEIVE', Status: 'AUTHORISED' }, 'bank', 'expense')).toBe(-1)
+    expect(postedLineSign({ Type: 'SPEND', Status: 'DELETED' }, 'bank', 'expense')).toBe(0)
   })
 
   it('a revenue account: a sales invoice counts up, a SPEND line against it counts down', () => {
@@ -263,6 +273,15 @@ describe('the requests', () => {
     const url = commentaryBankTransactionsUrl('2026-08')!
     const where = decodeURIComponent(new URL(url).searchParams.get('where')!)
     expect(where).toBe('Status=="AUTHORISED" AND Date>=DateTime(2026,8,1) AND Date<=DateTime(2026,8,31)')
+  })
+
+  it('the posted-only requests take any where-clause, for the subscription readers', () => {
+    const inv = postedInvoicesUrl('Type=="ACCPAY" AND Date>=DateTime(2025,7,1)')
+    expect(inv).toContain('Statuses=AUTHORISED,PAID')
+    expect(decodeURIComponent(new URL(inv).searchParams.get('where')!)).toBe('Type=="ACCPAY" AND Date>=DateTime(2025,7,1)')
+
+    const bank = postedBankTransactionsUrl('Date>=DateTime(2025,7,1)')
+    expect(decodeURIComponent(new URL(bank).searchParams.get('where')!)).toBe('Status=="AUTHORISED" AND Date>=DateTime(2025,7,1)')
   })
 
   it('refuses a malformed month rather than sending Xero a NaN date', () => {

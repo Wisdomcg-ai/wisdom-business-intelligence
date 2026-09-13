@@ -21,6 +21,8 @@ import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId';
 import { deriveVendorFromTransactions } from '@/lib/xero/subscription-vendor-derivation';
 import { aggregateVendorMonthActuals } from '@/lib/subscriptions/variance';
 import { isSameAccount } from '@/lib/xero/account-name-match';
+import { postedInvoicesUrl } from '@/lib/monthly-report/commentary-documents';
+import { subscriptionChargeLinesOf } from '@/lib/subscriptions/posted-subscription-lines';
 
 export const dynamic = 'force-dynamic';
 // High-volume tenants (e.g. JDS: 3700+ bills + 3300+ bank lines) need a long
@@ -28,6 +30,9 @@ export const dynamic = 'force-dynamic';
 // allow up to 5 min. Without this the function timed out mid-crawl and silently
 // returned partial (current-FY-missing) data.
 export const maxDuration = 300;
+
+/** Pages per list (100 documents each) before the crawl stops and says so. */
+const SUBSCRIPTION_PAGE_CAP = 50;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -723,6 +728,9 @@ async function postHandler(request: Request) {
       orgsAnalyzed.push(orgName);
       tokenByTenantId.set(connection.tenant_id, activeToken);
 
+      /** The operator's selection, narrowed to codes that mean the same account in this org. */
+      const selectedAndAllowed = new Set<string>(validAccountCodes.filter((c: string) => allowedCodes.has(c)));
+
     // =====================================================
     // 1. FETCH ALL INVOICES (ACCPAY - supplier bills)
     // =====================================================
@@ -745,7 +753,13 @@ async function postHandler(request: Request) {
       // Xero returns oldest-first and a high-bill tenant's current-FY bills (e.g.
       // an annual Asana bill, or monthly Capsule bills) fall past the page cap and
       // are silently dropped — the exact "FY YTD $0" symptom (JDS).
-      const invoicesUrl = `https://api.xero.com/api.xro/2.0/Invoices?where=${encodeURIComponent(whereClause)}&order=${encodeURIComponent('Date DESC')}&page=${invoicePage}`;
+      //
+      // AUTHORISED and PAID only. A request with no Statuses returns DRAFT,
+      // SUBMITTED, VOIDED and DELETED bills too — Urban Road's August 2026
+      // commentary quoted a DRAFT and a VOIDED Team Global Express bill from
+      // exactly that request (#516) — and every one of them was being counted
+      // here as subscription spend and seeded into a budget.
+      const invoicesUrl = `${postedInvoicesUrl(whereClause)}&order=${encodeURIComponent('Date DESC')}&page=${invoicePage}`;
 
       const invoicesResponse = await xeroGet(invoicesUrl);
       if (!invoicesResponse) {
@@ -775,16 +789,24 @@ async function postHandler(request: Request) {
         allInvoiceIds.push(invoice.InvoiceID);
       }
 
+      // A short page is the last page; asking again only spends a call.
+      if (invoices.length < 100) {
+        hasMoreInvoices = false;
+        break;
+      }
+
       invoicePage++;
 
       // Safety limit - max 50 pages (5000 invoices), matching the bank-txn loop.
       // With order=Date DESC the newest bills are kept first, so even if a very
       // high-volume tenant exceeds this, only the OLDEST prior-FY bills are
       // dropped — and the P&L backstop below reconciles any remaining shortfall.
-      if (invoicePage > 50) {
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[Subscription Txns] Reached invoice page limit (50 pages / 5000 invoices)');
-        }
+      if (invoicePage > SUBSCRIPTION_PAGE_CAP) {
+        Sentry.captureMessage(`[Subscription Txns] Invoice list reached the ${SUBSCRIPTION_PAGE_CAP}-page cap`, {
+          level: 'warning' as any,
+          tags: { route: 'Xero/subscription-transactions', invariant: 'subscription_xero_page_cap' },
+          extra: { tenantId: activeTenantId, business_id, fetched: allInvoiceIds.length },
+        } as any);
         break;
       }
     }
@@ -829,37 +851,34 @@ async function postHandler(request: Request) {
           // Skip transactions outside our FY range
           if (!period) continue;
 
-          for (const line of fullInvoice.LineItems) {
-            if (validAccountCodes.includes(line.AccountCode) && allowedCodes.has(line.AccountCode)) {
-              const contactName = fullInvoice.Contact?.Name || '';
-              const vendorName = extractVendorName(contactName, line.Description || '');
+          // `Invoices?IDs=` ignores Statuses and returns whatever those ids are
+          // NOW — a bill voided between the list call and this one included — so
+          // the per-document posted check in subscriptionChargeLinesOf is what
+          // keeps it out, not the list filter.
+          for (const line of subscriptionChargeLinesOf(fullInvoice, 'invoice', selectedAndAllowed)) {
+            const vendorName = extractVendorName(line.contactName, line.description);
+            const isCredit = line.amount < 0;
 
-              const rawAmount = line.LineAmount || 0;
-              const isCredit = rawAmount < 0;
+            allTransactions.push({
+              tenantId: activeTenantId,
+              id: `inv-${fullInvoice.InvoiceID}-${line.lineItemId || Math.random()}`,
+              date: dateStr,
+              vendor: vendorName,
+              description: line.description || line.contactName,
+              amount: line.amount,  // Keep original sign for proper netting
+              rawAmount: line.amount,
+              accountCode: line.accountCode,
+              accountName: accountNameMap.get(line.accountCode) || line.accountCode,
+              source: 'invoice',
+              reference: fullInvoice.InvoiceNumber || '',
+              period,
+              isCredit,
+            });
+            totalInvoicesFetched++;
 
-              // For expense accounts, positive = expense, negative = credit/refund
-              // We keep the sign to properly calculate net expense
-              allTransactions.push({
-                tenantId: activeTenantId,
-                id: `inv-${fullInvoice.InvoiceID}-${line.LineItemID || Math.random()}`,
-                date: dateStr,
-                vendor: vendorName,
-                description: line.Description || contactName,
-                amount: rawAmount,  // Keep original sign for proper netting
-                rawAmount: rawAmount,
-                accountCode: line.AccountCode,
-                accountName: accountNameMap.get(line.AccountCode) || line.AccountCode,
-                source: 'invoice',
-                reference: fullInvoice.InvoiceNumber || '',
-                period,
-                isCredit,
-              });
-              totalInvoicesFetched++;
-
-              if (isCredit) {
-                if (process.env.NODE_ENV !== 'production') {
-                  console.log(`[Subscription Txns] CREDIT FOUND (invoice): ${vendorName} ${dateStr} ${rawAmount}`);
-                }
+            if (isCredit) {
+              if (process.env.NODE_ENV !== 'production') {
+                console.log(`[Subscription Txns] CREDIT FOUND (invoice): ${vendorName} ${dateStr} ${line.amount}`);
               }
             }
           }
@@ -889,6 +908,23 @@ async function postHandler(request: Request) {
       // order=Date DESC so the newest (current-FY) lines page first — parity with
       // the invoice loop. xeroGet paces (<=60/min) and retries 429s, so no page
       // is dropped.
+      //
+      // Charges only — Step 6 does not read refunds, though the monthly
+      // report's subscription page does. Step 6 derives a price, a cadence and
+      // an opening budget from charges, and a refund cannot be netted into
+      // those until it is matched to the charge it reverses (same org, an
+      // earlier charge, a similar amount). Netted by month, a refunded $500
+      // trial became a $500/month budget on a frequency change, and a $100
+      // monthly vendor whose double charge was refunded opened at $200. Until
+      // refund matching exists Step 6 reads charges, as it always has; the
+      // report page nets refunds because it reports what the ledger posted.
+      //
+      // So the request is the one this crawl has always sent, and the posted
+      // check is made per document below: a DELETED spend comes back from it
+      // and was being counted. No request in this codebase has sent Status and
+      // Type in one where-clause to live Xero, and the report page's posted-only
+      // request (no Type) would page every RECEIVE — customer receipts
+      // included — toward the page cap only to throw them away.
       const bankUrl = `https://api.xero.com/api.xro/2.0/BankTransactions?where=${encodeURIComponent(bankWhereClause)}&order=${encodeURIComponent('Date DESC')}&page=${bankPage}`;
 
       const bankResponse = await xeroGet(bankUrl);
@@ -922,50 +958,54 @@ async function postHandler(request: Request) {
         // Skip transactions outside our FY range
         if (!period) continue;
 
-        // Check line items for matching account codes
-        for (const line of txn.LineItems || []) {
-          if (validAccountCodes.includes(line.AccountCode) && allowedCodes.has(line.AccountCode)) {
-            const contactName = txn.Contact?.Name || '';
-            const vendorName = extractVendorName(contactName, line.Description || txn.Reference || '');
+        // Posted SPEND lines on the selected accounts. Checked per document, not
+        // left to the request: a DELETED spend is returned by it, and a filter
+        // the API ignores must not be what lets a refund or a prepayment in.
+        for (const line of subscriptionChargeLinesOf(txn, 'bank', selectedAndAllowed)) {
+          const vendorName = extractVendorName(line.contactName, line.description);
+          const isCredit = line.amount < 0;
 
-            const rawAmount = line.LineAmount || 0;
-            const isCredit = rawAmount < 0;
+          allTransactions.push({
+            tenantId: activeTenantId,
+            id: `bank-${txn.BankTransactionID}-${line.lineItemId || Math.random()}`,
+            date: dateStr,
+            vendor: vendorName,
+            description: line.description || line.contactName,
+            amount: line.amount,  // Keep original sign for proper netting
+            rawAmount: line.amount,
+            accountCode: line.accountCode,
+            accountName: accountNameMap.get(line.accountCode) || line.accountCode,
+            source: 'bank',
+            reference: txn.Reference || '',
+            period,
+            isCredit,
+          });
+          totalBankFetched++;
 
-            // For expense accounts, positive = expense, negative = credit/refund
-            // We keep the sign to properly calculate net expense
-            allTransactions.push({
-              tenantId: activeTenantId,
-              id: `bank-${txn.BankTransactionID}-${line.LineItemID || Math.random()}`,
-              date: dateStr,
-              vendor: vendorName,
-              description: line.Description || txn.Reference || contactName,
-              amount: rawAmount,  // Keep original sign for proper netting
-              rawAmount: rawAmount,
-              accountCode: line.AccountCode,
-              accountName: accountNameMap.get(line.AccountCode) || line.AccountCode,
-              source: 'bank',
-              reference: txn.Reference || '',
-              period,
-              isCredit,
-            });
-            totalBankFetched++;
-
-            if (isCredit) {
-              if (process.env.NODE_ENV !== 'production') {
-                console.log(`[Subscription Txns] CREDIT FOUND (bank): ${vendorName} ${dateStr} ${rawAmount}`);
-              }
+          if (isCredit) {
+            if (process.env.NODE_ENV !== 'production') {
+              console.log(`[Subscription Txns] CREDIT FOUND (bank): ${vendorName} ${dateStr} ${line.amount}`);
             }
           }
         }
       }
 
+      // A short page is the last page.
+      if (bankTxns.length < 100) {
+        hasMoreBank = false;
+        break;
+      }
+
       bankPage++;
 
-      // Safety limit - increased to 50 pages (5000 transactions) to ensure complete data
-      if (bankPage > 50) {
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[Subscription Txns] Reached bank page limit (50 pages)');
-        }
+      // Safety limit - increased to 50 pages (5000 transactions) to ensure complete data.
+      // Reaching it drops the oldest spends without a word, so it is reported.
+      if (bankPage > SUBSCRIPTION_PAGE_CAP) {
+        Sentry.captureMessage(`[Subscription Txns] BankTransactions reached the ${SUBSCRIPTION_PAGE_CAP}-page cap`, {
+          level: 'warning' as any,
+          tags: { route: 'Xero/subscription-transactions', invariant: 'subscription_xero_page_cap' },
+          extra: { tenantId: activeTenantId, business_id },
+        } as any);
         break;
       }
     }
@@ -1206,8 +1246,8 @@ async function postHandler(request: Request) {
     // =====================================================
     // 4b. P&L BACKSTOP (Layer 1) — reconcile to the synced xero_pl_lines P&L
     // =====================================================
-    // The live transaction crawl above only sees ACCPAY bills + SPEND bank txns
-    // on the selected accounts. Spend that settles through Accounts Payable in
+    // The live transaction crawl above only sees posted ACCPAY bills + posted SPEND
+    // bank txns on the selected accounts. Spend that settles through Accounts Payable in
     // other shapes (AP payments, or bills past the page cap) can be missed,
     // producing a silently-low FY-YTD. To GUARANTEE the FY-YTD total can never
     // read below the authoritative P&L, compare the captured vendor spend to the
