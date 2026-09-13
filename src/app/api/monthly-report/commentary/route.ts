@@ -99,16 +99,33 @@ async function fetchAllXeroPages(
 ): Promise<any[]> {
   const all: any[] = []
   let page = 1
+  // A 429 used to retry the same page forever. Harmless-looking with one fetch,
+  // but this route now runs up to three concurrently (ACCPAY, ACCREC, bank
+  // transactions) against Xero's 60-calls-a-minute and 5-concurrent limits, and
+  // an unbounded loop there holds the request open until the function is killed
+  // — with nothing on the page to say the commentary never finished.
+  const MAX_RATE_LIMIT_RETRIES = 3
+  let rateLimitRetries = 0
 
   while (page <= maxPages) {
     const separator = url.includes('?') ? '&' : '?'
     const res = await fetch(`${url}${separator}page=${page}`, { headers })
 
     if (res.status === 429) {
+      if (rateLimitRetries >= MAX_RATE_LIMIT_RETRIES) {
+        Sentry.captureMessage(`[Commentary] ${context.label ?? dataKey} still rate limited after ${MAX_RATE_LIMIT_RETRIES} retries; supplier detail is truncated`, {
+          level: 'warning',
+          tags: { route: 'monthly-report/commentary', invariant: 'commentary_xero_rate_limit' },
+          extra: { dataKey: context.label ?? dataKey, page, fetched: all.length, tenantId: context.tenantId, reportMonth: context.reportMonth },
+        } as any)
+        break
+      }
+      rateLimitRetries++
       Sentry.captureMessage(`[Commentary] Rate limited on ${dataKey} page ${page}, waiting 10s...`, 'warning' as any)
       await sleep(10000)
       continue // retry same page
     }
+    rateLimitRetries = 0
 
     if (!res.ok) {
       Sentry.captureMessage(`[Commentary] ${dataKey} page ${page} returned ${res.status}`, 'error' as any)
