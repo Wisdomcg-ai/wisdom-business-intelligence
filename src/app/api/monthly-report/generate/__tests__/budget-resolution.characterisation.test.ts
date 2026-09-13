@@ -1123,6 +1123,12 @@ describe('monthly-report/generate — statement order', () => {
     ])
   })
 
+  // On the forecast path today, resolve-budget does not select
+  // forecast_pl_lines.account_code, so a forecast budget line arrives with no
+  // code at all and this wizard-code branch does not run in production. The
+  // mock ignores the select list, so the fixture's code does reach the route.
+  // Kept as a guard: the day that select gains account_code, a wizard code must
+  // still not order a line.
   it('a budget-only line with a wizard code is codeless unless its mapping supplies a real one', async () => {
     compositeRows = [actual('60550', 'Bank Fees', { '2026-08': 10 })]
     tables = baseTables({

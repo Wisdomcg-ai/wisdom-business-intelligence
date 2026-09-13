@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   compareStatementLines,
+  looksLikeWizardCode,
   realStatementCodes,
   statementAccountCode,
   type StatementOrderable,
@@ -146,5 +147,45 @@ describe('statementAccountCode — only a real Xero code orders a line', () => {
       'Foreign Currency Loss/Gain',
       'Wages',
     ])
+  })
+})
+
+describe('budget-store codes vouch for an unposted account', () => {
+  it('orders a budgeted-but-never-posted, unmapped account by its Xero budget code', () => {
+    // Distinct Directions: BATHURST 215.1 is posted and mapped; ORANGE and
+    // DUBBO are budgeted in Xero's Budgets API but never posted and unmapped.
+    // Their only code is the budget line's — which IS a Xero code.
+    const real = realStatementCodes(['215.1', /* from budget_lines */ '215.2', '215.3'])
+    const lines = [
+      { account_name: 'DUBBO: Behavioural Assessment', account_code: statementAccountCode(['215.3'], real) },
+      { account_name: 'Other Revenue', account_code: statementAccountCode(['299'], realStatementCodes(['299'])) },
+      { account_name: 'BATHURST: Behavioural Assessment', account_code: statementAccountCode(['215.1'], real) },
+      { account_name: 'ORANGE: Behavioural Assessment Income', account_code: statementAccountCode(['215.2'], real) },
+    ]
+    expect([...lines].sort(compareStatementLines).map(l => l.account_name)).toEqual([
+      'BATHURST: Behavioural Assessment',
+      'ORANGE: Behavioural Assessment Income',
+      'DUBBO: Behavioural Assessment',
+      'Other Revenue',
+    ])
+  })
+})
+
+describe('looksLikeWizardCode', () => {
+  it('recognises every shape the forecast wizard invents', () => {
+    for (const c of ['SYS-TEAM-WAGES', 'SYS-SUBSCRIPTIONS', 'ACCT-MISSING-3f2a', 'opex-28', 'revenue-4', 'cogs-25', '1779341224375-5rkezjw0y']) {
+      expect(looksLikeWizardCode(c)).toBe(true)
+    }
+  })
+
+  it('does not reject real Xero codes, including lettered and dotted ones', () => {
+    for (const c of ['200', '41000', '51400.2', '100000', 'SC', 'BT009', 'PAY AU', 'T1']) {
+      expect(looksLikeWizardCode(c)).toBe(false)
+    }
+  })
+
+  it('treats a missing code as not a wizard code', () => {
+    expect(looksLikeWizardCode(null)).toBe(false)
+    expect(looksLikeWizardCode('')).toBe(false)
   })
 })

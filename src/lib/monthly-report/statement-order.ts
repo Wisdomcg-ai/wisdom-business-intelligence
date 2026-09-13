@@ -91,6 +91,28 @@ export function realStatementCodes(
 }
 
 /**
+ * Is this the shape of a code the forecast wizard invents rather than one Xero
+ * issued?
+ *
+ * Used ONLY to filter a source that is Xero-issued by construction but not
+ * guaranteed forever: the budget store. budget_lines is imported from Xero's
+ * Budgets API and every code in prod today is a real one — this is the second
+ * lock on that door, not the first. It is deliberately NOT used as the test of
+ * a code in general: a real Xero chart can use lettered codes ("SC", "BT009"),
+ * so no pattern can prove a code real; only the business's own data can.
+ */
+export function looksLikeWizardCode(code: string | null | undefined): boolean {
+  const c = cleanCode(code)
+  if (c === null) return false
+  return (
+    /^SYS-/i.test(c) ||
+    /^ACCT-MISSING-/i.test(c) ||
+    /^(opex|revenue|cogs)-\d+$/i.test(c) ||
+    /^\d{13}-/.test(c)
+  )
+}
+
+/**
  * The code a statement line should carry, or null.
  *
  * Candidates in priority order — for an actuals row, its own code and then

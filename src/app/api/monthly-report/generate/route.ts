@@ -22,7 +22,7 @@ import {
   deriveProfitRows,
   type ReportLine,
 } from '@/lib/monthly-report/shared'
-import { compareStatementLines, realStatementCodes, statementAccountCode } from '@/lib/monthly-report/statement-order'
+import { compareStatementLines, looksLikeWizardCode, realStatementCodes, statementAccountCode } from '@/lib/monthly-report/statement-order'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 
@@ -283,9 +283,19 @@ async function postHandler(request: Request) {
     // a budget line's own code can be a forecast wizard's ('opex-28' is on
     // Urban Road's Foreign Currency Gains and Losses), and sorting by that
     // would print the row somewhere meaningless. See statement-order.ts.
+    //
+    // The budget lines' codes count too — but ONLY when they came from the
+    // budget store. budget_lines is imported from Xero's Budgets API, so those
+    // are Xero codes, and a budgeted-but-never-posted account with no mapping
+    // has no other source for one. On the forecast path the lines carry no code
+    // today (resolve-budget does not select it) and, if they ever do, it can be
+    // a wizard's, so the forecast path adds nothing.
     const realCodes = realStatementCodes([
       ...(xeroLines || []).map(x => x.account_code),
       ...mappings.map((m: any) => m.xero_account_code),
+      ...(resolvedBudget.source === 'budget_version'
+        ? budgetPLLines.map((bl: any) => bl.account_code).filter((c: string | null) => !looksLikeWizardCode(c))
+        : []),
     ])
 
     // Budget lines lookup by various keys
@@ -502,9 +512,13 @@ async function postHandler(request: Request) {
         account_name: xero.account_name,
         xero_account_name: xero.account_name,
         group: mapping?.report_subcategory ?? null,
-        // The row's own code first — the fact — then the mapping's, the same
-        // precedence as the match cascade above. Carried as Xero spells it
-        // (not the lower-cased match key) because it is what the section sorts on.
+        // The row's own code first — the fact — then the mapping's. Close to the
+        // match cascade above but not identical: the cascade uses
+        // `xero.account_code ?? mapping.xero_account_code`, so a blank-string row
+        // code never reaches the mapping there, while statementAccountCode trims
+        // '' to nothing and falls through to it. For ORDER that is the better
+        // answer. Carried as Xero spells it (not the lower-cased match key)
+        // because it is what the section sorts on.
         account_code: statementAccountCode([xero.account_code, mapping?.xero_account_code], realCodes),
         is_budget_only: false,
         actual,

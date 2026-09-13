@@ -10,7 +10,7 @@ import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfile
 import { resolveBudget, budgetLineKey } from '@/lib/budgets/resolve-budget'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import { getPriorYearMonth } from '@/lib/monthly-report/shared'
-import { compareStatementLines, realStatementCodes, statementAccountCode } from '@/lib/monthly-report/statement-order'
+import { compareStatementLines, looksLikeWizardCode, realStatementCodes, statementAccountCode } from '@/lib/monthly-report/statement-order'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -487,9 +487,18 @@ async function postHandler(request: Request) {
     // forecast_pl_lines.account_code — selected above — is not always a Xero
     // code: the wizard writes 'SYS-TEAM-WAGES', 'opex-28' and timestamp codes
     // there. See statement-order.ts.
+    //
+    // The APPROVED budget's codes count too. budget_lines is imported from
+    // Xero's own Budgets API, so its codes are Xero codes — and an account the
+    // client budgeted but has never posted to, with no mapping row, has no
+    // other source for one. Without these, Distinct Directions' 'ORANGE:
+    // Behavioural Assessment Income' and 'DUBBO: Behavioural Assessment'
+    // (budgeted, never posted, unmapped) would fall to the A-Z tail instead of
+    // printing beside BATHURST 215.1. forecast_pl_lines stays excluded.
     const realCodes = realStatementCodes([
       ...(xeroLines || []).map((x: any) => x.account_code),
       ...(mappings || []).map((m: any) => m.xero_account_code),
+      ...approvedLines.map((al) => al.account_code).filter((c) => !looksLikeWizardCode(c)),
     ])
 
     const budgetById = new Map<string, any>()
