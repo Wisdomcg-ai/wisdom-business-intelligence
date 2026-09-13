@@ -5,10 +5,17 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
-import { extractVendorInfo, createVendorKey } from '@/lib/utils/vendor-normalization'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import * as Sentry from '@sentry/nextjs'
-import { toStatementAmount } from '@/lib/monthly-report/commentary-money'
+import {
+  collectAccountTransactions,
+  commentaryBankTransactionsUrl,
+  commentaryInvoicesUrl,
+  invoiceTypesFor,
+  summariseVendors,
+  type AccountSide,
+  type VendorSummary,
+} from '@/lib/monthly-report/commentary-documents'
 import { buildRatioClause, pickDenominator, type RatioContext } from '@/lib/monthly-report/commentary-clause'
 import { buildDraftNote } from '@/lib/monthly-report/commentary-draft'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -68,27 +75,6 @@ interface TriggerLineInput {
   budget?: number | null
 }
 
-interface VendorTransaction {
-  date: string
-  vendor: string
-  context: string | null
-  /** Signed, in the ORGANISATION's currency. Negative = a credit note. */
-  amount: number
-  type: 'invoice' | 'bank'
-  /** False when the source document was foreign and carried no exchange rate. */
-  converted?: boolean
-  /** The document's currency, when it is not the organisation's. */
-  sourceCurrency?: string
-}
-
-interface VendorSummary {
-  vendor: string
-  amount: number
-  transactions: VendorTransaction[]
-  converted?: boolean
-  sourceCurrency?: string
-}
-
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -96,11 +82,19 @@ function sleep(ms: number): Promise<void> {
 /**
  * Fetch all pages of a paginated Xero endpoint.
  * Xero returns up to 100 items per page; if exactly 100 are returned, there may be more.
+ *
+ * The page cap is a hard stop, and reaching it used to be silent: the loop
+ * simply ran out and the caller quoted suppliers from whatever had arrived.
+ * Before the Invoices fetch was scoped to bills, Urban Road's 1,142 sales
+ * invoices in November 2025 filled all ten pages on their own and every bill
+ * behind them was dropped. A truncated list is now reported, once, with the
+ * tenant and month on it.
  */
 async function fetchAllXeroPages(
   url: string,
   headers: Record<string, string>,
   dataKey: string,
+  context: { tenantId: string; reportMonth: string; label?: string },
   maxPages = 10
 ): Promise<any[]> {
   const all: any[] = []
@@ -127,6 +121,18 @@ async function fetchAllXeroPages(
 
     // Xero pagination: if fewer than 100 items, we've reached the last page
     if (items.length < 100) break
+
+    if (page === maxPages) {
+      // A full last page at the cap: there is almost certainly more, and it is
+      // not being read. The supplier lists built from this fetch will under-
+      // quote — and silently lose any credit that sat past the cap.
+      Sentry.captureMessage(`[Commentary] ${context.label ?? dataKey} reached the ${maxPages}-page cap; supplier detail is truncated`, {
+        level: 'warning',
+        tags: { route: 'monthly-report/commentary', invariant: 'commentary_xero_page_cap' },
+        extra: { dataKey: context.label ?? dataKey, maxPages, fetched: all.length, tenantId: context.tenantId, reportMonth: context.reportMonth },
+      } as any)
+      break
+    }
 
     page++
     // Brief pause between pages to stay under rate limits
@@ -183,6 +189,12 @@ async function postHandler(request: Request) {
         { status: 400 }
       )
     }
+    // Every Xero request below is built from this month. A malformed one used
+    // to reach Xero as `DateTime(NaN,NaN,1)`, come back empty, and be reported
+    // as a month with no suppliers in it.
+    if (!commentaryBankTransactionsUrl(report_month)) {
+      return NextResponse.json({ error: 'report_month must be YYYY-MM' }, { status: 400 })
+    }
 
     // Build the unified processing set + per-account trigger_reason resolver.
     // Priority on conflict (rare — accounts don't typically span buckets):
@@ -197,10 +209,18 @@ async function postHandler(request: Request) {
       const explicit = trigger_reasons[accountName]
       reasonByAccount.set(accountName, explicit ?? bucketDefault)
     }
-    for (const l of expense_lines) addReason(l.account_name, 'expense_over_budget_dollar')
-    for (const l of revenue_lines) addReason(l.account_name, 'revenue_under_budget_dollar')
-    for (const l of favourable_expense_lines) addReason(l.account_name, 'expense_favourable_significant')
-    for (const l of bs_lines) addReason(l.account_name, 'bs_movement_dollar')
+    // The side of the statement each account is read from, which decides the
+    // sign of every document under it — a refund received reduces an expense
+    // and a refund paid out reduces income. Same first-wins priority as the
+    // reason, so an account's sign and its trigger always come from one bucket.
+    const sideByAccount = new Map<string, AccountSide>()
+    const addSide = (accountName: string, side: AccountSide) => {
+      if (!sideByAccount.has(accountName)) sideByAccount.set(accountName, side)
+    }
+    for (const l of expense_lines) { addReason(l.account_name, 'expense_over_budget_dollar'); addSide(l.account_name, 'expense') }
+    for (const l of revenue_lines) { addReason(l.account_name, 'revenue_under_budget_dollar'); addSide(l.account_name, 'revenue') }
+    for (const l of favourable_expense_lines) { addReason(l.account_name, 'expense_favourable_significant'); addSide(l.account_name, 'expense') }
+    for (const l of bs_lines) { addReason(l.account_name, 'bs_movement_dollar'); addSide(l.account_name, 'balance_sheet') }
 
     // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
     const _sectionVerdict = await requireSectionPermission(
@@ -380,25 +400,21 @@ async function postHandler(request: Request) {
       // Non-fatal — mappings are supplementary
     }
 
-    // Parse report month for date range
-    const [year, monthNum] = report_month.split('-').map(Number)
-    const nextMonth = monthNum === 12 ? 1 : monthNum + 1
-    const nextYear = monthNum === 12 ? year + 1 : year
-    const whereClause = `Date>=DateTime(${year},${monthNum},1)&&Date<DateTime(${nextYear},${nextMonth},1)`
+    // Posted documents for the month, and only the invoice types the commented
+    // accounts can use — see commentary-documents.ts for the two Urban Road
+    // August lists (Freight, Contractors) that each ran ~$800 over their
+    // account on drafts, voids and a refund signed as spend.
+    const bankUrl = commentaryBankTransactionsUrl(report_month)!
+    const pageContext = { tenantId, reportMonth: report_month }
+    const invoiceTypes = invoiceTypesFor(sideByAccount.values())
 
-    // Fetch ALL pages of Invoices and BankTransactions for the month
-    const [invoices, bankTransactions] = await Promise.all([
-      fetchAllXeroPages(
-        `https://api.xero.com/api.xro/2.0/Invoices?where=${encodeURIComponent(whereClause)}`,
-        xeroHeaders,
-        'Invoices'
-      ),
-      fetchAllXeroPages(
-        `https://api.xero.com/api.xro/2.0/BankTransactions?where=${encodeURIComponent(whereClause)}`,
-        xeroHeaders,
-        'BankTransactions'
-      ),
+    const [invoicePages, bankTransactions] = await Promise.all([
+      Promise.all(invoiceTypes.map(type =>
+        fetchAllXeroPages(commentaryInvoicesUrl(report_month, type)!, xeroHeaders, 'Invoices', { ...pageContext, label: `Invoices (${type})` })
+      )),
+      fetchAllXeroPages(bankUrl, xeroHeaders, 'BankTransactions', pageContext),
     ])
+    const invoices = invoicePages.flat()
 
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[Commentary] Fetched ${invoices.length} invoices, ${bankTransactions.length} bank transactions for ${report_month}`)
@@ -462,119 +478,15 @@ async function postHandler(request: Request) {
         continue
       }
 
-      // Collect all transactions for this account and group by vendor.
-      // B2 (Phase 71-01): key by createVendorKey(vendor) so a budgeted vendor
-      // ("Stripe Au") matches an extracted Xero vendor ("STRIPE AU"). Preserve
-      // the human display name on first insert for UI rendering.
-      const vendorData = new Map<string, { display_name: string; total: number; transactions: VendorTransaction[]; converted?: boolean; sourceCurrency?: string }>()
-
-      // A vendor's total EXCLUDES any line we could not convert: a foreign
-      // amount added to a dollar total is not a total, it is a wrong number
-      // that looks right. The unconvertible line still rides along on
-      // `transactions` so the coach can see it and chase the rate.
-      function addToVendor(vendor: string, txn: VendorTransaction) {
-        const key = createVendorKey(vendor)
-        const contribution = txn.converted === false ? 0 : txn.amount
-        const existing = vendorData.get(key)
-        if (existing) {
-          existing.total += contribution
-          existing.transactions.push(txn)
-          if (txn.converted === false) {
-            existing.converted = false
-            existing.sourceCurrency = existing.sourceCurrency ?? txn.sourceCurrency
-          }
-        } else {
-          vendorData.set(key, {
-            display_name: vendor,
-            total: contribution,
-            transactions: [txn],
-            ...(txn.converted === false
-              ? { converted: false, sourceCurrency: txn.sourceCurrency }
-              : {}),
-          })
-        }
-      }
-
-      for (const inv of invoices) {
-        const contactName = inv.Contact?.Name || ''
-        const invDate = inv.Date ? inv.Date.replace('/Date(', '').replace(')/', '').split('+')[0] : ''
-        const dateStr = invDate ? new Date(parseInt(invDate)).toISOString().split('T')[0] : ''
-        for (const li of (inv.LineItems || [])) {
-          if (li.AccountCode === accountCode) {
-            const info = extractVendorInfo(contactName, li.Description || '')
-            const converted = toStatementAmount(li, inv, baseCurrency)
-            addToVendor(info.vendor, {
-              date: dateStr,
-              vendor: info.vendor,
-              context: info.context,
-              amount: converted.amount,
-              type: 'invoice',
-              converted: converted.converted,
-              sourceCurrency: converted.sourceCurrency,
-            })
-          }
-        }
-      }
-
-      for (const bt of bankTransactions) {
-        const contactName = bt.Contact?.Name || ''
-        const btDate = bt.Date ? bt.Date.replace('/Date(', '').replace(')/', '').split('+')[0] : ''
-        const dateStr = btDate ? new Date(parseInt(btDate)).toISOString().split('T')[0] : ''
-        for (const li of (bt.LineItems || [])) {
-          if (li.AccountCode === accountCode) {
-            const info = extractVendorInfo(contactName, li.Description || bt.Reference || '')
-            const converted = toStatementAmount(li, bt, baseCurrency)
-            addToVendor(info.vendor, {
-              date: dateStr,
-              vendor: info.vendor,
-              context: info.context,
-              amount: converted.amount,
-              type: 'bank',
-              converted: converted.converted,
-              sourceCurrency: converted.sourceCurrency,
-            })
-          }
-        }
-      }
-
-      // Sort by amount descending. Map key is the normalized vendor key (B2);
-      // the human-readable display_name is used in the response payload.
-      const sorted = Array.from(vendorData.values())
-        .map(data => ({
-          vendor: data.display_name,
-          amount: Math.round(data.total),
-          transactions: data.transactions.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
-          ...(data.converted === false
-            ? { converted: false, sourceCurrency: data.sourceCurrency }
-            : {}),
-        }))
-        // Largest FIRST by magnitude — a $1,571 credit is a bigger part of the
-        // story than a $200 charge, and sorting on the signed value would bury
-        // every credit at the bottom under the rollup.
-        .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
-
-      // Group small vendors (< $100) as "Others"
-      const OTHERS_THRESHOLD = 100
-      const significant: VendorSummary[] = []
-      let othersTotal = 0
-      let othersTransactions: VendorTransaction[] = []
-
-      for (const entry of sorted) {
-        // Magnitude, not signed value. On the signed test every credit is below
-        // the floor, so it would be swallowed into "Others" — where it silently
-        // reduces a total the reader takes for charges, and the explanatory
-        // "less X credit" is lost.
-        if (Math.abs(entry.amount) >= OTHERS_THRESHOLD || entry.converted === false) {
-          significant.push(entry)
-        } else {
-          othersTotal += entry.amount
-          othersTransactions.push(...entry.transactions)
-        }
-      }
-
-      if (othersTotal > 0) {
-        significant.push({ vendor: 'Others', amount: othersTotal, transactions: othersTransactions })
-      }
+      // Posted lines only, signed for the account's side, grouped by vendor
+      // with the small ones rolled into "Others".
+      const significant: VendorSummary[] = summariseVendors(collectAccountTransactions({
+        accountCode,
+        side: sideByAccount.get(line.account_name) ?? 'expense',
+        invoices,
+        bankTransactions,
+        baseCurrency,
+      }))
 
       // The draft: facts only, rebuilt from scratch every run.
       //

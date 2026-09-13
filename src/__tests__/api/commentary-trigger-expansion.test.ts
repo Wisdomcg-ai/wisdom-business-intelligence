@@ -513,4 +513,46 @@ describe('POST /api/monthly-report/commentary — expanded payload + trigger_rea
       trigger_reason: 'expense_over_budget_dollar',
     })
   })
+
+  it('Test 9c: asks Xero for posted documents only, and sales invoices only for revenue lines', async () => {
+    // Urban Road, August 2026: drafts, voids and unscoped sales invoices in the
+    // month's fetch put ~$800 of phantom freight into the commentary, and 620
+    // sales invoices a month crowd bills toward the 10-page cap.
+    const { POST } = await import('@/app/api/monthly-report/commentary/route')
+    const urls = () => mockFetch.mock.calls.map((c: any[]) => decodeURIComponent(String(c[0])))
+
+    const expenseOnly = new NextRequest('http://localhost/api/monthly-report/commentary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        business_id: 'biz-abc',
+        report_month: '2026-08',
+        expense_lines: [{ account_name: 'Marketing', xero_account_name: 'Marketing' }],
+      }),
+    })
+    expect((await POST(expenseOnly)).status).toBe(200)
+
+    const invoiceCalls = urls().filter(u => u.includes('/Invoices?'))
+    expect(invoiceCalls).toHaveLength(1)
+    expect(invoiceCalls[0]).toContain('Type=="ACCPAY"')
+    expect(invoiceCalls[0]).toContain('Statuses=AUTHORISED,PAID')
+    const bankCalls = urls().filter(u => u.includes('/BankTransactions?'))
+    expect(bankCalls).toHaveLength(1)
+    expect(bankCalls[0]).toContain('Status=="AUTHORISED"')
+
+    mockFetch.mockClear()
+    const withRevenue = new NextRequest('http://localhost/api/monthly-report/commentary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        business_id: 'biz-abc',
+        report_month: '2026-08',
+        expense_lines: [{ account_name: 'Marketing', xero_account_name: 'Marketing' }],
+        revenue_lines: [{ account_name: 'Sales', xero_account_name: 'Sales' }],
+      }),
+    })
+    expect((await POST(withRevenue)).status).toBe(200)
+    const types = urls().filter(u => u.includes('/Invoices?')).map(u => /Type=="(\w+)"/.exec(u)?.[1])
+    expect(types.sort()).toEqual(['ACCPAY', 'ACCREC'])
+  })
 })
