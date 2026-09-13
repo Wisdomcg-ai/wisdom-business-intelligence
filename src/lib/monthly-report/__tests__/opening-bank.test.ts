@@ -1,8 +1,8 @@
 /**
  * Urban Road's August pack opened its cashflow at $0 bank. The real Total Bank
  * at 30 Jun 2026 was $167,629.81, already in the synced balance-sheet mirror.
- * The fixture below is Urban Road's own rows at that date (bank accounts plus
- * the liabilities most likely to be mistaken for one).
+ * The fixture below is a SUBSET of Urban Road's real rows at that date: every
+ * bank account, plus the liabilities most likely to be mistaken for one.
  */
 import { describe, it, expect, vi } from 'vitest'
 import { isBankRow, openingBalanceDate, totalBankAt, type BankRowInput } from '../opening-bank'
@@ -31,7 +31,7 @@ const URBAN_ROAD_30_JUN: BankRowInput[] = [
   row('liability', 'Current Liabilities', '65862.42'), // American Express Platinum Business Card
   row('liability', 'Current Liabilities', '26.15'),    // Suzie Credit Card
   row('liability', 'Current Liabilities', '527764.12'), // Trade Creditors
-  row('asset', 'Current Assets', '267324.00'),          // Trade Debtors
+  row('asset', 'Current Assets', '267324.20'),          // Trade Debtors
   // A month later, same accounts — must not leak into the 30 June total.
   row('asset', 'Bank', '265684.92', '2026-07-31'),
 ]
@@ -108,9 +108,28 @@ describe('totalBankAt', () => {
     expect(v.status).toBe('unavailable')
   })
 
-  it('a synced balance sheet with no bank accounts is a real $0', () => {
+  it('a synced balance sheet with NO bank accounts is unavailable, not a confident $0', () => {
+    // Far likelier to be a mirror that dropped or misfiled its sections than a
+    // trading business with no cash — and printing "Opening bank $0" would
+    // present that failure as a fact.
     const v = totalBankAt([row('liability', 'Current Liabilities', 10)], '2026-06-30', AUD)
+    expect(v.status).toBe('unavailable')
+    expect(v).toMatchObject({ reason: 'no bank accounts in the synced balance sheet' })
+  })
+
+  it('a bank account holding exactly $0 is still a real reading', () => {
+    // The distinction: rows that ARE bank accounts, merely empty, are a fact.
+    const v = totalBankAt([row('asset', 'Bank', '0.00')], '2026-06-30', AUD)
     expect(v).toEqual({ status: 'read', amount: 0, asAt: '2026-06-30' })
+  })
+
+  it('every organisation needs its own bank row', () => {
+    const TWO = [{ tenant_id: 'a', currency: 'AUD' }, { tenant_id: 'b', currency: 'AUD' }]
+    const v = totalBankAt([
+      row('asset', 'Bank', '100', '2026-06-30', 'a'),
+      row('liability', 'Current Liabilities', '5', '2026-06-30', 'b'),
+    ], '2026-06-30', TWO)
+    expect(v.status).toBe('unavailable')
   })
 })
 

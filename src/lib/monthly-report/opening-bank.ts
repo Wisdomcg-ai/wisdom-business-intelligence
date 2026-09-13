@@ -109,7 +109,18 @@ export function totalBankAt(
     return { status: 'unavailable', asAt, reason: `no synced balance sheet at ${asAt}` }
   }
 
-  // A synced balance sheet with no bank rows is a real $0, not a missing one.
-  const total = atDate.filter(isBankRow).reduce((s, r) => s + num(r.balance), 0)
+  // Every organisation must also have at least one BANK row. A balance sheet
+  // with no bank accounts at all is far more likely to be a mirror that dropped
+  // or misfiled its sections — the failure the BS-mirror fixes (#373, #376,
+  // #389) spent three PRs on — than a trading business that genuinely holds no
+  // cash. Reading that as a confident "Opening bank $0" would be the worst of
+  // the three states: a wrong number presented as a fact.
+  const bankRows = atDate.filter(isBankRow)
+  const withBank = new Set(bankRows.map((r) => r.tenant_id))
+  if (tenants.some((t) => !withBank.has(t.tenant_id))) {
+    return { status: 'unavailable', asAt, reason: 'no bank accounts in the synced balance sheet' }
+  }
+
+  const total = bankRows.reduce((s, r) => s + num(r.balance), 0)
   return { status: 'read', amount: Math.round(total * 100) / 100, asAt }
 }

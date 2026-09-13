@@ -102,6 +102,12 @@ async function getHandler(request: Request) {
         .in('business_id', ids.all)
         .in('tenant_id', tenants.map((t) => t.tenant_id))
         .eq('balance_date', asAt)
+        // Accruals only. The money-flow page reads xero_bs_lines_wide_compat,
+        // whose view filters basis = 'accruals'; this reads the table, so it
+        // must say it. Prod holds accruals rows alone today — but the day a
+        // cash-basis balance sheet syncs, an unfiltered sum adds both bases
+        // together and roughly doubles Total Bank without a single error.
+        .eq('basis', 'accruals')
       if (error) throw error
       rows = data ?? []
     }

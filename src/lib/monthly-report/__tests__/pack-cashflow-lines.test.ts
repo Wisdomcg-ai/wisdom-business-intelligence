@@ -141,7 +141,19 @@ describe('packCashflowBasis', () => {
 
   it('says nothing when there is nothing to say', () => {
     expect(packCashflowBasis(buildPackCashflowLines(null, '2026-08'), fmt)).toBeNull()
-    expect(packCashflowBasis(buildPackCashflowLines(null, '2026-08'), fmt, 'unavailable')).toBeNull()
+  })
+
+  it('still says the opening is unavailable on the fallback path with no months', () => {
+    // No Full Year report → the page runs on the forecast's own lines and the
+    // composed split is empty. That is exactly where a $0 opening would pass
+    // for a real one if the sentence vanished with the months.
+    expect(packCashflowBasis(buildPackCashflowLines(null, '2026-08'), fmt, 'unavailable'))
+      .toBe('Opening bank balance unavailable — balances start from $0')
+  })
+
+  it('still names a read opening on the fallback path', () => {
+    expect(packCashflowBasis(buildPackCashflowLines(null, '2026-08'), fmt, { amount: 167629.81, asAt: '2026-06-30' }))
+      .toBe('Opening bank $167,630 at 30 Jun 2026')
   })
 
   it('names the opening bank balance and the date it was read at', () => {

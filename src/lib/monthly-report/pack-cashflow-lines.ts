@@ -125,9 +125,12 @@ export function buildPackCashflowLines(
  * merges those saved assumptions. The engine collects opening debtors and pays
  * opening creditors in the first month, and remits the ATO balances on their
  * schedule: right for a projection, wrong here, because the pack's early months
- * are ACTUALS. July's receipts already include the debtors collected in July;
- * July's payments already include the creditors paid. Adding the opening
- * balances on top counts the same cash twice. The ATO rows are no better a
+ * are built from the ACTUAL accrual P&L. The engine turns that P&L into cash
+ * with its DSO/DPO timing — it does not read the cash actually received — so
+ * the June debtors and creditors are already represented in the timing spill
+ * of the months that follow. Adding the opening balances on top overlaps with
+ * it. (Not a claim that the actuals are cash: they are not, which is also why
+ * this page's closing balances will not tie to the bank to the dollar.) The ATO rows are no better a
  * signal: GST $31,515, GST adjustments −$3,080, ATO Creditors −$48,970 and
  * PAYG $16,674 net to about −$3,861 — nothing actually owed.
  *
@@ -222,7 +225,12 @@ export function packCashflowBasis(
   fmtMonth: (m: string) => string,
   opening?: PackOpening,
 ): string | null {
-  if (built.actualMonths.length === 0 && built.budgetMonths.length === 0) return null
+  const hasMonths = built.actualMonths.length > 0 || built.budgetMonths.length > 0
+  // The opening is stated even when there are no months to describe. That is
+  // the fallback path — no Full Year report, so the page runs on the
+  // forecast's own lines — and it is exactly where an unreadable opening would
+  // otherwise print nothing and let a $0-based projection pass for a real one.
+  if (!hasMonths && !opening) return null
   const parts: string[] = []
   if (opening === 'unavailable') {
     parts.push('Opening bank balance unavailable — balances start from $0')
