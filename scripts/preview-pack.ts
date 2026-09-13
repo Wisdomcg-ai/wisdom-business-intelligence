@@ -12,6 +12,14 @@
  *
  *   npx tsx scripts/preview-pack.ts --business <uuid> --month 2026-08 --out /tmp/pack.pdf
  *
+ * The client's stored pdf_layout is rendered, as the export button renders it.
+ * Two escapes:
+ *
+ *   --layout-file layout.json   render THIS layout instead — how a new
+ *                               placement (a Ratio Analysis page, say) is
+ *                               looked at BEFORE anyone saves it to the client
+ *   --no-layout                 the legacy hard-coded page order
+ *
  * It reads prod read-only and writes nothing but the PDF.
  */
 import { config } from 'dotenv'
@@ -21,6 +29,10 @@ config({ path: path.resolve(process.cwd(), '.env.local') })
 import fs from 'fs'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
+
+function flag(name: string): boolean {
+  return process.argv.includes(`--${name}`)
+}
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`)
@@ -134,9 +146,24 @@ async function main() {
   )
 
   // (report, options) — positional, not an options bag.
+  // The layout the export would use. Read on its own, not folded into the
+  // expense_group_order select above: a column missing from prod nulls the
+  // whole row, and the layout must not vanish with it.
+  let pdfLayout: { pages: { widgets?: { type: string; config?: unknown }[] }[] } | null = null
+  const layoutFile = arg('layout-file')
+  if (layoutFile) {
+    pdfLayout = JSON.parse(fs.readFileSync(layoutFile, 'utf8'))
+  } else if (!flag('no-layout')) {
+    const { data: lay } = await admin
+      .from('monthly_report_settings').select('pdf_layout').eq('business_id', businessId).maybeSingle()
+    pdfLayout = (lay as { pdf_layout?: typeof pdfLayout } | null)?.pdf_layout ?? null
+  }
+  console.log(`  layout:               ${layoutFile ? layoutFile : pdfLayout ? `stored, ${pdfLayout.pages.length} pages` : 'none (legacy page order)'}`)
+
   const svc = new MonthlyReportPDFService(report as never, {
     commentary: (snap.commentary ?? undefined) as never,
     businessName: biz?.name ?? 'Client',
+    pdfLayout,
   } as never)
 
   // The pages whose data does not live on the snapshot are built here from the
@@ -159,6 +186,30 @@ async function main() {
     if (slips && slips.length > 0) {
       const svcAny = svc as unknown as { options: Record<string, unknown> }
       svcAny.options.payrollGrid = buildPayrollGrid(slips as never, (emps ?? []) as never, [prev, month!], {})
+    }
+  }
+
+  // Ratio Analysis — the same loader the route runs (account-actuals-load), so
+  // the harness cannot show a page built from a different reading of the
+  // ledger. Only when a placement asks for it; end_month is the report's month.
+  const ratioWidgets = (pdfLayout?.pages ?? []).flatMap((p) => p.widgets ?? []).filter((w) => w.type === 'ratio_analysis')
+  if (ratioWidgets.length > 0) {
+    const { parseRatioAnalysisConfig, requiredWindow } = await import('@/lib/monthly-report/ratio-table')
+    const { loadAccountActuals } = await import('@/lib/monthly-report/account-actuals-load')
+    const configs = ratioWidgets
+      .map((w) => parseRatioAnalysisConfig(w.config))
+      .flatMap((r) => (r.ok ? [r.config] : []))
+    const svcAny = svc as unknown as { options: Record<string, unknown> }
+    if (configs.length === 0) {
+      svcAny.options.accountActuals = { data: null, reason: 'no placement has a valid configuration' }
+    } else {
+      const window = requiredWindow(configs)
+      const result = await loadAccountActuals(admin, businessId!, snap.report_month, window.months, window.codes)
+      svcAny.options.accountActuals = 'unavailable_reason' in result
+        ? { data: null, reason: result.unavailable_reason }
+        : { data: result.data }
+      console.log(`  ratio analysis:       ${window.months} months, codes ${window.codes.join(',') || '(totals only)'}` +
+        ('unavailable_reason' in result ? ` — UNAVAILABLE: ${result.unavailable_reason}` : ''))
     }
   }
 

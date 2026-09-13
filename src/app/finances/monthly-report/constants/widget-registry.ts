@@ -72,6 +72,26 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     minColSpan: 3, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 3,
     dataDependency: 'wages',
   },
+  ratio_analysis: {
+    type: 'ratio_analysis',
+    label: 'Ratio Analysis',
+    category: 'tables',
+    fullRow: true,
+    icon: 'Table2',
+    // Portrait, like contractor_detail: three month columns and a label column
+    // sit comfortably in 180mm, and four ratio blocks read down the page.
+    defaultColSpan: 2, defaultRowSpan: 2,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 3,
+    // No dataDependency: whether the ledger can answer is only known at export
+    // time, and a placement that cannot be produced prints its stated reason.
+    //
+    // The ratios themselves live in widget.config, NOT in a settings column the
+    // way contractor_detail keeps settings.contractor_account_codes. A settings
+    // column holds ONE answer per business; this widget is placed MORE THAN
+    // ONCE with different meanings — a COGS page and a margin page, each with
+    // its own accounts — and a single column would make every placement print
+    // the same ratios.
+  },
   wages_detail: {
     type: 'wages_detail',
     label: 'Wages Detail',
