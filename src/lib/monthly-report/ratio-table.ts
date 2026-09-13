@@ -162,13 +162,22 @@ const TOTAL_LABELS: Record<StatementTotal, string> = {
   operating_expenses: 'Total Operating Expenses',
 }
 
+/**
+ * 'Freight to Customer (55000)'. Some Xero names already carry their code —
+ * Urban Road's 41700 is named 'Posters (41700)' — and appending it again
+ * printed 'Posters (41700) (41700)'.
+ */
+function accountLabel(name: string, code: string): string {
+  return name.trim().endsWith(`(${code})`) ? name.trim() : `${name} (${code})`
+}
+
 function operandLabel(op: RatioOperand, actuals: AccountActuals | null): string {
   if (op.label) return op.label
   if ('total' in op) return TOTAL_LABELS[op.total]
   return op.accounts
     .map((code) => {
       const name = actuals?.accounts[code]?.name
-      return name ? `${name} (${code})` : code
+      return name ? accountLabel(name, code) : code
     })
     .join(' + ')
 }
@@ -190,7 +199,10 @@ function operandAmount(op: RatioOperand, actuals: AccountActuals, month: string)
     // Checked by the caller before any month is looked at; defended here too.
     if (!account) return { kind: 'empty', reason: `account ${code} not found` }
     const v = account.values[month]
-    if (v === undefined) unposted.push(`${account.name} (${code})`)
+    // A single-account operand the coach has labelled is named as the row is,
+    // so the note under the table points at a line the reader can see.
+    const name = op.label && op.accounts.length === 1 ? op.label : account.name
+    if (v === undefined) unposted.push(accountLabel(name, code))
     else sum += v
   }
   // Any unposted account empties the cell, not only all of them. A partial sum

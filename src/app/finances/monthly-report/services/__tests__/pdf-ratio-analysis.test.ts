@@ -104,10 +104,27 @@ describe('a placed Ratio Analysis page', () => {
     expect(text).not.toContain('Render error')
   })
 
+  it('a freshly placed page with no config says so plainly, not as a validation error', () => {
+    const doc = render(undefined, { data: URBAN_ROAD })
+    const text = docText(doc)
+    expect(pageContaining(doc, 'Ratio Analysis')).toBe(2)
+    expect(text).toContain('No ratios have been set up for this page yet')
+    expect(text).not.toContain('expected array')
+  })
+
   it('data null prints the reason the loader gave', () => {
     const doc = render(CONFIG, { data: null, reason: 'this business has 2 Xero organisations connected' })
     expect(pageContaining(doc, 'Ratio Analysis')).toBe(2)
     expect(docText(doc)).toContain('this business has 2 Xero organisations connected')
+  })
+
+  it('a block that spills onto a new page carries a heading there', () => {
+    // Four blocks of six months, amounts and three averages cannot fit one A4 page.
+    const big = { months_shown: 6, trailing_averages: [12, 6, 3], ratios: [CONFIG.ratios[0], CONFIG.ratios[1], CONFIG.ratios[0], CONFIG.ratios[1]] }
+    const doc = render(big, { data: URBAN_ROAD })
+    expect(doc.internal.getNumberOfPages()).toBe(3)
+    // The PDF stream escapes parentheses.
+    expect(pageContaining(doc, 'Ratio Analysis \\(continued\\)')).toBe(3)
   })
 
   it('a page with nothing loaded still exists and says so', () => {

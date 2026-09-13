@@ -3812,6 +3812,13 @@ export class MonthlyReportPDFService {
 
     // Not thrown: generateFromLayout's catch prints "Render error", which tells
     // the coach nothing about the typo that caused it.
+    const raw = widget?.config as { ratios?: unknown } | undefined
+    if (!raw || raw.ratios === undefined) {
+      // A freshly placed page has no config at all. That is not a fault, and
+      // Zod's "expected array, received undefined" reads as one.
+      this.drawReasonCard('No ratios have been set up for this page yet, so there is nothing to show.')
+      return
+    }
     const parsed = parseRatioAnalysisConfig(widget?.config)
     if (!parsed.ok) {
       this.drawReasonCard(`This page could not be built — its configuration is not valid: ${parsed.reason}.`)
@@ -3833,6 +3840,9 @@ export class MonthlyReportPDFService {
       if (this.yPosition > this.pageHeight - 60) {
         this.doc.addPage('a4', 'portrait')
         this.yPosition = CONTENT_TOP
+        // A page of tables with no heading is unidentifiable once the pack is
+        // printed or a page is forwarded on its own.
+        this.drawPageTitle(`${heading} (continued) — ${this.formatMonth(this.report.report_month)}`)
       }
 
       this.doc.setFont('helvetica', 'bold')

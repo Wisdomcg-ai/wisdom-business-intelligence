@@ -171,6 +171,10 @@ describe('the Urban Road August 2026 page', () => {
     // Every August-containing average is a dash; June's windows end before it.
     expect(texts(t, 'average', 6)).toEqual(['—', '50.80%', '50.27%'])
     expect(texts(t, 'average', 3)).toEqual(['—', '46.92%', '44.37%'])
+    // Xero named 41700 'Posters (41700)'; the code is not appended twice.
+    expect(t.rows.filter((r) => r.kind !== 'average').map((r) => r.label)).toEqual([
+      'Posters (51150)', 'Posters (41700)', 'Posters COGS % of Posters income',
+    ])
     // The cell carries its window; the note under the block names the cause
     // and the rule, once each.
     expect(reasonsOf(t, 'average', 6)[0]).toBe('the 6-month average needs a ratio for every month from Mar 2026 to Aug 2026')
@@ -215,6 +219,13 @@ describe('the averaging method (proof against the reference pack)', () => {
     const span = typed.slice(2, 8)
     const pooled = (span.reduce((t, [, f]) => t + f, 0) / span.reduce((t, [i]) => t + i, 0)) * 100
     expect(Math.abs(pooled - 9.6)).toBeGreaterThan(0.01)
+  })
+
+  it('a window that stops the month before the column would NOT have matched either', () => {
+    // Aug's 6-month window taken as Feb–Jul instead of Mar–Aug.
+    const span = typed.slice(1, 7)
+    const exclusive = span.reduce((t, [i, f]) => t + (f / i) * 100, 0) / span.length
+    expect(Math.abs(exclusive - 9.6)).toBeGreaterThan(0.01)
   })
 })
 
@@ -279,5 +290,22 @@ describe('empty cells say why', () => {
   it('show_amounts false prints the percentage rows only', () => {
     const t = table(urbanRoad(), { ...URBAN_ROAD_CONFIG, show_amounts: false })
     expect(t.rows.map((r) => r.kind)).toEqual(['ratio', 'average', 'average'])
+  })
+})
+
+describe('a labelled operand', () => {
+  it("names the dash by the row's label, so the note points at a line on the page", () => {
+    const config = parsed({
+      months_shown: 3,
+      trailing_averages: [],
+      ratios: [{
+        label: "Poster's COGS % of Poster's Income",
+        numerator: { accounts: ['51150'], label: "Poster's COGS" },
+        denominator: { accounts: ['41700'], label: "Poster's Income" },
+      }],
+    })
+    const t = buildRatioTable(urbanRoad(), config.ratios[0], '2026-08', config)
+    expect(t.rows.map((r) => r.label)).toEqual(["Poster's COGS", "Poster's Income", "Poster's COGS % of Poster's Income"])
+    expect(t.reasons).toEqual(["no amount posted to Poster's COGS (51150) for Aug 2026"])
   })
 })
