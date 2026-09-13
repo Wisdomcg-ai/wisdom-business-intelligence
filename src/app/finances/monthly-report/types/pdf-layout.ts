@@ -15,6 +15,13 @@ export type WidgetType =
   // The two-month payroll grid (Calxa 15): every employee against every pay
   // run, with the month's wages budget and the difference beneath.
   | 'payroll_grid'
+  // Ratio Analysis — one account (or several, or a statement total) as a % of
+  // another, the report month and the months before it, newest on the left,
+  // with trailing averages. The generalisable half of Urban Road's hand-built
+  // "COGS Tables" page. ONE type placed as many times as a client needs:
+  // widget.config carries the ratios, so "Freight % Income" and "Posters COGS
+  // % of Posters income" are two placements, not two types.
+  | 'ratio_analysis'
   | 'wages_detail'
   | 'cashflow_forecast_table'
   // WE.1b — the external-metrics insert pages (Lumary clinic income, Hubstaff

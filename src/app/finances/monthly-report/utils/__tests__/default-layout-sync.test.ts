@@ -190,4 +190,32 @@ describe('WE.1b — widget registration coherence', () => {
     expect(def.dataDependency).toBeUndefined()
     expect(WIDGET_METHOD_MAP.balance_sheet).toBe('renderBalanceSheet')
   })
+
+  it('ratio_analysis is registered as a full-row table with a renderer, and no data dependency', () => {
+    const def = WIDGET_DEFINITIONS.ratio_analysis
+    expect(def).toBeTruthy()
+    expect(def.category).toBe('tables')
+    expect(def.fullRow).toBe(true)
+    // No dataDependency: a placement that cannot be produced prints its reason.
+    expect(def.dataDependency).toBeUndefined()
+    expect(WIDGET_METHOD_MAP.ratio_analysis).toBe('renderRatioAnalysis')
+  })
+})
+
+describe('ratio_analysis — placed by a coach, never managed by a section toggle', () => {
+  it('survives a settings sync with every section off, config intact', () => {
+    const layout = layoutWith(['executive_summary', 'ratio_analysis'])
+    const config = { ratios: [{ label: 'Freight % Income', numerator: { accounts: ['55000'] }, denominator: { total: 'income' } }] }
+    layout.pages[0].widgets[1].config = config
+    const { layout: synced, removed, added } = syncLayoutWithSettings(layout, allOff)
+    expect(removed).not.toContain('ratio_analysis')
+    expect(added).not.toContain('ratio_analysis')
+    const placed = synced.pages.flatMap((p) => p.widgets).find((w) => w.type === 'ratio_analysis')
+    expect(placed?.config).toEqual(config)
+  })
+
+  it('is not in the default layout — it means nothing until a coach configures it', () => {
+    const types = generateDefaultLayout(DEFAULT_SECTIONS).pages.flatMap((p) => p.widgets.map((w) => w.type))
+    expect(types).not.toContain('ratio_analysis')
+  })
 })

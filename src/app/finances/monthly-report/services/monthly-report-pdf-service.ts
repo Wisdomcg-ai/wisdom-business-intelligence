@@ -41,6 +41,13 @@ import { statementYardstick, wagesYardstick, wagesEmployeeYardstick, noBudgetNot
 import { groupExpenseLines } from '@/lib/monthly-report/expense-groups'
 import type { ContractorRollup } from '@/lib/monthly-report/contractor-rollup'
 import type { PayrollGrid } from '@/lib/monthly-report/payroll-grid'
+import {
+  parseRatioAnalysisConfig,
+  buildRatioTable,
+  formatRatioCell,
+  monthLabel,
+  type AccountActuals,
+} from '@/lib/monthly-report/ratio-table'
 import { withoutSilentLines, withoutSilentFullYearLines } from '@/lib/monthly-report/empty-lines'
 import { GROUP_SHADE, BAND_LIGHT, periodBandRow, type BandGroup, SECTION_TEXT, RULE_STRONG, paintNegatives, packTableStyles } from './pack-style'
 import {
@@ -69,6 +76,12 @@ interface PDFOptions {
   contractorDetail?: ContractorRollup
   /** The two-month payroll grid (see payroll-grid). */
   payrollGrid?: PayrollGrid
+  /**
+   * Per-account monthly actuals for every placed Ratio Analysis page, fetched
+   * once for all of them. `data: null` carries the reason — a multi-org
+   * business, a failed load — and the page prints it.
+   */
+  accountActuals?: { data: AccountActuals | null; reason?: string }
   wagesDetail?: WagesDetailData
   cashflowForecast?: CashflowForecastData
   /** WE.1b — external-metrics series with this month's values (entered data). */
@@ -3466,6 +3479,14 @@ export class MonthlyReportPDFService {
         // Present even when not comparable — the renderer draws the honest
         // "couldn't check" card with the reason instead of a blank page.
         return !!this.options.moneyFlow
+      case 'ratio_analysis':
+        // Always "available", and deliberately explicit rather than left to
+        // the default. Since #508 pagesWithContent drops a page whose widgets
+        // all report no data, so THIS line decides whether the page exists at
+        // all. A placed ratio page that cannot be produced — bad config, a
+        // multi-org business, a load that failed — must print that reason, not
+        // vanish from the pack and not show a grey box.
+        return true
       case 'balance_sheet':
         // Always "available", for the same reason money_flow is: the grey
         // "Data not available" placeholder is the least honest of the three
@@ -3769,6 +3790,114 @@ export class MonthlyReportPDFService {
       undefined,
       { fontSize: 7.5, color: [120, 120, 120] },
     )
+  }
+
+  // =====================================================================
+  // Ratio Analysis (PORTRAIT) — Urban Road's "COGS Tables", generalised
+  // =====================================================================
+  /**
+   * One block per configured ratio: the two dollar rows (when show_amounts),
+   * the percentage, then a row per trailing average. Newest month on the left,
+   * as the reference pack sets it out.
+   *
+   * Every rule — what empties a cell, what an average means — is in
+   * ratio-table.ts. This method only lays the result out, and never swallows a
+   * reason: a bad config, an unavailable ledger and an empty cell each end up
+   * as a sentence on the page.
+   */
+  private addRatioAnalysisPage(widget?: import('../types/pdf-layout').LayoutWidget): void {
+    this.addPage('portrait')
+    const heading = (widget?.titleOverride ?? '').trim() || 'Ratio Analysis'
+    this.drawPageTitle(`${heading} — ${this.formatMonth(this.report.report_month)}`)
+
+    // Not thrown: generateFromLayout's catch prints "Render error", which tells
+    // the coach nothing about the typo that caused it.
+    const raw = widget?.config as { ratios?: unknown } | undefined
+    if (!raw || raw.ratios === undefined) {
+      // A freshly placed page has no config at all. That is not a fault, and
+      // Zod's "expected array, received undefined" reads as one.
+      this.drawReasonCard('No ratios have been set up for this page yet, so there is nothing to show.')
+      return
+    }
+    const parsed = parseRatioAnalysisConfig(widget?.config)
+    if (!parsed.ok) {
+      this.drawReasonCard(`This page could not be built — its configuration is not valid: ${parsed.reason}.`)
+      return
+    }
+    const source = this.options.accountActuals
+    if (!source || !source.data) {
+      const reason = source?.reason ?? 'the account figures were not loaded for this export'
+      this.drawReasonCard(`Ratio analysis is not available for this month: ${reason}.`)
+      return
+    }
+
+    const config = parsed.config
+    for (const ratio of config.ratios) {
+      const t = buildRatioTable(source.data, ratio, this.report.report_month, config)
+
+      // A block needs room for its heading, a few rows and its notes; starting
+      // one in the last few centimetres splits the heading from its table.
+      if (this.yPosition > this.pageHeight - 60) {
+        this.doc.addPage('a4', 'portrait')
+        this.yPosition = CONTENT_TOP
+        // A page of tables with no heading is unidentifiable once the pack is
+        // printed or a page is forwarded on its own.
+        this.drawPageTitle(`${heading} (continued) — ${this.formatMonth(this.report.report_month)}`)
+      }
+
+      this.doc.setFont('helvetica', 'bold')
+      this.doc.setFontSize(9)
+      this.doc.setTextColor(26, 26, 26)
+      this.doc.text(t.label.toUpperCase(), this.margin, this.yPosition)
+      this.doc.setTextColor(0, 0, 0)
+      this.yPosition += 4
+
+      const kinds = t.rows.map((r) => r.kind)
+      autoTable(this.doc, {
+        startY: this.yPosition,
+        head: [['', ...t.months.map(monthLabel)]],
+        body: t.rows.map((row) => [row.label, ...row.cells.map((cell) => formatRatioCell(row, cell))]),
+        ...packTableStyles(8),
+        columnStyles: { 0: { cellWidth: 70 } },
+        margin: { left: this.margin, right: this.margin },
+        didParseCell: (data) => {
+          if (data.column.index > 0) data.cell.styles.halign = 'right'
+          if (data.section !== 'body') return
+          const kind = kinds[data.row.index]
+          if (kind === 'ratio') {
+            data.cell.styles.fontStyle = 'bold'
+            data.cell.styles.fillColor = GP_BLUE
+          } else if (kind === 'average') {
+            data.cell.styles.fillColor = GROUP_SHADE
+          }
+          paintNegatives(data as never)
+        },
+      })
+      this.yPosition = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 4
+
+      const notes: string[] = []
+      if (t.reasons.length > 0) {
+        // A dash with no reason is the page's least honest state — it reads as
+        // "we forgot". Every distinct cause is named once.
+        notes.push(`Dashes: ${t.reasons.map((r) => r.charAt(0).toUpperCase() + r.slice(1)).join('. ')}.`)
+      }
+      if (t.averages.length > 0) {
+        // Said because a reader who checks will otherwise conclude the page is
+        // wrong: the averaged dollars do not divide into the averaged percent,
+        // and are not meant to.
+        notes.push(
+          'Average % is the mean of the monthly percentages over the months ending in each column, not the averaged dollars divided.',
+        )
+      }
+      for (const n of notes) {
+        this.drawNote(n, undefined, { fontSize: 7.5, color: [120, 120, 120] })
+      }
+      this.yPosition += 6
+    }
+  }
+
+  renderRatioAnalysis(box: WidgetBoundingBox, widget?: import('../types/pdf-layout').LayoutWidget): void {
+    this.renderWithSkipPage(() => this.addRatioAnalysisPage(widget), box)
   }
 
   renderContractorDetail(box: WidgetBoundingBox): void {

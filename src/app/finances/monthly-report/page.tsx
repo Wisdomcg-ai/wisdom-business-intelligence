@@ -45,6 +45,7 @@ import { useConsolidatedReport } from './hooks/useConsolidatedReport'
 import { useFullYearReport } from './hooks/useFullYearReport'
 import { useSubscriptionDetail } from './hooks/useSubscriptionDetail'
 import { rollUpContractors } from '@/lib/monthly-report/contractor-rollup'
+import { parseRatioAnalysisConfig, requiredWindow } from '@/lib/monthly-report/ratio-table'
 import { applyPackOpening, buildPackCashflowLines, packCashflowBasis, packOpeningFromAssumptions } from '@/lib/monthly-report/pack-cashflow-lines'
 import type { OpeningBank } from '@/lib/monthly-report/opening-bank'
 import { useWagesDetail } from './hooks/useWagesDetail'
@@ -1022,6 +1023,7 @@ export default function MonthlyReportPage() {
     contractorDetail?: import('@/lib/monthly-report/contractor-rollup').ContractorRollup
     cashflowBasis?: string | null
     payrollGrid?: import('@/lib/monthly-report/payroll-grid').PayrollGrid
+    accountActuals?: { data: import('@/lib/monthly-report/ratio-table').AccountActuals | null; reason?: string }
     wagesDetail?: import('./types').WagesDetailData
     cashflowForecast?: CashflowForecastData
     externalMetrics?: import('./types').ExternalMetricSeriesData[]
@@ -1105,6 +1107,49 @@ export default function MonthlyReportPage() {
           tags: { invariant: 'payroll-grid-load' },
           extra: { businessId, selectedMonth },
         } as never)
+      }
+    }
+
+    // Ratio Analysis pages. There is no section toggle: a page exists because a
+    // coach placed it, so the layout is the only thing to ask. Every placement
+    // is served by ONE fetch — the union of their account codes over the
+    // longest window any of them reads.
+    //
+    // end_month is the REPORT's month, not selectedMonth: the month picker can
+    // have moved on from the report being exported, and a table headed August
+    // must be August's figures (the #499 / #509 class). A config that does not
+    // parse is left out of the window and prints its own reason on its page.
+    let accountActuals: { data: import('@/lib/monthly-report/ratio-table').AccountActuals | null; reason?: string } | undefined
+    const ratioWidgets = (settings?.pdf_layout?.pages ?? [])
+      .flatMap((p) => p.widgets ?? [])
+      .filter((w) => w.type === 'ratio_analysis')
+    const ratioConfigs = ratioWidgets
+      .map((w) => parseRatioAnalysisConfig(w.config))
+      .flatMap((r) => (r.ok ? [r.config] : []))
+    if (ratioWidgets.length > 0 && businessId && report?.report_month) {
+      if (ratioConfigs.length === 0) {
+        // Nothing to fetch — every placement is misconfigured and says so.
+        accountActuals = { data: null, reason: 'no placement has a valid configuration' }
+      } else {
+        const window = requiredWindow(ratioConfigs)
+        try {
+          const res = await fetch(
+            `/api/monthly-report/account-actuals?business_id=${encodeURIComponent(businessId)}` +
+              `&end_month=${encodeURIComponent(report.report_month)}&months=${window.months}` +
+              `&codes=${encodeURIComponent(window.codes.join(','))}`,
+          )
+          const body = await res.json().catch(() => ({} as any))
+          if (!res.ok) throw new Error(`account actuals ${res.status}`)
+          accountActuals = typeof body?.unavailable_reason === 'string'
+            ? { data: null, reason: body.unavailable_reason }
+            : { data: body }
+        } catch (err) {
+          accountActuals = { data: null, reason: 'the account figures could not be loaded' }
+          Sentry.captureException(err, {
+            tags: { invariant: 'pdf-account-actuals-load' },
+            extra: { businessId, reportMonth: report.report_month },
+          } as never)
+        }
       }
     }
 
@@ -1287,6 +1332,7 @@ export default function MonthlyReportPage() {
         packOpeningFromAssumptions(cfData?.assumptions),
       ),
       payrollGrid: payroll,
+      accountActuals,
       wagesDetail: wDetail || undefined,
       cashflowForecast: cfData,
       externalMetrics: extMetrics,

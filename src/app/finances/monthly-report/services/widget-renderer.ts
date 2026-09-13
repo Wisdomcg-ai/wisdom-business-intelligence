@@ -25,6 +25,8 @@ export const WIDGET_METHOD_MAP: Record<WidgetType, string | null> = {
   subscription_detail: 'renderSubscriptionDetail',
   contractor_detail: 'renderContractorDetail',
   payroll_grid: 'renderPayrollGrid',
+  // One autoTable per configured ratio; the ratios live in widget.config
+  ratio_analysis: 'renderRatioAnalysis',
   wages_detail: 'renderWagesDetail',
   cashflow_forecast_table: 'renderCashflowForecastTable',
   // WE.1b — renders every series with month values (config.series_key narrows)
