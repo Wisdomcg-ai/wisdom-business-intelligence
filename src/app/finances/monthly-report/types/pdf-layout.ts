@@ -198,6 +198,10 @@ export type EditorAction =
   | { type: 'RESIZE_WIDGET'; pageId: string; widgetId: string; colSpan: number; rowSpan: number }
   | { type: 'DELETE_WIDGET'; pageId: string; widgetId: string }
   | { type: 'MOVE_WIDGET_TO_PAGE'; fromPageId: string; toPageId: string; widgetId: string }
+  // A settings panel's Apply: the placement's whole config and title, in ONE
+  // history entry. `titleOverride: undefined` removes the key rather than
+  // storing '' — the renderer's fallback heading is what a blank title means.
+  | { type: 'UPDATE_WIDGET'; pageId: string; widgetId: string; config: Record<string, unknown>; titleOverride: string | undefined }
   | { type: 'UNDO' }
   | { type: 'REDO' }
   | { type: 'MARK_SAVED' }

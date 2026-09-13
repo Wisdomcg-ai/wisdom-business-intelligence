@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildAccountActuals,
   accountActualsRefusal,
+  listLedgerAccounts,
   monthsEndingAt,
   type PlLineRow,
 } from '../account-actuals'
@@ -154,6 +155,50 @@ describe('accountActualsRefusal', () => {
     expect(accountActualsRefusal({ activeConnections: [], rows: ledger(), rowTenantConnections: [unknown] })).toContain('not recorded')
     // A ledger whose org has no connection row left at all is the same case.
     expect(accountActualsRefusal({ activeConnections: [], rows: ledger(), rowTenantConnections: [] })).toContain('not recorded')
+  })
+})
+
+describe('listLedgerAccounts — what the ratio settings panel may offer', () => {
+  it('lists every coded ledger account once, in code order, with the subtotal it sums into', () => {
+    const list = listLedgerAccounts(ledger(), [])
+    expect(list.accounts.map((a) => a.code)).toEqual([
+      '200', '41000', '41140', '41150', '41200', '41300', '41600', '41700', '41750',
+      '42010', '43000', '44000', '44250', '48000', '51150', '55000', '61000', '81000',
+    ])
+    expect(list.accounts.find((a) => a.code === '55000')).toEqual({ code: '55000', name: 'Freight to Customer', bucket: 'cost_of_sales' })
+    expect(list.accounts.find((a) => a.code === '41700')?.bucket).toBe('income')
+    expect(list.accounts.find((a) => a.code === '61000')?.bucket).toBe('operating_expenses')
+    // Other Income is on the ledger but in no statement total.
+    expect(list.accounts.find((a) => a.code === '81000')?.bucket).toBeNull()
+  })
+
+  it('leaves out the codeless row a ratio cannot name, and counts it', () => {
+    const list = listLedgerAccounts(ledger(), [])
+    expect(list.accounts.some((a) => a.name === 'Foreign Currency Gains and Losses')).toBe(false)
+    expect(list.codeless_count).toBe(1)
+  })
+
+  it('every listed code is a code buildAccountActuals finds — the reason the list reads the ledger', () => {
+    const list = listLedgerAccounts(ledger(), [])
+    const codes = list.accounts.map((a) => a.code)
+    const built = buildAccountActuals(ledger(), [], '2026-08', 3, codes)
+    expect(Object.keys(built.accounts).sort()).toEqual([...codes].sort())
+  })
+
+  it('groups by the same mapping rule the totals use', () => {
+    const mappings = [{ xero_account_name: 'Shipping', report_category: 'Other Income' }]
+    const list = listLedgerAccounts(ledger(), mappings)
+    expect(list.accounts.find((a) => a.code === '44000')?.bucket).toBeNull()
+  })
+
+  it('a renamed account is listed once, under the name Xero shows today', () => {
+    const rows = [
+      row('6380.30', 'Contractors (Alistair, R&P Green)', 'opex', { '2026-07': 200 }, '2026-09-01T00:00:00Z'),
+      row('6380.30', 'Contractors (Alistair)', 'opex', { '2026-06': 100 }, '2026-07-01T00:00:00Z'),
+    ]
+    expect(listLedgerAccounts(rows, []).accounts).toEqual([
+      { code: '6380.30', name: 'Contractors (Alistair, R&P Green)', bucket: 'operating_expenses' },
+    ])
   })
 })
 

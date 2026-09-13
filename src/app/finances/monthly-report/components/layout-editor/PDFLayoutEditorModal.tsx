@@ -40,6 +40,7 @@ import PageListSidebar from './PageListSidebar'
 import PageCanvas from './PageCanvas'
 import WidgetPaletteSidebar from './WidgetPaletteSidebar'
 import WidgetPreview from './WidgetPreview'
+import RatioSettingsPanel from './RatioSettingsPanel'
 
 // ── Reducer ───────────────────────────────────────────────────────
 
@@ -52,7 +53,7 @@ function pushHistory(state: EditorState): EditorState {
   return { ...state, history: newHistory, historyIndex: newHistory.length - 1, isDirty: true }
 }
 
-function editorReducer(state: EditorState, action: EditorAction): EditorState {
+export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case 'SET_LAYOUT': {
       return {
@@ -181,6 +182,31 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       return s
     }
 
+    case 'UPDATE_WIDGET': {
+      const page = state.layout.pages.find(p => p.id === action.pageId)
+      if (!page?.widgets.some(w => w.id === action.widgetId)) return state
+      const s = pushHistory(state)
+      s.layout = {
+        ...s.layout,
+        pages: s.layout.pages.map(p => {
+          if (p.id !== action.pageId) return p
+          return {
+            ...p,
+            widgets: p.widgets.map(w => {
+              if (w.id !== action.widgetId) return w
+              // Spread, like every other widget action: placement and any key
+              // this action does not own ride through untouched.
+              const { titleOverride: _previous, ...rest } = w
+              return action.titleOverride === undefined
+                ? { ...rest, config: action.config }
+                : { ...rest, config: action.config, titleOverride: action.titleOverride }
+            }),
+          }
+        }),
+      }
+      return s
+    }
+
     case 'DELETE_WIDGET': {
       const s = pushHistory(state)
       s.layout = {
@@ -298,6 +324,28 @@ interface PDFLayoutEditorModalProps {
     subscriptions: boolean
     wages: boolean
   }
+  /**
+   * businesses.id, as the page resolved it — for the settings panels that list
+   * the business's own accounts. Absent, a panel says it could not load them.
+   */
+  businessId?: string
+}
+
+/** Widget types whose placements have a settings panel. */
+function hasSettingsPanel(type: WidgetType): boolean {
+  return type === 'ratio_analysis'
+}
+
+/**
+ * The editor's keyboard shortcuts must not fire while the coach is typing.
+ * The Delete guard used to check INPUT only, so Backspace in any other field
+ * deleted the selected widget — and with a settings panel that is the widget
+ * whose config is being typed.
+ */
+function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable
 }
 
 // ── Component ─────────────────────────────────────────────────────
@@ -310,7 +358,11 @@ export default function PDFLayoutEditorModal({
   onSave,
   isSaving,
   availableData,
+  businessId,
 }: PDFLayoutEditorModalProps) {
+  // The placement whose settings panel is open. UI state, not editor state:
+  // it is neither undoable nor saved.
+  const [settingsWidgetId, setSettingsWidgetId] = useState<string | null>(null)
   const [draggedItem, setDraggedItem] = useState<{
     type: 'palette-widget' | 'placed-widget' | 'page'
     widgetType?: WidgetType
@@ -334,6 +386,7 @@ export default function PDFLayoutEditorModal({
   // If there's a saved layout, sync it with current sections (adds new, removes disabled)
   useEffect(() => {
     if (!isOpen) return
+    setSettingsWidgetId(null)
 
     if (initialLayout && sections) {
       const { layout: synced, added, removed } = syncLayoutWithSettings(initialLayout, sections)
@@ -376,6 +429,21 @@ export default function PDFLayoutEditorModal({
     }
     return types
   }, [state.layout.pages])
+
+  // Looked up by id across every page, so an undo that removes the placement
+  // closes its panel instead of leaving it editing a widget that is gone.
+  const settingsTarget = useMemo(() => {
+    if (!settingsWidgetId) return null
+    for (const page of state.layout.pages) {
+      const widget = page.widgets.find(w => w.id === settingsWidgetId)
+      if (widget) return { pageId: page.id, widget }
+    }
+    return null
+  }, [settingsWidgetId, state.layout.pages])
+
+  useEffect(() => {
+    if (settingsWidgetId && !settingsTarget) setSettingsWidgetId(null)
+  }, [settingsWidgetId, settingsTarget])
 
   // ── DnD Handlers ──────────────────────────────────────────────
 
@@ -492,6 +560,9 @@ export default function PDFLayoutEditorModal({
         rowSpan: def.defaultRowSpan,
       }
       dispatch({ type: 'ADD_WIDGET', pageId: selectedPage.id, widget })
+      // An unconfigured ratio page prints "No ratios have been set up", so a
+      // placement is only half done until its settings are filled in.
+      if (hasSettingsPanel(widgetType)) setSettingsWidgetId(widget.id)
       return
     }
 
@@ -590,20 +661,24 @@ export default function PDFLayoutEditorModal({
     if (!isOpen) return
 
     const handler = (e: KeyboardEvent) => {
+      // A settings panel owns the keyboard while it is open — including Escape,
+      // which closes the panel, not the editor and every unsaved edit with it.
+      if (settingsWidgetId) return
+      // Cmd+Z in a text field undoes the typing, not the layout.
+      const typing = isTypingTarget(e.target)
       // Undo
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey && !typing) {
         e.preventDefault()
         dispatch({ type: 'UNDO' })
       }
       // Redo
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey && !typing) {
         e.preventDefault()
         dispatch({ type: 'REDO' })
       }
       // Delete selected widget
       if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedWidgetId && state.selectedPageId) {
-        // Don't delete if focused on an input
-        if ((e.target as HTMLElement).tagName === 'INPUT') return
+        if (typing) return
         e.preventDefault()
         dispatch({
           type: 'DELETE_WIDGET',
@@ -620,7 +695,7 @@ export default function PDFLayoutEditorModal({
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [isOpen, state.selectedWidgetId, state.selectedPageId, onClose])
+  }, [isOpen, state.selectedWidgetId, state.selectedPageId, onClose, settingsWidgetId])
 
   if (!isOpen) return null
 
@@ -671,6 +746,11 @@ export default function PDFLayoutEditorModal({
               onDeleteWidget={handleDeleteWidget}
               onResizeWidget={handleResizeWidget}
               onMoveWidgetToPage={handleMoveWidgetToPage}
+              onOpenWidgetSettings={(id) => {
+                dispatch({ type: 'SELECT_WIDGET', widgetId: id })
+                setSettingsWidgetId(id)
+              }}
+              hasSettings={hasSettingsPanel}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-400">
@@ -694,6 +774,27 @@ export default function PDFLayoutEditorModal({
           )}
         </DragOverlay>
       </DndContext>
+
+      {settingsTarget?.widget.type === 'ratio_analysis' && (
+        <RatioSettingsPanel
+          // Keyed on the placement: opening another page's panel starts from
+          // THAT widget's stored config, never the last panel's draft.
+          key={settingsTarget.widget.id}
+          widget={settingsTarget.widget}
+          businessId={businessId}
+          onCancel={() => setSettingsWidgetId(null)}
+          onApply={({ config, titleOverride }) => {
+            dispatch({
+              type: 'UPDATE_WIDGET',
+              pageId: settingsTarget.pageId,
+              widgetId: settingsTarget.widget.id,
+              config,
+              titleOverride,
+            })
+            setSettingsWidgetId(null)
+          }}
+        />
+      )}
     </div>
   )
 }
