@@ -57,6 +57,12 @@ import {
   classifyByXeroType,
   type CatalogMap,
 } from './accounts-catalog'
+import {
+  createFxSplitTenantRun,
+  emptyFxSplitRecord,
+  type FxSplitRecord,
+  type FxSplitTenantRun,
+} from './fx-split-tenant'
 
 // ─── Public types ───────────────────────────────────────────────────────────
 
@@ -572,6 +578,12 @@ export async function syncBusinessXeroPL(
   // per-month P&L fetch gets a paymentsOnly=true twin stamped basis='cash'.
   // Off by default: zero extra Xero requests until a pack turns it on.
   let cashBasisEnabled = false
+  // FX account split — opt-in per business (sections.fx_account_split === true,
+  // strictly boolean), read from the SAME settings row so a business that has
+  // not opted in issues no extra query. XERO_FX_SPLIT_DISABLE=true switches it
+  // off fleet-wide without a deploy, like FORECAST_FX_VIA_ENGINE_DISABLE.
+  // See fx-split-tenant.ts for what it does and why.
+  let fxSplitRequested = false
   try {
     const { data: mrs } = await supabase
       .from('monthly_report_settings')
@@ -579,9 +591,11 @@ export async function syncBusinessXeroPL(
       .eq('business_id', bizId)
       .maybeSingle()
     cashBasisEnabled = (mrs?.sections as Record<string, unknown> | null)?.cash_basis === true
+    fxSplitRequested = (mrs?.sections as Record<string, unknown> | null)?.fx_account_split === true
   } catch {
     // default off — a settings read failure must never block the sync
   }
+  const fxSplitEnabled = fxSplitRequested && process.env.XERO_FX_SPLIT_DISABLE !== 'true'
 
   // 1. Atomically claim a sync_jobs row (44-05 single-flight guard).
   const { data: jobIdData, error: beginErr } = await supabase.rpc(
@@ -709,6 +723,21 @@ export async function syncBusinessXeroPL(
         reconciliation: { status: 'ok', discrepancy_count: 0 },
         error: finalError,
       }
+    }
+
+    // FX split v1 refuses multi-org businesses (Dragon, IICT). The split rows
+    // carry per-org codes (Urban Road 497/498/499, JDS 198/199), and
+    // forecast-read-service.aggregateXeroRows pools same-currency orgs on
+    // account_code — enabling it there would add a new code-pooling case,
+    // which the house rule forbids. Recorded per tenant, never silently.
+    const fxSplitMultiOrg = fxSplitEnabled && connections.length > 1
+    if (fxSplitMultiOrg) {
+      Sentry.addBreadcrumb({
+        category: 'xero.sync',
+        level: 'info',
+        message: 'fx_account_split refused: business has more than one active Xero connection',
+        data: { business_id: profileId, connections: connections.length },
+      })
     }
 
     let tenantErrorCount = 0
@@ -855,6 +884,41 @@ export async function syncBusinessXeroPL(
           throw catErr
         }
 
+        // FX account split — only for an opted-in, single-org business.
+        // createFxSplitTenantRun never throws (its one read degrades to
+        // "fetch every month"), and nothing it does can fail the tenant.
+        let fxRun: FxSplitTenantRun | null = null
+        let fxSplitRecord: FxSplitRecord | null = null
+        if (fxSplitEnabled && fxSplitMultiOrg) {
+          fxSplitRecord = { ...emptyFxSplitRecord(true), skipped_reason: 'multi_org' }
+        } else if (fxSplitEnabled) {
+          try {
+            fxRun = await createFxSplitTenantRun({
+              supabase,
+              profileId,
+              tenantId: conn.tenant_id,
+              accessToken,
+              catalog,
+              runMonths: fyWindows.flatMap((w) => w.monthsToFetch),
+              today,
+            })
+            fxSplitRecord = fxRun.record
+          } catch (fxErr) {
+            // Belt and braces: the split is supplementary, so even a defect in
+            // its setup must leave this tenant syncing exactly as flag-off.
+            fxRun = null
+            fxSplitRecord = {
+              ...emptyFxSplitRecord(true),
+              kept: [{ month: '*', reason: 'error', error: String((fxErr as Error)?.message ?? fxErr).slice(0, 200) }],
+            }
+            try {
+              Sentry.captureException(fxErr, {
+                tags: { invariant: 'xero_sync_fx_split', business_id: profileId, tenant_id: conn.tenant_id },
+              } as any)
+            } catch { /* ignore */ }
+          }
+        }
+
         // 4e. Per-window per-month fetch loop (Path A core).
         for (const window of fyWindows) {
           const monthlyRows: ParsedPLRow[] = []
@@ -879,6 +943,17 @@ export async function syncBusinessXeroPL(
                 conn.tenant_id,
               )
               monthlyRows.push(...parsed)
+
+              // FX account split: decide this month (maybe one TB request).
+              // Only RateLimitDailyExceededError escapes — to the month catch
+              // below, which pauses the tenant as for any other call. Every
+              // other failure keeps the merged row and never lands in
+              // months_failed.
+              if (fxRun) {
+                const tbRequests = await fxRun.processMonth(periodMonth, parsed)
+                xeroRequestCount += tbRequests
+                tenantXeroRequestCount += tbRequests
+              }
 
               // WD.7 — the cash twin. Supplementary: a cash-fetch failure is
               // captured but never marks the month failed (the accrual row
@@ -1027,7 +1102,17 @@ export async function syncBusinessXeroPL(
           //   rows that don't have a catalog entry.
           // WD.7 — cash rows rejoin here; the mapping is basis-agnostic
           // (r.basis flows through) and the natural key now includes basis.
-          const dbRows = [...monthlyRows, ...cashMonthlyRows].map((r) => {
+          //
+          // FX account split: the merged row is swapped for its coded rows HERE
+          // and nowhere earlier — reconcilePL and regressionAdjustments above
+          // ran on the unsplit monthlyRows, because the FY-total oracle still
+          // carries the merged row. The per-month stale-row sweep below then
+          // removes the merged row in a split month and the coded rows in a
+          // fallback month. Cash rows are never split (v1) — which is why, with
+          // cash_basis also on, the sweep adds an accruals-scoped pass (below).
+          // A reused month keeps its stored updated_at.
+          const accrualRowsForDb = fxRun ? fxRun.substitute(monthlyRows) : monthlyRows
+          const dbRows = [...accrualRowsForDb, ...cashMonthlyRows].map((r) => {
             const catEntry = catalog.get(r.account_id)
             const catalogType = classifyByXeroType(catEntry?.account_type)
             return {
@@ -1041,7 +1126,7 @@ export async function syncBusinessXeroPL(
               amount: r.amount,
               basis: r.basis,
               source: 'xero',
-              updated_at: new Date().toISOString(),
+              updated_at: fxRun?.storedUpdatedAt(r) ?? new Date().toISOString(),
             }
           })
 
@@ -1109,22 +1194,17 @@ export async function syncBusinessXeroPL(
             // non-fatal — today's data is already correct, and the next
             // sync retries. Sentry-info when staleSwept > 0 so we can see
             // the legacy-cleanup transient.
-            const monthToAccountIds = new Map<string, string[]>()
-            for (const r of dbRows) {
-              const arr = monthToAccountIds.get(r.period_month) ?? []
-              arr.push(r.account_id)
-              monthToAccountIds.set(r.period_month, arr)
-            }
             let staleSwept = 0
-            for (const [month, ids] of monthToAccountIds) {
+            const sweepMonth = async (month: string, ids: string[], basis?: 'accruals' | 'cash') => {
               const inClause = `(${ids.map((id) => `"${id}"`).join(',')})`
-              const sweepRes = (await supabase
+              let q = supabase
                 .from('xero_pl_lines')
                 .delete({ count: 'exact' })
                 .eq('business_id', profileId)
                 .eq('tenant_id', conn.tenant_id)
                 .eq('period_month', month)
-                .not('account_id', 'in', inClause)) as any
+              if (basis) q = q.eq('basis', basis)
+              const sweepRes = (await q.not('account_id', 'in', inClause)) as any
               if (sweepRes?.error) {
                 try {
                   Sentry.captureMessage('xero_pl_lines stale-row sweep failed', {
@@ -1134,6 +1214,7 @@ export async function syncBusinessXeroPL(
                       business_id: profileId,
                       tenant_id: conn.tenant_id,
                       period_month: month,
+                      ...(basis ? { basis } : {}),
                     },
                     extra: {
                       error:
@@ -1143,9 +1224,50 @@ export async function syncBusinessXeroPL(
                 } catch {
                   /* ignore */
                 }
-                continue
+                return
               }
               staleSwept += sweepRes?.count ?? 0
+            }
+            // FX account split + WD.7 cash twin: the flag-off sweep keys each
+            // month on the UNION of accruals and cash ids, with no basis filter.
+            // Once the split is live that union goes wrong in both directions:
+            //  - the cash twin is never split, so it still writes the merged FX
+            //    id — which protected the stale ACCRUALS merged row beside the
+            //    new coded rows (FX counted twice on every accruals reader);
+            //  - a month whose cash fetch failed (supplementary: the month is
+            //    not marked failed, so it is still swept) has no cash ids, so
+            //    the union is the accruals ids, which no longer carry the
+            //    merged id — and the unscoped delete took the stored CASH
+            //    merged row until a later cash fetch succeeded.
+            // So with the split live and cash_basis on, sweep each basis
+            // against its own ids: accruals every month it was written, cash
+            // only in months where cash rows were written — never in a month
+            // whose cash fetch failed. Flag-off (and split-on without cash)
+            // keeps the union sweep, so its golden is unchanged.
+            if (fxRun && cashBasisEnabled) {
+              const idsByBasis = { accruals: new Map<string, string[]>(), cash: new Map<string, string[]>() }
+              for (const r of dbRows) {
+                const byMonth = idsByBasis[r.basis === 'cash' ? 'cash' : 'accruals']
+                const arr = byMonth.get(r.period_month) ?? []
+                arr.push(r.account_id)
+                byMonth.set(r.period_month, arr)
+              }
+              for (const [month, ids] of idsByBasis.accruals) {
+                await sweepMonth(month, ids, 'accruals')
+              }
+              for (const [month, ids] of idsByBasis.cash) {
+                await sweepMonth(month, ids, 'cash')
+              }
+            } else {
+              const monthToAccountIds = new Map<string, string[]>()
+              for (const r of dbRows) {
+                const arr = monthToAccountIds.get(r.period_month) ?? []
+                arr.push(r.account_id)
+                monthToAccountIds.set(r.period_month, arr)
+              }
+              for (const [month, ids] of monthToAccountIds) {
+                await sweepMonth(month, ids)
+              }
             }
             if (staleSwept > 0) {
               console.log(
@@ -1250,6 +1372,11 @@ export async function syncBusinessXeroPL(
           }
         }
 
+        // FX split status never changes the tenant's: a kept month is correct
+        // data, only ungrouped (the cash twin's stance). One Sentry warning per
+        // tenant per run when any month kept its merged row.
+        fxRun?.report()
+
         // 4h. Per-tenant terminal UPDATE.
         const tenantExpectedTotal = fyWindows.reduce((s, w) => s + w.expectedMonths, 0)
         const tenantCoverage = aggregateCoverage(tenantCoveragePerWindow, tenantExpectedTotal)
@@ -1295,6 +1422,9 @@ export async function syncBusinessXeroPL(
                   months_failed: tenantMonthsFailed,
                   absorber_adjustments: tenantAbsorberAdjustments,
                   reconciler_discrepancies: tenantDiscrepancies.map((d) => d.account_name),
+                  // Only for a business that opted in — absent otherwise, so a
+                  // flag-off tenant's sync_jobs row is unchanged.
+                  ...(fxSplitRecord ? { fx_split: fxSplitRecord } : {}),
                 },
                 bs: {
                   months_fetched: bsResult.monthsFetched,

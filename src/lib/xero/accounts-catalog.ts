@@ -33,6 +33,14 @@ export type CatalogEntry = {
   account_code: string | null
   account_name: string
   account_type: string
+  /**
+   * Account.SystemAccount (e.g. BANKCURRENCYGAIN, REALISEDCURRENCYGAIN,
+   * UNREALISEDCURRENCYGAIN), null for ordinary accounts. In memory only — no
+   * xero_accounts column. The FX account split identifies Xero's three FX
+   * accounts by it, because their codes are per org (Urban Road 497/498/499,
+   * JDS 198/199) and their names are editable.
+   */
+  system_account?: string | null
 }
 
 export type CatalogMap = Map<string, CatalogEntry>
@@ -174,6 +182,7 @@ export async function refreshXeroAccountsCatalog(
       account_code: accountCode,
       account_name: accountName,
       account_type: accountType,
+      system_account: a?.SystemAccount ?? null,
     })
     return {
       business_id: connection.business_id,

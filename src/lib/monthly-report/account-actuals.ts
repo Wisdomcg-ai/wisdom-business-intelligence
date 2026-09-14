@@ -266,7 +266,10 @@ export interface LedgerAccountList {
  * Not the chart of accounts and not account_mappings. Urban Road's mapping for
  * 'Foreign Currency Gains and Losses' carries code 62700 while its ledger row
  * has no code at all, so offering the mapping's code would have printed
- * "account 62700 not found" on the page the coach had just set up. And the
+ * "account 62700 not found" on the page the coach had just set up. (With the
+ * FX account split on — sections.fx_account_split — that codeless merged row
+ * becomes the fallback state: a split month carries 497/498/499 as ordinary
+ * coded rows, so codeless_count drops by one and they become nameable.) And the
  * chart lists ~160 active P&L accounts against the 88 that have ever posted.
  *
  * Pure, like the builder: the caller reads, and must have run

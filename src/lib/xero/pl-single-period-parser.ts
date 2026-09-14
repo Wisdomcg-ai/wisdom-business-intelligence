@@ -69,6 +69,16 @@ const SYNTH_NAMESPACE = '7c3d7f3e-92f4-5f7d-ae2b-55f3c7f3f8b2'
 
 // ─── Internal helpers ───────────────────────────────────────────────────────
 
+/**
+ * The account_id every FXGROUPID row for this tenant carries. Exported so the
+ * FX account split recognises the merged "Foreign Currency Gains and Losses"
+ * row by identity rather than by its (layout-editable) name. Urban Road's is
+ * f9638432-1548-5b9f-851f-3dc817398597 in prod.
+ */
+export function fxGroupAccountId(tenantId: string): string {
+  return uuidv5(`XERO-FXGROUP-${tenantId}`, FXGROUP_NAMESPACE)
+}
+
 function isUuidLike(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
 }
@@ -89,7 +99,7 @@ function deriveAccountId(
     return rawAttrValue
   }
   if (rawAttrValue === 'FXGROUPID') {
-    return uuidv5(`XERO-FXGROUP-${tenantId}`, FXGROUP_NAMESPACE)
+    return fxGroupAccountId(tenantId)
   }
   return uuidv5(`SYNTH-${tenantId}-${accountName}`, SYNTH_NAMESPACE)
 }

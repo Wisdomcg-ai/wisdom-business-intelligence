@@ -48,7 +48,9 @@ export interface ResolvedBudgetLine {
    * side and the actuals side, and the reason this field exists at all. Name
    * matching is a heuristic that loses on any account a bookkeeper renamed on
    * one side only: Urban Road's P&L says "Foreign Currency Gains and Losses"
-   * where its budget says "Foreign Currency Loss/Gain", which normalise to
+   * (Xero's merged FX row — since the FX account split, only the fallback state
+   * for a month whose Trial Balance did not tie) where its budget says
+   * "Foreign Currency Loss/Gain", which normalise to
    * nothing in common, so the report printed the account TWICE — once with the
    * actual and a $0 budget, once budget-only with a $0 actual.
    *
