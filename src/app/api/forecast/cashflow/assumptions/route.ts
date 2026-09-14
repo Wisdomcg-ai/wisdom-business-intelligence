@@ -10,6 +10,7 @@ const CashflowAssumptionsPostSchema = z
   })
   .passthrough()
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { loadCashflowAssumptions } from '@/lib/forecast/cashflow-assumptions-load'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -34,13 +35,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'forecast_id is required' }, { status: 400 })
     }
 
-    const { data: forecast, error } = await supabase
-      .from('financial_forecasts')
-      .select('business_id, assumptions')
-      .eq('id', forecastId)
-      .maybeSingle()
-
-    if (error) {
+    // Shared with scripts/preview-pack.ts — see lib/forecast/cashflow-assumptions-load.
+    let forecast
+    try {
+      forecast = await loadCashflowAssumptions(supabase, forecastId)
+    } catch (error) {
       Sentry.captureException(error, { tags: { route: 'forecast/cashflow/assumptions' }, extra: { context: "[Cashflow Assumptions] Error" } } as any)
       return NextResponse.json({ error: 'Failed to fetch assumptions' }, { status: 500 })
     }
@@ -65,8 +64,7 @@ export async function GET(request: NextRequest) {
     )
     if (_sectionBlocked) return _sectionBlocked
 
-    const cashflow = forecast.assumptions?.cashflow ?? null
-    return NextResponse.json({ data: cashflow })
+    return NextResponse.json({ data: forecast.cashflow })
   } catch (err) {
     Sentry.captureException(err, { tags: { route: 'forecast/cashflow/assumptions' }, extra: { context: "[Cashflow Assumptions] Error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

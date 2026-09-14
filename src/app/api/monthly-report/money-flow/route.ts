@@ -3,13 +3,12 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
-import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 import { z } from 'zod'
 import { withQuerySchema } from '@/lib/api/with-schema'
-import { deriveMoneyFlow, endOfMonth, priorMonth } from '@/lib/monthly-report/money-flow'
+import { loadMoneyFlow } from '@/lib/monthly-report/money-flow-load'
 import { isValidPeriodMonth } from '@/lib/monthly-report/external-metrics'
 
 export const dynamic = 'force-dynamic'
@@ -60,33 +59,14 @@ async function getHandler(request: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const ids = await resolveBusinessProfileIds(supabase, businessId)
-
-    // Only the two month-end keys are needed, but jsonb column selection is
-    // all-or-nothing through PostgREST — the row count per business is small
-    // (fleet max ~80 BS accounts), so read whole rows.
-    const { data: rows, error } = await supabase
-      .from('xero_bs_lines_wide_compat')
-      .select('account_name, account_type, section, tenant_id, balances_by_date')
-      .in('business_id', ids.all)
-    if (error) throw error
-
-    const flow = deriveMoneyFlow(
-      (rows ?? []).map((r) => ({
-        account_name: r.account_name,
-        account_type: r.account_type,
-        section: r.section,
-        tenant_id: r.tenant_id,
-        balances_by_date: r.balances_by_date ?? {},
-      })),
-      periodMonth,
-    )
+    // Shared with scripts/preview-pack.ts — see money-flow-load.
+    const { flow, dates } = await loadMoneyFlow(supabase, businessId, periodMonth)
 
     return NextResponse.json({
       success: true,
       flow,
       // For the renderer's caption: the actual dates compared.
-      dates: { start: endOfMonth(priorMonth(periodMonth)), end: endOfMonth(periodMonth) },
+      dates,
     })
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'monthly-report/money-flow' }, extra: { context: '[MoneyFlow] GET error' } } as any)

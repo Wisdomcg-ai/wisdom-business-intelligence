@@ -260,8 +260,14 @@ describe('mappingGroup is the one reader of report_subcategory', () => {
     // place. A route that reads report_subcategory inline is the first step to
     // an account printing under one heading on one page and another heading on
     // the next — which is exactly the Calxa inconsistency we chose not to copy.
-    for (const route of ['generate', 'full-year']) {
-      const src = readFileSync(join(process.cwd(), 'src/app/api/monthly-report', route, 'route.ts'), 'utf8')
+    // The Full Year build moved out of its route into a loader shared with the
+    // preview harness; the rule follows the code, not the file name.
+    const sources: Record<string, string> = {
+      generate: 'src/app/api/monthly-report/generate/route.ts',
+      'full-year': 'src/lib/monthly-report/full-year-load.ts',
+    }
+    for (const [route, file] of Object.entries(sources)) {
+      const src = readFileSync(join(process.cwd(), file), 'utf8')
       expect(src, route).toContain("import { mappingGroup } from '@/lib/monthly-report/expense-groups'")
       expect(src, route).not.toMatch(/report_subcategory/)
       expect(src.match(/group: mappingGroup\(/g)?.length ?? 0, route).toBeGreaterThanOrEqual(2)

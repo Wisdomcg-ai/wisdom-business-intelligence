@@ -3,7 +3,6 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
-import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -12,10 +11,9 @@ import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 import {
   validateValues,
   isValidPeriodMonth,
-  computeExternalTie,
-  sumReconcileMeasure,
   type SeriesMeasure,
 } from '@/lib/monthly-report/external-metrics'
+import { loadExternalMetricSeries } from '@/lib/monthly-report/external-metrics-load'
 
 export const dynamic = 'force-dynamic'
 
@@ -98,58 +96,8 @@ async function getHandler(request: Request) {
     const auth = await authorize(businessId)
     if ('block' in auth) return auth.block
 
-    const { data: seriesRows, error: sErr } = await supabase
-      .from('external_metric_series')
-      .select('*')
-      .eq('business_id', businessId)
-      .eq('is_active', true)
-      .order('display_name')
-    if (sErr) throw sErr
-
-    const seriesIds = (seriesRows ?? []).map((s) => s.id)
-    const { data: valueRows, error: vErr } = seriesIds.length
-      ? await supabase
-          .from('external_metric_values')
-          .select('series_id, dimension_value, measure_key, scenario, value, source_ref, updated_at')
-          .in('series_id', seriesIds)
-          .eq('period_month', periodMonth)
-      : { data: [], error: null }
-    if (vErr) throw vErr
-
-    // EXT-TIES per series that declares a reconciliation target. The account
-    // side reads the same wide-compat view every report page uses.
-    const ids = await resolveBusinessProfileIds(supabase, businessId)
-    const accountNames = (seriesRows ?? [])
-      .map((s) => s.reconciles_to_account_name)
-      .filter((n): n is string => !!n)
-    let plByName = new Map<string, Record<string, number>>()
-    if (accountNames.length > 0) {
-      const { data: plRows } = await supabase
-        .from('xero_pl_lines_wide_compat')
-        .select('account_name, monthly_values')
-        .in('business_id', ids.all)
-        .in('account_name', accountNames)
-      // Multi-org: one row per tenant per name — merge months the same way the
-      // generate route dedupes, so EXT-TIES compares against the report's figure.
-      for (const r of plRows ?? []) {
-        const existing = plByName.get(r.account_name)
-        plByName.set(r.account_name, existing ? { ...existing, ...r.monthly_values } : (r.monthly_values ?? {}))
-      }
-    }
-
-    const series = (seriesRows ?? []).map((s) => {
-      const values = (valueRows ?? []).filter((v) => v.series_id === s.id)
-      let tie = null
-      if (s.reconciles_to_account_name && s.reconcile_measure_key) {
-        tie = computeExternalTie({
-          seriesTotal: sumReconcileMeasure(values, s.reconcile_measure_key),
-          accountActual: Number(plByName.get(s.reconciles_to_account_name)?.[periodMonth] ?? 0),
-          accountName: s.reconciles_to_account_name,
-          tolerance: Number(s.reconcile_tolerance ?? 1),
-        })
-      }
-      return { ...s, values, tie }
-    })
+    // Shared with scripts/preview-pack.ts — see external-metrics-load.
+    const series = await loadExternalMetricSeries(supabase, businessId, periodMonth)
 
     return NextResponse.json({ success: true, period_month: periodMonth, series })
   } catch (error) {

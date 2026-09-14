@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import type { ReportTemplate, MonthlyReportSettings, TemplateColumnSettings } from '../types'
-import { DEFAULT_SECTIONS } from '../types'
+import { settingsFromTemplate as settingsFromTemplatePure } from '../utils/template-settings'
 
 export function useReportTemplates(businessId: string) {
   const [templates, setTemplates] = useState<ReportTemplate[]>([])
@@ -129,25 +129,10 @@ export function useReportTemplates(businessId: string) {
    * Derive the MonthlyReportSettings fields from a template.
    * Returns a partial settings object — caller merges into existing settings.
    */
+  // Pure, and shared with scripts/preview-pack.ts — see utils/template-settings.
   const settingsFromTemplate = useCallback((
     template: ReportTemplate
-  ): Partial<MonthlyReportSettings> => {
-    return {
-      sections: { ...DEFAULT_SECTIONS, ...template.sections },
-      show_prior_year: template.column_settings?.show_prior_year ?? true,
-      show_ytd: template.column_settings?.show_ytd ?? true,
-      show_unspent_budget: template.column_settings?.show_unspent_budget ?? true,
-      show_budget_next_month: template.column_settings?.show_budget_next_month ?? true,
-      show_budget_annual_total: template.column_settings?.show_budget_annual_total ?? true,
-      budget_forecast_id: template.budget_forecast_id ?? null,
-      subscription_account_codes: template.subscription_account_codes ?? [],
-      wages_account_names: template.wages_account_names ?? [],
-      // WC.3 — only templates that CARRY a layout overwrite the business's
-      // layout; a null/absent pdf_layout leaves the existing one untouched
-      // (pre-WC.3 templates keep exactly their old behaviour).
-      ...(template.pdf_layout ? { pdf_layout: template.pdf_layout } : {}),
-    }
-  }, [])
+  ): Partial<MonthlyReportSettings> => settingsFromTemplatePure(template), [])
 
   const applyTemplate = useCallback((
     template: ReportTemplate,
