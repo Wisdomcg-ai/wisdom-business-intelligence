@@ -36,18 +36,21 @@ const PayrollGridPostSchema = z.object({
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, getSupabaseSecretKey())
 
-async function postHandler(request: Request, body: unknown) {
+async function postHandler(request: Request) {
   try {
     const authClient = await createRouteHandlerClient()
     const { data: { user } } = await authClient.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { business_id, report_month, fiscal_year, months } = body as {
-      business_id: string
-      report_month: string
-      fiscal_year: number
-      months?: number
+    // withSchema validates a clone and passes the handler only (request,
+    // context) — never the body. Read it here, and enforce the contract here:
+    // the wrapper is observe-mode, and a missing business_id reached Postgres
+    // as the string "undefined" (22P02, a 500 on every export).
+    const parsed = PayrollGridPostSchema.safeParse(await request.json().catch(() => null))
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Validation failed', issues: parsed.error.flatten() }, { status: 400 })
     }
+    const { business_id, report_month, fiscal_year, months } = parsed.data
 
     const verdict = await requireSectionPermission(authClient, user.id, business_id, 'finances')
     const blocked = enforceSectionPermission(verdict, 'finances', 'api/monthly-report/payroll-grid', user.id, business_id)
