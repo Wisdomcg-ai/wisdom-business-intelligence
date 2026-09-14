@@ -82,6 +82,7 @@ import { loadPackPreparedOn } from '@/lib/monthly-report/pack-prepared-on'
 import {
   balanceSheetsForExport,
   freezeBalanceSheetsAtFinalise,
+  loadSentBalanceSheets,
   waitForPendingFreeze,
 } from '@/lib/monthly-report/balance-sheet-freeze'
 import type { ReportTab, MonthlyReportSettings, VarianceCommentary, GeneratedReport } from './types'
@@ -1407,9 +1408,13 @@ export default function MonthlyReportPage() {
     // regenerated P&L beside it. A final month whose freeze never landed (the
     // tab closed mid-freeze) is frozen now from the sheets this export prints.
     // A draft, and any month finalised before freezing existed, asks Xero, as
-    // before. balanceSheetsForExport has the rules. A failure never blocks the
-    // export — it travels as a reason the page prints, and is captured rather
-    // than swallowed.
+    // before. Ahead of all of it, a month that was Approved & Sent prints the
+    // sheets that PDF printed (package B) — draft or final — while the report
+    // on screen is the one that was sent and until Revert to Draft reopens it.
+    // That is how a resend prints what the client already has: it builds its
+    // PDF through here. balanceSheetsForExport has the rules. A failure never
+    // blocks the export — it travels as a reason the page prints, and is
+    // captured rather than swallowed.
     let balanceSheets: import('./utils/balance-sheet-pdf').BalanceSheetPdfSources | undefined
     if (businessId && packWantsBalanceSheet()) {
       let stored = null
@@ -1425,12 +1430,14 @@ export default function MonthlyReportPage() {
         }
         stored = await fetchSnapshot(selectedMonth)
       }
+      const sent = await loadSentBalanceSheets(businessId, selectedMonth)
       balanceSheets = await balanceSheetsForExport({
         businessId,
         reportMonth: selectedMonth,
         report,
         stored,
         freezeInFlight,
+        sent,
       })
     }
 

@@ -38,13 +38,46 @@
  * under the same key — and an export that finds one still owed freezes the
  * sheets it is printing, and says in Sentry that it did so late. A month
  * finalised before any of this carries no marker and stays live, as above.
+ *
+ * ── Approve & Send (package B, accepted 15 Sep 2026) ──
+ *
+ * Approve & Send is offered straight from draft, so a coach can send without
+ * ever pressing Finalise — and then the client's PDF printed a live sheet that
+ * nothing kept. So the send keeps the two sheets its PDF was built from, under
+ * the same key and in the same shape, in cfo_report_status.snapshot_data: the
+ * payload written at approval, which every revert preserves (D-18) and no
+ * snapshot save touches. Not in the snapshot's report_data: after a send from
+ * draft nothing locks the page, the first commentary blur POSTs a draft save,
+ * and a draft save strips the key (withoutFrozenBalanceSheets) — the trap a
+ * Finalise freeze is meant to fall into, and a sent copy must not.
+ *
+ * An export prints the sent copy ahead of every rule above, while
+ *   - it is a whole copy of this month,
+ *   - the report on screen carries the P&L that was sent (the same reason a
+ *     regenerated final month prints live — see reportMatchesSnapshot), and
+ *   - the coach has not reopened it. Revert to Draft is the deliberate reopen:
+ *     it marks the copy `reopened_at` and keeps it as the record of what was
+ *     sent. The silent reverts (a draft save, a commentary run, a settings or
+ *     layout save, a Finalise) leave it standing — the client still has it.
+ * A new Approve & Send replaces snapshot_data and keeps what THAT PDF printed,
+ * which is the sent copy again when the report is unchanged. The send never
+ * writes the snapshot, so a Finalise freeze is never overwritten; when one
+ * exists the send printed it, and keeps that same copy.
+ *
+ * The same fail-open rule: keeping the copy is a write after the approval has
+ * saved, and never stands between a coach and the send. Half a sheet, or a
+ * write that does not land, is captured under `balance-sheet-freeze` with
+ * stage `approve_and_send`, and the email goes.
  */
 import * as Sentry from '@sentry/nextjs'
 import type { BalanceSheetCompare, BalanceSheetData } from '@/app/finances/monthly-report/types'
 import type { BalanceSheetPdfSources } from '@/app/finances/monthly-report/utils/balance-sheet-pdf'
 import { balanceSheetDates } from './balance-sheet-rows'
 
-/** Where the frozen sheets live inside monthly_report_snapshots.report_data. */
+/**
+ * Where the frozen sheets live: inside monthly_report_snapshots.report_data for
+ * a Finalise, inside cfo_report_status.snapshot_data for an Approve & Send.
+ */
 export const FROZEN_BALANCE_SHEETS_KEY = 'frozen_balance_sheets'
 
 export interface FrozenBalanceSheets {
@@ -52,6 +85,8 @@ export interface FrozenBalanceSheets {
   frozen_at: string
   /** The finalise this freeze belongs to — the marker's time, set by the route. */
   finalised_at?: string
+  /** A sent copy only: when Revert to Draft reopened it. Kept, never printed. */
+  reopened_at?: string
   /** YYYY-MM the sheets were built for — checked on read, never assumed. */
   report_month: string
   mom: BalanceSheetData
@@ -61,7 +96,7 @@ export interface FrozenBalanceSheets {
 const COMPARES: readonly BalanceSheetCompare[] = ['mom', 'yoy']
 
 /** A whole sheet for this comparison of this month — not an error body, not an empty report. */
-function isSheetFor(value: unknown, compare: BalanceSheetCompare, reportMonth: string): value is BalanceSheetData {
+export function isSheetFor(value: unknown, compare: BalanceSheetCompare, reportMonth: string): value is BalanceSheetData {
   if (!value || typeof value !== 'object') return false
   const v = value as Partial<BalanceSheetData>
   return (
@@ -82,6 +117,7 @@ export function readFrozenBalanceSheets(value: unknown, reportMonth: string): Fr
   return {
     frozen_at: v.frozen_at,
     ...(typeof v.finalised_at === 'string' ? { finalised_at: v.finalised_at } : {}),
+    ...(typeof v.reopened_at === 'string' ? { reopened_at: v.reopened_at } : {}),
     report_month: reportMonth,
     mom: v.mom!,
     yoy: v.yoy!,
@@ -154,17 +190,62 @@ function canonical(value: unknown): string {
  * sheet reports.
  */
 export function reportMatchesSnapshot(report: unknown, storedReportData: unknown): boolean {
-  if (!report || typeof report !== 'object' || !storedReportData || typeof storedReportData !== 'object') return false
-  const figures = (r: Record<string, unknown>) =>
-    canonical({
-      report_month: r.report_month,
-      budget_source: r.budget_source,
-      summary: r.summary,
-      gross_profit_row: r.gross_profit_row,
-      operating_profit_row: r.operating_profit_row,
-      net_profit_row: r.net_profit_row,
-    })
-  return figures(report as Record<string, unknown>) === figures(storedReportData as Record<string, unknown>)
+  const a = pnlFigures(report)
+  const b = pnlFigures(storedReportData)
+  return !!a && !!b && canonical(a) === canonical(b)
+}
+
+/**
+ * The P&L figures a frozen sheet can disagree with — reportMatchesSnapshot's
+ * comparison — and nothing else of the report. What the snapshot route hands
+ * back for a sent copy, instead of the whole sent report.
+ */
+export function pnlFigures(report: unknown): Record<string, unknown> | null {
+  if (!report || typeof report !== 'object') return null
+  const r = report as Record<string, unknown>
+  const figures: Record<string, unknown> = {
+    report_month: r.report_month,
+    budget_source: r.budget_source,
+    summary: r.summary,
+    gross_profit_row: r.gross_profit_row,
+    operating_profit_row: r.operating_profit_row,
+    net_profit_row: r.net_profit_row,
+  }
+  for (const k of Object.keys(figures)) if (figures[k] === undefined) delete figures[k]
+  return figures
+}
+
+// ─── The sheets an Approve & Send printed ───────────────────────────────────
+
+/** What the snapshot route returns for a month's send: its copy, and the P&L it was sent beside. */
+export interface SentBalanceSheets {
+  /** cfo_report_status.snapshot_data's freeze, as stored — checked here on read, never trusted. */
+  frozen: unknown
+  /** pnlFigures of the report that was sent. */
+  report: unknown
+}
+
+/** The two sheets a PDF was built from, as the send posts them: null where the PDF printed a reason. */
+export function printedBalanceSheets(
+  sources: BalanceSheetPdfSources | undefined,
+): { mom: BalanceSheetData | null; yoy: BalanceSheetData | null } | undefined {
+  if (!sources) return undefined
+  return { mom: sources.mom?.data ?? null, yoy: sources.yoy?.data ?? null }
+}
+
+/**
+ * The sent copy an export prints, or null: a whole copy of this month that
+ * the coach has not reopened, beside the report that was sent. See the header.
+ */
+export function sentBalanceSheetSources(
+  sent: SentBalanceSheets | null | undefined,
+  report: unknown,
+  reportMonth: string,
+): BalanceSheetPdfSources | null {
+  const frozen = readFrozenBalanceSheets(sent?.frozen, reportMonth)
+  if (!frozen || frozen.reopened_at) return null
+  if (!reportMatchesSnapshot(report, sent?.report)) return null
+  return { mom: { data: frozen.mom }, yoy: { data: frozen.yoy } }
 }
 
 /**
@@ -298,6 +379,40 @@ export async function loadLiveBalanceSheets(
 }
 
 /**
+ * The month's sent copy, for an export — through the snapshot route, which
+ * reads cfo_report_status behind the page's own access checks, so any viewer's
+ * export finds it. Null when the month was never sent (or sent before copies
+ * were kept), and null when the read fails: the export then goes on by the
+ * rules it always had. Never throws; a failure is captured, because it can be
+ * a sent month printing a sheet other than the one the client has.
+ */
+export async function loadSentBalanceSheets(
+  businessId: string,
+  reportMonth: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SentBalanceSheets | null> {
+  const tags = { invariant: 'balance-sheet-freeze', stage: 'export_read_sent' }
+  try {
+    const res = await fetchImpl(
+      `/api/monthly-report/snapshot?business_id=${encodeURIComponent(businessId)}&report_month=${encodeURIComponent(reportMonth)}&view=sent_balance_sheets`,
+    )
+    const body = await res.json().catch(() => ({} as any))
+    if (!res.ok) {
+      Sentry.captureMessage('[BalanceSheet freeze] could not read the sent balance sheet — this export follows the other rules', {
+        level: 'warning',
+        tags,
+        extra: { businessId, reportMonth, status: res.status, error: body?.error ?? null },
+      } as any)
+      return null
+    }
+    return body?.sent_balance_sheets ?? null
+  } catch (err) {
+    Sentry.captureException(err, { tags, extra: { businessId, reportMonth } } as any)
+    return null
+  }
+}
+
+/**
  * Write `sources` as the month's freeze. Resolves `true` only when it landed;
  * never throws. Every way it does not land is captured under invariant
  * `balance-sheet-freeze`, because each one is a finalised month exporting live.
@@ -413,6 +528,11 @@ export async function waitForPendingFreeze(
  * The two balance-sheet sources an export prints, and — when the month is owed
  * a freeze that never landed — that freeze, written from the same sheets.
  *
+ *   - SENT (`sent`, see loadSentBalanceSheets): a whole copy of this month,
+ *     not reopened, and the report on screen carries the P&L that was sent —
+ *     the sent copy, ahead of everything below, whatever the snapshot's status.
+ *     Xero is not asked and nothing is written. Sent then finalised, the
+ *     client has the sent sheet, not the one the Finalise froze later.
  *   - FINAL, the report on screen is the stored one, and a whole freeze is
  *     stored: the freeze. Xero is not asked.
  *   - FINAL but REGENERATED on screen: live, so the sheet agrees with the P&L
@@ -440,9 +560,13 @@ export async function balanceSheetsForExport(args: {
   stored: { status?: string | null; report_data?: unknown } | null | undefined
   /** This tab's Finalise freeze had not settled when the export stopped waiting for it. */
   freezeInFlight?: boolean
+  /** The month's send, if any — loadSentBalanceSheets. */
+  sent?: SentBalanceSheets | null
   fetchImpl?: typeof fetch
 }): Promise<BalanceSheetPdfSources> {
-  const { businessId, reportMonth, report, stored, freezeInFlight = false, fetchImpl = fetch } = args
+  const { businessId, reportMonth, report, stored, freezeInFlight = false, sent, fetchImpl = fetch } = args
+  const sentCopy = sentBalanceSheetSources(sent, report, reportMonth)
+  if (sentCopy) return sentCopy
   const isStoredFinal = stored?.status === 'final' && reportMatchesSnapshot(report, stored.report_data)
   if (isStoredFinal) {
     const frozen = frozenBalanceSheetSources(stored, reportMonth)

@@ -8,6 +8,7 @@ import { periodMonthFromReportMonth, stampGeneratedFirst } from '@/lib/reports/c
 import {
   FROZEN_BALANCE_SHEETS_KEY,
   markBalanceSheetFreezeDue,
+  pnlFigures,
   readFreezeFinalisedAt,
   readFrozenBalanceSheets,
   withoutFrozenBalanceSheets,
@@ -21,9 +22,12 @@ import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 export const dynamic = 'force-dynamic'
 
 // VALID-05a (observe mode): GET reads `business_id`/`report_month`; POST saves a report snapshot.
+// `view=sent_balance_sheets` returns only the month's Approve & Send balance
+// sheets (sentBalanceSheets below), for the export.
 const SnapshotGetQuerySchema = z.object({
   business_id: z.string().optional(),
   report_month: z.string().optional(),
+  view: z.literal('sent_balance_sheets').optional(),
 })
 
 // WA.6: PATCH stamps pdf_exported_at on an existing snapshot. The column has
@@ -64,6 +68,7 @@ const supabase = createClient(
 /**
  * GET /api/monthly-report/snapshot?business_id=xxx[&report_month=YYYY-MM]
  * - With report_month: returns a specific snapshot
+ * - With report_month and view=sent_balance_sheets: the month's sent balance sheets only
  * - Without report_month: returns all snapshots for the business
  */
 async function getHandler(request: Request) {
@@ -107,6 +112,10 @@ async function getHandler(request: Request) {
     const _hasAccess = await verifyBusinessAccess(user.id, businessId)
     if (!_hasAccess) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    if (reportMonth && searchParams.get('view') === 'sent_balance_sheets') {
+      return await sentBalanceSheets(businessId, reportMonth)
     }
 
     if (reportMonth) {
@@ -456,6 +465,44 @@ async function freezeBalanceSheets(businessId: string, reportMonth: string, shee
   }
   const updated = (data?.length ?? 0) > 0
   return NextResponse.json({ success: true, updated, ...(updated ? { frozen_at: now } : { reason: 'refinalised' }) })
+}
+
+/**
+ * { view: 'sent_balance_sheets' } — the balance sheets the month's Approve &
+ * Send printed, which the approval keeps in cfo_report_status.snapshot_data
+ * (lib/monthly-report/balance-sheet-freeze.ts has the why), and the P&L figures
+ * of the report they were sent beside, so the export can tell whether the
+ * report on screen is still that report.
+ *
+ * Read here, service-role behind this route's access checks, rather than from
+ * the browser: cfo_report_status's RLS admits the assigned coach and super
+ * admins only, and every viewer's export of a sent month must print what was
+ * sent. The copy goes back as stored — the export validates it — and the
+ * report goes back as its figures only, not the whole sent report.
+ * `sent_balance_sheets: null` when the month was never sent, or sent before
+ * copies were kept.
+ */
+async function sentBalanceSheets(businessId: string, reportMonth: string) {
+  if (!/^\d{4}-\d{2}$/.test(reportMonth)) {
+    return NextResponse.json({ error: 'report_month must be YYYY-MM' }, { status: 400 })
+  }
+  const { data, error } = await supabase
+    .from('cfo_report_status')
+    .select(`frozen:snapshot_data->${FROZEN_BALANCE_SHEETS_KEY}, report:snapshot_data->report`)
+    .eq('business_id', businessId)
+    .eq('period_month', `${reportMonth}-01`)
+    .maybeSingle()
+  if (error) {
+    Sentry.captureException(error, {
+      tags: { route: 'monthly-report/snapshot', invariant: 'balance-sheet-freeze', stage: 'export_read_sent' },
+      extra: { businessId, reportMonth },
+    } as any)
+    return NextResponse.json({ error: 'Failed to read the sent balance sheet' }, { status: 500 })
+  }
+  const frozen = (data as { frozen?: unknown } | null)?.frozen
+  return NextResponse.json({
+    sent_balance_sheets: frozen ? { frozen, report: pnlFigures((data as { report?: unknown }).report) } : null,
+  })
 }
 
 export const GET = withQuerySchema('monthly-report/snapshot', SnapshotGetQuerySchema, getHandler)

@@ -19,6 +19,8 @@ import type {
 } from '../types'
 import type { CashflowForecastData } from '@/app/finances/forecast/types'
 import type { PDFLayout } from '../types/pdf-layout'
+import type { BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
+import { printedBalanceSheets } from '@/lib/monthly-report/balance-sheet-freeze'
 
 export interface PdfInput {
   report: GeneratedReport
@@ -30,6 +32,7 @@ export interface PdfInput {
     cashflowForecast?: CashflowForecastData
     sections?: ReportSections
     pdfLayout?: PDFLayout | null
+    balanceSheets?: BalanceSheetPdfSources
   }
 }
 
@@ -138,6 +141,11 @@ export async function approveAndSend(
     business_id: params.business_id,
     period_month: params.period_month,
     snapshot_data: params.snapshot_data,
+    // Package B: the balance sheets the PDF above was built from — the same
+    // pdf_input, not a second fetch — kept by the route as the month's sent
+    // copy. Absent (undefined, dropped by JSON) when the pack has no balance
+    // sheet page. A resend posts none: it prints that copy and never rewrites it.
+    balance_sheets: printedBalanceSheets(params.pdf_input.options.balanceSheets),
     pdf_base64,
     pdf_filename,
     coach_name: params.coach_name,
