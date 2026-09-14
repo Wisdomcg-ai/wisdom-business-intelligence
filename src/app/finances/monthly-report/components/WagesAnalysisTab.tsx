@@ -113,7 +113,11 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
   const empYardstick = wagesEmployeeYardstick(
     data.budget_provenance,
     data.employee_plan_available ?? true,
+    data.employee_roster,
   )
+  // A roster that gives someone no weekly salary leaves the total over part of
+  // the team; it is not printed under the team's heading.
+  const empTotalStated = empYardstick.available && !(data.employee_roster?.status === 'applied' && data.employee_roster.missing.length > 0)
   const dash = <span className="text-gray-400">—</span>
   const budgetCell = (v: number) => (yardstick.available ? (v ? fmt(v) : dash) : dash)
   const empBudgetCell = (v: number) => (empYardstick.available ? (v ? fmt(v) : dash) : dash)
@@ -236,10 +240,10 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
                           {emp.actual_total ? fmt(emp.actual_total) : '—'}
                         </td>
                         <td className="px-4 py-2 text-sm text-right text-gray-600">
-                          {empBudgetCell(emp.budget_total)}
+                          {emp.budget_missing ? dash : empBudgetCell(emp.budget_total)}
                         </td>
-                        <td className={`px-4 py-2 text-sm text-right font-medium ${empYardstick.available ? varianceColor(emp.variance) : ''}`}>
-                          {empYardstick.available && (emp.budget_total || emp.actual_total) ? fmt(emp.variance) : dash}
+                        <td className={`px-4 py-2 text-sm text-right font-medium ${empYardstick.available && !emp.budget_missing ? varianceColor(emp.variance) : ''}`}>
+                          {empYardstick.available && !emp.budget_missing && (emp.budget_total || emp.actual_total) ? fmt(emp.variance) : dash}
                         </td>
                       </tr>
                       {isExpanded && (
@@ -279,8 +283,8 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
                     <td key={d} className="px-4 py-3 text-sm text-right">{fmt(colTotals[d])}</td>
                   ))}
                   <td className="px-4 py-3 text-sm text-right">{fmt(totalActual)}</td>
-                  <td className="px-4 py-3 text-sm text-right">{empYardstick.available ? fmt(totalBudget) : '—'}</td>
-                  <td className="px-4 py-3 text-sm text-right">{empYardstick.available ? fmt(totalVariance) : '—'}</td>
+                  <td className="px-4 py-3 text-sm text-right">{empTotalStated ? fmt(totalBudget) : '—'}</td>
+                  <td className="px-4 py-3 text-sm text-right">{empTotalStated ? fmt(totalVariance) : '—'}</td>
                 </tr>
               </tbody>
             </table>
@@ -343,7 +347,9 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
                     : 'the forecast'
                 }.`
               : 'There is no budget for this month — see the note above the accounts.'}
-            {empYardstick.available && ' The per-employee column comes from the forecast’s employee plan.'}
+            {empYardstick.available && (data.employee_roster?.status === 'applied'
+              ? ' The per-employee budget comes from the Payroll Report roster.'
+              : ' The per-employee column comes from the forecast’s employee plan.')}
           </p>
         </div>
       )}

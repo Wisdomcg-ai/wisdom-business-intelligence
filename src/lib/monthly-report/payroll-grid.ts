@@ -200,18 +200,14 @@ export interface RosteredPayroll {
 }
 
 /**
- * Put the grid's employees in roster order and give each the roster's standing
- * figures.
- *
- * An employee on the roster who was not paid in the window is not printed: the
- * grid is what was paid, and a row of dashes for a leaver is noise. Anyone
- * paid but not on the roster is kept — dropping a person from a payroll page
- * because a list was out of date would under-state wages against a Total that
- * still includes them — and follows the roster in the grid's own order.
- *
- * With an empty roster the grid's order stands, unchanged.
+ * Which roster entry a paid employee is, by index — Xero's id first, then the
+ * name ignoring case and repeated spaces. One rule for every page that reads
+ * the roster, so the Payroll Report and the Wages Analysis page cannot place
+ * the same person differently.
  */
-export function applyPayrollRoster(grid: PayrollGrid, roster: readonly RosterEntry[]): RosteredPayroll {
+export function rosterMatcher(
+  roster: readonly RosterEntry[],
+): (employee: { employee_id: string | null; name: string }) => number | undefined {
   const key = (name: string) => cleanEmployeeName(name).toLowerCase()
   const byId = new Map<string, number>()
   const byName = new Map<string, number[]>()
@@ -225,12 +221,29 @@ export function applyPayrollRoster(grid: PayrollGrid, roster: readonly RosterEnt
   // window under the same name, is somebody the roster has not placed — matched
   // by name it would take the entry's Weekly Salary (Budget), count it twice in
   // the column total, and never be listed as not on the roster.
-  const nameMatch = (e: PayrollGridEmployee): number | undefined =>
+  const nameMatch = (e: { employee_id: string | null; name: string }): number | undefined =>
     (byName.get(key(e.name)) ?? []).find((i) => !roster[i].employee_id || !e.employee_id)
 
+  return (e) => (e.employee_id ? byId.get(e.employee_id) : undefined) ?? nameMatch(e)
+}
+
+/**
+ * Put the grid's employees in roster order and give each the roster's standing
+ * figures.
+ *
+ * An employee on the roster who was not paid in the window is not printed: the
+ * grid is what was paid, and a row of dashes for a leaver is noise. Anyone
+ * paid but not on the roster is kept — dropping a person from a payroll page
+ * because a list was out of date would under-state wages against a Total that
+ * still includes them — and follows the roster in the grid's own order.
+ *
+ * With an empty roster the grid's order stands, unchanged.
+ */
+export function applyPayrollRoster(grid: PayrollGrid, roster: readonly RosterEntry[]): RosteredPayroll {
+  const matchRoster = rosterMatcher(roster)
+
   const placed = grid.employees.map((e, gridIndex) => {
-    const rosterIndex =
-      (e.employee_id ? byId.get(e.employee_id) : undefined) ?? nameMatch(e)
+    const rosterIndex = matchRoster(e)
     const entry = rosterIndex === undefined ? undefined : roster[rosterIndex]
     return {
       gridIndex,

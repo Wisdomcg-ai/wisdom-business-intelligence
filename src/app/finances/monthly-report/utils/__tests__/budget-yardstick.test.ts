@@ -32,6 +32,19 @@ describe('the pack words (Matt, 14 Sep 2026)', () => {
     expect(emp).toEqual({ columnLabel: 'Forecast', note: null, available: true, absentNote: null })
     expect(packWagesEmployeeYardstick({ source: 'forecast' }, false).absentNote).toContain('No per-employee plan')
   })
+
+  it('keeps the roster source line — "Budget" alone would read as a split of the approved budget — and has no total row to mention', () => {
+    expect(packWagesEmployeeYardstick({ source: 'budget_version' }, true, { status: 'applied', missing: [] })).toEqual({
+      columnLabel: 'Budget',
+      note: 'Per-employee budgets are the Payroll Report roster’s weekly salaries × this month’s pay runs.',
+      available: true,
+      absentNote: null,
+    })
+    expect(packWagesEmployeeYardstick({ source: 'budget_version' }, true, { status: 'applied', missing: ['Thomas White'] }).note).toBe(
+      'Per-employee budgets are the Payroll Report roster’s weekly salaries × this month’s pay runs. ' +
+        'No weekly salary on the roster for Thomas White, so their Budget is shown as “—”.',
+    )
+  })
 })
 
 describe('statementYardstick', () => {

@@ -34,7 +34,11 @@ const rosterEntrySchema = z.strictObject({
   employee_id: z.string().trim().min(1).optional(),
   /** Ordinary hours a week. Null or absent prints a dash. */
   standard_units: z.number().min(0).max(168).nullable().optional(),
-  /** The standing weekly salary budget, in dollars. Null or absent prints a dash. */
+  /**
+   * The standing weekly salary budget, in dollars. Null or absent prints a dash.
+   * For a client with no forecast employee plan it is also the Wages Analysis
+   * page's per-employee Budget, × the month's pay runs (wages-roster-budget).
+   */
   weekly_salary: z.number().min(0).nullable().optional(),
 })
 
