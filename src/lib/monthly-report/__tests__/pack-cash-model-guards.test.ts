@@ -161,6 +161,129 @@ describe('a configured account that is the wrong kind for its role', () => {
   })
 })
 
+/**
+ * The third review (wave 6): the payroll codes and the opening ATO accounts
+ * were outside the role check. Each case below built a ready forecast whose
+ * July and August still tied.
+ */
+describe('the payroll codes and the opening ATO accounts are checked too', () => {
+  const refused = (model: ReturnType<typeof build>, ...parts: string[]) => {
+    expect(model.status).toBe('refused')
+    if (model.status === 'refused') for (const p of parts) expect(model.reason).toContain(p)
+  }
+  /**
+   * The chart as prod carries it: every account with xero_class (the fixture's
+   * UR_ACCOUNTS has none), balance-sheet accounts by their mirror kind, P&L
+   * accounts REVENUE or EXPENSE by the P&L mirror's type.
+   */
+  const plType = new Map(UR_PL_ROWS.filter((r) => r.account_code).map((r) => [r.account_code!, r.account_type]))
+  const prodChart = (over: Record<string, Partial<(typeof UR_ACCOUNTS)[number]>> = {}) => [
+    ...UR_ACCOUNTS.map((a) => {
+      const t = a.account_code ? plType.get(a.account_code) : undefined
+      return { ...a, xero_class: t === 'revenue' || t === 'other_income' || a.account_code?.startsWith('4') ? 'REVENUE' : 'EXPENSE', ...(a.account_code ? over[a.account_code] : {}) }
+    }),
+    ...UR_BS_ROWS.filter((r) => r.account_id).map((r) => ({
+      xero_account_id: r.account_id!, account_code: r.account_code ?? null, account_name: r.account_name, tax_type: 'BASEXCLUDED', xero_class: r.account_type.toUpperCase(),
+      ...(r.account_code ? over[r.account_code] : {}),
+    })),
+  ]
+
+  it('the baseline is still ready on a prod-shaped chart', () => {
+    expect(build(calxa(), { accounts: prodChart() }).status).toBe('ready')
+  })
+
+  it('a revenue account, a missing code or a balance-sheet code in super.expense_codes is refused (Sep bank 138,476 against 133,602)', () => {
+    const base = calxa()
+    for (const accounts of [UR_ACCOUNTS, prodChart()]) {
+      refused(build(calxa({ super: { ...base.super, expense_codes: ['41000'] } }), { accounts }), 'super.expense_codes', '41000', 'revenue')
+      refused(build(calxa({ super: { ...base.super, expense_codes: ['99999'] } }), { accounts }), 'super.expense_codes', '99999')
+      refused(build(calxa({ super: { ...base.super, expense_codes: ['21490'] } }), { accounts }), 'super.expense_codes', 'Superannuation Payable', 'balance-sheet')
+    }
+  })
+
+  it('a revenue account or a missing code in wages_codes is refused (Sep bank 164,529 against 133,602)', () => {
+    for (const accounts of [UR_ACCOUNTS, prodChart()]) {
+      refused(build(calxa({ wages_codes: ['41000'] }), { accounts }), 'wages_codes', '41000', 'revenue')
+      refused(build(calxa({ wages_codes: ['99999'] }), { accounts }), 'wages_codes', '99999')
+    }
+  })
+
+  it('Xero\'s AU payroll types, which the catalog classes OTHER, are read by type: a wages expense and a PAYG liability are what they say', () => {
+    const accounts = prodChart({
+      '62170': { xero_class: 'OTHER', xero_type: 'WAGESEXPENSE' },
+      '62160': { xero_class: 'OTHER', xero_type: 'SUPERANNUATIONEXPENSE' },
+      '21490': { xero_class: 'OTHER', xero_type: 'SUPERANNUATIONLIABILITY' },
+    })
+    // ATO Creditors (BAS) as a PAYGLIABILITY the mirror filed as an asset: still a liability.
+    const atoCode = UR_BS_ROWS.find((r) => r.account_id === UR_ACCOUNT_IDS.atoCreditorsBas)!.account_code!
+    const withPayg = accounts.map((a) => (a.account_code === atoCode ? { ...a, xero_class: 'OTHER', xero_type: 'PAYGLIABILITY' } : a))
+    const check = checkCashModelAccounts(
+      { bsRows: UR_BS_ROWS.map((r) => (r.account_id === UR_ACCOUNT_IDS.atoCreditorsBas ? { ...r, account_type: 'asset' } : r)), plRows: UR_PL_ROWS, accounts: withPayg, bankAccountIds: UR_BANK_IDS, creditCardAccountIds: UR_CREDIT_CARD_IDS },
+      calxa(), { fyOpening: '2026-06-30', reportEnd: '2026-08-31' },
+    )
+    expect('reason' in check ? check.reason : '').toBe('')
+    expect(build(calxa(), { accounts }).status).toBe('ready')
+    // OTHER with an unknown type falls back to the P&L mirror: Canvas Sales is revenue.
+    refused(build(calxa({ wages_codes: ['41000'] }), { accounts: prodChart({ '41000': { xero_class: 'OTHER' } }) }), 'wages_codes', 'revenue')
+  })
+
+  it('wages and super codes swapped is refused: the configured super cannot be several times the configured wages when the payslips say 12%', () => {
+    // Sep bank 125,076.67 against 133,601.98, ready and silent before.
+    refused(build(calxa({ wages_codes: ['62160'], super: { ...calxa().super, expense_codes: ['62170'] } })), 'wages_codes', 'super.expense_codes', 'swapped')
+  })
+
+  it('an ATO asset in debit is received in the first forecast month, not paid out', () => {
+    const tenant = UR_BS_ROWS[0].tenant_id
+    const dates = { '2026-06-30': 5000, '2026-07-31': 5000, '2026-08-31': 5000 }
+    const bsRows = [
+      ...UR_BS_ROWS,
+      { account_id: 'itr-receivable', account_code: '11900', account_name: 'Income Tax Refund Receivable', account_type: 'asset', section: 'Current Assets', tenant_id: tenant, balances_by_date: dates },
+      { account_id: 'itr-equity', account_code: '31900', account_name: 'Owner Funds Introduced', account_type: 'equity', section: 'Equity', tenant_id: tenant, balances_by_date: dates },
+    ]
+    const baseline = at(build(calxa()), '2026-09').bank_at_end
+    const sep = at(build(calxa({ opening_ato_accounts: [{ account_id: 'itr-receivable', pay: 'first_forecast_month' }] }), { bsRows }), '2026-09')
+    expect(v(sep.liability_lines, 'Income Tax Refund Receivable')).toBe(5000)
+    expect(sep.bank_at_end).toBeCloseTo(baseline + 5000, 2)
+    // A liability in debit is still an inflow (Company Tax Payable/Refund -3,076.24).
+    const tax = at(build(calxa({ opening_ato_accounts: [{ account_id: 'ba8d18f8-f65b-4111-80ee-dc0945290d5c', pay: 'first_forecast_month' }] })), '2026-09')
+    expect(v(tax.liability_lines, 'Company Tax Payable/Refund')).toBe(3076.24)
+  })
+
+  it('a role account the mirror filed under the other kind (its balance turned over) builds the same forecast', () => {
+    // The role check passes Xero's class; the mirror stores the balance
+    // relative to the kind it filed. Trade Debtors filed as a liability and
+    // ATO Creditors (BAS) as an asset, each balance negated, is the same ledger.
+    const flipped = new Set<string>([UR_ACCOUNT_IDS.tradeDebtors, UR_ACCOUNT_IDS.atoCreditorsBas])
+    const bsRows = UR_BS_ROWS.map((r) => (r.account_id && flipped.has(r.account_id)
+      ? { ...r, account_type: r.account_type === 'asset' ? 'liability' : 'asset', balances_by_date: Object.fromEntries(Object.entries(r.balances_by_date).map(([d, x]) => [d, -Number(x)])) }
+      : r))
+    const accounts = prodChart()
+    const baseline = build(calxa({ dso_days: 'derived' }), { accounts })
+    const same = build(calxa({ dso_days: 'derived' }), { accounts, bsRows })
+    if (baseline.status !== 'ready' || same.status !== 'ready') throw new Error('not ready')
+    expect(same.basis).toBe(baseline.basis)
+    for (const m of ['2026-09', '2026-10', '2027-06']) expect(at(same, m).bank_at_end).toBeCloseTo(at(baseline, m).bank_at_end, 2)
+  })
+
+  it('an opening ATO account that is also debtors or creditors is not a config that parses, and the model refuses it too', () => {
+    for (const id of [UR_ACCOUNT_IDS.tradeDebtors, UR_ACCOUNT_IDS.tradeCreditors]) {
+      const cfg = calxa({ opening_ato_accounts: [{ account_id: id, pay: 'first_forecast_month' }] })
+      const parsed = parseCashModelConfig(cfg)
+      expect(parsed.status).toBe('invalid')
+      if (parsed.status === 'invalid') expect(parsed.reason).toContain('opening_ato_accounts')
+      // Built past the parser: Sep bank -144,826 / -246,603 before.
+      refused(build(cfg), 'opening_ato_accounts')
+    }
+  })
+
+  it('one account listed twice in opening_ato_accounts is not a config that parses, and the model refuses it', () => {
+    const id = UR_ACCOUNT_IDS.paygPayrollTaxWithheld
+    const cfg = calxa({ opening_ato_accounts: [{ account_id: id, pay: 'first_forecast_month' }, { account_id: id.toUpperCase(), pay: 'first_forecast_month' }] })
+    expect(parseCashModelConfig(cfg).status).toBe('invalid')
+    refused(build(cfg), 'opening_ato_accounts', 'more than once')
+  })
+})
+
 describe('an actual month that does not add up is a refusal and a preflight fail, never a plug', () => {
   it('PAYG accounts with no wages codes is not a config that parses', () => {
     const { wages_codes: _w, ...noWages } = urbanRoadCashModel()

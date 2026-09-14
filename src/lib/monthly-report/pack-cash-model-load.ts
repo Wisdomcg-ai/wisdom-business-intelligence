@@ -94,7 +94,7 @@ export async function loadPackCashModel(
 
   const { data: accounts, error: accErr } = await supabase
     .from('xero_accounts')
-    .select('xero_account_id, account_code, account_name, tax_type, bank_account_type, xero_class')
+    .select('xero_account_id, account_code, account_name, tax_type, bank_account_type, xero_class, xero_type')
     .eq('tenant_id', tenant)
   if (accErr) throw accErr
 
@@ -113,7 +113,7 @@ export async function loadPackCashModel(
     ? opts.bankAccountIds
     : await loadBankAccountIds(supabase, businessId))
 
-  const accountRows = (accounts ?? []) as Array<{ xero_account_id: string; account_code: string | null; account_name: string; tax_type: string | null; bank_account_type: string | null; xero_class?: string | null }>
+  const accountRows = (accounts ?? []) as Array<{ xero_account_id: string; account_code: string | null; account_name: string; tax_type: string | null; bank_account_type: string | null; xero_class?: string | null; xero_type?: string | null }>
   return {
     status: 'ready',
     config: parsed.config,
@@ -135,7 +135,7 @@ export async function loadPackCashModel(
         account_type: r.account_type,
         monthly_values: r.monthly_values ?? {},
       })),
-      accounts: accountRows.map(({ xero_account_id, account_code, account_name, tax_type, xero_class }) => ({ xero_account_id, account_code, account_name, tax_type, xero_class: xero_class ?? null })),
+      accounts: accountRows.map(({ xero_account_id, account_code, account_name, tax_type, xero_class, xero_type }) => ({ xero_account_id, account_code, account_name, tax_type, xero_class: xero_class ?? null, xero_type: xero_type ?? null })),
       payRuns: ((payRuns ?? []) as any[])
         .filter((r) => String(r.status ?? '').toUpperCase() === 'POSTED')
         .map((r) => ({ payment_date: String(r.payment_date), wages: r.wages, tax: r.tax, super_amount: r.super_amount })),

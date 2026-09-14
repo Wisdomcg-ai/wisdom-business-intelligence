@@ -117,6 +117,8 @@ const configSchema = z.object({
   }
   // One account in two roles has its movement counted twice in an actual
   // month (as debtors AND as GST, say) and the rows stop adding to the bank.
+  // opening_ato_accounts is a role too: Trade Debtors listed there as well
+  // paid its whole $278,428 out in September, ready and silent (wave 6).
   const seen = new Map<string, string>()
   const roles: Array<[string, readonly string[]]> = [
     ['debtors_account_ids', cfg.debtors_account_ids],
@@ -124,6 +126,7 @@ const configSchema = z.object({
     ['gst.account_ids', cfg.gst.account_ids],
     ['paygw.liability_account_ids', cfg.paygw.liability_account_ids],
     ['super.payable_account_ids', cfg.super.payable_account_ids],
+    ['opening_ato_accounts', cfg.opening_ato_accounts.map((a) => a.account_id)],
   ]
   for (const [role, ids] of roles) {
     for (const id of ids) {
@@ -134,6 +137,16 @@ const configSchema = z.object({
       }
       seen.set(key, other ?? role)
     }
+  }
+  // Within opening_ato_accounts each entry is paid on its own, so an account
+  // listed twice is paid twice (or both paid and 'excluded').
+  const atoSeen = new Set<string>()
+  for (const a of cfg.opening_ato_accounts) {
+    const key = a.account_id.trim().toLowerCase()
+    if (atoSeen.has(key)) {
+      ctx.addIssue({ code: 'custom', path: ['opening_ato_accounts'], message: `account ${a.account_id} is listed more than once` })
+    }
+    atoSeen.add(key)
   }
 })
 

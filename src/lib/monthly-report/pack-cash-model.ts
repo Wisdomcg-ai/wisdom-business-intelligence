@@ -47,6 +47,13 @@ export interface CashModelAccount {
   tax_type: string | null
   /** xero_accounts.xero_class — ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE; for the role check. */
   xero_class?: string | null
+  /**
+   * xero_accounts.xero_type — Xero's Account.Type. The catalog classes the
+   * AU-only payroll types (PAYGLIABILITY, SUPERANNUATIONLIABILITY,
+   * WAGESEXPENSE, SUPERANNUATIONEXPENSE) as OTHER, so the role check reads
+   * the type when the class says nothing.
+   */
+  xero_type?: string | null
 }
 
 export interface CashModelPayRun {
@@ -159,9 +166,22 @@ export function payslipsByMonth(runs: CashModelPayRun[]): Record<string, MonthPa
   return out
 }
 
-/** Σ of the named accounts' balances at `date`, as the mirror stores them. Null when none is on the sheet that day. */
-function balanceOf(rows: BsRowInput[], ids: readonly string[], date: string): number | null {
+/**
+ * Σ of the named accounts' balances at `date`, read as `as` — positive is a
+ * debit for an asset, a credit (owed by the business) for a liability. Null
+ * when none is on the sheet that day.
+ *
+ * The mirror stores a balance relative to the kind it files the row under
+ * (A − L − E = 0), and it files by the balance's section when that and Xero's
+ * class conflict, while the role check reads Xero's class. So a row filed
+ * under the other of asset and liability is turned over: an ATO asset in
+ * debit listed in opening_ato_accounts is owed TO the business, and the first
+ * cut read its +5,000 as owed BY it and paid it out (wave 6, a $10k swing in
+ * September).
+ */
+function balanceOf(rows: BsRowInput[], ids: readonly string[], date: string, as: 'asset' | 'liability'): number | null {
   const wanted = new Set(ids.map(norm))
+  const other = as === 'asset' ? 'liability' : 'asset'
   let found = false
   let total = 0
   for (const r of rows) {
@@ -169,7 +189,7 @@ function balanceOf(rows: BsRowInput[], ids: readonly string[], date: string): nu
     const v = r.balances_by_date?.[date]
     if (v === undefined || v === null) continue
     found = true
-    total += num(v)
+    total += r.account_type === other ? -num(v) : num(v)
   }
   return found ? round2(total) : null
 }
@@ -194,8 +214,8 @@ export function deriveCashTerms(inputs: Pick<CashModelInputs, 'bsRows' | 'plRows
     return { status: 'unavailable', reason: `debtor and creditor days need three synced months of P&L; ${missing.map(packMonthYear).join(', ')} ${missing.length === 1 ? 'is' : 'are'} missing` }
   }
   const end = endOfMonth(reportMonth)
-  const debtors = balanceOf(inputs.bsRows, cfg.debtors_account_ids, end)
-  const creditors = balanceOf(inputs.bsRows, cfg.creditors_account_ids, end)
+  const debtors = balanceOf(inputs.bsRows, cfg.debtors_account_ids, end, 'asset')
+  const creditors = balanceOf(inputs.bsRows, cfg.creditors_account_ids, end, 'liability')
   if (debtors === null || creditors === null) {
     return { status: 'unavailable', reason: `the debtors or creditors account is not on the balance sheet at ${fmtDate(end)}` }
   }
@@ -244,7 +264,7 @@ export function openingGst(
   const schedule = cashModelSchedule(cfg.gst.schedule)
   const dueMonth = dueMonthKey(reportMonth, schedule)
   const end = endOfMonth(reportMonth)
-  const closing = balanceOf(bsRows, cfg.gst.account_ids, end) ?? 0
+  const closing = balanceOf(bsRows, cfg.gst.account_ids, end, 'liability') ?? 0
   if (cfg.gst.opening === 'balance') return { amount: closing, dueMonth, settledEnd: null, leftOver: 0, leftOverByAccount: [] }
   let start = reportMonth
   for (let i = 0; i < 12 && dueMonthKey(priorMonth(start), schedule) === dueMonth; i++) start = priorMonth(start)
@@ -252,9 +272,9 @@ export function openingGst(
   if (!sheetExists(bsRows, settledEnd)) {
     return { reason: `the quarter-to-date GST needs the balance sheet at ${fmtDate(settledEnd)}, which is not synced` }
   }
-  const settled = balanceOf(bsRows, cfg.gst.account_ids, settledEnd) ?? 0
+  const settled = balanceOf(bsRows, cfg.gst.account_ids, settledEnd, 'liability') ?? 0
   const leftOverByAccount = cfg.gst.account_ids
-    .map((id) => ({ account_id: id, amount: balanceOf(bsRows, [id], settledEnd) ?? 0 }))
+    .map((id) => ({ account_id: id, amount: balanceOf(bsRows, [id], settledEnd, 'liability') ?? 0 }))
     .filter((a) => Math.abs(a.amount) >= 0.005)
   return { amount: round2(closing - settled), dueMonth, settledEnd, leftOver: settled, leftOverByAccount }
 }
@@ -277,6 +297,30 @@ function paymentMonthsText(name: string, from: string): string {
 /** Every month-end from `first` to `last` ('YYYY-MM-DD'), inclusive. */
 function monthEnds(firstEnd: string, lastEnd: string): string[] {
   return monthsBetween(firstEnd.slice(0, 7), lastEnd.slice(0, 7)).map(endOfMonth)
+}
+
+/**
+ * Xero's class of a charted account, lower-cased; null when the chart cannot
+ * say. The catalog (accounts-catalog classifyXeroAccount) files the AU-only
+ * payroll types as OTHER, so for those the type decides: without it a PAYG or
+ * super liability the mirror filed as an asset (a debit balance) would be
+ * refused as 'an asset', and a WAGESEXPENSE account would rest on the P&L
+ * mirror having booked something to it.
+ */
+function chartClass(a: CashModelAccount | undefined): 'asset' | 'liability' | 'equity' | 'revenue' | 'expense' | null {
+  if (!a) return null
+  const cls = norm(a.xero_class)
+  if (cls === 'asset' || cls === 'liability' || cls === 'equity' || cls === 'revenue' || cls === 'expense') return cls
+  switch ((a.xero_type ?? '').trim().toUpperCase()) {
+    case 'PAYGLIABILITY':
+    case 'SUPERANNUATIONLIABILITY':
+      return 'liability'
+    case 'WAGESEXPENSE':
+    case 'SUPERANNUATIONEXPENSE':
+      return 'expense'
+    default:
+      return null
+  }
 }
 
 /**
@@ -307,9 +351,23 @@ function monthEnds(firstEnd: string, lastEnd: string): string[] {
  *
  * The kind is Xero's own class where the chart of accounts has it: the
  * balance-sheet mirror files an account by its balance's polarity when the two
- * conflict, and a debtors account in credit is still debtors. Otherwise the
- * mirror's kind. A P&L account is one Xero classes REVENUE or EXPENSE, or one
- * the P&L mirror carries by AccountID or by the chart's code.
+ * conflict, and a debtors account in credit is still debtors. Xero's AU payroll
+ * types, which the catalog classes OTHER, are read by their type (chartClass).
+ * Otherwise the mirror's kind. A P&L account is one Xero classes REVENUE or
+ * EXPENSE, or one the P&L mirror carries by AccountID or by the chart's code.
+ *
+ * The payroll codes and the opening ATO accounts are checked the same way
+ * (the third review, wave 6 — each built a ready forecast whose actual months
+ * still tied):
+ *
+ *   wages_codes, super.expense_codes  an expense account: Canvas Sales
+ *                                     (41000) or a code that is not in the
+ *                                     chart moved September's bank by
+ *                                     +$5k (super) to +$31k (wages), the
+ *                                     Superannuation Payable code 21490 by $5k
+ *   opening_ato_accounts              no account that has another role, and
+ *                                     none listed twice: Trade Debtors there
+ *                                     too paid $278,428 out in September
  */
 export function checkCashModelAccounts(
   inputs: Pick<CashModelInputs, 'bsRows' | 'accounts'> & Partial<Pick<CashModelInputs, 'plRows' | 'bankAccountIds' | 'creditCardAccountIds'>>,
@@ -319,14 +377,20 @@ export function checkCashModelAccounts(
   const ends = monthEnds(window.fyOpening, window.reportEnd)
   const onSheet = new Set<string>()
   const sheetRow = new Map<string, BsRowInput>()
+  const sheetByCode = new Map<string, BsRowInput>()
   for (const r of inputs.bsRows) {
+    if (r.account_code && !sheetByCode.has(norm(r.account_code))) sheetByCode.set(norm(r.account_code), r)
     if (!r.account_id) continue
     if (!sheetRow.has(norm(r.account_id))) sheetRow.set(norm(r.account_id), r)
     if (ends.some((d) => r.balances_by_date?.[d] !== undefined && r.balances_by_date?.[d] !== null)) onSheet.add(norm(r.account_id))
   }
   const inChart = new Map(inputs.accounts.map((a) => [norm(a.xero_account_id), a]))
+  const chartByCode = new Map<string, CashModelAccount>()
+  for (const a of inputs.accounts) if (a.account_code && !chartByCode.has(norm(a.account_code))) chartByCode.set(norm(a.account_code), a)
   const plIds = new Set((inputs.plRows ?? []).map((r) => norm(r.account_id)).filter(Boolean))
   const plCodes = new Set((inputs.plRows ?? []).map((r) => norm(r.account_code)).filter(Boolean))
+  const plByCode = new Map<string, CashPlRow>()
+  for (const r of inputs.plRows ?? []) if (r.account_code && !plByCode.has(norm(r.account_code))) plByCode.set(norm(r.account_code), r)
   const cards = new Set((inputs.creditCardAccountIds ?? []).map(norm))
   const roles: Array<[string, readonly string[], readonly string[]]> = [
     ['debtors_account_ids', cfg.debtors_account_ids, ['asset']],
@@ -339,6 +403,19 @@ export function checkCashModelAccounts(
   const missing: string[] = []
   const wrongKind: string[] = []
   const warnings: string[] = []
+  // One account, one role — the parser's rule, again here for a caller that
+  // holds a CashModelConfig without parsing it.
+  const roleOf = new Map<string, string>()
+  for (const [role, ids] of roles) {
+    for (const id of ids) {
+      const key = norm(id)
+      const other = roleOf.get(key)
+      const name = sheetRow.get(key)?.account_name ?? inChart.get(key)?.account_name ?? id
+      if (other && other !== role) wrongKind.push(`${name} in ${role} is also in ${other} — an account can have one role`)
+      else if (other && role === 'opening_ato_accounts') wrongKind.push(`${name} is in opening_ato_accounts more than once`)
+      if (!other) roleOf.set(key, role)
+    }
+  }
   for (const [role, ids, kinds] of roles) {
     for (const id of ids) {
       const key = norm(id)
@@ -350,8 +427,8 @@ export function checkCashModelAccounts(
         continue
       }
       const name = row?.account_name ?? charted?.account_name ?? plRow!.account_name
-      const xeroClass = norm(charted?.xero_class)
-      const kind = ['asset', 'liability', 'equity'].includes(xeroClass) ? xeroClass : norm(row?.account_type)
+      const xeroClass = chartClass(charted)
+      const kind = xeroClass === 'asset' || xeroClass === 'liability' || xeroClass === 'equity' ? xeroClass : norm(row?.account_type)
       let wrong: string | null = null
       if (xeroClass === 'revenue' || xeroClass === 'expense' || plIds.has(key) || (!row && !!charted?.account_code && plCodes.has(norm(charted.account_code)))) {
         wrong = 'a profit and loss account, not a balance-sheet account'
@@ -373,13 +450,68 @@ export function checkCashModelAccounts(
       }
     }
   }
+  // The payroll codes: an expense account, by code. A code that is also on
+  // the balance sheet is a balance-sheet account whatever the chart says.
+  const takesExpense = 'and this setting takes an expense account'
+  for (const [role, codes] of [['wages_codes', cfg.wages_codes], ['super.expense_codes', cfg.super.expense_codes]] as const) {
+    for (const code of codes) {
+      const key = norm(code)
+      const sheet = sheetByCode.get(key)
+      const charted = chartByCode.get(key)
+      const pl = plByCode.get(key)
+      if (!sheet && !charted && !pl) {
+        missing.push(`${role} ${code}`)
+        continue
+      }
+      const name = `${sheet?.account_name ?? pl?.account_name ?? charted!.account_name} (${code})`
+      const cls = chartClass(charted)
+      let wrong: string | null = null
+      if (sheet || cls === 'asset' || cls === 'liability' || cls === 'equity') wrong = `a balance-sheet account, ${takesExpense}`
+      else if (cls === 'revenue') wrong = `a revenue account, ${takesExpense}`
+      else if (cls !== 'expense') {
+        // No class the chart can give: the P&L mirror's type decides.
+        if (!pl) wrong = `an account neither the chart of accounts nor the P&L says is an expense, ${takesExpense}`
+        else if (!['cogs', 'opex', 'other_expense'].includes(pl.account_type)) wrong = `a revenue account, ${takesExpense}`
+      }
+      if (wrong) wrongKind.push(`${name} in ${role} is ${wrong}`)
+    }
+  }
   if (missing.length > 0) {
-    return { reason: `the cash model names ${missing.length === 1 ? 'an account' : 'accounts'} not on this business's balance sheet or chart of accounts (${missing.join('; ')}) — check the ids in the cash model settings` }
+    return { reason: `the cash model names ${missing.length === 1 ? 'an account' : 'accounts'} not on this business's balance sheet, chart of accounts or P&L (${missing.join('; ')}) — check the ids and codes in the cash model settings` }
   }
   if (wrongKind.length > 0) {
     return { reason: `the cash model settings put ${wrongKind.length === 1 ? 'an account' : 'accounts'} in the wrong role (${wrongKind.join('; ')}) — check the ids in the cash model settings` }
   }
   return { warnings }
+}
+
+/**
+ * wages_codes and super.expense_codes the wrong way round. Both are expense
+ * accounts, so the role check passes them, and the model built a ready
+ * forecast $8.5k low at September (Urban Road, wave 6: wages ['62160'],
+ * super ['62170']). Super is a fraction of wages — the pay runs say 12% — so
+ * super codes that booked MORE than the wages codes over the actual months,
+ * while the pay runs paid less super than wages, is the swap, not a ledger.
+ * Structural, not a tolerance: no ratio band is chosen here.
+ */
+function payrollCodesSwapped(plRows: CashPlRow[], cfg: CashModelConfig, months: string[], payslips: Record<string, MonthPayslips>): string | null {
+  if (cfg.wages_codes.length === 0 || cfg.super.expense_codes.length === 0) return null
+  const total = (codes: readonly string[]) => {
+    const wanted = new Set(codes.map(norm))
+    let s = 0
+    for (const r of plRows) {
+      if (!r.account_code || !wanted.has(norm(r.account_code))) continue
+      for (const m of months) s += num(r.monthly_values?.[m])
+    }
+    return round2(s)
+  }
+  const wages = total(cfg.wages_codes)
+  const superTotal = total(cfg.super.expense_codes)
+  const paidWages = months.reduce((s, m) => s + (payslips[m]?.wages ?? 0), 0)
+  const paidSuper = months.reduce((s, m) => s + (payslips[m]?.super_amount ?? 0), 0)
+  if (paidWages <= 0 || paidSuper >= paidWages || superTotal <= 0 || superTotal <= wages) return null
+  const range = months.length === 1 ? packMonthYear(months[0]) : `${packMonthYear(months[0])} to ${packMonthYear(months[months.length - 1])}`
+  return `wages_codes and super.expense_codes look swapped: ${range} booked ${fmtDollars(superTotal)} to the super codes (${cfg.super.expense_codes.join(', ')}) and ${fmtDollars(wages)} to the wages codes (${cfg.wages_codes.join(', ')}), while the pay runs paid ${fmtDollars(paidWages)} of wages and ${fmtDollars(paidSuper)} of super — check the codes in the cash model settings`
 }
 
 /**
@@ -429,6 +561,8 @@ export function buildPackCashModel(args: {
   const accountCheck = checkCashModelAccounts(inputs, cfg, { fyOpening, reportEnd: endOfMonth(reportMonth) })
   if ('reason' in accountCheck) return { status: 'refused', reason: accountCheck.reason }
   warnings.push(...accountCheck.warnings)
+  const swapped = payrollCodesSwapped(inputs.plRows, cfg, actualMonths, payslips)
+  if (swapped) return { status: 'refused', reason: swapped }
 
   // ── Actual months ──
   const actual: CashflowForecastMonth[] = []
@@ -547,8 +681,8 @@ export function buildPackCashModel(args: {
       return first
     }
     const end = endOfMonth(reportMonth)
-    const debtors = balanceOf(inputs.bsRows, cfg.debtors_account_ids, end) ?? 0
-    const creditors = balanceOf(inputs.bsRows, cfg.creditors_account_ids, end) ?? 0
+    const debtors = balanceOf(inputs.bsRows, cfg.debtors_account_ids, end, 'asset') ?? 0
+    const creditors = balanceOf(inputs.bsRows, cfg.creditors_account_ids, end, 'liability') ?? 0
 
     // PAYG rate: the latest actual month's payslips, or the configured rate.
     let paygRate = 0
@@ -588,14 +722,17 @@ export function buildPackCashModel(args: {
     const openingLiabilities = [
       { label: nameOf(cfg.gst.account_ids, 'GST'), kind: 'gst' as const, amount: gst.amount, dueMonth: gst.dueMonth },
       ...(cfg.paygw.liability_account_ids.length > 0
-        ? [{ label: nameOf(cfg.paygw.liability_account_ids, 'PAYG Withholding'), kind: 'paygw' as const, amount: balanceOf(inputs.bsRows, cfg.paygw.liability_account_ids, end) ?? 0, dueMonth: dueMonthKey(reportMonth, paygSchedule) }]
+        ? [{ label: nameOf(cfg.paygw.liability_account_ids, 'PAYG Withholding'), kind: 'paygw' as const, amount: balanceOf(inputs.bsRows, cfg.paygw.liability_account_ids, end, 'liability') ?? 0, dueMonth: dueMonthKey(reportMonth, paygSchedule) }]
         : []),
       ...(cfg.super.payable_account_ids.length > 0
-        ? [{ label: nameOf(cfg.super.payable_account_ids, 'Superannuation Payable'), kind: 'super' as const, amount: balanceOf(inputs.bsRows, cfg.super.payable_account_ids, end) ?? 0, dueMonth: dueMonthKey(reportMonth, superSchedule) }]
+        ? [{ label: nameOf(cfg.super.payable_account_ids, 'Superannuation Payable'), kind: 'super' as const, amount: balanceOf(inputs.bsRows, cfg.super.payable_account_ids, end, 'liability') ?? 0, dueMonth: dueMonthKey(reportMonth, superSchedule) }]
         : []),
+      // The engine pays an 'other' amount out, so each is read as owed BY
+      // the business: an ATO asset in debit (an income tax refund, an ICA in
+      // debit) comes through negative, and is received.
       ...cfg.opening_ato_accounts
         .filter((a) => a.pay === 'first_forecast_month' && !gstAndPayroll.has(norm(a.account_id)))
-        .map((a) => ({ label: nameOf([a.account_id], a.account_id), kind: 'other' as const, amount: balanceOf(inputs.bsRows, [a.account_id], end) ?? 0, dueMonth: firstForecast })),
+        .map((a) => ({ label: nameOf([a.account_id], a.account_id), kind: 'other' as const, amount: balanceOf(inputs.bsRows, [a.account_id], end, 'liability') ?? 0, dueMonth: firstForecast })),
     ]
 
     const assumptions: CashflowAssumptions = {

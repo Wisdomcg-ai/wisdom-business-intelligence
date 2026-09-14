@@ -35,7 +35,7 @@ const tables = (over: Record<string, unknown> = {}) => ({
     ...Object.entries(UR_TAX_TYPES).map(([code, tax_type]) => ({ tenant_id: UR_TENANT, business_id: BUSINESS, xero_account_id: `id-${code}`, account_code: code, account_name: code, tax_type, bank_account_type: null })),
     { tenant_id: UR_TENANT, business_id: BUSINESS, xero_account_id: 'x', account_code: null, account_name: 'Foreign Currency Gains and Losses', tax_type: 'BASEXCLUDED', bank_account_type: null },
     // Xero's own class, for the cash model's role check (Trade Debtors is an ASSET).
-    { tenant_id: UR_TENANT, business_id: BUSINESS, xero_account_id: UR_ACCOUNT_IDS.tradeDebtors, account_code: '11200', account_name: 'Trade Debtors', tax_type: 'BASEXCLUDED', bank_account_type: null, xero_class: 'ASSET' },
+    { tenant_id: UR_TENANT, business_id: BUSINESS, xero_account_id: UR_ACCOUNT_IDS.tradeDebtors, account_code: '11200', account_name: 'Trade Debtors', tax_type: 'BASEXCLUDED', bank_account_type: null, xero_class: 'ASSET', xero_type: 'CURRENT' },
     // Same code in another org, different tax type: must never be pooled in.
     { tenant_id: 'other-org', business_id: BUSINESS, xero_account_id: 'y', account_code: '41000', account_name: 'Canvas Sales', tax_type: 'EXEMPTOUTPUT', bank_account_type: null },
   ],
@@ -101,6 +101,7 @@ describe('loadPackCashModel', () => {
     expect(load.inputs.payRuns.some((r) => Number(r.wages) === 99999)).toBe(false)
     expect(load.inputs.bankAccountIds).toEqual(UR_BANK_IDS)
     expect(load.inputs.accounts.find((a) => a.xero_account_id === UR_ACCOUNT_IDS.tradeDebtors)?.xero_class).toBe('ASSET')
+    expect(load.inputs.accounts.find((a) => a.xero_account_id === UR_ACCOUNT_IDS.tradeDebtors)?.xero_type).toBe('CURRENT')
     const model = buildPackCashModel({ fullYear: urbanRoadFullYear(), reportMonth: '2026-08', config: load.config, inputs: load.inputs })
     if (model.status !== 'ready') throw new Error(model.reason)
     expect(model.cashflow.months.slice(0, 2).map((m) => m.net_movement)).toEqual([31446.33, -31708.01])
