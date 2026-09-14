@@ -2663,14 +2663,14 @@ export class MonthlyReportPDFService {
     this.yPosition = y
   }
 
-  /** A cash-model-v2 business with no cashflow: the page, its title and why. */
   /**
    * Once per pack. A layout that places both the chart and the table reaches
-   * this from each placement, and the first cut printed the same reason page
-   * twice.
+   * addCashflowReasonPage from each placement, and the first cut printed the
+   * same reason page twice.
    */
   private cashflowReasonPrinted = false
 
+  /** A cash-model-v2 business with no cashflow: the page, its title and why. */
   private addCashflowReasonPage(): void {
     const reason = (this.options.cashflowReason ?? '').trim()
     if (!reason || this.cashflowReasonPrinted) return
@@ -4082,15 +4082,15 @@ export class MonthlyReportPDFService {
     return box.y >= top ? box : { ...box, y: top, h: box.h - (top - box.y) }
   }
 
-  /**
-   * Dispatch rendering for a widget type within a bounding box.
-   * Falls back to a placeholder if the widget can't be rendered.
-   */
   /** Whether the layout in force places a widget of this type anywhere. */
   private layoutPlaces(type: WidgetType): boolean {
     return (this.activeLayout?.pages ?? []).some((p) => Array.isArray(p.widgets) && p.widgets.some((w) => w.type === type))
   }
 
+  /**
+   * Dispatch rendering for a widget type within a bounding box.
+   * Falls back to a placeholder if the widget can't be rendered.
+   */
   private renderWidget(widget: import('../types/pdf-layout').LayoutWidget, box: WidgetBoundingBox): void {
     const type = widget.type
     const methodName = WIDGET_METHOD_MAP[type]

@@ -89,6 +89,18 @@ const norm = (s: string | null | undefined) => (s ?? '').trim().toLowerCase()
 export const SYNC_GAP_LABEL = 'Difference between P&L and balance sheet syncs'
 export const RESIDUAL_LABEL = 'Movements under 50c and rounding'
 export const UNEXPLAINED_LABEL = 'Unexplained difference'
+/**
+ * The size at which a month's residual stops being rounding and becomes an
+ * Unexplained difference — one threshold for the row's label here, the
+ * model's refusal (pack-cash-model) and the preflight's fail (preflight check
+ * cash_model_ties). The first cut labelled at $1, refused past $2 and failed
+ * the preflight at $1, so a $1-$2 gap printed in the client pack under a
+ * preflight fail that never blocks export. Kept at a dollar, not the balance
+ * sheet's $0.05 materiality: under a dollar is the sub-50c balances money
+ * flow does not list and the cents the P&L and the balance sheet round
+ * differently, which the residual row names as rounding.
+ */
+export const UNEXPLAINED_MATERIALITY = 1
 
 /** An item's movement signed as cash: a source positive, a use negative. */
 function cashOf(item: FlowItem, sources: Set<FlowItem>): number {
@@ -286,7 +298,7 @@ export function deriveActualCashMonth(args: {
     // cents the P&L and the balance sheet round differently, and the
     // rounding of these rows. More is a balance sheet that does not balance
     // by up to money flow's $1 tolerance at each end — said, not absorbed.
-    const small = Math.abs(residual) < 1 || Math.abs(residual - flow.unlisted_movement) < 1
+    const small = Math.abs(residual) < UNEXPLAINED_MATERIALITY || Math.abs(residual - flow.unlisted_movement) < UNEXPLAINED_MATERIALITY
     unreconciled_lines.push({ label: small ? RESIDUAL_LABEL : UNEXPLAINED_LABEL, value: residual })
   }
   const unreconciled_movement = sum(unreconciled_lines)

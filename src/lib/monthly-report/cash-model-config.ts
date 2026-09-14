@@ -105,6 +105,16 @@ const configSchema = z.object({
   if (cfg.super.payable_account_ids.length > 0 && cfg.super.expense_codes.length === 0) {
     ctx.addIssue({ code: 'custom', path: ['super', 'expense_codes'], message: 'super payable accounts are set, so expense_codes must name the super expense accounts' })
   }
+  // One expense code as wages AND super is paid twice in an actual month —
+  // net of PAYG through the wages row and again through Superannuation
+  // Payable — and the model refused it blaming "$5,042 unexplained" (Urban
+  // Road, July 2026, wages_codes ['62160','62170']) instead of the overlap.
+  const superCodes = new Set(cfg.super.expense_codes.map((c) => c.trim().toLowerCase()))
+  for (const code of cfg.wages_codes) {
+    if (superCodes.has(code.trim().toLowerCase())) {
+      ctx.addIssue({ code: 'custom', path: ['wages_codes'], message: `code ${code} is also in super.expense_codes — an expense account is wages or super, not both` })
+    }
+  }
   // One account in two roles has its movement counted twice in an actual
   // month (as debtors AND as GST, say) and the rows stop adding to the bank.
   const seen = new Map<string, string>()

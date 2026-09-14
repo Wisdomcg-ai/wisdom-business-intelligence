@@ -33,8 +33,8 @@ import type { FullYearReport } from '@/app/finances/monthly-report/types'
 import { buildTotals, generateCashflowForecast, getDefaultCashflowAssumptions } from '@/lib/cashflow/engine'
 import { dueMonthKey } from '@/lib/cashflow/schedules'
 import { cashModelSchedule, gstRateForTaxType, type CashModelConfig } from './cash-model-config'
-import { deriveMoneyFlow, endOfMonth, priorMonth, summariseMonthPl, type BsRowInput } from './money-flow'
-import { openingBalanceDate } from './opening-bank'
+import { deriveMoneyFlow, endOfMonth, isEarningsRow, priorMonth, summariseMonthPl, type BsRowInput } from './money-flow'
+import { isBankRow, openingBalanceDate } from './opening-bank'
 import { buildPackCashflowLines } from './pack-cashflow-lines'
 import { deriveActualCashMonth, UNEXPLAINED_LABEL, type ActualCashReconciliation, type CashLineLabel, type CashPlRow, type MonthPayslips } from './pack-cash-actuals'
 import { packExpenseGroupOrder } from './pack-cashflow'
@@ -45,6 +45,8 @@ export interface CashModelAccount {
   account_code: string | null
   account_name: string
   tax_type: string | null
+  /** xero_accounts.xero_class — ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE; for the role check. */
+  xero_class?: string | null
 }
 
 export interface CashModelPayRun {
@@ -285,45 +287,97 @@ function monthEnds(firstEnd: string, lastEnd: string): string[] {
  * against 459,361 — while July and August still tied (the real Trade Debtors
  * printed as an ordinary asset row), so nothing looked wrong.
  *
+ *   neither on the balance sheet nor in the chart       → refused, named
+ *   the wrong kind for its role                         → refused, named
  *   on the balance sheet at a month-end in the window  → used
- *   in the chart of accounts, never on the sheet        → $0, said in a warning
- *   neither                                             → refused, named
+ *   a charted balance-sheet account, never on the sheet → $0, said in a warning
+ *
+ * The wrong kind is a real id in the wrong field, which the existence check
+ * alone let through with a plausible, wrong forecast (Urban Road, August
+ * 2026, the second review): Canvas Sales as debtors opened September on $0
+ * of debtors, the cheque account as debtors or the two trade accounts swapped
+ * moved September's bank by $25-30k, AUD PayPal as creditors by $16k — and
+ * the actual months tied in every case, so the page looked right.
+ *
+ *   debtors                        a balance-sheet asset
+ *   creditors, GST, PAYG, super    a balance-sheet liability
+ *   opening ATO accounts           an asset or a liability
+ *   any role                       never a bank account, a credit card, an
+ *                                  earnings account or a P&L account
+ *
+ * The kind is Xero's own class where the chart of accounts has it: the
+ * balance-sheet mirror files an account by its balance's polarity when the two
+ * conflict, and a debtors account in credit is still debtors. Otherwise the
+ * mirror's kind. A P&L account is one Xero classes REVENUE or EXPENSE, or one
+ * the P&L mirror carries by AccountID or by the chart's code.
  */
 export function checkCashModelAccounts(
-  inputs: Pick<CashModelInputs, 'bsRows' | 'accounts'>,
+  inputs: Pick<CashModelInputs, 'bsRows' | 'accounts'> & Partial<Pick<CashModelInputs, 'plRows' | 'bankAccountIds' | 'creditCardAccountIds'>>,
   cfg: CashModelConfig,
   window: { fyOpening: string; reportEnd: string },
 ): { reason: string } | { warnings: string[] } {
   const ends = monthEnds(window.fyOpening, window.reportEnd)
   const onSheet = new Set<string>()
+  const sheetRow = new Map<string, BsRowInput>()
   for (const r of inputs.bsRows) {
     if (!r.account_id) continue
+    if (!sheetRow.has(norm(r.account_id))) sheetRow.set(norm(r.account_id), r)
     if (ends.some((d) => r.balances_by_date?.[d] !== undefined && r.balances_by_date?.[d] !== null)) onSheet.add(norm(r.account_id))
   }
-  const inChart = new Map(inputs.accounts.map((a) => [norm(a.xero_account_id), a.account_name]))
-  const roles: Array<[string, readonly string[]]> = [
-    ['debtors_account_ids', cfg.debtors_account_ids],
-    ['creditors_account_ids', cfg.creditors_account_ids],
-    ['gst.account_ids', cfg.gst.account_ids],
-    ['paygw.liability_account_ids', cfg.paygw.liability_account_ids],
-    ['super.payable_account_ids', cfg.super.payable_account_ids],
-    ['opening_ato_accounts', cfg.opening_ato_accounts.map((a) => a.account_id)],
+  const inChart = new Map(inputs.accounts.map((a) => [norm(a.xero_account_id), a]))
+  const plIds = new Set((inputs.plRows ?? []).map((r) => norm(r.account_id)).filter(Boolean))
+  const plCodes = new Set((inputs.plRows ?? []).map((r) => norm(r.account_code)).filter(Boolean))
+  const cards = new Set((inputs.creditCardAccountIds ?? []).map(norm))
+  const roles: Array<[string, readonly string[], readonly string[]]> = [
+    ['debtors_account_ids', cfg.debtors_account_ids, ['asset']],
+    ['creditors_account_ids', cfg.creditors_account_ids, ['liability']],
+    ['gst.account_ids', cfg.gst.account_ids, ['liability']],
+    ['paygw.liability_account_ids', cfg.paygw.liability_account_ids, ['liability']],
+    ['super.payable_account_ids', cfg.super.payable_account_ids, ['liability']],
+    ['opening_ato_accounts', cfg.opening_ato_accounts.map((a) => a.account_id), ['asset', 'liability']],
   ]
   const missing: string[] = []
+  const wrongKind: string[] = []
   const warnings: string[] = []
-  for (const [role, ids] of roles) {
+  for (const [role, ids, kinds] of roles) {
     for (const id of ids) {
-      if (onSheet.has(norm(id))) continue
-      const charted = inChart.get(norm(id))
-      if (charted !== undefined) {
-        warnings.push(`${charted} (${role}) holds nothing at any month-end from ${fmtDate(window.fyOpening)} to ${fmtDate(window.reportEnd)} — counted as $0`)
-      } else {
+      const key = norm(id)
+      const row = sheetRow.get(key)
+      const charted = inChart.get(key)
+      const plRow = plIds.has(key) ? inputs.plRows!.find((r) => norm(r.account_id) === key) : undefined
+      if (!row && !charted && !plRow) {
         missing.push(`${role} ${id}`)
+        continue
+      }
+      const name = row?.account_name ?? charted?.account_name ?? plRow!.account_name
+      const xeroClass = norm(charted?.xero_class)
+      const kind = ['asset', 'liability', 'equity'].includes(xeroClass) ? xeroClass : norm(row?.account_type)
+      let wrong: string | null = null
+      if (xeroClass === 'revenue' || xeroClass === 'expense' || plIds.has(key) || (!row && !!charted?.account_code && plCodes.has(norm(charted.account_code)))) {
+        wrong = 'a profit and loss account, not a balance-sheet account'
+      } else if (row && (isBankRow(row, inputs.bankAccountIds ?? null) || row.section === 'Bank')) {
+        wrong = 'a bank account'
+      } else if (cards.has(key)) {
+        wrong = 'a credit card'
+      } else if (row && isEarningsRow(row)) {
+        wrong = 'an earnings account'
+      } else if (kind && !kinds.includes(kind)) {
+        wrong = `${kind === 'asset' || kind === 'equity' ? 'an' : 'a'} ${kind}, and this setting takes ${kinds.length === 1 ? `${kinds[0] === 'asset' ? 'an' : 'a'} ${kinds[0]}` : 'an asset or a liability'}`
+      }
+      if (wrong) {
+        wrongKind.push(`${name} in ${role} is ${wrong}`)
+        continue
+      }
+      if (!onSheet.has(key)) {
+        warnings.push(`${name} (${role}) holds nothing at any month-end from ${fmtDate(window.fyOpening)} to ${fmtDate(window.reportEnd)} — counted as $0`)
       }
     }
   }
   if (missing.length > 0) {
     return { reason: `the cash model names ${missing.length === 1 ? 'an account' : 'accounts'} not on this business's balance sheet or chart of accounts (${missing.join('; ')}) — check the ids in the cash model settings` }
+  }
+  if (wrongKind.length > 0) {
+    return { reason: `the cash model settings put ${wrongKind.length === 1 ? 'an account' : 'accounts'} in the wrong role (${wrongKind.join('; ')}) — check the ids in the cash model settings` }
   }
   return { warnings }
 }
@@ -390,14 +444,15 @@ export function buildPackCashModel(args: {
       flow, plRows: inputs.plRows, labels, taxRate: rate, payslips: payslips[m] ?? null, cfg, accountNames,
     })
     const { reconciliation: rec, ...cashMonth } = month
-    // What the rows cannot explain beyond the balance sheets' own tolerance
-    // (money flow lets each end be $1 out) is the model, not the ledger. The
-    // first cut printed it as an "Unexplained difference" row of any size —
-    // Net Movement still read the bank's figure, so the column tied by
-    // construction and the preflight only warned. A client pack does not
-    // carry a plug; the page prints why instead.
+    // What the rows cannot explain is not printed. The first cut printed it
+    // as an "Unexplained difference" row of any size — Net Movement still
+    // read the bank's figure, so the column tied by construction and the
+    // preflight only warned — and the second refused only past $2, so a
+    // $1-$2 row still reached the pack. Any Unexplained difference row
+    // (UNEXPLAINED_MATERIALITY, shared with the label and the preflight) is
+    // a refusal; a client pack does not carry a plug, the page prints why.
     const unexplained = (cashMonth.unreconciled_lines ?? []).find((l) => l.label === UNEXPLAINED_LABEL)
-    if (unexplained && Math.abs(unexplained.value) > 2) {
+    if (unexplained) {
       return { status: 'refused', reason: `${packMonthYear(m)}: the cash rows do not add to the bank movement — ${fmtDollars(unexplained.value)} is unexplained, so the cash model settings do not describe this ledger (an account in the wrong role, or payroll codes that do not match)` }
     }
     actual.push(cashMonth)

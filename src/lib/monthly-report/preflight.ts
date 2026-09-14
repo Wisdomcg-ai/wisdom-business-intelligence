@@ -22,7 +22,7 @@ import type {
 } from '@/app/finances/monthly-report/types'
 import type { MoneyFlow } from '@/lib/monthly-report/money-flow'
 import type { CashflowForecastData } from '@/app/finances/forecast/types'
-import { UNEXPLAINED_LABEL } from '@/lib/monthly-report/pack-cash-actuals'
+import { UNEXPLAINED_LABEL, UNEXPLAINED_MATERIALITY } from '@/lib/monthly-report/pack-cash-actuals'
 import { moneyFlowProof } from '@/lib/monthly-report/money-flow-rows'
 import { netProfitFromBuckets } from '@/lib/finance/net-profit'
 import { SUPERANNUATION } from '@/app/finances/forecast/constants'
@@ -415,7 +415,7 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
           + (m.movement_in_equity ?? 0) + m.other_inflows)
         const explained = r2((m.unreconciled_lines ?? []).filter((l) => l.label !== UNEXPLAINED_LABEL).reduce((s, l) => s + l.value, 0))
         const unexplained = r2(delta - rows - explained)
-        if (Math.abs(unexplained) >= 1) {
+        if (Math.abs(unexplained) >= UNEXPLAINED_MATERIALITY) {
           problems.push(`${m.monthLabel}'s rows add to ${r2(rows + explained)} against a bank movement of ${delta} — ${unexplained} Unexplained difference`)
         }
         if (Math.abs(r2(m.net_movement - delta)) > 0.01) {
