@@ -34,6 +34,8 @@ import { loadPayrollGrid, payrollMonthWindow } from '../payroll-grid-load'
 import { loadWagesDetail } from '../wages-detail-load'
 import { loadMoneyFlow } from '../money-flow-load'
 import { loadOpeningBank } from '../opening-bank-load'
+import { loadBankAccountIds } from '../bank-accounts-load'
+import { URBAN_ROAD_BS_JUL_AUG_2026, URBAN_ROAD_PL_AUG_2026, CBA_CHEQUE, BUS_ONLINE_SAVER, AMEX_PLATINUM } from './fixtures/urban-road-money-flow-2026-08'
 import { loadExternalMetricSeries } from '../external-metrics-load'
 import { loadReportSettings, DEFAULT_REPORT_SECTIONS } from '../report-settings-load'
 import { loadCashflowAssumptions } from '@/lib/forecast/cashflow-assumptions-load'
@@ -90,12 +92,33 @@ describe('payroll-grid-load', () => {
     expect(resolveBudgetMock.mock.calls[0][1]).toMatchObject({ budgetSource: 'budget_version', months: ['2026-07', '2026-08'] })
   })
 
+  it('a window reaching back past 1 July has no budget for the old year\'s month — a dash, not a $0 budget and an overrun', async () => {
+    const db = fakeSupabase({
+      xero_payslip_lines: [
+        slip('e1', 'Andrea Shinners', '2026-06-29', 2500),
+        slip('e1', 'Andrea Shinners', '2026-07-27', 2500),
+      ],
+      xero_employees: [{ tenant_id: TENANT, employee_id: 'e1', start_date: '2020-03-05' }],
+      monthly_report_settings: [{ business_id: BUSINESS, budget_source: 'budget_version', budget_forecast_id: null, wages_account_names: ['Employ - Wages & Salaries'] }],
+    })
+    const res = await loadPayrollGrid(db, { business_id: BUSINESS, report_month: '2026-07', fiscal_year: 2027, months: 2 })
+    expect(res.data!.months.map((m) => [m.month, m.budget, m.difference])).toEqual([
+      ['2026-06', null, null],
+      ['2026-07', 42015, 39515],
+    ])
+  })
+
   it('says why there is no grid rather than failing', async () => {
     connectionsMock.mockResolvedValueOnce({ connectionBusinessId: BUSINESS, connections: [] })
     expect(await loadPayrollGrid(fakeSupabase({}), { business_id: BUSINESS, report_month: '2026-08', fiscal_year: 2027 }))
       .toEqual({ data: null, reason: 'no Xero connection' })
     expect(await loadPayrollGrid(fakeSupabase({ xero_payslip_lines: [] }), { business_id: BUSINESS, report_month: '2026-08', fiscal_year: 2027 }))
       .toEqual({ data: null, reason: 'no payslips synced for this period' })
+  })
+
+  it('a payslip read that fails is could-not-check, not "no payslips synced"', async () => {
+    const res = await loadPayrollGrid(fakeSupabase({ xero_payslip_lines: { error: { message: 'canceling statement due to statement timeout' } } }), { business_id: BUSINESS, report_month: '2026-08', fiscal_year: 2027 })
+    expect(res).toEqual({ data: null, reason: 'the payslips could not be read' })
   })
 })
 
@@ -183,6 +206,71 @@ describe('money-flow-load', () => {
   })
 })
 
+describe('money-flow-load — the Calxa page from the mirror, the P&L and the settings', () => {
+  const mirror = [
+    ...URBAN_ROAD_BS_JUL_AUG_2026.map((r) => ({ ...r, business_id: PROFILE })),
+    // A decoy under another business: if it leaks in, the sheet stops balancing.
+    { business_id: 'some-other-business', tenant_id: TENANT, account_id: 'x', account_code: null, account_name: 'Decoy', account_type: 'asset', section: 'Bank', balances_by_date: { '2026-07-31': 0, '2026-08-31': 1_000_000 } },
+  ]
+  const tables = (settings: unknown) => ({
+    xero_bs_lines_wide_compat: mirror,
+    xero_pl_lines_wide_compat: URBAN_ROAD_PL_AUG_2026.map((r) => ({ ...r, business_id: PROFILE })),
+    xero_accounts: [
+      { business_id: BUSINESS, tenant_id: TENANT, xero_account_id: AMEX_PLATINUM, bank_account_type: 'CREDITCARD' },
+      { business_id: BUSINESS, tenant_id: TENANT, xero_account_id: CBA_CHEQUE, bank_account_type: 'BANK' },
+    ],
+    monthly_report_settings: settings as never,
+  })
+
+  it("reads the business's chosen bank accounts, the P&L summary and the card's sign", async () => {
+    const { flow } = await loadMoneyFlow(fakeSupabase(tables([
+      { business_id: BUSINESS, bank_account_ids: [CBA_CHEQUE, BUS_ONLINE_SAVER] },
+    ])), BUSINESS, '2026-08')
+    expect(flow.comparable).toBe(true)
+    expect(flow.bank_basis).toBe('chosen')
+    expect(flow.bank.delta).toBe(-31708.01)
+    expect(flow.summary?.surplus).toBe(132701.26)
+    expect(flow.uses[0]).toMatchObject({ label: 'American Express® Platinum Business Card', opening: -65918.57, closing: -64332.13 })
+  })
+
+  it('an explicit bankAccountIds (the harness override) wins over the stored row', async () => {
+    const { flow } = await loadMoneyFlow(fakeSupabase(tables([
+      { business_id: BUSINESS, bank_account_ids: [CBA_CHEQUE, BUS_ONLINE_SAVER] },
+    ])), BUSINESS, '2026-08', { bankAccountIds: null })
+    expect(flow.bank_basis).toBe('section')
+    expect(flow.bank.delta).toBe(-55500.33)
+  })
+
+  it('before the migration is applied the Bank section is bank, as it always was', async () => {
+    const { flow } = await loadMoneyFlow(fakeSupabase(tables({
+      error: { code: '42703', message: 'column monthly_report_settings.bank_account_ids does not exist' },
+    })), BUSINESS, '2026-08')
+    expect(flow.comparable).toBe(true)
+    expect(flow.bank_basis).toBe('section')
+  })
+})
+
+describe('bank-accounts-load', () => {
+  it('prefers the businesses-space settings row and parses it', async () => {
+    const ids = await loadBankAccountIds(fakeSupabase({
+      monthly_report_settings: [
+        { business_id: PROFILE, bank_account_ids: ['wrong'] },
+        { business_id: BUSINESS, bank_account_ids: [CBA_CHEQUE, CBA_CHEQUE] },
+      ],
+    }), BUSINESS)
+    expect(ids).toEqual([CBA_CHEQUE])
+  })
+
+  it('no row, or a schema cache that has not seen the column, is no choice', async () => {
+    expect(await loadBankAccountIds(fakeSupabase({ monthly_report_settings: [] }), BUSINESS)).toBeNull()
+    expect(await loadBankAccountIds(fakeSupabase({ monthly_report_settings: { error: { code: 'PGRST204', message: 'x' } as never } }), BUSINESS)).toBeNull()
+  })
+
+  it('any other database error throws — a guessed bank set is a wrong page', async () => {
+    await expect(loadBankAccountIds(fakeSupabase({ monthly_report_settings: { error: { code: '57014', message: 'timeout' } as never } }), BUSINESS)).rejects.toMatchObject({ code: '57014' })
+  })
+})
+
 describe('opening-bank-load', () => {
   it('reads Total Bank the day before the fiscal year, accruals only, for active orgs', async () => {
     const row = (balance: number, basis: string, tenant_id = TENANT) => ({
@@ -197,6 +285,58 @@ describe('opening-bank-load', () => {
       xero_bs_lines: [row(167629.81, 'accruals'), row(999999, 'cash'), row(5, 'accruals', 'retired')],
     }), BUSINESS, '2026-08')
     expect(opening).toEqual({ status: 'read', amount: 167629.81, asAt: '2026-06-30' })
+  })
+
+  it("opens on the business's chosen bank accounts when it has chosen them", async () => {
+    const row = (account_id: string, balance: number) => ({
+      business_id: PROFILE, tenant_id: TENANT, account_id, account_type: 'asset', section: 'Bank', balance_date: '2026-06-30', balance, basis: 'accruals',
+    })
+    const opening = await loadOpeningBank(fakeSupabase({
+      business_profiles: [{ id: PROFILE, fiscal_year_start: 7 }],
+      xero_connections: [{ business_id: BUSINESS, tenant_id: TENANT, functional_currency: 'AUD', is_active: true }],
+      xero_bs_lines: [row(CBA_CHEQUE, 31948.67), row(BUS_ONLINE_SAVER, 86037.86), row('tax-savings', 45000)],
+      monthly_report_settings: [{ business_id: BUSINESS, bank_account_ids: [CBA_CHEQUE, BUS_ONLINE_SAVER] }],
+    }), BUSINESS, '2026-08')
+    expect(opening).toEqual({ status: 'read', amount: 117986.53, asAt: '2026-06-30' })
+  })
+
+  it('a chosen account Xero left off the opening sheet at $0 is $0, found on another month-end of the same org', async () => {
+    const USD_PAYPAL = '1b2c3d4e-0000-4000-8000-000000000001'
+    const row = (account_id: string, account_type: string, balance: number, balance_date = '2026-06-30', tenant_id = TENANT) => ({
+      business_id: PROFILE, tenant_id, account_id, account_type, section: account_type === 'asset' ? 'Bank' : 'Other', balance_date, balance, basis: 'accruals',
+    })
+    const tables = (usdPaypalRows: Record<string, unknown>[]) => fakeSupabase({
+      business_profiles: [{ id: PROFILE, fiscal_year_start: 7 }],
+      xero_connections: [{ business_id: BUSINESS, tenant_id: TENANT, functional_currency: 'AUD', is_active: true }],
+      xero_bs_lines: [
+        row(CBA_CHEQUE, 'asset', 31948.67), row(BUS_ONLINE_SAVER, 'asset', 86037.86),
+        row('00000000-0000-4000-8000-00000000c0de', 'liability', 100000), row('00000000-0000-4000-8000-0000000e0e17', 'equity', 17986.53),
+        ...usdPaypalRows,
+      ],
+      monthly_report_settings: [{ business_id: BUSINESS, bank_account_ids: [CBA_CHEQUE, BUS_ONLINE_SAVER, USD_PAYPAL] }],
+    })
+    expect(await loadOpeningBank(tables([row(USD_PAYPAL, 'asset', 0, '2026-07-31')]), BUSINESS, '2026-08'))
+      .toEqual({ status: 'read', amount: 117986.53, asAt: '2026-06-30' })
+    // Held only by another organisation, or only as a cash-basis row, it is no evidence.
+    expect(await loadOpeningBank(tables([row(USD_PAYPAL, 'asset', 0, '2026-07-31', 'another-org')]), BUSINESS, '2026-08'))
+      .toMatchObject({ status: 'unavailable', reason: '1 of the 3 bank accounts chosen for this report is not in the synced balance sheet at 2026-06-30' })
+    expect(await loadOpeningBank(tables([{ ...row(USD_PAYPAL, 'asset', 0, '2026-07-31'), basis: 'cash' }]), BUSINESS, '2026-08'))
+      .toMatchObject({ status: 'unavailable' })
+  })
+
+  it('an id in the list that is not a uuid is never sent to the uuid column, and is simply not in the sheet', async () => {
+    const row = (account_id: string, balance: number) => ({
+      business_id: PROFILE, tenant_id: TENANT, account_id, account_type: 'asset', section: 'Bank', balance_date: '2026-06-30', balance, basis: 'accruals',
+    })
+    const db = fakeSupabase({
+      business_profiles: [{ id: PROFILE, fiscal_year_start: 7 }],
+      xero_connections: [{ business_id: BUSINESS, tenant_id: TENANT, functional_currency: 'AUD', is_active: true }],
+      xero_bs_lines: [row(CBA_CHEQUE, 31948.67)],
+    })
+    const opening = await loadOpeningBank(db, BUSINESS, '2026-08', { bankAccountIds: [CBA_CHEQUE.toUpperCase(), 'closed-saver'] })
+    expect(opening).toMatchObject({ status: 'unavailable', reason: '1 of the 2 bank accounts chosen for this report is not in the synced balance sheet at 2026-06-30' })
+    const idFilters = db.calls.flatMap((c) => c.filters).filter(([, col]) => col === 'account_id')
+    expect(idFilters).toEqual([['in', 'account_id', [CBA_CHEQUE]]])
   })
 })
 

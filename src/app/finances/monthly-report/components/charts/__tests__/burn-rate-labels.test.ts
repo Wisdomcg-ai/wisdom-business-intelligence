@@ -13,7 +13,7 @@
  * on screen and a budget in the client's hands.
  */
 import { describe, it, expect } from 'vitest'
-import { burnRateYardstick, burnRateSubtitle } from '../BudgetBurnRateChart'
+import { burnRateYardstick, burnRateSubtitle, packBurnRateLabels } from '../BudgetBurnRateChart'
 
 describe('burnRateYardstick', () => {
   it('names the approved budget for a client on the budget store', () => {
@@ -46,5 +46,23 @@ describe('burnRateSubtitle', () => {
       .toBe('Expense forecast for current FY (17% of year elapsed)')
     expect(burnRateSubtitle({ budget_source: 'budget_version' }, 16.7))
       .toBe('Expense approved budget for current FY (17% of year elapsed)')
+  })
+})
+
+describe('packBurnRateLabels', () => {
+  it('calls the approved budget "Budget" in the pack, as its statement pages do', () => {
+    expect(packBurnRateLabels({ budget_source: 'budget_version' }, 16.7)).toEqual({
+      title: 'Budget Burn Rate',
+      subtitle: 'Expense budget for current FY (17% of year elapsed)',
+    })
+  })
+
+  it('leaves the forecast named as the forecast, including when budget_source is absent', () => {
+    for (const report of [{ budget_source: 'forecast' as const }, {}]) {
+      expect(packBurnRateLabels(report, 16.7)).toEqual({
+        title: 'Forecast Burn Rate',
+        subtitle: 'Expense forecast for current FY (17% of year elapsed)',
+      })
+    }
   })
 })

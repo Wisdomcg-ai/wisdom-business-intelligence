@@ -96,8 +96,8 @@ export function equationImbalanceSentence(residual: number): string {
 /**
  * Xero's own Net-Assets-vs-Total-Equity check — a DIFFERENT check from the
  * equation above (it compares two rows Xero printed, not the three totals),
- * computed at a 0.01 threshold in Xero/balance-sheet/route.ts. Shared for the
- * same reason.
+ * computed at the $0.05 BS materiality in lib/monthly-report/balance-sheet-rows.ts.
+ * Shared for the same reason.
  */
 export const NET_ASSETS_EQUITY_SENTENCE =
   'Balance sheet does not balance — Net Assets and Total Equity differ. ' +
@@ -200,8 +200,8 @@ export function assessBalanceSheetForPdf(
 
   const warnings: string[] = []
 
-  // The API's own Net-Assets-vs-Total-Equity check, computed at a 0.01
-  // threshold in Xero/balance-sheet/route.ts and rendered by BalanceSheetTab as
+  // The API's own Net-Assets-vs-Total-Equity check, computed at the $0.05 BS
+  // materiality in lib/monthly-report/balance-sheet-rows.ts and rendered by BalanceSheetTab as
   // an amber badge. It is a DIFFERENT check from the equation below — it
   // compares two rows Xero printed, not the three totals — and reading only the
   // equation left a sheet 13c out showing the coach a warning on screen and the
@@ -217,8 +217,8 @@ export function assessBalanceSheetForPdf(
     // Not a reason to withhold the sheet. The predicate above is a label match
     // against strings Xero lets each org choose: an equity block headed "Total
     // Owner's Funds" — real enough that this file's own comment names it, and
-    // that mapSubtotalLabel in Xero/balance-sheet/route.ts passes it through
-    // untouched because only the exact strings are normalised — makes
+    // that mapTotalLabel in lib/monthly-report/balance-sheet-rows.ts passes it
+    // through untouched because only the exact strings are normalised — makes
     // totalEquity null on a sheet that adds up perfectly. Print it and say the
     // equation is unproven, which is what the tab does: it skips its banner and
     // renders the table.

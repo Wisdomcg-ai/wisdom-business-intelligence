@@ -137,4 +137,14 @@ describe('CommentaryLine (Phase 42)', () => {
     // A credit that rounds to nothing is not "-$0".
     expect(screen.queryByText('-$0')).toBeNull()
   })
+
+  // The draft is shown as the generated draft, not as what the pack prints: a
+  // placement can print it without its ratio clause, or print the coach's note
+  // in its place, and this panel does not know which placement an account is on.
+  it('labels the draft as the generated draft, not as the pack text', () => {
+    renderLine({ draftNote: 'Shopify ($2,635) - 0.5% of income against a 0.9% driver' })
+    const draft = screen.getByTestId(`commentary-draft-${ACCOUNT}`)
+    expect(draft.textContent).toMatch(/^Generated draft/)
+    expect(draft.getAttribute('title')).toMatch(/layout's commentary settings/)
+  })
 })

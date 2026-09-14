@@ -115,4 +115,47 @@ describe('loadFullYearReport', () => {
     expect(res.ok && res.report.forecast_available).toBe(false)
     expect(compositeMock).not.toHaveBeenCalled()
   })
+
+  it('says which months the approved budget reaches, so a partial version is not read as zeros', async () => {
+    // A six-month Xero budget: the resolver answers because August is governed.
+    const firstHalf = Object.fromEntries(FY27.slice(0, 6).map((m) => [m, 400]))
+    resolveBudgetMock.mockResolvedValue({
+      source: 'budget_version', versionId: 'v1', forecastId: null, label: 'FY27 H1', monthsCovered: 6, noBudgetReason: null,
+      lines: [{ id: 'b1', account_code: '41000', account_name: 'Canvas Sales', category: 'Revenue', forecast_months: firstHalf }],
+    })
+    const settings = [{ business_id: BUSINESS, budget_forecast_id: null, budget_source: 'budget_version', expense_group_order: null }]
+    const res = await loadFullYearReport(
+      fakeSupabase(tables({ monthly_report_settings: settings })),
+      { business_id: BUSINESS, fiscal_year: 2027, report_month: '2026-08' },
+    )
+    if (!res.ok) throw new Error('expected ok')
+    expect(res.report.approved_months_covered).toEqual(FY27.slice(0, 6))
+    // The loader still fills the rest with 0 — which is why the page must know.
+    const canvas = res.report.sections[0].lines.find((l) => l.account_name === 'Canvas Sales')!
+    expect(canvas.months[6].approved_budget).toBe(0)
+  })
+
+  it('counts a month blank for every account as covered when the budget reaches past it', async () => {
+    // Xero omits a blank cell and a blank cell is $0, so a December no account
+    // was budgeted for has no key on any line. The budget still runs to June —
+    // December is inside its window, and the page must not fall back to the
+    // forecast and call the budget short.
+    const noDecember = Object.fromEntries(FY27.filter((m) => m !== '2026-12').map((m) => [m, 400]))
+    resolveBudgetMock.mockResolvedValue({
+      source: 'budget_version', versionId: 'v1', forecastId: null, label: 'FY27', monthsCovered: 11, noBudgetReason: null,
+      lines: [{ id: 'b1', account_code: '41000', account_name: 'Canvas Sales', category: 'Revenue', forecast_months: noDecember }],
+    })
+    const settings = [{ business_id: BUSINESS, budget_forecast_id: null, budget_source: 'budget_version', expense_group_order: null }]
+    const res = await loadFullYearReport(
+      fakeSupabase(tables({ monthly_report_settings: settings })),
+      { business_id: BUSINESS, fiscal_year: 2027, report_month: '2026-08' },
+    )
+    if (!res.ok) throw new Error('expected ok')
+    expect(res.report.approved_months_covered).toEqual(FY27)
+  })
+
+  it('carries no coverage for a client on the forecast', async () => {
+    const res = await loadFullYearReport(fakeSupabase(tables()), { business_id: BUSINESS, fiscal_year: 2027, report_month: '2026-08' })
+    expect(res.ok && res.report.approved_months_covered).toBeNull()
+  })
 })

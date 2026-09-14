@@ -13,7 +13,26 @@
  * "Budget" names it. Their output does not change, note included.
  */
 import { describe, it, expect } from 'vitest'
-import { statementYardstick } from '../budget-yardstick'
+import { statementYardstick, packStatementYardstick, packWagesYardstick, packWagesEmployeeYardstick } from '../budget-yardstick'
+
+describe('the pack words (Matt, 14 Sep 2026)', () => {
+  it("Calxa's 'Budgets' / 'YTD Budget' and no note, whatever the source — the tab keeps its own", () => {
+    expect(packStatementYardstick()).toEqual({ columnLabel: 'Budgets', ytdColumnLabel: 'YTD Budget', note: null })
+    // The browser tab is unchanged by the decision.
+    expect(statementYardstick({ budget_source: 'budget_version' }).columnLabel).toBe('Approved Budget')
+  })
+
+  it('the wages page keeps availability and the absent reason, and drops the provenance lines', () => {
+    const approved = packWagesYardstick({ source: 'budget_version', label: 'Overall Budget (Xero, rev 12 Aug 2026)' })
+    expect(approved).toEqual({ columnLabel: 'Budget', note: null, available: true, absentNote: null })
+    const none = packWagesYardstick({ source: 'none', reason: 'no_version_in_force', fiscal_year: 2027 })
+    expect(none.available).toBe(false)
+    expect(none.absentNote).toContain('no approved budget version is locked for FY2027')
+    const emp = packWagesEmployeeYardstick({ source: 'budget_version' }, true)
+    expect(emp).toEqual({ columnLabel: 'Forecast', note: null, available: true, absentNote: null })
+    expect(packWagesEmployeeYardstick({ source: 'forecast' }, false).absentNote).toContain('No per-employee plan')
+  })
+})
 
 describe('statementYardstick', () => {
   it('names the approved budget, and the version, for a budget-store client', () => {

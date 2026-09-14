@@ -9,16 +9,18 @@ import {
   commentaryBankTransactionsUrl,
   commentaryInvoicesUrl,
 } from '@/lib/monthly-report/commentary-documents'
-import { subscriptionLinesOf } from '@/lib/subscriptions/posted-subscription-lines'
+import { subscriptionStatementLinesOf, type StatementSubscriptionLine } from '@/lib/subscriptions/posted-subscription-lines'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId'
 import {
   addSubscriptionLine,
+  addUnconvertedLine,
   assembleSubscriptionDetail,
   emptySubscriptionDetail,
   newSubscriptionCrawl,
   priorMonthKeyOf,
 } from '@/lib/monthly-report/subscription-detail-build'
+import { CONTRACTOR_WINDOW_MAX, windowMonthKeys } from '@/lib/monthly-report/contractor-page'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -35,6 +37,7 @@ const SubscriptionDetailPostSchema = z.object({
   business_id: z.string(),
   report_month: z.string(),
   account_codes: z.array(z.string()).optional(),
+  months: z.number().int().min(1).max(CONTRACTOR_WINDOW_MAX).optional(),
 })
 
 const supabase = createClient(
@@ -123,14 +126,28 @@ async function fetchAllPages(
 }
 
 /**
+ * The distinct currencies of the orgs read, when they are not ONE currency the
+ * vendor rows can be stated in — else null. AUD and HKD → ['AUD', 'HKD'];
+ * AUD and an org with none recorded → ['AUD', null]; one org → null.
+ */
+function statementCurrencies(read: (string | null)[]): (string | null)[] | null {
+  if (read.length <= 1) return null
+  const distinct = [...new Set(read)]
+  if (distinct.length === 1 && distinct[0] !== null) return null
+  return distinct.sort((a, b) => (a === null ? 1 : b === null ? -1 : a.localeCompare(b)))
+}
+
+/**
  * POST /api/monthly-report/subscription-detail
  * Returns vendor-level breakdown of subscription expenses for a single month,
  * grouped by account code.
  *
- * Vendor rows: actuals from bank transactions, budgets from subscription_budgets.
- * Account subtotals & grand total: use authoritative P&L actual (xero_pl_lines)
- * and forecast budget (forecast_pl_lines) so they match the main report.
- * All vendors appear as named rows — no "Other / Adjustments" row.
+ * Vendor rows: posted bills and bank transactions at their gross document
+ * amount, each with its statement amount (net of GST, organisation currency)
+ * beside it for a placement that opts in; budgets from subscription_budgets.
+ * Account subtotals & grand total: the authoritative P&L actual (xero_pl_lines)
+ * and the statement pages' budget (approved or forecast), so they match the
+ * main report. See subscription-detail-build.
  */
 async function postHandler(request: Request) {
   try {
@@ -143,10 +160,16 @@ async function postHandler(request: Request) {
     }
 
     const body = await request.json()
-    const { business_id, report_month, account_codes } = body as {
+    const { business_id, report_month, account_codes, months } = body as {
       business_id: string
       report_month: string
       account_codes: string[]
+      /**
+       * Months to report across, ending at the report month — the Contractors
+       * Payment Summary prints three. Two or fewer is the page as it always
+       * was: this month and last, and no `window` on the answer.
+       */
+      months?: number
     }
 
     if (!business_id || !report_month) {
@@ -154,6 +177,13 @@ async function postHandler(request: Request) {
         { error: 'business_id and report_month are required' },
         { status: 400 }
       )
+    }
+
+    // withSchema only observes, so the schema's bound on `months` is not a
+    // bound: checked here, before a single Xero read. A request past what any
+    // placement can print is refused, not trimmed to fit.
+    if (months !== undefined && !(Number.isInteger(months) && months >= 1 && months <= CONTRACTOR_WINDOW_MAX)) {
+      return NextResponse.json({ error: `months must be a whole number from 1 to ${CONTRACTOR_WINDOW_MAX}` }, { status: 400 })
     }
 
     // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
@@ -183,17 +213,23 @@ async function postHandler(request: Request) {
 
     const emptyData = emptySubscriptionDetail(report_month)
 
-    // Return empty data if no account codes configured
+    // Return empty data if no account codes configured. Nothing was asked
+    // for, so nothing went unread.
     if (!account_codes || account_codes.length === 0) {
-      return NextResponse.json({ success: true, data: emptyData })
+      return NextResponse.json({ success: true, data: { ...emptyData, complete: true } })
     }
 
     // ALL active connections — .maybeSingle() here silently reported ONE org's
     // subscriptions for multi-org businesses (Dragon has two orgs, IICT three),
     // the exact fraction-of-the-truth failure the wizard's crawl was cured of.
     const { connections } = await resolveXeroConnections(supabase, business_id)
+    // An empty answer here is "could not check", not "nothing spent" — the
+    // Contractor page would otherwise print that no contractors were paid.
     if (!connections || connections.length === 0) {
-      return NextResponse.json({ success: true, data: emptyData })
+      return NextResponse.json({
+        success: true,
+        data: { ...emptyData, complete: false, incomplete_reason: 'the business has no active Xero connection' },
+      })
     }
 
     const priorMonthKey = priorMonthKeyOf(report_month)
@@ -208,6 +244,14 @@ async function postHandler(request: Request) {
       return NextResponse.json({ error: 'report_month must be YYYY-MM' }, { status: 400 })
     }
 
+    // The window, when one was asked for, and the months in it older than the
+    // month before — the only ones that cost a Xero read this page did not
+    // already make. Two reads a month per org, paced as the others are.
+    const windowMonths = typeof months === 'number' && months > 2 ? windowMonthKeys(report_month, months) : []
+    const olderMonths = windowMonths
+      .filter((m) => m !== report_month && m !== priorMonthKey)
+      .map((m) => ({ month: m, bankUrl: commentaryBankTransactionsUrl(m)!, billsUrl: commentaryInvoicesUrl(m, 'ACCPAY')! }))
+
     // The crawl's accumulators live in lib/monthly-report/subscription-detail-build,
     // with the assembly that follows the crawl — shared with scripts/preview-pack.ts.
     const crawl = newSubscriptionCrawl(account_codes)
@@ -220,12 +264,52 @@ async function postHandler(request: Request) {
     // is evidence the vendor is still active this month, not an absence.
     const requestedCodes = new Set(account_codes)
 
+    // Each line twice: the gross document amount every page has always quoted
+    // (and Step 6 seeded the vendor budgets on, and the write-through stores),
+    // and the same line in the P&L's money — net of GST, in the org's
+    // currency, at the document's own rate — for a placement that opts in to
+    // a TOTAL that is the P&L account. A foreign line with no rate has no
+    // statement amount: it is in no vendor's statement figure, recorded, and
+    // named by that page rather than printed as the org's money.
+    //
+    // The row is NAMED and KEYED as every other reader names and keys it
+    // (extractVendorName). A placement that prints another name for a key —
+    // Urban Road's sheet calls bill CL007500 "Edi Cloud" where its description
+    // makes it Harvey Norman — says so in its own `labels`. A bill's contact is
+    // not a safe stand-in: on bank and card lines it is the bank, the card, a
+    // staff member or the business itself, and one vendor's row merges several
+    // documents with several contacts.
+    crawl.statementAmounts = true
+    /** Where a document's month sits: this month, last month, or further back in the window. */
+    type Period = { isCurrent: boolean; month: string; windowOnly: boolean }
+    const currentPeriod: Period = { isCurrent: true, month: report_month, windowOnly: false }
+    const priorPeriod: Period = { isCurrent: false, month: priorMonthKey, windowOnly: false }
+    function addLine(line: StatementSubscriptionLine, period: Period, txnTenantId: string) {
+      const vendorName = extractVendorName(line.contactName, line.description)
+      addSubscriptionLine(crawl, {
+        accountCode: line.accountCode, vendorName, amount: line.grossAmount, statementAmount: line.amount, isCurrent: period.isCurrent, tenantId: txnTenantId,
+        // Months only for a caller that asked for a window, so the two-month
+        // answer is the very answer it was.
+        ...(windowMonths.length > 0 ? { month: period.month } : {}),
+        ...(period.windowOnly ? { windowOnly: true } : {}),
+      })
+      if (!line.converted) {
+        addUnconvertedLine(crawl, line.accountCode, {
+          vendor_name: vendorName,
+          amount: Math.round(line.grossAmount * 100) / 100,
+          source_currency: line.sourceCurrency ?? null,
+          is_current: period.isCurrent,
+          ...(period.windowOnly ? { month: period.month } : {}),
+          reason: line.reason ?? 'the line could not be converted',
+        })
+      }
+    }
+
     // Process bank transactions into vendor breakdown
-    function processBankTxns(txns: any[], isCurrent: boolean, txnTenantId: string) {
+    function processBankTxns(txns: any[], period: Period, txnTenantId: string, baseCurrency: string | null) {
       for (const bt of txns) {
-        for (const line of subscriptionLinesOf(bt, 'bank', requestedCodes)) {
-          const vendorName = extractVendorName(line.contactName, line.description)
-          addSubscriptionLine(crawl, { accountCode: line.accountCode, vendorName, amount: line.amount, isCurrent, tenantId: txnTenantId })
+        for (const line of subscriptionStatementLinesOf(bt, 'bank', requestedCodes, baseCurrency)) {
+          addLine(line, period, txnTenantId)
         }
       }
     }
@@ -239,13 +323,12 @@ async function postHandler(request: Request) {
     // made that card a question list instead of a conclusion list.
     // Vendor naming mirrors the wizard exactly (extractVendorName over contact
     // + line description) so a vendor keys identically on both paths.
-    function processInvoices(invoices: any[], isCurrent: boolean, txnTenantId: string) {
+    function processInvoices(invoices: any[], period: Period, txnTenantId: string, baseCurrency: string | null) {
       let sawLineItems = false
       for (const inv of invoices) {
         if ((inv.LineItems || []).length > 0) sawLineItems = true
-        for (const line of subscriptionLinesOf(inv, 'invoice', requestedCodes)) {
-          const vendorName = extractVendorName(line.contactName, line.description)
-          addSubscriptionLine(crawl, { accountCode: line.accountCode, vendorName, amount: line.amount, isCurrent, tenantId: txnTenantId })
+        for (const line of subscriptionStatementLinesOf(inv, 'invoice', requestedCodes, baseCurrency)) {
+          addLine(line, period, txnTenantId)
         }
       }
       // Xero includes LineItems on paged Invoices responses (same contract the
@@ -259,11 +342,25 @@ async function postHandler(request: Request) {
       }
     }
 
+    // What was not read, in words, for the response's `complete` — a skipped
+    // org or a short fetch leaves rows that look like a quiet month.
+    const unread: string[] = []
+    /**
+     * The functional currency of each org whose documents were read (null:
+     * not recorded). Each org's statement amounts are in its OWN currency, and
+     * the vendor rows add orgs together by vendor key — so across orgs in
+     * different currencies (IICT: AUD and HKD) a net figure would be AUD and
+     * HKD added up and printed as one. See statementCurrencies below.
+     */
+    const readCurrencies: (string | null)[] = []
+
     // Crawl EVERY active org: COA (merged code→name lookup) + current and prior
     // month bank transactions. One dead org's token must not blank the others.
     for (const connection of connections) {
+      const orgName: string = connection.tenant_name || connection.tenant_id
       const tokenResult = await getValidAccessToken({ id: connection.id }, supabase)
       if (!tokenResult.success || !tokenResult.accessToken) {
+        unread.push(`Xero could not be read for ${orgName}`)
         Sentry.captureMessage(
           `[SubscriptionDetail] token unavailable for tenant ${connection.tenant_id} — org skipped, totals partial`,
           { level: 'warning' as any, tags: { route: 'monthly-report/subscription-detail' } } as any,
@@ -272,6 +369,10 @@ async function postHandler(request: Request) {
       }
       const accessToken = tokenResult.accessToken
       const tenantId = connection.tenant_id
+      readCurrencies.push(connection.functional_currency ? String(connection.functional_currency).trim().toUpperCase() : null)
+      // Captured from Xero's BaseCurrency at connect (Phase 67-01). Null is
+      // tolerated the way toBaseAmount tolerates it.
+      const baseCurrency: string | null = connection.functional_currency ?? null
 
       try {
         const coaRes = await fetch('https://api.xero.com/api.xro/2.0/Accounts', {
@@ -305,7 +406,7 @@ async function postHandler(request: Request) {
           { tenantId, month: report_month, label: 'BankTransactions (current month)' },
         )
         if (!txns.complete) crawlComplete = false
-        processBankTxns(txns.items, true, tenantId)
+        processBankTxns(txns.items, currentPeriod, tenantId, baseCurrency)
       } catch (err) {
         crawlComplete = false
         Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch current bank txns", tenantId } } as any)
@@ -319,7 +420,7 @@ async function postHandler(request: Request) {
           { tenantId, month: priorMonthKey, label: 'BankTransactions (prior month)' },
         )
         if (!txns.complete) crawlComplete = false
-        processBankTxns(txns.items, false, tenantId)
+        processBankTxns(txns.items, priorPeriod, tenantId, baseCurrency)
       } catch (err) {
         crawlComplete = false
         Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch prior bank txns", tenantId } } as any)
@@ -338,7 +439,7 @@ async function postHandler(request: Request) {
           { tenantId, month: report_month, label: 'Invoices (current month)' },
         )
         if (!bills.complete) crawlComplete = false
-        processInvoices(bills.items, true, tenantId)
+        processInvoices(bills.items, currentPeriod, tenantId, baseCurrency)
       } catch (err) {
         crawlComplete = false
         Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch current bills", tenantId } } as any)
@@ -352,27 +453,84 @@ async function postHandler(request: Request) {
           { tenantId, month: priorMonthKey, label: 'Invoices (prior month)' },
         )
         if (!bills.complete) crawlComplete = false
-        processInvoices(bills.items, false, tenantId)
+        processInvoices(bills.items, priorPeriod, tenantId, baseCurrency)
       } catch (err) {
         crawlComplete = false
         Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch prior bills", tenantId } } as any)
       }
 
+      // The window's older months, read the same way: posted bank transactions
+      // of every type and AUTHORISED/PAID bills. A month that comes back short
+      // makes the org's crawl incomplete, as any other would.
+      for (const older of olderMonths) {
+        const period: Period = { isCurrent: false, month: older.month, windowOnly: true }
+        await sleep(300)
+        try {
+          const txns = await fetchAllPages(
+            older.bankUrl, accessToken, tenantId, 'BankTransactions',
+            { tenantId, month: older.month, label: `BankTransactions (${older.month})` },
+          )
+          if (!txns.complete) crawlComplete = false
+          processBankTxns(txns.items, period, tenantId, baseCurrency)
+        } catch (err) {
+          crawlComplete = false
+          Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: `[SubscriptionDetail] Failed to fetch bank txns for ${older.month}`, tenantId } } as any)
+        }
+        await sleep(300)
+        try {
+          const bills = await fetchAllPages(
+            older.billsUrl, accessToken, tenantId, 'Invoices',
+            { tenantId, month: older.month, label: `Invoices (${older.month})` },
+          )
+          if (!bills.complete) crawlComplete = false
+          processInvoices(bills.items, period, tenantId, baseCurrency)
+        } catch (err) {
+          crawlComplete = false
+          Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: `[SubscriptionDetail] Failed to fetch bills for ${older.month}`, tenantId } } as any)
+        }
+      }
+
       if (crawlComplete) completeTenants.add(tenantId)
+      else unread.push(`Xero did not return every transaction for ${orgName}`)
 
       await sleep(300)
     }
 
-    const { data, configuredSubscriptionCodes } = await assembleSubscriptionDetail(
+    // One org is one currency, whatever it is. Several orgs are one currency
+    // only when every one of them records the same one: an unrecorded currency
+    // among several cannot be vouched for. Otherwise no vendor row carries a
+    // statement figure (the vendors-exceed-account invariant is not judged on
+    // money that was never one currency), and the answer says why, so a page
+    // that asks for net states it rather than print the sum.
+    const mixedCurrencies = statementCurrencies(readCurrencies)
+    if (mixedCurrencies) crawl.statementAmounts = false
+
+    const assembled = await assembleSubscriptionDetail(
       supabase,
-      { business_id, report_month, account_codes },
+      { business_id, report_month, account_codes, ...(windowMonths.length > 0 ? { window_months: windowMonths } : {}) },
       crawl,
     )
+    const { configuredSubscriptionCodes } = assembled
+    const data = {
+      ...assembled.data,
+      complete: unread.length === 0,
+      ...(unread.length > 0 ? { incomplete_reason: unread.join('; ') } : {}),
+      ...(mixedCurrencies ? { statement_unavailable: { reason: 'mixed_currencies' as const, currencies: mixedCurrencies } } : {}),
+    }
 
     // ── Phase 2 write-through: persist this month's vendor actuals ──
     // The wizard's analyze crawl bulk-writes history; viewing a report keeps
     // the viewed month fresh. Failure never blocks the response, but is never
     // silent either (house rule: invariant-tagged capture on swallowed writes).
+    //
+    // The STORED amount is the gross document amount, the default page's own
+    // figure. A 'report' row is not a separate row from Step 6's 'analyze'
+    // one: the conflict key is (business, tenant, vendor, month), with no
+    // source in it, so whichever writer ran last owns the row. Step 6 writes
+    // gross (its budgets are gross), so writing the statement amount here
+    // would make each month's basis depend on who last looked at it — a
+    // history the leakage report could not compare month to month. The table
+    // moves to net when Step 6 does, together.
     //
     // ONLY for the client's own subscription accounts. This route takes its
     // account codes from the caller, and the Contractor Analysis page calls it

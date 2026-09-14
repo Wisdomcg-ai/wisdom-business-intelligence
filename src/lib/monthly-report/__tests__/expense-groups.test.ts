@@ -26,7 +26,7 @@ const ORDER = [
 describe('groupExpenseLines', () => {
   it('is a no-op for a client that has grouped nothing', () => {
     const lines = [line({ account_name: 'Rent - Office' }), line({ account_name: 'Cleaning' })]
-    const out = groupExpenseLines(lines, ORDER)
+    const out = groupExpenseLines(lines, ORDER, 'Operating Expenses')
     expect(out).toHaveLength(1)
     expect(out[0].name).toBeNull()
     expect(out[0].subtotal).toBeNull()
@@ -41,7 +41,7 @@ describe('groupExpenseLines', () => {
     ]
     // Alphabetically this is Bank, Employment, Professional; by lowest account
     // code it is Professional (60100), Bank (60550), Employment (62130).
-    expect(groupExpenseLines(lines, ORDER).map(g => g.name)).toEqual([
+    expect(groupExpenseLines(lines, ORDER, 'Operating Expenses').map(g => g.name)).toEqual([
       'Employment Expense', 'Professional Expense', 'Bank and Other Fees',
     ])
   })
@@ -54,7 +54,7 @@ describe('groupExpenseLines', () => {
       line({ account_name: 'Employ - Superannuation', group: 'Employment Expense', actual: 6302.35, budget: 6302, ytd_actual: 11344, ytd_budget: 11344 }),
       line({ account_name: 'Employ - Wages & Salaries', group: 'Employment Expense', actual: 52519.25, budget: 52519, ytd_actual: 94535, ytd_budget: 94534 }),
     ]
-    const [g] = groupExpenseLines(lines, ORDER)
+    const [g] = groupExpenseLines(lines, ORDER, 'Operating Expenses')
     expect(g.subtotal!.account_name).toBe('Employment Expense')
     expect(g.subtotal!.actual).toBeCloseTo(60270.57, 2)
     expect(g.subtotal!.budget).toBeCloseTo(59479, 2)
@@ -68,7 +68,7 @@ describe('groupExpenseLines', () => {
       line({ account_name: 'A', group: 'G', actual: 100, budget: 50, variance_percent: -100 }),
       line({ account_name: 'B', group: 'G', actual: 100, budget: 150, variance_percent: 33.3 }),
     ]
-    const [g] = groupExpenseLines(lines, ORDER)
+    const [g] = groupExpenseLines(lines, ORDER, 'Operating Expenses')
     // 200 against 200 is on budget, whatever the two rows' percentages add to.
     expect(g.subtotal!.variance_amount).toBe(0)
     expect(g.subtotal!.variance_percent).toBe(0)
@@ -76,13 +76,13 @@ describe('groupExpenseLines', () => {
 
   it('shows a dash, not a zero, when no line in the group has a prior year', () => {
     const lines = [line({ account_name: 'A', group: 'G', actual: 10, prior_year: null })]
-    expect(groupExpenseLines(lines, ORDER)[0].subtotal!.prior_year).toBeNull()
+    expect(groupExpenseLines(lines, ORDER, 'Operating Expenses')[0].subtotal!.prior_year).toBeNull()
 
     const withHistory = [
       line({ account_name: 'A', group: 'G', prior_year: null }),
       line({ account_name: 'B', group: 'G', prior_year: 881 }),
     ]
-    expect(groupExpenseLines(withHistory, ORDER)[0].subtotal!.prior_year).toBe(881)
+    expect(groupExpenseLines(withHistory, ORDER, 'Operating Expenses')[0].subtotal!.prior_year).toBe(881)
   })
 
   it('puts a group the coach has not ordered after the ones they have', () => {
@@ -92,7 +92,7 @@ describe('groupExpenseLines', () => {
       line({ account_name: 'Amex', group: 'Aardvark Group' }),
     ]
     // A newly-created group must APPEAR, sorted, rather than vanish.
-    expect(groupExpenseLines(lines, ORDER).map(g => g.name)).toEqual([
+    expect(groupExpenseLines(lines, ORDER, 'Operating Expenses').map(g => g.name)).toEqual([
       'Bank and Other Fees', 'Aardvark Group', 'Zebra Group',
     ])
   })
@@ -102,7 +102,7 @@ describe('groupExpenseLines', () => {
       line({ account_name: 'Donations' }),
       line({ account_name: 'Bank Fees', group: 'Bank and Other Fees' }),
     ]
-    const out = groupExpenseLines(lines, ORDER)
+    const out = groupExpenseLines(lines, ORDER, 'Operating Expenses')
     expect(out.map(g => g.name)).toEqual(['Bank and Other Fees', null])
     // Naming it "Other" would claim a decision the coach has not made.
     expect(out[1].subtotal).toBeNull()
@@ -111,7 +111,7 @@ describe('groupExpenseLines', () => {
 
   it('treats a blank or whitespace group as ungrouped', () => {
     const lines = [line({ account_name: 'A', group: '   ' }), line({ account_name: 'B', group: null })]
-    const out = groupExpenseLines(lines, ORDER)
+    const out = groupExpenseLines(lines, ORDER, 'Operating Expenses')
     expect(out).toHaveLength(1)
     expect(out[0].name).toBeNull()
   })
@@ -121,7 +121,7 @@ describe('groupExpenseLines', () => {
       line({ account_name: 'B', group: 'Beta' }),
       line({ account_name: 'A', group: 'Alpha' }),
     ]
-    expect(groupExpenseLines(lines, null).map(g => g.name)).toEqual(['Alpha', 'Beta'])
+    expect(groupExpenseLines(lines, null, 'Operating Expenses').map(g => g.name)).toEqual(['Alpha', 'Beta'])
   })
 })
 

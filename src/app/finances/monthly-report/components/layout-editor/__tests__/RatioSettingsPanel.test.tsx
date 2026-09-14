@@ -173,6 +173,25 @@ describe('Urban Road', () => {
     expect(w).toMatchObject({ id: 'ratio-1', col: 0, row: 0, colSpan: 2, rowSpan: 2 })
   })
 
+  it('choosing the spreadsheet layout saves the four settings with the rest of the config unchanged', async () => {
+    accountsOk()
+    const user = userEvent.setup()
+    const { onSave } = renderEditor(layoutWith({ config: URBAN_ROAD_CONFIG, titleOverride: URBAN_ROAD_TITLE }))
+    await user.click(screen.getByRole('button', { name: 'Edit ratios' }))
+    await waitFor(() => expect(screen.getByText(/— Freight to Customer/)).toBeInTheDocument())
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Layout' }), 'sheet')
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
+    await user.click(screen.getByRole('button', { name: /Save Layout/ }))
+    expect(savedWidget(onSave).config).toEqual({
+      ...URBAN_ROAD_CONFIG,
+      amounts_order: 'denominator_first',
+      average_blocks: true,
+      block_headings: false,
+      table_style: 'grid',
+    })
+  })
+
   it('an account is picked by searching its name, shown as "code — name"', async () => {
     accountsOk()
     const user = userEvent.setup()

@@ -70,7 +70,8 @@ describe('the PDF has the same three states as the tab', () => {
     // merely repeats the actual do not.
     // No currency symbol: the pack states its currency once (see fmtCurrency).
     expect(text).toContain('62,035')
-    expect(text).not.toContain('+0.0%')
+    // Any sign: a zero ratio prints unsigned since fmtPct stopped signing -0.
+    expect(text).not.toMatch(/[+-]?0\.0%/)
   })
 
   it('says why, off no_budget_reason, rather than showing a wall of dashes', () => {

@@ -11,6 +11,7 @@ import {
   buildRatioTable,
   formatRatioCell,
   AVERAGE_NEEDS_EVERY_MONTH,
+  AVERAGE_AMOUNT_NEEDS_EVERY_MONTH,
   type AccountActuals,
   type RatioAnalysisConfig,
   type RatioTable,
@@ -307,5 +308,131 @@ describe('a labelled operand', () => {
     const t = buildRatioTable(urbanRoad(), config.ratios[0], '2026-08', config)
     expect(t.rows.map((r) => r.label)).toEqual(["Poster's COGS", "Poster's Income", "Poster's COGS % of Poster's Income"])
     expect(t.reasons).toEqual(["no amount posted to Poster's COGS (51150) for Aug 2026"])
+  })
+})
+
+describe('the sheet layout (Calxa p8, "COGS Tables")', () => {
+  // Urban Road's placement as the reference sheet sets it out: income above
+  // freight, each average its own block with its dollars, and the sheet's
+  // labels. The figures are the ledger's; where the sheet's typed-in March–May
+  // freight was short the page is right and the sheet is not, but the one
+  // window clear of those months ties it to the dollar.
+  const SHEET = {
+    months_shown: 3,
+    trailing_averages: [6, 3],
+    amounts_order: 'denominator_first',
+    average_blocks: true,
+    block_headings: false,
+    table_style: 'grid',
+    ratios: [
+      { label: '% of Freight to Customer', numerator: { accounts: ['55000'], label: 'Freight to Customer' }, denominator: { total: 'income' } },
+      {
+        label: "% of Poster's COGS to Income",
+        numerator: { accounts: ['51150'], label: "Poster's COGS" },
+        denominator: { accounts: ['41700'], label: "Poster's Income" },
+        trailing_averages: [],
+      },
+    ],
+  }
+
+  it('leaves every existing page as it was: the four settings default to the first layout', () => {
+    expect(parsed(URBAN_ROAD_CONFIG)).toMatchObject({
+      amounts_order: 'numerator_first',
+      average_blocks: false,
+      block_headings: true,
+      table_style: 'pack',
+    })
+    expect(table(urbanRoad(), URBAN_ROAD_CONFIG, 0).rows.map((r) => r.kind)).toEqual([
+      'numerator', 'denominator', 'ratio', 'average', 'average',
+    ])
+  })
+
+  it.each([
+    ['an unknown order', { amounts_order: 'income_first' }, 'amounts_order'],
+    ['an unknown style', { table_style: 'sheet' }, 'table_style'],
+    ['a string for a flag', { average_blocks: 'yes' }, 'average_blocks'],
+  ])('refuses %s, and says where', (_name, extra, where) => {
+    const result = parseRatioAnalysisConfig({ ...SHEET, ...extra })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toContain(where)
+  })
+
+  it('Freight — the denominator first, then a block per window, every cell', () => {
+    const t = table(urbanRoad(), SHEET, 0)
+    expect(t.rows.map((r) => [r.kind, r.label])).toEqual([
+      ['denominator', 'Total Income'],
+      ['numerator', 'Freight to Customer'],
+      ['ratio', '% of Freight to Customer'],
+      ['heading', 'Average for the last 6 months.'],
+      ['average_denominator', 'Average Total Income'],
+      ['average_numerator', 'Average Freight to Customer'],
+      ['average', 'Average % of Freight to Customer'],
+      ['heading', 'Average for the last 3 months.'],
+      ['average_denominator', 'Average Total Income'],
+      ['average_numerator', 'Average Freight to Customer'],
+      ['average', 'Average % of Freight to Customer'],
+    ])
+    expect(texts(t, 'denominator')).toEqual(['527,562', '495,217', '569,003'])
+    expect(texts(t, 'numerator')).toEqual(['50,925', '51,102', '50,308'])
+    expect(texts(t, 'ratio')).toEqual(['9.65%', '10.32%', '8.84%'])
+    // Mar–Aug / Feb–Jul / Jan–Jun: the mean of each month's amount.
+    expect(texts(t, 'average_denominator', 6)).toEqual(['491,701', '470,166', '467,421'])
+    expect(texts(t, 'average_numerator', 6)).toEqual(['49,722', '50,541', '51,284'])
+    expect(texts(t, 'average', 6)).toEqual(['10.18%', '10.90%', '11.12%'])
+    // Jun–Aug / May–Jul / Apr–Jun. August's 50,778 is the sheet's figure.
+    expect(texts(t, 'average_denominator', 3)).toEqual(['530,594', '524,118', '498,877'])
+    expect(texts(t, 'average_numerator', 3)).toEqual(['50,778', '51,852', '49,198'])
+    expect(texts(t, 'average', 3)).toEqual(['9.60%', '9.94%', '9.93%'])
+    expect(t.rows.find((r) => r.kind === 'heading')!.cells).toEqual([])
+    expect(t.reasons).toEqual([])
+  })
+
+  it('the averaged dollars are means of the amounts — they do not divide into the average %', () => {
+    const t = table(urbanRoad(), SHEET, 0)
+    const aug = (kind: string) => (t.rows.find((r) => r.kind === kind && r.window === 6)!.cells[0] as { value: number }).value
+    // 49,722 / 491,701 is 10.11%; the page prints 10.18%, the mean of the ratios.
+    expect(((aug('average_numerator') / aug('average_denominator')) * 100).toFixed(2)).toBe('10.11')
+    expect(aug('average').toFixed(2)).toBe('10.18')
+  })
+
+  it("Poster's — income first, August a dash with its reason, no averages", () => {
+    const t = table(urbanRoad(), SHEET, 1)
+    expect(t.rows.map((r) => r.label)).toEqual(["Poster's Income", "Poster's COGS", "% of Poster's COGS to Income"])
+    expect(texts(t, 'denominator')).toEqual(['66,911', '56,077', '68,119'])
+    expect(texts(t, 'numerator')).toEqual(['—', '33,711', '26,336'])
+    expect(texts(t, 'ratio')).toEqual(['—', '60.12%', '38.66%'])
+    expect(t.reasons).toEqual(["no amount posted to Poster's COGS (51150) for Aug 2026"])
+  })
+
+  it('an averaged amount needs every month of its window — independently of the other line', () => {
+    const actuals = urbanRoad()
+    delete actuals.accounts['55000'].values['2026-04']
+    const t = table(actuals, SHEET, 0)
+    expect(texts(t, 'average_numerator', 6)).toEqual(['—', '—', '—'])
+    expect(texts(t, 'average_numerator', 3)).toEqual(['50,778', '51,852', '—'])
+    // April's income did post, so every income average still prints.
+    expect(texts(t, 'average_denominator', 6)).toEqual(['491,701', '470,166', '467,421'])
+    expect(texts(t, 'average_denominator', 3)).toEqual(['530,594', '524,118', '498,877'])
+    expect(reasonsOf(t, 'average_numerator', 3)[2]).toBe(
+      'the 3-month average of Freight to Customer needs an amount for every month from Apr 2026 to Jun 2026',
+    )
+    // The unposted month is named once, then each rule once.
+    expect(t.reasons).toEqual([
+      'no amount posted to Freight to Customer (55000) for Apr 2026',
+      AVERAGE_NEEDS_EVERY_MONTH,
+      AVERAGE_AMOUNT_NEEDS_EVERY_MONTH,
+    ])
+  })
+
+  it('show_amounts false keeps the blocks but prints only their percentages', () => {
+    const t = table(urbanRoad(), { ...SHEET, show_amounts: false }, 0)
+    expect(t.rows.map((r) => r.kind)).toEqual(['ratio', 'heading', 'average', 'heading', 'average'])
+  })
+
+  it('numerator_first keeps the numerator on top inside each block too', () => {
+    const t = table(urbanRoad(), { ...SHEET, amounts_order: 'numerator_first' }, 0)
+    expect(t.rows.slice(0, 7).map((r) => r.kind)).toEqual([
+      'numerator', 'denominator', 'ratio', 'heading', 'average_numerator', 'average_denominator', 'average',
+    ])
   })
 })

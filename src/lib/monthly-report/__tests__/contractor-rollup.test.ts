@@ -3,7 +3,7 @@
  * grand total $31,029 against a $28,375 budget.
  */
 import { describe, it, expect } from 'vitest'
-import { rollUpContractors } from '../contractor-rollup'
+import { rollUpContractors, contractorLoadReason } from '../contractor-rollup'
 import type { SubscriptionDetailData, SubscriptionVendorLine } from '@/app/finances/monthly-report/types'
 
 function vendor(name: string, actual: number, budget: number, prior = 0): SubscriptionVendorLine {
@@ -134,5 +134,43 @@ describe('rollUpContractors', () => {
   it('treats an empty-string category as uncategorised', () => {
     const v = { ...vendor('A', 1, 0), category: '' }
     expect(rollUpContractors(data([v]), ORDER).categories[0].name).toBeNull()
+  })
+})
+
+describe('contractorLoadReason — what the page says when the rows are missing or partial', () => {
+  const empty = (extra: Partial<SubscriptionDetailData> = {}): SubscriptionDetailData => ({
+    accounts: [], grand_total: { prior_month: 0, actual: 0, budget: 0, variance: 0 }, report_month: '2026-08', ...extra,
+  })
+
+  it('an unconnected business is could-not-check, never "no contractor payments were found"', () => {
+    const reason = contractorLoadReason(empty({ complete: false, incomplete_reason: 'the business has no active Xero connection' }), 0)
+    expect(reason).toBe('the contractor figures could not be fully read from Xero (the business has no active Xero connection)')
+    expect(reason).not.toMatch(/no contractor payments/)
+  })
+
+  it('a complete crawl with no rows is the one case that may say nothing was paid', () => {
+    expect(contractorLoadReason(empty({ complete: true }), 0)).toBe('no contractor payments were found in Xero for this month')
+  })
+
+  it('a complete crawl with no rows, but the ledger shows spend on these accounts (a journal), does not say nobody was paid', () => {
+    const reason = contractorLoadReason(empty({ complete: true, grand_total: { prior_month: 0, actual: 3250.4, budget: 0, variance: 0 } }), 0)
+    expect(reason).toBe('no contractor bills or payments were found in Xero, though the ledger shows $3,250 on these accounts this month')
+    expect(reason).not.toMatch(/no contractor payments were found/)
+  })
+
+  it('an answer that does not say whether it is complete (an older response, a payload file) is not read as empty', () => {
+    expect(contractorLoadReason(empty(), 0)).toBe('the contractor figures could not be confirmed as complete')
+  })
+
+  it('rows from a complete crawl need no reason; rows from a partial one carry it', () => {
+    expect(contractorLoadReason(empty({ complete: true }), 3)).toBeUndefined()
+    expect(contractorLoadReason(empty({ complete: false, incomplete_reason: 'Xero could not be read for Urban Road Pty Ltd' }), 3))
+      .toBe('the contractor figures could not be fully read from Xero (Xero could not be read for Urban Road Pty Ltd)')
+    // With rows, an unknown answer is left as it always was: the rows print.
+    expect(contractorLoadReason(empty(), 3)).toBeUndefined()
+  })
+
+  it('no data at all is could-not-check', () => {
+    expect(contractorLoadReason(null, 0)).toBe('the contractor figures could not be confirmed as complete')
   })
 })

@@ -237,8 +237,92 @@ describe('the "Others" remainder', () => {
   })
 
   it('still keeps a positive remainder', () => {
-    const summary = summariseVendors([txn('Allied Express', 1000), txn('Sundry', 30)])
-    expect(summary.find(v => v.vendor === 'Others')?.amount).toBe(30)
+    const summary = summariseVendors([txn('Allied Express', 1000), txn('Sundry', 30), txn('Parcel Sundry', 20)])
+    expect(summary.find(v => v.vendor === 'Others')?.amount).toBe(50)
+  })
+
+  it('International Orders: a remainder of one supplier keeps its name — Prodigi, not Others', () => {
+    // Urban Road, August 2026. Calxa: "The Frame Workshop ($6,270), Lumaprints
+    // ($5,290), Prodigi ($81)". The draft said "Others ($81)" for a remainder
+    // that was one bank line.
+    const summary = summariseVendors([
+      txn('The Frame Workshop', 6270.14),
+      txn('Lumaprints', 730.52), txn('Lumaprints', 702.99), txn('Lumaprints', 3856.49),
+      txn('Prodigi.com', 81.4),
+    ])
+    expect(summary.map(v => [v.vendor, v.amount])).toEqual([
+      ['The Frame Workshop', 6270], ['Lumaprints', 5290], ['Prodigi.com', 81],
+    ])
+    expect(summary[2].transactions).toHaveLength(1)
+    const draft = buildDraftNote({ accountName: 'International Orders', vendors: summary, accountActual: 11641.59, clause: null })
+    expect(draft.facts).toBe('The Frame Workshop ($6,270), Lumaprints ($5,290), Prodigi.com ($81)')
+    expect(draft.warnings).toEqual([])
+  })
+
+  it('a remainder of one small refund is a named credit, not "other credits"', () => {
+    const summary = summariseVendors([txn('The Frame Workshop', 6270.14), txn('Prodigi.com', -40)])
+    expect(summary.map(v => v.vendor)).toEqual(['The Frame Workshop', 'Prodigi.com'])
+    const draft = buildDraftNote({ accountName: 'International Orders', vendors: summary, accountActual: 6230.14, clause: null })
+    expect(draft.facts).toBe('The Frame Workshop ($6,270), less Prodigi.com credit ($40)')
+  })
+
+  it('a supplier that rounds to $0 does not stop a remainder of one being named', () => {
+    // A $0.30 bank fee, or a charge and its refund, adds nothing to the $81 —
+    // Prodigi is still the only supplier in it. expandOthers already drops $0
+    // rows; the two must agree on the same data.
+    const fee = summariseVendors([txn('Allied Express', 1000), txn('Prodigi.com', 81.4), txn('Bank Fee', 0.3)])
+    expect(fee.map(v => [v.vendor, v.amount])).toEqual([['Allied Express', 1000], ['Prodigi.com', 81]])
+    const reversed = summariseVendors([txn('Allied Express', 1000), txn('Prodigi.com', 81.4), txn('Parcel Point', 30), txn('Parcel Point', -30)])
+    expect(reversed.map(v => [v.vendor, v.amount])).toEqual([['Allied Express', 1000], ['Prodigi.com', 81]])
+    const draft = buildDraftNote({ accountName: 'International Orders', vendors: fee, accountActual: 1081.7, clause: null })
+    expect(draft.facts).toBe('Allied Express ($1,000), Prodigi.com ($81)')
+  })
+
+  it('two small suppliers are still "Others" — the name would be a list', () => {
+    const summary = summariseVendors([txn('Unitex International', 326.48), txn('Ebay', 80), txn('Amazon', 36.92)])
+    expect(summary.map(v => [v.vendor, v.amount])).toEqual([['Unitex International', 326], ['Others', 117]])
+  })
+})
+
+describe('which name a mapped supplier is quoted under', () => {
+  // Urban Road, August 2026, Marketing Digital Ad Spend: four bank lines from
+  // the Xero contact "Google", $16,552.60. VENDOR_MAPPINGS sends "Google" to
+  // "Google Workspace", which is right on a software account and wrong on ad
+  // spend — Calxa's pack says "Google ($16,553)".
+  const google = [4545.45, 4545.45, 4545.45, 2916.25].map(n => bank('Google', n, '61800', 'SPEND', 'AUTHORISED', 'Google'))
+  const facebook = bank('Facebook', 5117.03, '61800', 'SPEND', 'AUTHORISED', 'Facebook ads')
+
+  it('an account that is not a subscription account names the company', () => {
+    const txns = collectAccountTransactions({
+      accountCode: '61800', side: 'expense', invoices: [], bankTransactions: [...google, facebook], baseCurrency: 'AUD', vendorNames: 'company',
+    })
+    const draft = buildDraftNote({ accountName: 'Marketing Digital Ad Spend', vendors: summariseVendors(txns), accountActual: 23143.86, clause: null })
+    expect(draft.facts).toBe('Google ($16,553), Facebook ($5,117)')
+  })
+
+  it('a bill and a bank line mapped the same way still group into one row', () => {
+    const txns = collectAccountTransactions({
+      accountCode: '61800', side: 'expense', invoices: [bill('Google Australia Pty Ltd', 1000, '61800', 'PAID')],
+      bankTransactions: [bank('', 500, '61800', 'SPEND', 'AUTHORISED', 'GOOGLE*ADS8812')], baseCurrency: 'AUD', vendorNames: 'company',
+    })
+    expect(summariseVendors(txns).map(v => [v.vendor, v.amount])).toEqual([['Google', 1500]])
+  })
+
+  it('a subscription account, and any caller that does not say, keeps the product name', () => {
+    for (const vendorNames of ['product', undefined] as const) {
+      const txns = collectAccountTransactions({
+        accountCode: '63700', side: 'expense', invoices: [], bankTransactions: [bank('Google', 284.1, '63700', 'SPEND')], baseCurrency: 'AUD', vendorNames,
+      })
+      expect(txns[0].vendor).toBe('Google Workspace')
+    }
+  })
+
+  it('an unmapped contact is quoted as it always was', () => {
+    const txns = collectAccountTransactions({
+      accountCode: '55000', side: 'expense', invoices: [bill('Allied Express Transport Pty Ltd', 23594.13, '55000', 'PAID')],
+      bankTransactions: [], baseCurrency: 'AUD', vendorNames: 'company',
+    })
+    expect(txns[0].vendor).toBe('Allied Express Transport Pty Ltd')
   })
 })
 

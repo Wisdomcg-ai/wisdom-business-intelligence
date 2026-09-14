@@ -84,6 +84,17 @@ describe('WD.3 — standing-line gate', () => {
     expect(wages.in_pack).toBe(true)
   })
 
+  it('a target names the page when the wording does not ("Refer to summary page")', () => {
+    const [flagged, checked, missing] = annotateStandingLines([
+      { label: 'IT Costs Software', refer_to: 'summary page' },
+      { label: 'IT Costs Software', refer_to: 'summary page', target: 'Subscription Analysis' },
+      { label: 'Contractors excl. Artists', refer_to: 'summary page', target: 'Contractor Analysis' },
+    ], ['Actual vs Budget', 'Subscription Analysis'])
+    expect(flagged.in_pack).toBe(false)
+    expect(checked).toEqual({ label: 'IT Costs Software', refer_to: 'summary page', target: 'Subscription Analysis', in_pack: true })
+    expect(missing.in_pack).toBe(false)
+  })
+
   it('partial matches work both directions', () => {
     const [a] = annotateStandingLines([{ label: 'Cash', refer_to: 'Cashflow' }], pack)
     expect(a.in_pack).toBe(true)
@@ -98,6 +109,18 @@ describe('WD.3 — standing-line gate', () => {
     )
     expect(lines).toHaveLength(1)
     expect(lines[0].in_pack).toBe(false)
+  })
+
+  it('keeps the accounts a line claims, trimmed, and only when there are some', () => {
+    const [claimed, plain] = annotateStandingLines(
+      [
+        { label: 'Wages & Salaries', refer_to: 'Payroll Summary Page', accounts: [' Employ - Wages & Salaries ', '', '61000'] },
+        { label: 'Note', refer_to: 'Wages Analysis', accounts: [] },
+      ],
+      pack,
+    )
+    expect(claimed.accounts).toEqual(['Employ - Wages & Salaries', '61000'])
+    expect(plain).not.toHaveProperty('accounts')
   })
 
   it('empty labels are dropped; empty refer_to is never a match', () => {

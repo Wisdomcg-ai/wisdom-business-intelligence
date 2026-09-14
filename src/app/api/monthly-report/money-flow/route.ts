@@ -17,9 +17,12 @@ export const dynamic = 'force-dynamic'
  * WD.4 — GET /api/monthly-report/money-flow?business_id&period_month
  *
  * Where Did Our Money Go: the month's funds-flow derived from the STORED
- * balance-sheet mirror (two month-ends + the accounting equation), so it works
- * without live Xero and self-proves — sources − uses ≡ Δbank or the page says
- * "couldn't check". All gating lives in the pure deriveMoneyFlow.
+ * balance-sheet mirror (two month-ends + the accounting equation) and the P&L
+ * the same sync wrote, so it works without live Xero and self-proves — surplus
+ * + came from − spent ≡ Δbank or the page says so. The bank accounts are the
+ * business's saved choice (monthly_report_settings.bank_account_ids), read by
+ * the loader rather than taken from the query, so the page a client receives
+ * is the one the settings say. All gating lives in the pure deriveMoneyFlow.
  */
 const MoneyFlowGetSchema = z.object({
   business_id: z.string().optional(),

@@ -7,8 +7,8 @@
  * history (source 'analyze'). Those rows go through the SAME assembler the route
  * uses — so budgets, budget-only vendors, the P&L account totals and the
  * leakage cards are exactly the route's — but the rows are not the crawl, and
- * four things are lost. Every one is reported in `notes`, and the harness
- * prints them:
+ * five things are lost. The harness prints every one — the first four from
+ * `notes`, the fifth always:
  *
  *   1. ACCOUNT. The table has no account dimension. A vendor is placed on the
  *      first requested code its subscription_budgets row names (active or
@@ -25,6 +25,12 @@
  *   4. PRIOR MONTH. The route reads the prior month from Xero; here it is that
  *      month's 'report' rows, else its 'analyze' rows, which Step 6 may have
  *      written for a wider set of accounts.
+ *   5. BASIS. The history holds the gross document amount only — the default
+ *      page's own figure — so the rows carry no net-of-GST `statement`
+ *      figures, and a placement that opts in to them (the 'calxa' layout)
+ *      prints gross here and says so. Urban Road's August 2026 rows sum
+ *      $15,397 where the route's statement figures would sum to about the
+ *      P&L's $14,726.
  *
  * Contractor Analysis has no persisted rows at all (the route deliberately
  * never writes contractors through), so it cannot be rebuilt this way.
@@ -100,6 +106,8 @@ export function crawlFromPersistedVendorActuals(args: {
   const { accountCodes, reportMonth, accountNames, rows, budgets } = args
   const window = args.batchWindowMs ?? DEFAULT_BATCH_WINDOW_MS
   const crawl = newSubscriptionCrawl(accountCodes)
+  // The history is stored gross (BASIS, above): crawl.statementAmounts stays
+  // false, so no row carries a statement figure it does not have.
   for (const code of accountCodes) {
     const name = accountNames.get(code)
     if (name) crawl.accountNames.set(code, name)

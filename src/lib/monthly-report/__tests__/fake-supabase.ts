@@ -26,6 +26,8 @@ export function fakeSupabase(tables: FakeTables) {
     const filters: [string, string, unknown][] = []
     let orderBy: { column: string; ascending: boolean } | null = null
     let limitN: number | null = null
+    let rangeFrom: number | null = null
+    let rangeTo: number | null = null
     let countMode = false
     let headMode = false
     calls.push({ table, filters })
@@ -45,6 +47,8 @@ export function fakeSupabase(tables: FakeTables) {
             case 'gt': return String(v) > String(value)
             case 'lt': return String(v) < String(value)
             case 'lte': return String(v) <= String(value)
+            // Only the form the budget resolver uses: not(column, 'is', null).
+            case 'not_is': return (v ?? null) !== value
             default: return true
           }
         })
@@ -59,6 +63,7 @@ export function fakeSupabase(tables: FakeTables) {
         })
       }
       if (limitN !== null) rows = rows.slice(0, limitN)
+      if (rangeFrom !== null) rows = rows.slice(rangeFrom, (rangeTo ?? rows.length - 1) + 1)
       return { data: headMode ? null : rows, error: null, count: countMode ? rows.length : null }
     }
 
@@ -77,6 +82,8 @@ export function fakeSupabase(tables: FakeTables) {
       lte(c: string, v: unknown) { filters.push(['lte', c, v]); return chain },
       order(c: string, o?: { ascending?: boolean }) { orderBy = { column: c, ascending: o?.ascending !== false }; return chain },
       limit(n: number) { limitN = n; return chain },
+      range(from: number, to: number) { rangeFrom = from; rangeTo = to; return chain },
+      not(c: string, op: string, v: unknown) { filters.push([`not_${op}`, c, v]); return chain },
       maybeSingle() {
         const r = run()
         return Promise.resolve({ data: r.error ? null : (r.data ?? [])[0] ?? null, error: r.error })

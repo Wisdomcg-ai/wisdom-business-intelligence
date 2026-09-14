@@ -3,10 +3,12 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
+import { fetchXeroWithRateLimit, RateLimitDailyExceededError, XeroHttpError } from '@/lib/xero/xero-api-client'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { loadFxRates } from '@/lib/consolidation/fx'
-import type { BalanceSheetRow, BalanceSheetData, BalanceSheetCompare } from '@/app/finances/monthly-report/types'
+import type { BalanceSheetCompare } from '@/app/finances/monthly-report/types'
+import { buildBalanceSheetData, balanceSheetDates, type BsAccount } from '@/lib/monthly-report/balance-sheet-rows'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -14,6 +16,9 @@ import { withQuerySchema } from '@/lib/api/with-schema'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
+// Room for one Retry-After wait (Xero's minute limit asks for up to 60s) on
+// top of the two reports themselves.
+export const maxDuration = 120
 
 const GetQuerySchema = z
   .object({
@@ -37,53 +42,11 @@ function lastDayOfMonth(month: string): string {
   return `${y}-${String(m).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`
 }
 
-/** Format a Xero date label to "Mar 2026" style */
-function formatXeroLabel(raw: string): string {
-  // Xero returns e.g. "31 Mar 2026" or "31 March 2026"
-  const parts = raw.trim().split(' ')
-  if (parts.length >= 3) {
-    const month = parts[1].slice(0, 3)
-    const year = parts[parts.length - 1]
-    return `${month} ${year}`
-  }
-  return raw
-}
-
 /** Parse a Xero numeric string, returning null for empty/non-numeric */
 function parseAmount(val: string): number | null {
   if (!val || val.trim() === '') return null
   const n = parseFloat(val.replace(/,/g, ''))
   return isNaN(n) ? null : n
-}
-
-/** Compute variance % — null when prior is 0 (display as N/A) */
-function variancePct(current: number | null, prior: number | null): number | null {
-  if (prior === null || prior === 0) return null
-  if (current === null) return null
-  return ((current - prior) / Math.abs(prior)) * 100
-}
-
-/**
- * Map Xero section titles to Calxa-style singular labels.
- * Calxa uses "Asset", "Liability", "Equity" — not the plural form.
- */
-function mapSectionTitle(xeroTitle: string): string {
-  const t = xeroTitle.trim()
-  if (t === 'Assets') return 'Asset'
-  if (t === 'Liabilities') return 'Liability'
-  if (t === 'Equity') return 'Equity'
-  // Unmapped sections (pass through with "New unmapped" prefix if needed)
-  return t
-}
-
-/** Map Xero SummaryRow labels to Calxa singular form */
-function mapSubtotalLabel(xeroLabel: string): string {
-  const t = xeroLabel.trim()
-  if (t === 'Total Assets') return 'Total Asset'
-  if (t === 'Total Liabilities') return 'Total Liability'
-  if (t === 'Total Equity') return 'Total Equity'
-  if (t === 'Net Assets') return 'Net Assets'
-  return t
 }
 
 /**
@@ -157,12 +120,84 @@ async function fetchBalanceSheetForTenant(
   return { ok: true, report }
 }
 
+type SingleDateResult =
+  | { ok: true; report: any }
+  | { ok: false; status: number; errText: string; rateLimited?: 'minute' | 'daily' }
+
+/**
+ * The BalanceSheet report as at ONE date — no periods=, no timeframe=, the
+ * shape the sync uses (bs-single-period-parser.ts). The page's comparison
+ * column is a second call of this, not Xero's comparative.
+ *
+ * Through the paced client, not a bare fetch. The pack asks this route twice
+ * (mom, then yoy) and each ask is two reports, so one export is four
+ * BalanceSheet calls against a per-org limit of 60 a minute that a
+ * sync-all-xero crawl of the same org may already be spending. A bare fetch
+ * turned the first 429 into "Xero API error" on the page; this waits out
+ * Retry-After once, retries a concurrent-limit refusal, and gives a 5xx one
+ * more try — no more, because someone is waiting on the export.
+ */
+async function fetchSingleDateBalanceSheet(
+  accessToken: string,
+  tenantId: string,
+  date: string,
+): Promise<SingleDateResult> {
+  const url = `https://api.xero.com/api.xro/2.0/Reports/BalanceSheet?date=${date}&standardLayout=true`
+  try {
+    const res = await fetchXeroWithRateLimit(url, { accessToken, tenantId, maxRetries: 2 })
+    const report = res.json?.Reports?.[0]
+    if (!report) return { ok: false, status: 502, errText: 'Empty response from Xero' }
+    return { ok: true, report }
+  } catch (err) {
+    if (err instanceof RateLimitDailyExceededError) {
+      return { ok: false, status: 429, errText: err.message, rateLimited: 'daily' }
+    }
+    if (err instanceof XeroHttpError) return { ok: false, status: err.status, errText: err.body }
+    const message = err instanceof Error ? err.message : String(err)
+    // The client's own wording for a limit that outlasted its retry
+    // ("xero 429 minute persists after retry …") and for exhausted 5xx
+    // retries ("xero 503 after 2 attempts …"); a network failure has no status.
+    const status = Number(/^xero (\d{3})\b/.exec(message)?.[1] ?? 502)
+    return status === 429
+      ? { ok: false, status, errText: message, rateLimited: 'minute' }
+      : { ok: false, status, errText: message }
+  }
+}
+
+/**
+ * The tenant's account catalogue — AccountID → code and Class — which decides
+ * where each account sits on the page (its Class: a credit card is an ASSET
+ * that Xero's report files under Current Liabilities) and in what order
+ * (Calxa's code order). Keyed on tenant_id, not business_id: xero_accounts
+ * carries both id-spaces historically and the tenant is the one key that
+ * cannot be the wrong one. A failed read returns null and the page keeps
+ * Xero's order and Xero's placement — both add up to the same Net Assets, so
+ * it is no reason to fail the sheet.
+ */
+async function loadAccountCatalogue(tenantId: string): Promise<Map<string, BsAccount> | null> {
+  const { data, error } = await supabase
+    .from('xero_accounts')
+    .select('xero_account_id, account_code, xero_class')
+    .eq('tenant_id', tenantId)
+  if (error || !data) {
+    Sentry.captureMessage('[BalanceSheet] account catalogue unavailable — rows keep Xero order and placement', {
+      level: 'warning' as any,
+      extra: { tenantId, error: error?.message },
+    } as any)
+    return null
+  }
+  return new Map(
+    data.map((a: any) => [String(a.xero_account_id), { code: a.account_code ?? null, xeroClass: a.xero_class ?? null }]),
+  )
+}
+
 /**
  * GET /api/Xero/balance-sheet?business_id=&month=YYYY-MM[&compare=yoy|mom]
  *
- * Fetches Xero /Reports/BalanceSheet for the given month and parses it
- * into the Calxa flat-section format with 4 columns:
- *   Current Actuals | Prior Actuals | Variance | % Variance
+ * Fetches Xero /Reports/BalanceSheet as at the month-end and as at the
+ * comparison month-end (one call each) and builds the page's rows with 4
+ * columns — Current Actuals | Prior Actuals | Variance | % Variance — in
+ * lib/monthly-report/balance-sheet-rows.ts.
  *
  * Phase 58.3: when `cash_only=true` is passed, returns only the bank account
  * balance summary used by the forecast Overview's Cash KPI card:
@@ -230,7 +265,18 @@ async function getHandler(request: NextRequest) {
       .in('business_id', ids.all)
       .eq('is_active', true)
 
-    const allConns = connections ?? []
+    // One entry per ORGANISATION, not per row. The read spans both id-spaces,
+    // so a single org can come back twice — a businesses-keyed row and a
+    // profiles-keyed row for the same tenant (the dual-ID incident class). Per
+    // row, that org's cash was summed twice below and its full sheet refused as
+    // "several organisations". The tenant is the organisation; keep its first row.
+    const seenTenants = new Set<string>()
+    const allConns = (connections ?? []).filter((c: any) => {
+      const tenant = String(c.tenant_id)
+      if (seenTenants.has(tenant)) return false
+      seenTenants.add(tenant)
+      return true
+    })
     if (allConns.length === 0) {
       return NextResponse.json({ error: 'No active Xero connection', code: 'NO_CONNECTION' }, { status: 400 })
     }
@@ -247,7 +293,6 @@ async function getHandler(request: NextRequest) {
     const reportDate = cashOnly
       ? (isValidAsOf ? asOfParam! : todayDate)
       : lastDayOfMonth(month as string)
-    const timeframe = compare === 'mom' ? 'MONTH' : 'YEAR'
 
     // ─────────────────────────────────────────────────────────────────────
     // Phase 67 follow-up — multi-tenant cash_only with FX translation
@@ -340,6 +385,27 @@ async function getHandler(request: NextRequest) {
     // full-BS shape predates the consolidation engine and is preserved for
     // back-compat with the existing Calxa-style monthly report.
     // ─────────────────────────────────────────────────────────────────────
+    // The full sheet is ONE organisation's. For a business Xero holds as
+    // several (Dragon Roofing + Easy Hail Claim; IICT's three, one of them in
+    // HKD) the first active connection used to be printed as though it were
+    // the business — whichever org the query happened to return first, with
+    // nothing on the page to say the rest were missing. Say so instead: the
+    // pack prints this as the page's reason and the tab as its error. The
+    // consolidated balance sheet is the page that covers them together. The
+    // Cash KPI above sums every org itself and is unaffected.
+    if (!cashOnly && allConns.length > 1) {
+      const names = allConns.map((c: any) => c.tenant_name).filter(Boolean).join(', ')
+      return NextResponse.json(
+        {
+          error:
+            `Xero holds this business as ${allConns.length} organisations${names ? ` (${names})` : ''}, ` +
+            'and this page can show only one of them — the consolidated balance sheet covers them together',
+          code: 'MULTI_ORG',
+        },
+        { status: 409 },
+      )
+    }
+
     const connection = allConns[0]
 
     const tokenResult = await getValidAccessToken(connection as any, supabase)
@@ -350,12 +416,44 @@ async function getHandler(request: NextRequest) {
     const accessToken = tokenResult.accessToken!
     const tenantId = (connection as any).tenant_id
 
-    // Cash-only requests don't need a comparison column — keep the standard
-    // layout so we can locate the "Bank" sub-section consistently with the
-    // full BS path.
-    const xeroUrl = cashOnly
-      ? `https://api.xero.com/api.xro/2.0/Reports/BalanceSheet?date=${reportDate}&periods=1&timeframe=MONTH&standardLayout=true`
-      : `https://api.xero.com/api.xro/2.0/Reports/BalanceSheet?date=${reportDate}&periods=1&timeframe=${timeframe}&standardLayout=true`
+    if (!cashOnly) {
+      // The page's two columns, each from its own single-date report — see
+      // balance-sheet-rows.ts for why the comparison is no longer one
+      // periods=1&timeframe= call. (`month` is non-null here: validated above.)
+      const dates = balanceSheetDates(month as string, compare)
+      const [currentResult, priorResult] = await Promise.all([
+        fetchSingleDateBalanceSheet(accessToken, tenantId, dates.current),
+        fetchSingleDateBalanceSheet(accessToken, tenantId, dates.prior),
+      ])
+      for (const r of [currentResult, priorResult]) {
+        if (!r.ok) {
+          Sentry.captureMessage(`[BalanceSheet] Xero API error status=${r.status}`, { level: 'error' as any, extra: { errText: r.errText } } as any)
+          // A limit is a wait, not a fault, and the page prints this sentence
+          // verbatim as its reason — so say which wait it is.
+          if (r.rateLimited) {
+            const error = r.rateLimited === 'daily'
+              ? "Xero's daily limit for this organisation is used up — try again tomorrow"
+              : 'Xero is rate-limiting — try again in a minute'
+            return NextResponse.json({ error, status: 429 }, { status: 429 })
+          }
+          return NextResponse.json({ error: 'Xero API error', status: r.status }, { status: 502 })
+        }
+      }
+
+      const result = buildBalanceSheetData({
+        businessId,
+        compare,
+        currentDate: dates.current,
+        priorDate: dates.prior,
+        current: (currentResult as { ok: true; report: any }).report,
+        prior: (priorResult as { ok: true; report: any }).report,
+        accounts: await loadAccountCatalogue(tenantId),
+      })
+      return NextResponse.json(result)
+    }
+
+    // Cash-only: the standard layout, so the "Bank" sub-section can be found.
+    const xeroUrl = `https://api.xero.com/api.xro/2.0/Reports/BalanceSheet?date=${reportDate}&periods=1&timeframe=MONTH&standardLayout=true`
     const xeroResp = await fetch(xeroUrl, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -376,119 +474,12 @@ async function getHandler(request: NextRequest) {
       return NextResponse.json({ error: 'Empty response from Xero' }, { status: 502 })
     }
 
-    if (cashOnly) {
-      const cashSum = parseBankCashFromReport(report)
-      return NextResponse.json({
-        cash: cashSum,
-        currency: ((connection as any).functional_currency || 'AUD').toUpperCase(),
-        as_of: reportDate,
-      })
-    }
-
-    // Extract period labels from the Header row
-    // (At this point cashOnly is false → `month` is guaranteed non-null by the
-    // upfront validation, but narrow it explicitly for the type checker.)
-    const headerRow = report.Rows?.find((r: any) => r.RowType === 'Header')
-    const currentLabel = headerRow?.Cells?.[1]?.Value
-      ? formatXeroLabel(headerRow.Cells[1].Value)
-      : (month as string)
-    const priorLabel = headerRow?.Cells?.[2]?.Value
-      ? formatXeroLabel(headerRow.Cells[2].Value)
-      : ''
-
-    const rows: BalanceSheetRow[] = []
-
-    for (const row of (report.Rows ?? [])) {
-      if (row.RowType === 'Header') continue
-
-      if (row.RowType === 'Section') {
-        const sectionLabel = mapSectionTitle(row.Title ?? '')
-
-        // Section header row
-        rows.push({
-          type: 'section_header',
-          label: sectionLabel,
-          current: null,
-          prior: null,
-          variance: null,
-          variance_pct: null,
-        })
-
-        for (const inner of (row.Rows ?? [])) {
-          const cells = inner.Cells ?? []
-          const label = cells[0]?.Value ?? ''
-          const current = parseAmount(cells[1]?.Value ?? '')
-          const prior = parseAmount(cells[2]?.Value ?? '')
-          const v = current !== null && prior !== null ? current - prior : null
-
-          if (inner.RowType === 'SummaryRow') {
-            rows.push({
-              type: 'subtotal',
-              label: mapSubtotalLabel(label),
-              current,
-              prior,
-              variance: v,
-              variance_pct: variancePct(current, prior),
-            })
-          } else if (inner.RowType === 'Row') {
-            // Skip blank rows Xero sometimes inserts
-            if (!label && current === null && prior === null) continue
-            rows.push({
-              type: 'line_item',
-              label,
-              current,
-              prior,
-              variance: v,
-              variance_pct: variancePct(current, prior),
-            })
-          }
-        }
-      } else if (row.RowType === 'Row') {
-        // Standalone rows between sections — Net Assets lives here
-        const cells = row.Cells ?? []
-        const label = cells[0]?.Value ?? ''
-        if (!label) continue
-        const current = parseAmount(cells[1]?.Value ?? '')
-        const prior = parseAmount(cells[2]?.Value ?? '')
-        const v = current !== null && prior !== null ? current - prior : null
-
-        if (label === 'Net Assets') {
-          rows.push({
-            type: 'net_assets',
-            label: 'Net Assets',
-            current,
-            prior,
-            variance: v,
-            variance_pct: variancePct(current, prior),
-          })
-        }
-      }
-    }
-
-    // Verify the sheet balances: Net Assets should equal the equity subtotal.
-    // The last subtotal in a standard BS is always the equity total, regardless
-    // of how Xero labels it (AU orgs vary: "Total Equity", "Total Owner's Funds", etc.)
-    // Only flag as unbalanced when we can positively confirm a mismatch —
-    // if either value is missing, default to balanced (no warning).
-    const netAssetsRow = rows.find(r => r.type === 'net_assets')
-    const subtotals = rows.filter(r => r.type === 'subtotal')
-    const totalEquityRow = subtotals.at(-1)
-    const balances =
-      netAssetsRow?.current == null ||
-      totalEquityRow?.current == null ||
-      Math.abs(netAssetsRow.current - totalEquityRow.current) < 0.01
-
-    const result: BalanceSheetData = {
-      business_id: businessId,
-      report_date: reportDate,
-      compare,
-      current_label: currentLabel,
-      prior_label: priorLabel,
-      rows,
-      balances: balances ?? false,
-    }
-
-    return NextResponse.json(result)
+    const cashSum = parseBankCashFromReport(report)
+    return NextResponse.json({
+      cash: cashSum,
+      currency: ((connection as any).functional_currency || 'AUD').toUpperCase(),
+      as_of: reportDate,
+    })
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'Xero/balance-sheet' }, extra: { context: "[BalanceSheet] Error" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

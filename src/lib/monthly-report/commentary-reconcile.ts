@@ -65,3 +65,31 @@ export function reconcileCommentary(
 
   return out
 }
+
+/**
+ * The commentary map after the coach types in one account's note.
+ *
+ * Everything the generator wrote stays on the entry — the draft, its halves,
+ * its warnings, the trigger and the tab link. The page used to rebuild the
+ * entry from the vendor list and the note alone, so the first keystroke in a
+ * note deleted the draft from that account, and auto-save then persisted a
+ * pack whose supplier line was gone until the next Regenerate. That was
+ * harmless only while nothing printed the draft; a pack that lets the note
+ * REPLACE the draft needs the draft still there when the note is cleared.
+ */
+export function applyCoachNote(
+  prev: VarianceCommentary | undefined,
+  accountName: string,
+  note: string,
+): VarianceCommentary {
+  const existing = prev?.[accountName]
+  return {
+    ...(prev ?? {}),
+    [accountName]: {
+      ...(existing ?? {}),
+      vendor_summary: existing?.vendor_summary ?? [],
+      coach_note: note,
+      is_edited: true,
+    },
+  }
+}

@@ -1,0 +1,4452 @@
+{
+ "_meta": {
+  "source": "xero_bs_lines mirror for Urban Road Pty Ltd (business 28d41193), synced 2026-09-13 22:02 UTC; balances verbatim",
+  "shape": "LAID OUT BY HAND in the shape of Reports/BalanceSheet?date=<date>&standardLayout=true: one value column, Xero's section tree, rows in Xero name order, Current Year Earnings first in Equity. Not a capture: the mirror is synced with standardLayout=false, so the group titles and where credit cards sit in a live standardLayout=true answer are modelled, not observed",
+  "classes": "xero_accounts.xero_class by AccountID for the same tenant: the Class the page groups by. Both credit cards (American Express® Platinum Business Card, Suzie Credit Card) are ASSET although the report files them under Current Liabilities"
+ },
+ "codes": {
+  "84b151bf-cc20-4f09-b34a-4c695cc9bff4": null,
+  "cd058bf3-c1a1-4379-b886-424aa5e77e7f": null,
+  "6532a9b0-e2c4-48c9-bcc3-65757e80d4e4": "11110",
+  "9ecfb516-731d-4df1-bad8-1877700840f2": "11140",
+  "4eee277f-7184-4d7c-9ead-9df2c7bcce4c": "11160",
+  "568167dd-2ea0-4eb5-962f-329c4aca410a": "",
+  "637735b0-d357-4497-b3a9-59f0aa4671a8": null,
+  "09fd4a63-c488-4e4e-b28d-5735ebc28600": "12400",
+  "a80dbe45-53c2-46e7-87ab-befcfe337e03": "11500",
+  "685016a3-1638-4286-ac66-91c2265a1c75": "12200",
+  "c2ba6cb6-f50d-45f7-80b9-3323f67fb076": "11370",
+  "905e1394-e959-42d7-8d87-3895ac23fb81": "11200",
+  "a99e0db8-5cd0-4e07-8cbd-49c9ec0aa0cc": "19110",
+  "03d76b28-f73b-490c-a81e-5ac6051c6011": "13110",
+  "7f0c3570-d6c1-4a4f-ba43-9e672c2b0e07": "13120",
+  "120e32c6-c603-4ea7-8678-a8897fef1ba6": "13000",
+  "04baece7-bafb-4e88-8a9a-748e5110228a": "13005",
+  "109f6206-1d37-4130-a436-cff73c31d71d": "13150",
+  "5be34dec-9362-4e05-8237-2c715bf129fb": "13160",
+  "aa0bc0af-a63d-48d1-b024-f649917b610c": "19600",
+  "b24a3c5c-fb1a-46bf-a7b8-325b91939144": "19130",
+  "0de39031-37c2-49f7-9f24-411859920e50": "19550",
+  "abababab-abab-abab-abab-abababababab": null,
+  "a6ebe4c4-400b-490d-ae06-614f0995b959": "30301",
+  "d6933faa-b0ec-4046-974d-607f618f60e0": "30302",
+  "ea623bd4-1b98-4a75-8571-2cb7b8ae5e99": "30200",
+  "bdce8b88-b13e-4cdd-8eb2-6d5d5bccd59f": "960",
+  "5340b22e-8a2f-48c0-8fe5-1d16227d3b0d": "30800",
+  "0aca1d06-e22b-4d9c-b172-8c4a59aee56b": null,
+  "5c8448e1-059c-4d57-af59-3ffc8b944243": "21250",
+  "ba8d18f8-f65b-4111-80ee-dc0945290d5c": "21370",
+  "fd76a6b8-6998-45a7-bf0f-c58f2a0b2213": "21700",
+  "1cf8a821-898a-40ea-9c0c-5a02e52bdab6": "21305",
+  "d1eac985-889c-4e7a-8f3e-4db191eb20b2": "21300",
+  "278fb877-5767-456e-b9c1-8b75f557860d": "21330",
+  "c6e82d87-8433-45f6-8bdb-e16bf77782de": "21800",
+  "40b49161-3190-43b2-9f5f-b1c8db04176e": "21805",
+  "2a00eff1-3cd5-4d5b-8c94-964d79385689": "21375",
+  "ab757d44-e005-4b1b-a0ea-040ccbe15a80": "21390",
+  "4db0e1a0-e19d-4dcc-b3d5-2c6ff6d906ac": "21350",
+  "ad10a7af-49b5-4d49-85bb-46e8092fc17c": "860",
+  "36b0097a-d98f-4127-b1e4-d77077157446": "22210",
+  "a41a16c6-ee8b-43b0-b67c-23a26b14bb55": "21490",
+  "699a2acf-f125-485f-b9d7-dcb8755f95c7": "21110",
+  "49f8b3eb-70ad-48cd-a80d-8b8ac3f06fec": "21200",
+  "f45edef8-a898-4845-97b9-65f94f7d8397": "23000",
+  "85668d95-8793-4a45-ada4-a49fe0a8ccdb": "21807",
+  "c76267d0-043e-4cc4-b403-733082c5dd03": "23005",
+  "717815b9-df78-4f0e-b99c-5b3a5b059c2a": "21806",
+  "5ec70989-0c5e-4111-bac1-df72617e7de4": "21320",
+  "b3e0e808-eae1-4b10-9500-532c47b29f1f": "21310",
+  "e03bc6e4-2495-4e77-a9c8-ab5ae2f74e20": "21311",
+  "50a3aabd-14b2-4b9c-988e-25e0c3c56b39": "21120",
+  "6d54a685-87b3-4956-8061-8bf30cec8b2f": "12300",
+  "28b38a79-e9f1-4017-9591-686ff23b7f45": "11330",
+  "50188e15-2e7e-4b09-aab5-34bf21ee1224": "21600",
+  "e1ce4fea-49ce-465b-aba3-2f0d81511fd1": "22230",
+  "8a6b0d62-4ba0-4572-8026-ee1fa3188713": "21395",
+  "8314f95f-3e21-479a-aa44-ad067e4976d0": "21400"
+ },
+ "classes": {
+  "84b151bf-cc20-4f09-b34a-4c695cc9bff4": "ASSET",
+  "cd058bf3-c1a1-4379-b886-424aa5e77e7f": "ASSET",
+  "6532a9b0-e2c4-48c9-bcc3-65757e80d4e4": "ASSET",
+  "9ecfb516-731d-4df1-bad8-1877700840f2": "ASSET",
+  "4eee277f-7184-4d7c-9ead-9df2c7bcce4c": "ASSET",
+  "568167dd-2ea0-4eb5-962f-329c4aca410a": "ASSET",
+  "637735b0-d357-4497-b3a9-59f0aa4671a8": "ASSET",
+  "09fd4a63-c488-4e4e-b28d-5735ebc28600": "ASSET",
+  "a80dbe45-53c2-46e7-87ab-befcfe337e03": "ASSET",
+  "685016a3-1638-4286-ac66-91c2265a1c75": "ASSET",
+  "c2ba6cb6-f50d-45f7-80b9-3323f67fb076": "ASSET",
+  "905e1394-e959-42d7-8d87-3895ac23fb81": "ASSET",
+  "a99e0db8-5cd0-4e07-8cbd-49c9ec0aa0cc": "ASSET",
+  "03d76b28-f73b-490c-a81e-5ac6051c6011": "ASSET",
+  "7f0c3570-d6c1-4a4f-ba43-9e672c2b0e07": "ASSET",
+  "120e32c6-c603-4ea7-8678-a8897fef1ba6": "ASSET",
+  "04baece7-bafb-4e88-8a9a-748e5110228a": "ASSET",
+  "109f6206-1d37-4130-a436-cff73c31d71d": "ASSET",
+  "5be34dec-9362-4e05-8237-2c715bf129fb": "ASSET",
+  "aa0bc0af-a63d-48d1-b024-f649917b610c": "ASSET",
+  "b24a3c5c-fb1a-46bf-a7b8-325b91939144": "ASSET",
+  "0de39031-37c2-49f7-9f24-411859920e50": "ASSET",
+  "abababab-abab-abab-abab-abababababab": null,
+  "a6ebe4c4-400b-490d-ae06-614f0995b959": "EQUITY",
+  "d6933faa-b0ec-4046-974d-607f618f60e0": "EQUITY",
+  "ea623bd4-1b98-4a75-8571-2cb7b8ae5e99": "EQUITY",
+  "bdce8b88-b13e-4cdd-8eb2-6d5d5bccd59f": "EQUITY",
+  "5340b22e-8a2f-48c0-8fe5-1d16227d3b0d": "EQUITY",
+  "0aca1d06-e22b-4d9c-b172-8c4a59aee56b": "ASSET",
+  "5c8448e1-059c-4d57-af59-3ffc8b944243": "LIABILITY",
+  "ba8d18f8-f65b-4111-80ee-dc0945290d5c": "LIABILITY",
+  "fd76a6b8-6998-45a7-bf0f-c58f2a0b2213": "LIABILITY",
+  "1cf8a821-898a-40ea-9c0c-5a02e52bdab6": "LIABILITY",
+  "d1eac985-889c-4e7a-8f3e-4db191eb20b2": "LIABILITY",
+  "278fb877-5767-456e-b9c1-8b75f557860d": "LIABILITY",
+  "c6e82d87-8433-45f6-8bdb-e16bf77782de": "LIABILITY",
+  "40b49161-3190-43b2-9f5f-b1c8db04176e": "LIABILITY",
+  "2a00eff1-3cd5-4d5b-8c94-964d79385689": "LIABILITY",
+  "ab757d44-e005-4b1b-a0ea-040ccbe15a80": "LIABILITY",
+  "4db0e1a0-e19d-4dcc-b3d5-2c6ff6d906ac": "LIABILITY",
+  "ad10a7af-49b5-4d49-85bb-46e8092fc17c": "LIABILITY",
+  "36b0097a-d98f-4127-b1e4-d77077157446": "LIABILITY",
+  "a41a16c6-ee8b-43b0-b67c-23a26b14bb55": "LIABILITY",
+  "699a2acf-f125-485f-b9d7-dcb8755f95c7": "ASSET",
+  "49f8b3eb-70ad-48cd-a80d-8b8ac3f06fec": "LIABILITY",
+  "f45edef8-a898-4845-97b9-65f94f7d8397": "LIABILITY",
+  "85668d95-8793-4a45-ada4-a49fe0a8ccdb": "LIABILITY",
+  "c76267d0-043e-4cc4-b403-733082c5dd03": "LIABILITY",
+  "717815b9-df78-4f0e-b99c-5b3a5b059c2a": "LIABILITY",
+  "5ec70989-0c5e-4111-bac1-df72617e7de4": "LIABILITY",
+  "b3e0e808-eae1-4b10-9500-532c47b29f1f": "LIABILITY",
+  "e03bc6e4-2495-4e77-a9c8-ab5ae2f74e20": "LIABILITY",
+  "50a3aabd-14b2-4b9c-988e-25e0c3c56b39": "ASSET",
+  "6d54a685-87b3-4956-8061-8bf30cec8b2f": "ASSET",
+  "28b38a79-e9f1-4017-9591-686ff23b7f45": "ASSET",
+  "50188e15-2e7e-4b09-aab5-34bf21ee1224": "LIABILITY",
+  "e1ce4fea-49ce-465b-aba3-2f0d81511fd1": "LIABILITY",
+  "8a6b0d62-4ba0-4572-8026-ee1fa3188713": "LIABILITY",
+  "8314f95f-3e21-479a-aa44-ad067e4976d0": "LIABILITY"
+ },
+ "reports": {
+  "2026-08-31": {
+   "Reports": [
+    {
+     "ReportID": "BalanceSheet",
+     "ReportName": "Balance Sheet",
+     "ReportTitles": [
+      "Balance Sheet",
+      "Urban Road Pty Ltd",
+      "As at 31 Aug 2026"
+     ],
+     "Rows": [
+      {
+       "RowType": "Header",
+       "Cells": [
+        {
+         "Value": ""
+        },
+        {
+         "Value": "31 Aug 2026"
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Assets",
+       "Rows": []
+      },
+      {
+       "RowType": "Section",
+       "Title": "Bank",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "AUD PayPal#001",
+           "Attributes": [
+            {
+             "Value": "84b151bf-cc20-4f09-b34a-4c695cc9bff4",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "2095.07",
+           "Attributes": [
+            {
+             "Value": "84b151bf-cc20-4f09-b34a-4c695cc9bff4",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Bus Online Saver",
+           "Attributes": [
+            {
+             "Value": "cd058bf3-c1a1-4379-b886-424aa5e77e7f",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "99000.00",
+           "Attributes": [
+            {
+             "Value": "cd058bf3-c1a1-4379-b886-424aa5e77e7f",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "CBA Cheque Account",
+           "Attributes": [
+            {
+             "Value": "6532a9b0-e2c4-48c9-bcc3-65757e80d4e4",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "18724.85",
+           "Attributes": [
+            {
+             "Value": "6532a9b0-e2c4-48c9-bcc3-65757e80d4e4",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "CBA Foreign Currency Account",
+           "Attributes": [
+            {
+             "Value": "9ecfb516-731d-4df1-bad8-1877700840f2",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "9ecfb516-731d-4df1-bad8-1877700840f2",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Urban Road Tax Savings acct",
+           "Attributes": [
+            {
+             "Value": "4eee277f-7184-4d7c-9ead-9df2c7bcce4c",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "90000.00",
+           "Attributes": [
+            {
+             "Value": "4eee277f-7184-4d7c-9ead-9df2c7bcce4c",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "USD PayPal #001",
+           "Attributes": [
+            {
+             "Value": "568167dd-2ea0-4eb5-962f-329c4aca410a",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "568167dd-2ea0-4eb5-962f-329c4aca410a",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Wise account",
+           "Attributes": [
+            {
+             "Value": "637735b0-d357-4497-b3a9-59f0aa4671a8",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "364.67",
+           "Attributes": [
+            {
+             "Value": "637735b0-d357-4497-b3a9-59f0aa4671a8",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Bank"
+          },
+          {
+           "Value": "210184.59"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Current Assets",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Loan - Urban Rd Commercial",
+           "Attributes": [
+            {
+             "Value": "09fd4a63-c488-4e4e-b28d-5735ebc28600",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "3000.00",
+           "Attributes": [
+            {
+             "Value": "09fd4a63-c488-4e4e-b28d-5735ebc28600",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Patent & Trademarks",
+           "Attributes": [
+            {
+             "Value": "a80dbe45-53c2-46e7-87ab-befcfe337e03",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "2920.00",
+           "Attributes": [
+            {
+             "Value": "a80dbe45-53c2-46e7-87ab-befcfe337e03",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Rental Bond",
+           "Attributes": [
+            {
+             "Value": "685016a3-1638-4286-ac66-91c2265a1c75",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "19729.25",
+           "Attributes": [
+            {
+             "Value": "685016a3-1638-4286-ac66-91c2265a1c75",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Stock on Hand (Zoho)",
+           "Attributes": [
+            {
+             "Value": "c2ba6cb6-f50d-45f7-80b9-3323f67fb076",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-55005.00",
+           "Attributes": [
+            {
+             "Value": "c2ba6cb6-f50d-45f7-80b9-3323f67fb076",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Trade Debtors",
+           "Attributes": [
+            {
+             "Value": "905e1394-e959-42d7-8d87-3895ac23fb81",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "278428.06",
+           "Attributes": [
+            {
+             "Value": "905e1394-e959-42d7-8d87-3895ac23fb81",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Current Assets"
+          },
+          {
+           "Value": "249072.31"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Fixed Assets",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Formation Costs - at cost",
+           "Attributes": [
+            {
+             "Value": "a99e0db8-5cd0-4e07-8cbd-49c9ec0aa0cc",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "13710.00",
+           "Attributes": [
+            {
+             "Value": "a99e0db8-5cd0-4e07-8cbd-49c9ec0aa0cc",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Furniture & Equipment - Cost",
+           "Attributes": [
+            {
+             "Value": "03d76b28-f73b-490c-a81e-5ac6051c6011",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "97860.47",
+           "Attributes": [
+            {
+             "Value": "03d76b28-f73b-490c-a81e-5ac6051c6011",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Furniture & Equipment - Dep'n",
+           "Attributes": [
+            {
+             "Value": "7f0c3570-d6c1-4a4f-ba43-9e672c2b0e07",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-89412.23",
+           "Attributes": [
+            {
+             "Value": "7f0c3570-d6c1-4a4f-ba43-9e672c2b0e07",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Leasehold Fixture & Fitting - Cost",
+           "Attributes": [
+            {
+             "Value": "120e32c6-c603-4ea7-8678-a8897fef1ba6",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "125832.04",
+           "Attributes": [
+            {
+             "Value": "120e32c6-c603-4ea7-8678-a8897fef1ba6",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Leasehold Fixture & Fitting - Dep'n",
+           "Attributes": [
+            {
+             "Value": "04baece7-bafb-4e88-8a9a-748e5110228a",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-125832.04",
+           "Attributes": [
+            {
+             "Value": "04baece7-bafb-4e88-8a9a-748e5110228a",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Plant & Equipment - Cost",
+           "Attributes": [
+            {
+             "Value": "109f6206-1d37-4130-a436-cff73c31d71d",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "140212.90",
+           "Attributes": [
+            {
+             "Value": "109f6206-1d37-4130-a436-cff73c31d71d",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Plant & Equipment - Dep'n",
+           "Attributes": [
+            {
+             "Value": "5be34dec-9362-4e05-8237-2c715bf129fb",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-60331.00",
+           "Attributes": [
+            {
+             "Value": "5be34dec-9362-4e05-8237-2c715bf129fb",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Fixed Assets"
+          },
+          {
+           "Value": "102040.14"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Non-current Assets",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Accumulated amortisation inhouse software",
+           "Attributes": [
+            {
+             "Value": "aa0bc0af-a63d-48d1-b024-f649917b610c",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-58103.00",
+           "Attributes": [
+            {
+             "Value": "aa0bc0af-a63d-48d1-b024-f649917b610c",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Borrowing Costs",
+           "Attributes": [
+            {
+             "Value": "b24a3c5c-fb1a-46bf-a7b8-325b91939144",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "480.90",
+           "Attributes": [
+            {
+             "Value": "b24a3c5c-fb1a-46bf-a7b8-325b91939144",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "IT costs - software migration",
+           "Attributes": [
+            {
+             "Value": "0de39031-37c2-49f7-9f24-411859920e50",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "207192.20",
+           "Attributes": [
+            {
+             "Value": "0de39031-37c2-49f7-9f24-411859920e50",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Non-current Assets"
+          },
+          {
+           "Value": "149570.10"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "",
+       "Rows": [
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Assets"
+          },
+          {
+           "Value": "710867.14"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Liabilities",
+       "Rows": []
+      },
+      {
+       "RowType": "Section",
+       "Title": "Current Liabilities",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "American Express® Platinum Business Card",
+           "Attributes": [
+            {
+             "Value": "0aca1d06-e22b-4d9c-b172-8c4a59aee56b",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "64332.13",
+           "Attributes": [
+            {
+             "Value": "0aca1d06-e22b-4d9c-b172-8c4a59aee56b",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "ATO Creditors (BAS)",
+           "Attributes": [
+            {
+             "Value": "5c8448e1-059c-4d57-af59-3ffc8b944243",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "10741.00",
+           "Attributes": [
+            {
+             "Value": "5c8448e1-059c-4d57-af59-3ffc8b944243",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Company Tax Payable/Refund",
+           "Attributes": [
+            {
+             "Value": "ba8d18f8-f65b-4111-80ee-dc0945290d5c",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-3076.24",
+           "Attributes": [
+            {
+             "Value": "ba8d18f8-f65b-4111-80ee-dc0945290d5c",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Forklift Loan",
+           "Attributes": [
+            {
+             "Value": "fd76a6b8-6998-45a7-bf0f-c58f2a0b2213",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-9139.62",
+           "Attributes": [
+            {
+             "Value": "fd76a6b8-6998-45a7-bf0f-c58f2a0b2213",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "GST adjustments",
+           "Attributes": [
+            {
+             "Value": "1cf8a821-898a-40ea-9c0c-5a02e52bdab6",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-3080.27",
+           "Attributes": [
+            {
+             "Value": "1cf8a821-898a-40ea-9c0c-5a02e52bdab6",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "GST Collected & Paid",
+           "Attributes": [
+            {
+             "Value": "d1eac985-889c-4e7a-8f3e-4db191eb20b2",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "69410.61",
+           "Attributes": [
+            {
+             "Value": "d1eac985-889c-4e7a-8f3e-4db191eb20b2",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Hardware Concepts Loan",
+           "Attributes": [
+            {
+             "Value": "278fb877-5767-456e-b9c1-8b75f557860d",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "11020.46",
+           "Attributes": [
+            {
+             "Value": "278fb877-5767-456e-b9c1-8b75f557860d",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Hire Purchase - Current",
+           "Attributes": [
+            {
+             "Value": "c6e82d87-8433-45f6-8bdb-e16bf77782de",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "7833.96",
+           "Attributes": [
+            {
+             "Value": "c6e82d87-8433-45f6-8bdb-e16bf77782de",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Less: Unexpired Interest - Current",
+           "Attributes": [
+            {
+             "Value": "40b49161-3190-43b2-9f5f-b1c8db04176e",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-2155.72",
+           "Attributes": [
+            {
+             "Value": "40b49161-3190-43b2-9f5f-b1c8db04176e",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Non resident W/holding payable",
+           "Attributes": [
+            {
+             "Value": "2a00eff1-3cd5-4d5b-8c94-964d79385689",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "2a00eff1-3cd5-4d5b-8c94-964d79385689",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "PAYG Payroll Tax Withheld",
+           "Attributes": [
+            {
+             "Value": "ab757d44-e005-4b1b-a0ea-040ccbe15a80",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "16674.00",
+           "Attributes": [
+            {
+             "Value": "ab757d44-e005-4b1b-a0ea-040ccbe15a80",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "QLD Govt Loan",
+           "Attributes": [
+            {
+             "Value": "4db0e1a0-e19d-4dcc-b3d5-2c6ff6d906ac",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "138826.45",
+           "Attributes": [
+            {
+             "Value": "4db0e1a0-e19d-4dcc-b3d5-2c6ff6d906ac",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Rounding",
+           "Attributes": [
+            {
+             "Value": "ad10a7af-49b5-4d49-85bb-46e8092fc17c",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-1.86",
+           "Attributes": [
+            {
+             "Value": "ad10a7af-49b5-4d49-85bb-46e8092fc17c",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "SKA Family Trust Loan a/c",
+           "Attributes": [
+            {
+             "Value": "36b0097a-d98f-4127-b1e4-d77077157446",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-456782.16",
+           "Attributes": [
+            {
+             "Value": "36b0097a-d98f-4127-b1e4-d77077157446",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Superannuation Payable",
+           "Attributes": [
+            {
+             "Value": "a41a16c6-ee8b-43b0-b67c-23a26b14bb55",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "1260.47",
+           "Attributes": [
+            {
+             "Value": "a41a16c6-ee8b-43b0-b67c-23a26b14bb55",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Suzie Credit Card",
+           "Attributes": [
+            {
+             "Value": "699a2acf-f125-485f-b9d7-dcb8755f95c7",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "699a2acf-f125-485f-b9d7-dcb8755f95c7",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Trade Creditors",
+           "Attributes": [
+            {
+             "Value": "49f8b3eb-70ad-48cd-a80d-8b8ac3f06fec",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "380205.08",
+           "Attributes": [
+            {
+             "Value": "49f8b3eb-70ad-48cd-a80d-8b8ac3f06fec",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Current Liabilities"
+          },
+          {
+           "Value": "226068.29"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Non-Current Liabilities",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Hire Purchase - Non Current",
+           "Attributes": [
+            {
+             "Value": "f45edef8-a898-4845-97b9-65f94f7d8397",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "22862.54",
+           "Attributes": [
+            {
+             "Value": "f45edef8-a898-4845-97b9-65f94f7d8397",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Latitude Gem Visa",
+           "Attributes": [
+            {
+             "Value": "85668d95-8793-4a45-ada4-a49fe0a8ccdb",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-3909.89",
+           "Attributes": [
+            {
+             "Value": "85668d95-8793-4a45-ada4-a49fe0a8ccdb",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Less: Unexpired Interest - Non Current",
+           "Attributes": [
+            {
+             "Value": "c76267d0-043e-4cc4-b403-733082c5dd03",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-2126.39",
+           "Attributes": [
+            {
+             "Value": "c76267d0-043e-4cc4-b403-733082c5dd03",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Loan - Credit Line",
+           "Attributes": [
+            {
+             "Value": "717815b9-df78-4f0e-b99c-5b3a5b059c2a",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "8332.33",
+           "Attributes": [
+            {
+             "Value": "717815b9-df78-4f0e-b99c-5b3a5b059c2a",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "PrinTribe Loan",
+           "Attributes": [
+            {
+             "Value": "5ec70989-0c5e-4111-bac1-df72617e7de4",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-55019.50",
+           "Attributes": [
+            {
+             "Value": "5ec70989-0c5e-4111-bac1-df72617e7de4",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Shopify Loan",
+           "Attributes": [
+            {
+             "Value": "b3e0e808-eae1-4b10-9500-532c47b29f1f",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "b3e0e808-eae1-4b10-9500-532c47b29f1f",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Shopify loan 2 $100000",
+           "Attributes": [
+            {
+             "Value": "e03bc6e4-2495-4e77-a9c8-ab5ae2f74e20",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "89417.60",
+           "Attributes": [
+            {
+             "Value": "e03bc6e4-2495-4e77-a9c8-ab5ae2f74e20",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Non-Current Liabilities"
+          },
+          {
+           "Value": "59556.69"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "",
+       "Rows": [
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Liabilities"
+          },
+          {
+           "Value": "285624.98"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Net Assets"
+          },
+          {
+           "Value": "425242.16"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Equity",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Current Year Earnings",
+           "Attributes": [
+            {
+             "Value": "abababab-abab-abab-abab-abababababab",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "146768.52",
+           "Attributes": [
+            {
+             "Value": "abababab-abab-abab-abab-abababababab",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Issued \"J\" Class Shares",
+           "Attributes": [
+            {
+             "Value": "a6ebe4c4-400b-490d-ae06-614f0995b959",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "1.00",
+           "Attributes": [
+            {
+             "Value": "a6ebe4c4-400b-490d-ae06-614f0995b959",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Issued \"K\" Class Shares",
+           "Attributes": [
+            {
+             "Value": "d6933faa-b0ec-4046-974d-607f618f60e0",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "1.00",
+           "Attributes": [
+            {
+             "Value": "d6933faa-b0ec-4046-974d-607f618f60e0",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Issued Ordinary Shares",
+           "Attributes": [
+            {
+             "Value": "ea623bd4-1b98-4a75-8571-2cb7b8ae5e99",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "200.00",
+           "Attributes": [
+            {
+             "Value": "ea623bd4-1b98-4a75-8571-2cb7b8ae5e99",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Retained Earnings",
+           "Attributes": [
+            {
+             "Value": "bdce8b88-b13e-4cdd-8eb2-6d5d5bccd59f",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "278271.62",
+           "Attributes": [
+            {
+             "Value": "bdce8b88-b13e-4cdd-8eb2-6d5d5bccd59f",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Retained Earnings b/f",
+           "Attributes": [
+            {
+             "Value": "5340b22e-8a2f-48c0-8fe5-1d16227d3b0d",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.02",
+           "Attributes": [
+            {
+             "Value": "5340b22e-8a2f-48c0-8fe5-1d16227d3b0d",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Equity"
+          },
+          {
+           "Value": "425242.16"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "2026-07-31": {
+   "Reports": [
+    {
+     "ReportID": "BalanceSheet",
+     "ReportName": "Balance Sheet",
+     "ReportTitles": [
+      "Balance Sheet",
+      "Urban Road Pty Ltd",
+      "As at 31 Jul 2026"
+     ],
+     "Rows": [
+      {
+       "RowType": "Header",
+       "Cells": [
+        {
+         "Value": ""
+        },
+        {
+         "Value": "31 Jul 2026"
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Assets",
+       "Rows": []
+      },
+      {
+       "RowType": "Section",
+       "Title": "Bank",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "AUD PayPal#001",
+           "Attributes": [
+            {
+             "Value": "84b151bf-cc20-4f09-b34a-4c695cc9bff4",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "5029.59",
+           "Attributes": [
+            {
+             "Value": "84b151bf-cc20-4f09-b34a-4c695cc9bff4",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Bus Online Saver",
+           "Attributes": [
+            {
+             "Value": "cd058bf3-c1a1-4379-b886-424aa5e77e7f",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "90000.00",
+           "Attributes": [
+            {
+             "Value": "cd058bf3-c1a1-4379-b886-424aa5e77e7f",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "CBA Cheque Account",
+           "Attributes": [
+            {
+             "Value": "6532a9b0-e2c4-48c9-bcc3-65757e80d4e4",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "59432.86",
+           "Attributes": [
+            {
+             "Value": "6532a9b0-e2c4-48c9-bcc3-65757e80d4e4",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "CBA Foreign Currency Account",
+           "Attributes": [
+            {
+             "Value": "9ecfb516-731d-4df1-bad8-1877700840f2",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "9ecfb516-731d-4df1-bad8-1877700840f2",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Urban Road Tax Savings acct",
+           "Attributes": [
+            {
+             "Value": "4eee277f-7184-4d7c-9ead-9df2c7bcce4c",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "111000.00",
+           "Attributes": [
+            {
+             "Value": "4eee277f-7184-4d7c-9ead-9df2c7bcce4c",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "USD PayPal #001",
+           "Attributes": [
+            {
+             "Value": "568167dd-2ea0-4eb5-962f-329c4aca410a",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "568167dd-2ea0-4eb5-962f-329c4aca410a",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Wise account",
+           "Attributes": [
+            {
+             "Value": "637735b0-d357-4497-b3a9-59f0aa4671a8",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "222.47",
+           "Attributes": [
+            {
+             "Value": "637735b0-d357-4497-b3a9-59f0aa4671a8",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Bank"
+          },
+          {
+           "Value": "265684.92"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Current Assets",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Loan - Urban Rd Commercial",
+           "Attributes": [
+            {
+             "Value": "09fd4a63-c488-4e4e-b28d-5735ebc28600",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "3000.00",
+           "Attributes": [
+            {
+             "Value": "09fd4a63-c488-4e4e-b28d-5735ebc28600",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Patent & Trademarks",
+           "Attributes": [
+            {
+             "Value": "a80dbe45-53c2-46e7-87ab-befcfe337e03",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "2920.00",
+           "Attributes": [
+            {
+             "Value": "a80dbe45-53c2-46e7-87ab-befcfe337e03",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Rental Bond",
+           "Attributes": [
+            {
+             "Value": "685016a3-1638-4286-ac66-91c2265a1c75",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "19729.25",
+           "Attributes": [
+            {
+             "Value": "685016a3-1638-4286-ac66-91c2265a1c75",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Stock on Hand (Zoho)",
+           "Attributes": [
+            {
+             "Value": "c2ba6cb6-f50d-45f7-80b9-3323f67fb076",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-47975.46",
+           "Attributes": [
+            {
+             "Value": "c2ba6cb6-f50d-45f7-80b9-3323f67fb076",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Trade Debtors",
+           "Attributes": [
+            {
+             "Value": "905e1394-e959-42d7-8d87-3895ac23fb81",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "130253.03",
+           "Attributes": [
+            {
+             "Value": "905e1394-e959-42d7-8d87-3895ac23fb81",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Current Assets"
+          },
+          {
+           "Value": "107926.82"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Fixed Assets",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Formation Costs - at cost",
+           "Attributes": [
+            {
+             "Value": "a99e0db8-5cd0-4e07-8cbd-49c9ec0aa0cc",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "13710.00",
+           "Attributes": [
+            {
+             "Value": "a99e0db8-5cd0-4e07-8cbd-49c9ec0aa0cc",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Furniture & Equipment - Cost",
+           "Attributes": [
+            {
+             "Value": "03d76b28-f73b-490c-a81e-5ac6051c6011",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "97860.47",
+           "Attributes": [
+            {
+             "Value": "03d76b28-f73b-490c-a81e-5ac6051c6011",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Furniture & Equipment - Dep'n",
+           "Attributes": [
+            {
+             "Value": "7f0c3570-d6c1-4a4f-ba43-9e672c2b0e07",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-89412.23",
+           "Attributes": [
+            {
+             "Value": "7f0c3570-d6c1-4a4f-ba43-9e672c2b0e07",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Leasehold Fixture & Fitting - Cost",
+           "Attributes": [
+            {
+             "Value": "120e32c6-c603-4ea7-8678-a8897fef1ba6",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "125832.04",
+           "Attributes": [
+            {
+             "Value": "120e32c6-c603-4ea7-8678-a8897fef1ba6",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Leasehold Fixture & Fitting - Dep'n",
+           "Attributes": [
+            {
+             "Value": "04baece7-bafb-4e88-8a9a-748e5110228a",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-125832.04",
+           "Attributes": [
+            {
+             "Value": "04baece7-bafb-4e88-8a9a-748e5110228a",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Plant & Equipment - Cost",
+           "Attributes": [
+            {
+             "Value": "109f6206-1d37-4130-a436-cff73c31d71d",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "140212.90",
+           "Attributes": [
+            {
+             "Value": "109f6206-1d37-4130-a436-cff73c31d71d",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Plant & Equipment - Dep'n",
+           "Attributes": [
+            {
+             "Value": "5be34dec-9362-4e05-8237-2c715bf129fb",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-60331.00",
+           "Attributes": [
+            {
+             "Value": "5be34dec-9362-4e05-8237-2c715bf129fb",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Fixed Assets"
+          },
+          {
+           "Value": "102040.14"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Non-current Assets",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Accumulated amortisation inhouse software",
+           "Attributes": [
+            {
+             "Value": "aa0bc0af-a63d-48d1-b024-f649917b610c",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-58103.00",
+           "Attributes": [
+            {
+             "Value": "aa0bc0af-a63d-48d1-b024-f649917b610c",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Borrowing Costs",
+           "Attributes": [
+            {
+             "Value": "b24a3c5c-fb1a-46bf-a7b8-325b91939144",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "480.90",
+           "Attributes": [
+            {
+             "Value": "b24a3c5c-fb1a-46bf-a7b8-325b91939144",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "IT costs - software migration",
+           "Attributes": [
+            {
+             "Value": "0de39031-37c2-49f7-9f24-411859920e50",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "207192.20",
+           "Attributes": [
+            {
+             "Value": "0de39031-37c2-49f7-9f24-411859920e50",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Non-current Assets"
+          },
+          {
+           "Value": "149570.10"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "",
+       "Rows": [
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Assets"
+          },
+          {
+           "Value": "625221.98"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Liabilities",
+       "Rows": []
+      },
+      {
+       "RowType": "Section",
+       "Title": "Current Liabilities",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "American Express® Platinum Business Card",
+           "Attributes": [
+            {
+             "Value": "0aca1d06-e22b-4d9c-b172-8c4a59aee56b",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "65918.57",
+           "Attributes": [
+            {
+             "Value": "0aca1d06-e22b-4d9c-b172-8c4a59aee56b",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Amex Business Card",
+           "Attributes": [
+            {
+             "Value": "50a3aabd-14b2-4b9c-988e-25e0c3c56b39",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "50a3aabd-14b2-4b9c-988e-25e0c3c56b39",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "ATO Creditors (BAS)",
+           "Attributes": [
+            {
+             "Value": "5c8448e1-059c-4d57-af59-3ffc8b944243",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-39282.00",
+           "Attributes": [
+            {
+             "Value": "5c8448e1-059c-4d57-af59-3ffc8b944243",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Company Tax Payable/Refund",
+           "Attributes": [
+            {
+             "Value": "ba8d18f8-f65b-4111-80ee-dc0945290d5c",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-3076.24",
+           "Attributes": [
+            {
+             "Value": "ba8d18f8-f65b-4111-80ee-dc0945290d5c",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Forklift Loan",
+           "Attributes": [
+            {
+             "Value": "fd76a6b8-6998-45a7-bf0f-c58f2a0b2213",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-8486.79",
+           "Attributes": [
+            {
+             "Value": "fd76a6b8-6998-45a7-bf0f-c58f2a0b2213",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "GST adjustments",
+           "Attributes": [
+            {
+             "Value": "1cf8a821-898a-40ea-9c0c-5a02e52bdab6",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-3080.27",
+           "Attributes": [
+            {
+             "Value": "1cf8a821-898a-40ea-9c0c-5a02e52bdab6",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "GST Collected & Paid",
+           "Attributes": [
+            {
+             "Value": "d1eac985-889c-4e7a-8f3e-4db191eb20b2",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "41229.32",
+           "Attributes": [
+            {
+             "Value": "d1eac985-889c-4e7a-8f3e-4db191eb20b2",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Hardware Concepts Loan",
+           "Attributes": [
+            {
+             "Value": "278fb877-5767-456e-b9c1-8b75f557860d",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "11020.46",
+           "Attributes": [
+            {
+             "Value": "278fb877-5767-456e-b9c1-8b75f557860d",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Hire Purchase - Current",
+           "Attributes": [
+            {
+             "Value": "c6e82d87-8433-45f6-8bdb-e16bf77782de",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "7833.96",
+           "Attributes": [
+            {
+             "Value": "c6e82d87-8433-45f6-8bdb-e16bf77782de",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Less: Unexpired Interest - Current",
+           "Attributes": [
+            {
+             "Value": "40b49161-3190-43b2-9f5f-b1c8db04176e",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-2155.72",
+           "Attributes": [
+            {
+             "Value": "40b49161-3190-43b2-9f5f-b1c8db04176e",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Non resident W/holding payable",
+           "Attributes": [
+            {
+             "Value": "2a00eff1-3cd5-4d5b-8c94-964d79385689",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "2a00eff1-3cd5-4d5b-8c94-964d79385689",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "PAYG Payroll Tax Withheld",
+           "Attributes": [
+            {
+             "Value": "ab757d44-e005-4b1b-a0ea-040ccbe15a80",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "16674.00",
+           "Attributes": [
+            {
+             "Value": "ab757d44-e005-4b1b-a0ea-040ccbe15a80",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "QLD Govt Loan",
+           "Attributes": [
+            {
+             "Value": "4db0e1a0-e19d-4dcc-b3d5-2c6ff6d906ac",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "141761.44",
+           "Attributes": [
+            {
+             "Value": "4db0e1a0-e19d-4dcc-b3d5-2c6ff6d906ac",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Rounding",
+           "Attributes": [
+            {
+             "Value": "ad10a7af-49b5-4d49-85bb-46e8092fc17c",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-1.93",
+           "Attributes": [
+            {
+             "Value": "ad10a7af-49b5-4d49-85bb-46e8092fc17c",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "SKA Family Trust Loan a/c",
+           "Attributes": [
+            {
+             "Value": "36b0097a-d98f-4127-b1e4-d77077157446",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-447328.93",
+           "Attributes": [
+            {
+             "Value": "36b0097a-d98f-4127-b1e4-d77077157446",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Superannuation Payable",
+           "Attributes": [
+            {
+             "Value": "a41a16c6-ee8b-43b0-b67c-23a26b14bb55",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "a41a16c6-ee8b-43b0-b67c-23a26b14bb55",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Suzie Credit Card",
+           "Attributes": [
+            {
+             "Value": "699a2acf-f125-485f-b9d7-dcb8755f95c7",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "699a2acf-f125-485f-b9d7-dcb8755f95c7",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Trade Creditors",
+           "Attributes": [
+            {
+             "Value": "49f8b3eb-70ad-48cd-a80d-8b8ac3f06fec",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "482773.53",
+           "Attributes": [
+            {
+             "Value": "49f8b3eb-70ad-48cd-a80d-8b8ac3f06fec",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Current Liabilities"
+          },
+          {
+           "Value": "263799.40"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Non-Current Liabilities",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Hire Purchase - Non Current",
+           "Attributes": [
+            {
+             "Value": "f45edef8-a898-4845-97b9-65f94f7d8397",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "22862.54",
+           "Attributes": [
+            {
+             "Value": "f45edef8-a898-4845-97b9-65f94f7d8397",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Latitude Gem Visa",
+           "Attributes": [
+            {
+             "Value": "85668d95-8793-4a45-ada4-a49fe0a8ccdb",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-2738.89",
+           "Attributes": [
+            {
+             "Value": "85668d95-8793-4a45-ada4-a49fe0a8ccdb",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Less: Unexpired Interest - Non Current",
+           "Attributes": [
+            {
+             "Value": "c76267d0-043e-4cc4-b403-733082c5dd03",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-2126.39",
+           "Attributes": [
+            {
+             "Value": "c76267d0-043e-4cc4-b403-733082c5dd03",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Loan - Credit Line",
+           "Attributes": [
+            {
+             "Value": "717815b9-df78-4f0e-b99c-5b3a5b059c2a",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "8332.33",
+           "Attributes": [
+            {
+             "Value": "717815b9-df78-4f0e-b99c-5b3a5b059c2a",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "PrinTribe Loan",
+           "Attributes": [
+            {
+             "Value": "5ec70989-0c5e-4111-bac1-df72617e7de4",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-55019.50",
+           "Attributes": [
+            {
+             "Value": "5ec70989-0c5e-4111-bac1-df72617e7de4",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Shopify loan 2 $100000",
+           "Attributes": [
+            {
+             "Value": "e03bc6e4-2495-4e77-a9c8-ab5ae2f74e20",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "97571.59",
+           "Attributes": [
+            {
+             "Value": "e03bc6e4-2495-4e77-a9c8-ab5ae2f74e20",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Non-Current Liabilities"
+          },
+          {
+           "Value": "68881.68"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "",
+       "Rows": [
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Liabilities"
+          },
+          {
+           "Value": "332681.08"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Net Assets"
+          },
+          {
+           "Value": "292540.90"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Equity",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Current Year Earnings",
+           "Attributes": [
+            {
+             "Value": "abababab-abab-abab-abab-abababababab",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "14067.26",
+           "Attributes": [
+            {
+             "Value": "abababab-abab-abab-abab-abababababab",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Issued \"J\" Class Shares",
+           "Attributes": [
+            {
+             "Value": "a6ebe4c4-400b-490d-ae06-614f0995b959",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "1.00",
+           "Attributes": [
+            {
+             "Value": "a6ebe4c4-400b-490d-ae06-614f0995b959",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Issued \"K\" Class Shares",
+           "Attributes": [
+            {
+             "Value": "d6933faa-b0ec-4046-974d-607f618f60e0",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "1.00",
+           "Attributes": [
+            {
+             "Value": "d6933faa-b0ec-4046-974d-607f618f60e0",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Issued Ordinary Shares",
+           "Attributes": [
+            {
+             "Value": "ea623bd4-1b98-4a75-8571-2cb7b8ae5e99",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "200.00",
+           "Attributes": [
+            {
+             "Value": "ea623bd4-1b98-4a75-8571-2cb7b8ae5e99",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Retained Earnings",
+           "Attributes": [
+            {
+             "Value": "bdce8b88-b13e-4cdd-8eb2-6d5d5bccd59f",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "278271.62",
+           "Attributes": [
+            {
+             "Value": "bdce8b88-b13e-4cdd-8eb2-6d5d5bccd59f",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Retained Earnings b/f",
+           "Attributes": [
+            {
+             "Value": "5340b22e-8a2f-48c0-8fe5-1d16227d3b0d",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.02",
+           "Attributes": [
+            {
+             "Value": "5340b22e-8a2f-48c0-8fe5-1d16227d3b0d",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Equity"
+          },
+          {
+           "Value": "292540.90"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "2025-08-31": {
+   "Reports": [
+    {
+     "ReportID": "BalanceSheet",
+     "ReportName": "Balance Sheet",
+     "ReportTitles": [
+      "Balance Sheet",
+      "Urban Road Pty Ltd",
+      "As at 31 Aug 2025"
+     ],
+     "Rows": [
+      {
+       "RowType": "Header",
+       "Cells": [
+        {
+         "Value": ""
+        },
+        {
+         "Value": "31 Aug 2025"
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Assets",
+       "Rows": []
+      },
+      {
+       "RowType": "Section",
+       "Title": "Bank",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "AUD PayPal#001",
+           "Attributes": [
+            {
+             "Value": "84b151bf-cc20-4f09-b34a-4c695cc9bff4",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "500.00",
+           "Attributes": [
+            {
+             "Value": "84b151bf-cc20-4f09-b34a-4c695cc9bff4",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Bus Online Saver",
+           "Attributes": [
+            {
+             "Value": "cd058bf3-c1a1-4379-b886-424aa5e77e7f",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "56004.02",
+           "Attributes": [
+            {
+             "Value": "cd058bf3-c1a1-4379-b886-424aa5e77e7f",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "CBA Cheque Account",
+           "Attributes": [
+            {
+             "Value": "6532a9b0-e2c4-48c9-bcc3-65757e80d4e4",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "44974.25",
+           "Attributes": [
+            {
+             "Value": "6532a9b0-e2c4-48c9-bcc3-65757e80d4e4",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "CBA Foreign Currency Account",
+           "Attributes": [
+            {
+             "Value": "9ecfb516-731d-4df1-bad8-1877700840f2",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "1.27",
+           "Attributes": [
+            {
+             "Value": "9ecfb516-731d-4df1-bad8-1877700840f2",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Urban Road Tax Savings acct",
+           "Attributes": [
+            {
+             "Value": "4eee277f-7184-4d7c-9ead-9df2c7bcce4c",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "85400.00",
+           "Attributes": [
+            {
+             "Value": "4eee277f-7184-4d7c-9ead-9df2c7bcce4c",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "USD PayPal #001",
+           "Attributes": [
+            {
+             "Value": "568167dd-2ea0-4eb5-962f-329c4aca410a",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "755.05",
+           "Attributes": [
+            {
+             "Value": "568167dd-2ea0-4eb5-962f-329c4aca410a",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Wise account",
+           "Attributes": [
+            {
+             "Value": "637735b0-d357-4497-b3a9-59f0aa4671a8",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "1832.03",
+           "Attributes": [
+            {
+             "Value": "637735b0-d357-4497-b3a9-59f0aa4671a8",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Bank"
+          },
+          {
+           "Value": "189466.62"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Current Assets",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Loan - Urban Rd Commercial",
+           "Attributes": [
+            {
+             "Value": "09fd4a63-c488-4e4e-b28d-5735ebc28600",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "3000.00",
+           "Attributes": [
+            {
+             "Value": "09fd4a63-c488-4e4e-b28d-5735ebc28600",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Patent & Trademarks",
+           "Attributes": [
+            {
+             "Value": "a80dbe45-53c2-46e7-87ab-befcfe337e03",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "2920.00",
+           "Attributes": [
+            {
+             "Value": "a80dbe45-53c2-46e7-87ab-befcfe337e03",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Rental Bond",
+           "Attributes": [
+            {
+             "Value": "685016a3-1638-4286-ac66-91c2265a1c75",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "19729.25",
+           "Attributes": [
+            {
+             "Value": "685016a3-1638-4286-ac66-91c2265a1c75",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Rental Bond Unit 11",
+           "Attributes": [
+            {
+             "Value": "6d54a685-87b3-4956-8061-8bf30cec8b2f",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "6d54a685-87b3-4956-8061-8bf30cec8b2f",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Stock on Hand (Zoho)",
+           "Attributes": [
+            {
+             "Value": "c2ba6cb6-f50d-45f7-80b9-3323f67fb076",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "12910.96",
+           "Attributes": [
+            {
+             "Value": "c2ba6cb6-f50d-45f7-80b9-3323f67fb076",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Trade Debtors",
+           "Attributes": [
+            {
+             "Value": "905e1394-e959-42d7-8d87-3895ac23fb81",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "245636.84",
+           "Attributes": [
+            {
+             "Value": "905e1394-e959-42d7-8d87-3895ac23fb81",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Current Assets"
+          },
+          {
+           "Value": "284197.05"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Fixed Assets",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Formation Costs - at cost",
+           "Attributes": [
+            {
+             "Value": "a99e0db8-5cd0-4e07-8cbd-49c9ec0aa0cc",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "13710.00",
+           "Attributes": [
+            {
+             "Value": "a99e0db8-5cd0-4e07-8cbd-49c9ec0aa0cc",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Furniture & Equipment - Cost",
+           "Attributes": [
+            {
+             "Value": "03d76b28-f73b-490c-a81e-5ac6051c6011",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "97860.47",
+           "Attributes": [
+            {
+             "Value": "03d76b28-f73b-490c-a81e-5ac6051c6011",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Furniture & Equipment - Dep'n",
+           "Attributes": [
+            {
+             "Value": "7f0c3570-d6c1-4a4f-ba43-9e672c2b0e07",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-89412.23",
+           "Attributes": [
+            {
+             "Value": "7f0c3570-d6c1-4a4f-ba43-9e672c2b0e07",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Leasehold Fixture & Fitting - Cost",
+           "Attributes": [
+            {
+             "Value": "120e32c6-c603-4ea7-8678-a8897fef1ba6",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "125832.04",
+           "Attributes": [
+            {
+             "Value": "120e32c6-c603-4ea7-8678-a8897fef1ba6",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Leasehold Fixture & Fitting - Dep'n",
+           "Attributes": [
+            {
+             "Value": "04baece7-bafb-4e88-8a9a-748e5110228a",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-125832.04",
+           "Attributes": [
+            {
+             "Value": "04baece7-bafb-4e88-8a9a-748e5110228a",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Plant & Equipment - Cost",
+           "Attributes": [
+            {
+             "Value": "109f6206-1d37-4130-a436-cff73c31d71d",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "140212.90",
+           "Attributes": [
+            {
+             "Value": "109f6206-1d37-4130-a436-cff73c31d71d",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Plant & Equipment - Dep'n",
+           "Attributes": [
+            {
+             "Value": "5be34dec-9362-4e05-8237-2c715bf129fb",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-60331.00",
+           "Attributes": [
+            {
+             "Value": "5be34dec-9362-4e05-8237-2c715bf129fb",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Raw Material Stock on Hand",
+           "Attributes": [
+            {
+             "Value": "28b38a79-e9f1-4017-9591-686ff23b7f45",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "28b38a79-e9f1-4017-9591-686ff23b7f45",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Fixed Assets"
+          },
+          {
+           "Value": "102040.14"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Non-current Assets",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Accumulated amortisation inhouse software",
+           "Attributes": [
+            {
+             "Value": "aa0bc0af-a63d-48d1-b024-f649917b610c",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-58103.00",
+           "Attributes": [
+            {
+             "Value": "aa0bc0af-a63d-48d1-b024-f649917b610c",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Borrowing Costs",
+           "Attributes": [
+            {
+             "Value": "b24a3c5c-fb1a-46bf-a7b8-325b91939144",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "480.90",
+           "Attributes": [
+            {
+             "Value": "b24a3c5c-fb1a-46bf-a7b8-325b91939144",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "IT costs - software migration",
+           "Attributes": [
+            {
+             "Value": "0de39031-37c2-49f7-9f24-411859920e50",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "207192.20",
+           "Attributes": [
+            {
+             "Value": "0de39031-37c2-49f7-9f24-411859920e50",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Non-current Assets"
+          },
+          {
+           "Value": "149570.10"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "",
+       "Rows": [
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Assets"
+          },
+          {
+           "Value": "725273.91"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Liabilities",
+       "Rows": []
+      },
+      {
+       "RowType": "Section",
+       "Title": "Current Liabilities",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "American Express® Platinum Business Card",
+           "Attributes": [
+            {
+             "Value": "0aca1d06-e22b-4d9c-b172-8c4a59aee56b",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "39265.55",
+           "Attributes": [
+            {
+             "Value": "0aca1d06-e22b-4d9c-b172-8c4a59aee56b",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Amex Business Card",
+           "Attributes": [
+            {
+             "Value": "50a3aabd-14b2-4b9c-988e-25e0c3c56b39",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "50a3aabd-14b2-4b9c-988e-25e0c3c56b39",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "ATO Creditors (BAS)",
+           "Attributes": [
+            {
+             "Value": "5c8448e1-059c-4d57-af59-3ffc8b944243",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "29616.20",
+           "Attributes": [
+            {
+             "Value": "5c8448e1-059c-4d57-af59-3ffc8b944243",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Company Tax Payable/Refund",
+           "Attributes": [
+            {
+             "Value": "ba8d18f8-f65b-4111-80ee-dc0945290d5c",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "20107.91",
+           "Attributes": [
+            {
+             "Value": "ba8d18f8-f65b-4111-80ee-dc0945290d5c",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Customer Deposits",
+           "Attributes": [
+            {
+             "Value": "50188e15-2e7e-4b09-aab5-34bf21ee1224",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "50188e15-2e7e-4b09-aab5-34bf21ee1224",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Forklift Loan",
+           "Attributes": [
+            {
+             "Value": "fd76a6b8-6998-45a7-bf0f-c58f2a0b2213",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-1305.66",
+           "Attributes": [
+            {
+             "Value": "fd76a6b8-6998-45a7-bf0f-c58f2a0b2213",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "GST adjustments",
+           "Attributes": [
+            {
+             "Value": "1cf8a821-898a-40ea-9c0c-5a02e52bdab6",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-3080.27",
+           "Attributes": [
+            {
+             "Value": "1cf8a821-898a-40ea-9c0c-5a02e52bdab6",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "GST Collected & Paid",
+           "Attributes": [
+            {
+             "Value": "d1eac985-889c-4e7a-8f3e-4db191eb20b2",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "32416.92",
+           "Attributes": [
+            {
+             "Value": "d1eac985-889c-4e7a-8f3e-4db191eb20b2",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Hardware Concepts Loan",
+           "Attributes": [
+            {
+             "Value": "278fb877-5767-456e-b9c1-8b75f557860d",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "4020.46",
+           "Attributes": [
+            {
+             "Value": "278fb877-5767-456e-b9c1-8b75f557860d",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Hire Purchase - Current",
+           "Attributes": [
+            {
+             "Value": "c6e82d87-8433-45f6-8bdb-e16bf77782de",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "7833.96",
+           "Attributes": [
+            {
+             "Value": "c6e82d87-8433-45f6-8bdb-e16bf77782de",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Less: Unexpired Interest - Current",
+           "Attributes": [
+            {
+             "Value": "40b49161-3190-43b2-9f5f-b1c8db04176e",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-2155.72",
+           "Attributes": [
+            {
+             "Value": "40b49161-3190-43b2-9f5f-b1c8db04176e",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Miikai Trust Loan a/c",
+           "Attributes": [
+            {
+             "Value": "e1ce4fea-49ce-465b-aba3-2f0d81511fd1",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "e1ce4fea-49ce-465b-aba3-2f0d81511fd1",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Non resident W/holding payable",
+           "Attributes": [
+            {
+             "Value": "2a00eff1-3cd5-4d5b-8c94-964d79385689",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "615.00",
+           "Attributes": [
+            {
+             "Value": "2a00eff1-3cd5-4d5b-8c94-964d79385689",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "PAYG Payroll Tax Withheld",
+           "Attributes": [
+            {
+             "Value": "ab757d44-e005-4b1b-a0ea-040ccbe15a80",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "16927.00",
+           "Attributes": [
+            {
+             "Value": "ab757d44-e005-4b1b-a0ea-040ccbe15a80",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "PAYG Tax Installment",
+           "Attributes": [
+            {
+             "Value": "8a6b0d62-4ba0-4572-8026-ee1fa3188713",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "8a6b0d62-4ba0-4572-8026-ee1fa3188713",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "QLD Govt Loan",
+           "Attributes": [
+            {
+             "Value": "4db0e1a0-e19d-4dcc-b3d5-2c6ff6d906ac",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "173788.32",
+           "Attributes": [
+            {
+             "Value": "4db0e1a0-e19d-4dcc-b3d5-2c6ff6d906ac",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Rounding",
+           "Attributes": [
+            {
+             "Value": "ad10a7af-49b5-4d49-85bb-46e8092fc17c",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.04",
+           "Attributes": [
+            {
+             "Value": "ad10a7af-49b5-4d49-85bb-46e8092fc17c",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "SKA Family Trust Loan a/c",
+           "Attributes": [
+            {
+             "Value": "36b0097a-d98f-4127-b1e4-d77077157446",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-353092.06",
+           "Attributes": [
+            {
+             "Value": "36b0097a-d98f-4127-b1e4-d77077157446",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Sundry creditors",
+           "Attributes": [
+            {
+             "Value": "8314f95f-3e21-479a-aa44-ad067e4976d0",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.00",
+           "Attributes": [
+            {
+             "Value": "8314f95f-3e21-479a-aa44-ad067e4976d0",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Superannuation Payable",
+           "Attributes": [
+            {
+             "Value": "a41a16c6-ee8b-43b0-b67c-23a26b14bb55",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "6682.99",
+           "Attributes": [
+            {
+             "Value": "a41a16c6-ee8b-43b0-b67c-23a26b14bb55",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Suzie Credit Card",
+           "Attributes": [
+            {
+             "Value": "699a2acf-f125-485f-b9d7-dcb8755f95c7",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "12840.50",
+           "Attributes": [
+            {
+             "Value": "699a2acf-f125-485f-b9d7-dcb8755f95c7",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Trade Creditors",
+           "Attributes": [
+            {
+             "Value": "49f8b3eb-70ad-48cd-a80d-8b8ac3f06fec",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "569870.49",
+           "Attributes": [
+            {
+             "Value": "49f8b3eb-70ad-48cd-a80d-8b8ac3f06fec",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Current Liabilities"
+          },
+          {
+           "Value": "554351.63"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Non-Current Liabilities",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Hire Purchase - Non Current",
+           "Attributes": [
+            {
+             "Value": "f45edef8-a898-4845-97b9-65f94f7d8397",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "22862.54",
+           "Attributes": [
+            {
+             "Value": "f45edef8-a898-4845-97b9-65f94f7d8397",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Less: Unexpired Interest - Non Current",
+           "Attributes": [
+            {
+             "Value": "c76267d0-043e-4cc4-b403-733082c5dd03",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-2126.39",
+           "Attributes": [
+            {
+             "Value": "c76267d0-043e-4cc4-b403-733082c5dd03",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Loan - Credit Line",
+           "Attributes": [
+            {
+             "Value": "717815b9-df78-4f0e-b99c-5b3a5b059c2a",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "8332.33",
+           "Attributes": [
+            {
+             "Value": "717815b9-df78-4f0e-b99c-5b3a5b059c2a",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "PrinTribe Loan",
+           "Attributes": [
+            {
+             "Value": "5ec70989-0c5e-4111-bac1-df72617e7de4",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-55019.50",
+           "Attributes": [
+            {
+             "Value": "5ec70989-0c5e-4111-bac1-df72617e7de4",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Shopify Loan",
+           "Attributes": [
+            {
+             "Value": "b3e0e808-eae1-4b10-9500-532c47b29f1f",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "105825.58",
+           "Attributes": [
+            {
+             "Value": "b3e0e808-eae1-4b10-9500-532c47b29f1f",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Non-Current Liabilities"
+          },
+          {
+           "Value": "79874.56"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "",
+       "Rows": [
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Liabilities"
+          },
+          {
+           "Value": "634226.19"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Net Assets"
+          },
+          {
+           "Value": "91047.72"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "RowType": "Section",
+       "Title": "Equity",
+       "Rows": [
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Current Year Earnings",
+           "Attributes": [
+            {
+             "Value": "abababab-abab-abab-abab-abababababab",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "-204387.54",
+           "Attributes": [
+            {
+             "Value": "abababab-abab-abab-abab-abababababab",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Issued \"J\" Class Shares",
+           "Attributes": [
+            {
+             "Value": "a6ebe4c4-400b-490d-ae06-614f0995b959",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "1.00",
+           "Attributes": [
+            {
+             "Value": "a6ebe4c4-400b-490d-ae06-614f0995b959",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Issued \"K\" Class Shares",
+           "Attributes": [
+            {
+             "Value": "d6933faa-b0ec-4046-974d-607f618f60e0",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "1.00",
+           "Attributes": [
+            {
+             "Value": "d6933faa-b0ec-4046-974d-607f618f60e0",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Issued Ordinary Shares",
+           "Attributes": [
+            {
+             "Value": "ea623bd4-1b98-4a75-8571-2cb7b8ae5e99",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "200.00",
+           "Attributes": [
+            {
+             "Value": "ea623bd4-1b98-4a75-8571-2cb7b8ae5e99",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Retained Earnings",
+           "Attributes": [
+            {
+             "Value": "bdce8b88-b13e-4cdd-8eb2-6d5d5bccd59f",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "295233.25",
+           "Attributes": [
+            {
+             "Value": "bdce8b88-b13e-4cdd-8eb2-6d5d5bccd59f",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "Row",
+         "Cells": [
+          {
+           "Value": "Retained Earnings b/f",
+           "Attributes": [
+            {
+             "Value": "5340b22e-8a2f-48c0-8fe5-1d16227d3b0d",
+             "Id": "account"
+            }
+           ]
+          },
+          {
+           "Value": "0.02",
+           "Attributes": [
+            {
+             "Value": "5340b22e-8a2f-48c0-8fe5-1d16227d3b0d",
+             "Id": "account"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "RowType": "SummaryRow",
+         "Cells": [
+          {
+           "Value": "Total Equity"
+          },
+          {
+           "Value": "91047.73"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

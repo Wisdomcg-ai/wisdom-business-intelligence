@@ -8,9 +8,10 @@
  * same composition the export does — no fetching here, only the arithmetic the
  * page used to do inline between its fetches.
  */
-import { generateCashflowForecast, getDefaultCashflowAssumptions } from '@/lib/cashflow/engine'
+import { generateCashflowForecast, getDefaultCashflowAssumptions, KEYWORD_EXPENSE_GROUP_ORDER } from '@/lib/cashflow/engine'
 import type { CashflowAssumptions, CashflowForecastData, FinancialForecast, PLLine } from '@/app/finances/forecast/types'
 import type { FullYearReport } from '@/app/finances/monthly-report/types'
+import { packMonthYear } from '@/app/finances/monthly-report/services/pack-style'
 import {
   applyPackOpening,
   buildPackCashflowLines,
@@ -46,8 +47,39 @@ export function packCashflowPlLines(
   reportMonth: string,
   forecastLines: PLLine[],
 ): PLLine[] {
+  return composePackCashflowLines(fullYear, reportMonth, forecastLines).lines
+}
+
+/** The lines, and whether they are the Xero P&L composition or the forecast's own. */
+function composePackCashflowLines(
+  fullYear: FullYearReport | null | undefined,
+  reportMonth: string,
+  forecastLines: PLLine[],
+): { lines: PLLine[]; fromXeroPl: boolean } {
   const composed = buildPackCashflowLines(fullYear ?? null, reportMonth)
-  return composed.lines.length > 0 ? composed.lines : forecastLines
+  return composed.lines.length > 0
+    ? { lines: composed.lines, fromXeroPl: true }
+    : { lines: forecastLines, fromXeroPl: false }
+}
+
+/**
+ * The order the page prints expense groups in after the coach's own order:
+ * mapping groups alphabetically, as partitionByGroup orders them on the
+ * statement pages, then the engine's keyword headings for accounts nobody has
+ * grouped, in the engine's order (Employment first, Other Operating last).
+ *
+ * Put on the data because the months cannot supply it: a group is absent from
+ * every month before its first cash, so first appearance printed Dragon
+ * Roofing's Employment Expense last — its wages start in August.
+ */
+export function packExpenseGroupOrder(plLines: readonly PLLine[]): string[] {
+  const mapped = new Set<string>()
+  for (const line of plLines) {
+    const group = line.category === 'Operating Expenses' ? line.report_group?.trim() : ''
+    if (group) mapped.add(group)
+  }
+  const alphabetical = [...mapped].sort((a, b) => a.localeCompare(b))
+  return [...alphabetical, ...KEYWORD_EXPENSE_GROUP_ORDER.filter((g) => !mapped.has(g))]
 }
 
 /**
@@ -66,21 +98,38 @@ export function buildPackCashflowForecast(args: {
   savedAssumptions: Partial<CashflowAssumptions> | null | undefined
   opening: OpeningBank
 }): CashflowForecastData | null {
-  const plLines = packCashflowPlLines(args.fullYear, args.reportMonth, args.forecastLines)
+  const { lines: plLines, fromXeroPl } = composePackCashflowLines(args.fullYear, args.reportMonth, args.forecastLines)
   if (plLines.length === 0) return null
   const assumptions = mergeCashflowAssumptions(args.savedAssumptions)
-  return generateCashflowForecast(
+  const cashflow = generateCashflowForecast(
     plLines,
     null,
     applyPackOpening(assumptions, args.opening, args.forecast.actual_start_month),
     args.forecast,
+    [],
+    // Only lines composed from the Xero P&L keep their sign: there a negative
+    // expense month is a credit. The fallback is the forecast's own stored
+    // lines, where it need not be — see CashflowEngineOptions.signedExpenses.
+    { signedExpenses: fromXeroPl },
   )
+  return {
+    ...cashflow,
+    // Statement order, so the page prints Services before Returns & Allowances
+    // as the income page does, rather than after it because its first cash
+    // lands in September.
+    line_order: plLines.map((l) => l.account_name),
+    expense_group_order: packExpenseGroupOrder(plLines),
+  }
 }
 
-/** 'YYYY-MM' → 'Aug 2026', the way the export has always printed it. */
-export function packMonthLabel(m: string): string {
-  return new Date(`${m}-01T00:00:00`).toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })
-}
+/**
+ * 'YYYY-MM' → 'Aug 2026': the pack's one month label, so the basis line and
+ * the table header under it come from the same table.
+ *
+ * Not toLocaleDateString: en-AU's short September is "Sept", so the basis line
+ * read "approved budget Sept 2026" over a table whose header says "Sep 2026".
+ */
+export const packMonthLabel = packMonthYear
 
 /**
  * The basis sentence under the cashflow title. Read off the report and the
@@ -92,9 +141,11 @@ export function packCashflowBasisFor(
   reportMonth: string,
   cashflow: CashflowForecastData | null | undefined,
 ): string | null {
+  const a = cashflow?.assumptions
   return packCashflowBasis(
     buildPackCashflowLines(fullYear ?? null, reportMonth),
     packMonthLabel,
-    packOpeningFromAssumptions(cashflow?.assumptions),
+    packOpeningFromAssumptions(a),
+    a ? { dsoDays: a.dso_days, dpoDays: a.dpo_days } : undefined,
   )
 }

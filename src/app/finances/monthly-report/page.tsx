@@ -43,7 +43,9 @@ import { useMonthlyReport } from './hooks/useMonthlyReport'
 import { useConsolidatedReport } from './hooks/useConsolidatedReport'
 import { useFullYearReport } from './hooks/useFullYearReport'
 import { useSubscriptionDetail } from './hooks/useSubscriptionDetail'
-import { rollUpContractors } from '@/lib/monthly-report/contractor-rollup'
+import { rollUpContractors, contractorLoadReason } from '@/lib/monthly-report/contractor-rollup'
+import { contractorWindowForLayout } from '@/lib/monthly-report/contractor-page'
+import { payrollWindowForLayout } from '@/lib/monthly-report/payroll-grid-config'
 import { parseRatioAnalysisConfig, requiredWindow } from '@/lib/monthly-report/ratio-table'
 import { buildPackCashflowForecast, packCashflowBasisFor, packCashflowPlLines } from '@/lib/monthly-report/pack-cashflow'
 import type { OpeningBank } from '@/lib/monthly-report/opening-bank'
@@ -54,8 +56,13 @@ import { useReconciliation } from './hooks/useReconciliation'
 import { useReportTemplates } from './hooks/useReportTemplates'
 import { useBalanceSheet } from './hooks/useBalanceSheet'
 import { extractRatioContext } from '@/lib/monthly-report/commentary-clause'
-import { reconcileCommentary } from '@/lib/monthly-report/commentary-reconcile'
+import { applyCoachNote, reconcileCommentary } from '@/lib/monthly-report/commentary-reconcile'
 import { collectCommentaryTriggers, type TriggerLine } from './utils/commentary-triggers'
+import {
+  commentaryCoverageFromLayout,
+  commentaryPlacementProblems,
+  describeCommentaryPlacementProblem,
+} from './services/commentary-placement'
 import { useConsolidatedBalanceSheet } from './hooks/useConsolidatedBalanceSheet'
 import { useConsolidatedCashflow } from './hooks/useConsolidatedCashflow'
 import BalanceSheetTab from './components/BalanceSheetTab'
@@ -67,6 +74,13 @@ import { loadSettings, getCurrentFiscalYear, getDefaultReportMonth, getFiscalYea
 import { MonthlyReportPDFService } from './services/monthly-report-pdf-service'
 import type { CashflowForecastData } from '@/app/finances/forecast/types'
 import { usePDFLayout } from './hooks/usePDFLayout'
+import { loadPackEntityName } from '@/lib/monthly-report/pack-entity-name'
+import { loadPackPreparedOn } from '@/lib/monthly-report/pack-prepared-on'
+import {
+  balanceSheetsForExport,
+  freezeBalanceSheetsAtFinalise,
+  waitForPendingFreeze,
+} from '@/lib/monthly-report/balance-sheet-freeze'
 import type { ReportTab, MonthlyReportSettings, VarianceCommentary, GeneratedReport } from './types'
 // Phase 35 Plan 06: Approval + delivery controls for the monthly report.
 import ReportStatusBar from './components/ReportStatusBar'
@@ -142,6 +156,11 @@ export default function MonthlyReportPage() {
   // Plan 42-05 will give Finalise full lock UX; this plan only sets it up so
   // useAutoSaveReport receives a correct isLocked flag.
   const [loadedSnapshotStatus, setLoadedSnapshotStatus] = useState<'draft' | 'final' | null>(null)
+  // Decision 19: the balance-sheet freeze a Finalise started and did not wait
+  // for. Finalise → Export straight away is the normal flow, and an export that
+  // read the snapshot before this landed would find the freeze still owed and
+  // freeze a second time — reporting a late freeze that was merely in flight.
+  const pendingBalanceSheetFreeze = useRef<{ month: string; done: Promise<boolean> } | null>(null)
 
   // Phase 35 Plan 06: owner_email + owner_name (recipient + greeting) are needed by
   // the approve-and-send flow but not part of the existing ActiveBusiness shape.
@@ -757,16 +776,29 @@ export default function MonthlyReportPage() {
         budget: l.budget,
       })
 
-      const triggers = collectCommentaryTriggers(reportData, balanceSheet)
+      // A pack whose commentary lists every account that moved in a section
+      // (Calxa's COGS page) needs a draft for accounts no trigger fired on —
+      // the layout the export renders says which sections. No layout, or none
+      // asking: [] and the
+      // triggers are exactly what they were.
+      const triggers = collectCommentaryTriggers(reportData, balanceSheet, {
+        allWithActivity: commentaryCoverageFromLayout(settings?.pdf_layout),
+      })
 
       const isEmpty =
         triggers.expense_lines.length === 0 &&
         triggers.revenue_lines.length === 0 &&
         triggers.favourable_expense_lines.length === 0 &&
-        triggers.bs_lines.length === 0
+        triggers.bs_lines.length === 0 &&
+        triggers.activity_lines.length === 0
 
       if (isEmpty) {
-        setCommentary(undefined)
+        // Nothing triggered, so nothing generated survives — but a note the
+        // coach typed is not derived from the numbers and must not go with it.
+        // This used to clear the map outright, and auto-save could persist
+        // that; the non-empty path below has always kept notes the same way.
+        const kept = reconcileCommentary({}, existingCommentary)
+        setCommentary(Object.keys(kept).length > 0 ? kept : undefined)
         setCommentaryLoading(false)
         return
       }
@@ -779,6 +811,7 @@ export default function MonthlyReportPage() {
         ...triggers.revenue_lines,
         ...triggers.favourable_expense_lines,
         ...triggers.bs_lines,
+        ...triggers.activity_lines,
       ]) {
         // First occurrence wins (matches route-side priority).
         if (!(l.account_name in trigger_reasons)) {
@@ -796,6 +829,7 @@ export default function MonthlyReportPage() {
           revenue_lines: triggers.revenue_lines.map(stripReason),
           favourable_expense_lines: triggers.favourable_expense_lines.map(stripReason),
           bs_lines: triggers.bs_lines.map(stripReason),
+          activity_lines: triggers.activity_lines.map(stripReason),
           trigger_reasons,
           ratio_context: extractRatioContext(reportData),
         }),
@@ -825,7 +859,7 @@ export default function MonthlyReportPage() {
     } finally {
       setCommentaryLoading(false)
     }
-  }, [businessId, balanceSheet])
+  }, [businessId, balanceSheet, settings?.pdf_layout])
 
   const handleGenerateReport = useCallback(async (forceDraft?: boolean) => {
     // FLEET-04: a report may only finalise on a reconciliation check that
@@ -929,21 +963,20 @@ export default function MonthlyReportPage() {
   }
 
   const handleCommentaryChange = (accountName: string, note: string) => {
-    setCommentary(prev => {
-      const existing = prev?.[accountName]
-      return {
-        ...(prev || {}),
-        [accountName]: {
-          vendor_summary: existing?.vendor_summary || [],
-          coach_note: note,
-          is_edited: true,
-        },
-      }
-    })
+    // The draft and everything else the generator wrote stay on the entry —
+    // see applyCoachNote for what rebuilding it used to delete.
+    setCommentary(prev => applyCoachNote(prev, accountName, note))
     // Phase 42 Plan 04 (D-01/D-02): schedule a debounced auto-save. The hook
     // reads the latest commentary via refs at fire-time, so no stale-closure risk.
     autoSave.schedule()
   }
+
+  /** Whether this client's pack prints a balance sheet page at all. */
+  const packWantsBalanceSheet = (): boolean =>
+    !!settings?.sections.balance_sheet ||
+    (settings?.pdf_layout?.pages ?? []).some(p =>
+      (p.widgets ?? []).some(w => w.type === 'balance_sheet'),
+    )
 
   const handleSaveSnapshot = async (status: 'draft' | 'final' = 'draft') => {
     if (!report) return
@@ -954,6 +987,19 @@ export default function MonthlyReportPage() {
       // with auto-save's onSaveSuccess wiring).
       if (status === 'final') {
         setLoadedSnapshotStatus('final')
+        // Decision 19: freeze the month's balance sheet into the snapshot so
+        // its exports stop re-asking Xero. Not awaited, and it never throws:
+        // the finalise above has already happened, a Xero round-trip must not
+        // hold the button, and a freeze that fails is captured (invariant
+        // balance-sheet-freeze) and leaves the export live.
+        // If the tab closes first, the finalise has already marked the freeze
+        // as owed, and the month's next export freezes it (and says so).
+        if (businessId && packWantsBalanceSheet()) {
+          pendingBalanceSheetFreeze.current = {
+            month: report.report_month,
+            done: freezeBalanceSheetsAtFinalise(businessId, report.report_month),
+          }
+        }
         await reportStatus.refresh()
         toast.success('Report finalised — auto-save locked')
       } else {
@@ -1012,8 +1058,11 @@ export default function MonthlyReportPage() {
     fullYearReport?: import('./types').FullYearReport
     subscriptionDetail?: import('./types').SubscriptionDetailData
     contractorDetail?: import('@/lib/monthly-report/contractor-rollup').ContractorRollup
+    contractorDetailReason?: string
+    contractorDetailReport?: import('./types').SubscriptionDetailData
     cashflowBasis?: string | null
     payrollGrid?: import('@/lib/monthly-report/payroll-grid').PayrollGrid
+    payrollGridReason?: string
     accountActuals?: { data: import('@/lib/monthly-report/ratio-table').AccountActuals | null; reason?: string }
     wagesDetail?: import('./types').WagesDetailData
     cashflowForecast?: CashflowForecastData
@@ -1025,6 +1074,9 @@ export default function MonthlyReportPage() {
     budgetSuperRate?: number | null
     budgetActualEndMonth?: string | null
     budgetBackfilled?: boolean
+    entityName?: string | null
+    preparedOn?: import('@/lib/monthly-report/pack-prepared-on').PackPreparedOn | null
+    packLogo?: import('@/lib/monthly-report/pack-logo-setting').PackLogoSetting | null
   }> => {
     let fyReport = fullYearReport
     if (!fyReport && businessId) {
@@ -1044,8 +1096,16 @@ export default function MonthlyReportPage() {
     // Loaded here rather than on a tab because the emailed PDF must carry the
     // page whether or not a coach happened to open it (D-07).
     let contractorRollup: import('@/lib/monthly-report/contractor-rollup').ContractorRollup | undefined
+    // Said on the page when the load was asked for and produced no rows — a
+    // placed page that prints nothing is a blank sheet in a client's pack.
+    let contractorReason: string | undefined
+    let contractorReport: import('./types').SubscriptionDetailData | undefined
     const contractorCodes = settings?.contractor_account_codes || []
     if (contractorCodes.length > 0 && businessId) {
+      // Months across the page: three for a Contractors Payment Summary
+      // placement (contractor-page), and no `months` at all otherwise, so every
+      // other client's request — and its two Xero months — is unchanged.
+      const contractorMonths = contractorWindowForLayout((settings?.pdf_layout?.pages ?? []).flatMap((p) => p.widgets ?? []))
       try {
         const res = await fetch('/api/monthly-report/subscription-detail', {
           method: 'POST',
@@ -1054,6 +1114,7 @@ export default function MonthlyReportPage() {
             business_id: businessId,
             report_month: selectedMonth,
             account_codes: contractorCodes,
+            ...(contractorMonths > 2 ? { months: contractorMonths } : {}),
           }),
         })
         if (res.ok) {
@@ -1061,12 +1122,20 @@ export default function MonthlyReportPage() {
           // Alphabetical: the reference pack's own department order is
           // alphabetical, so there is nothing here for a coach to state.
           const rolled = rollUpContractors(payload.data)
-          if (rolled.contractors.length > 0) contractorRollup = rolled
+          if (rolled.contractors.length > 0) {
+            contractorRollup = rolled
+            contractorReport = payload.data
+          }
+          // From what the route says it read: "no contractor payments" only
+          // after a complete crawl — an unconnected org or a lapsed token is
+          // could-not-check, and a partial crawl says so under its rows.
+          contractorReason = contractorLoadReason(payload.data, rolled.contractors.length)
         } else {
           throw new Error(`contractor detail ${res.status}`)
         }
       } catch (err) {
         // Never block the export, never drop the page silently.
+        contractorReason = 'the contractor figures could not be loaded from Xero'
         Sentry.captureException(err, {
           tags: { invariant: 'contractor-detail-load' },
           extra: { businessId, selectedMonth },
@@ -1074,12 +1143,16 @@ export default function MonthlyReportPage() {
       }
     }
 
-    // The two-month payroll grid (Calxa 15). Pure database read — payslips are
-    // already synced — so it costs no Xero call and is loaded for every export
-    // rather than only when a coach has opened the Wages tab.
+    // The payroll grid (Calxa 15). Pure database read — payslips are already
+    // synced — so it costs no Xero call and is loaded for every export rather
+    // than only when a coach has opened the Wages tab. How many months is the
+    // placement's to say (payroll-grid-config); two when nothing is placed or
+    // configured, as it always was.
     let payroll: import('@/lib/monthly-report/payroll-grid').PayrollGrid | undefined
+    let payrollReason: string | undefined
     if (settings?.sections.payroll_detail && businessId) {
       try {
+        const payrollWidgets = (settings?.pdf_layout?.pages ?? []).flatMap((p) => p.widgets ?? [])
         const res = await fetch('/api/monthly-report/payroll-grid', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1087,13 +1160,17 @@ export default function MonthlyReportPage() {
             business_id: businessId,
             report_month: selectedMonth,
             fiscal_year: fiscalYear,
-            months: 2,
+            months: payrollWindowForLayout(payrollWidgets, selectedMonth),
           }),
         })
         if (!res.ok) throw new Error(`payroll grid ${res.status}`)
         const payload = await res.json()
         payroll = payload.data ?? undefined
+        // The route names its own absences ("no payslips synced for this
+        // period", "no Xero connection"); they belong on the page.
+        if (!payroll) payrollReason = typeof payload.reason === 'string' && payload.reason ? payload.reason : 'no payroll figures were returned'
       } catch (err) {
+        payrollReason = 'the payroll figures could not be loaded'
         Sentry.captureException(err, {
           tags: { invariant: 'payroll-grid-load' },
           extra: { businessId, selectedMonth },
@@ -1187,6 +1264,10 @@ export default function MonthlyReportPage() {
     // fail-open posture as external metrics: never block the PDF, never
     // swallow the failure.
     let memoText: string | undefined
+    // The same row, for the cover's "Prepared on": a finalised snapshot is
+    // dated when it was finalised (see pack-prepared-on). Undefined when the
+    // read failed — the cover then prints the export date.
+    let monthSnapshot: { status?: string | null; generated_at?: string | null } | null | undefined
     if (businessId) {
       try {
         const res = await fetch(
@@ -1195,6 +1276,7 @@ export default function MonthlyReportPage() {
         if (res.ok) {
           const data = await res.json()
           const notes = data.snapshot?.coach_notes
+          monthSnapshot = data.snapshot ? { status: data.snapshot.status, generated_at: data.snapshot.generated_at } : null
           if (typeof notes === 'string' && notes.trim() !== '') memoText = notes
         } else {
           Sentry.captureMessage(
@@ -1245,43 +1327,44 @@ export default function MonthlyReportPage() {
       }
     }
 
-    // WG.1 — the two balance-sheet pages (Calxa 19-22). Fetched FRESH, and
-    // deliberately NOT read from the Balance Sheet tab's state the way the
-    // blocks above reuse theirs: that state holds whichever compare mode the
-    // coach last clicked, for whichever month they last looked at, so reusing
-    // it would print July's sheet under an August heading and nothing would
-    // say so. Two round-trips because the endpoint answers one comparison at a
-    // time. A failure never blocks the export — it travels as a reason the
-    // page prints, and is captured rather than swallowed.
+    // WG.1 — the two balance-sheet pages (Calxa 19-22). Deliberately NOT read
+    // from the Balance Sheet tab's state the way the blocks above reuse theirs:
+    // that state holds whichever compare mode the coach last clicked, for
+    // whichever month they last looked at, so reusing it would print July's
+    // sheet under an August heading and nothing would say so.
+    //
+    // A FINALISED month prints the sheet frozen into its snapshot at Finalise
+    // (decision 19) — read from the stored row, not from in-memory state — but
+    // only while the report on screen is the stored one: a view-only regenerate
+    // of a final month prints live, so its balance sheet agrees with the
+    // regenerated P&L beside it. A final month whose freeze never landed (the
+    // tab closed mid-freeze) is frozen now from the sheets this export prints.
+    // A draft, and any month finalised before freezing existed, asks Xero, as
+    // before. balanceSheetsForExport has the rules. A failure never blocks the
+    // export — it travels as a reason the page prints, and is captured rather
+    // than swallowed.
     let balanceSheets: import('./utils/balance-sheet-pdf').BalanceSheetPdfSources | undefined
-    const wantsBalanceSheet =
-      !!settings?.sections.balance_sheet ||
-      (settings?.pdf_layout?.pages ?? []).some(p =>
-        (p.widgets ?? []).some(w => w.type === 'balance_sheet'),
-      )
-    if (businessId && wantsBalanceSheet) {
-      balanceSheets = {}
-      for (const compare of ['mom', 'yoy'] as const) {
-        try {
-          const res = await fetch(
-            `/api/Xero/balance-sheet?business_id=${encodeURIComponent(businessId)}&month=${encodeURIComponent(selectedMonth)}&compare=${compare}`
-          )
-          if (res.ok) {
-            balanceSheets[compare] = { data: await res.json() }
-          } else {
-            const body = await res.json().catch(() => ({} as any))
-            const reason = typeof body?.error === 'string' ? body.error : `Xero returned ${res.status}`
-            balanceSheets[compare] = { data: null, reason }
-            Sentry.captureMessage(
-              `[PDF] balance-sheet ${compare} load failed (${res.status}) — the page will state why`,
-              'warning' as any
-            )
-          }
-        } catch (err) {
-          balanceSheets[compare] = { data: null, reason: 'the balance sheet could not be reached' }
-          Sentry.captureException(err, { tags: { invariant: 'pdf-balance-sheet-load' } } as any)
+    if (businessId && packWantsBalanceSheet()) {
+      let stored = null
+      let freezeInFlight = false
+      if (loadedSnapshotStatus === 'final') {
+        // A freeze this tab started at Finalise lands first (it never throws)
+        // — but only for so long: it is two Xero reads and a PATCH, and one
+        // hung request must not hold the export. Past the wait this export
+        // prints live, claims no freeze, and leaves that freeze running.
+        const pending = pendingBalanceSheetFreeze.current
+        if (pending?.month === selectedMonth) {
+          freezeInFlight = (await waitForPendingFreeze(pending.done)) === 'still_running'
         }
+        stored = await fetchSnapshot(selectedMonth)
       }
+      balanceSheets = await balanceSheetsForExport({
+        businessId,
+        reportMonth: selectedMonth,
+        report,
+        stored,
+        freezeInFlight,
+      })
     }
 
     // WF.2/WF.4 — budget metadata for the super-rate and provenance checks.
@@ -1307,10 +1390,18 @@ export default function MonthlyReportPage() {
     const budgetBackfilled =
       !!report && !!budgetActualEndMonth && report.report_month <= budgetActualEndMonth
 
+    // The legal entity for the cover and every title ("Urban Road Pty Ltd",
+    // as Calxa prints it). Null on any failure, and the pack keeps the
+    // display name — see pack-entity-name.
+    const entityName = businessId ? await loadPackEntityName(createClient(), businessId) : null
+    const preparedOn = businessId ? await loadPackPreparedOn(createClient(), businessId, selectedMonth, monthSnapshot) : null
+
     return {
       fullYearReport: fyReport || undefined,
       subscriptionDetail: subDetail || undefined,
       contractorDetail: contractorRollup,
+      contractorDetailReason: contractorReason,
+      contractorDetailReport: contractorReport,
       // Computed here, from the report this function already holds — NOT read
       // back off React state that `loadCashflowForecast` just set. A setState
       // is not visible to the pass that made it, and the pack would have
@@ -1319,6 +1410,7 @@ export default function MonthlyReportPage() {
       // numbers beneath it cannot describe two different starting balances.
       cashflowBasis: packCashflowBasisFor(fyReport, selectedMonth, cfData),
       payrollGrid: payroll,
+      payrollGridReason: payrollReason,
       accountActuals,
       wagesDetail: wDetail || undefined,
       cashflowForecast: cfData,
@@ -1330,6 +1422,10 @@ export default function MonthlyReportPage() {
       budgetSuperRate,
       budgetActualEndMonth,
       budgetBackfilled,
+      entityName,
+      preparedOn,
+      // The mark is a setting, read off the settings this export already holds.
+      packLogo: settings?.pack_logo ?? null,
     }
   }
 
@@ -1350,6 +1446,7 @@ export default function MonthlyReportPage() {
       consolidated?: import('./utils/consolidated-rows').ConsolidatedReportVM
       balanceSheets?: import('./utils/balance-sheet-pdf').BalanceSheetPdfSources
       businessName?: string
+      entityName?: string | null
       sections?: import('./types').ReportSections
       pdfLayout?: import('./types/pdf-layout').PDFLayout | null
     }
@@ -1410,7 +1507,9 @@ export default function MonthlyReportPage() {
     // record as a download.
     try {
       const opts: any = pdfInput.options
-      const t = collectCommentaryTriggers(report, balanceSheet)
+      const t = collectCommentaryTriggers(report, balanceSheet, {
+        allWithActivity: commentaryCoverageFromLayout(settings?.pdf_layout),
+      })
       const results = runPreflight({
         report,
         reconciliation,
@@ -1426,6 +1525,8 @@ export default function MonthlyReportPage() {
         budgetActualEndMonth: opts.budgetActualEndMonth,
         commentary: commentary as any,
         triggeredAccounts: [...t.expense_lines, ...t.revenue_lines, ...t.favourable_expense_lines].map(l => l.account_name),
+        activityAccounts: t.activity_lines.map(l => l.account_name),
+        commentarySettingsProblems: commentaryPlacementProblems(settings?.pdf_layout).map(describeCommentaryPlacementProblem),
       })
       fetch('/api/monthly-report/preflight', {
         method: 'POST',
@@ -1582,10 +1683,20 @@ export default function MonthlyReportPage() {
         budgetSuperRate: eager.budgetSuperRate,
         budgetActualEndMonth: eager.budgetActualEndMonth,
         commentary: commentary as any,
-        triggeredAccounts: (() => {
-          const t = collectCommentaryTriggers(report, balanceSheet)
-          return [...t.expense_lines, ...t.revenue_lines, ...t.favourable_expense_lines].map(l => l.account_name)
+        ...(() => {
+          // The same coverage the export's layout asks the commentary route
+          // for, so an account the COGS page lists because it moved is checked
+          // for text too — no trigger fired on it, so the triggered list never
+          // names it.
+          const t = collectCommentaryTriggers(report, balanceSheet, {
+            allWithActivity: commentaryCoverageFromLayout(settings?.pdf_layout),
+          })
+          return {
+            triggeredAccounts: [...t.expense_lines, ...t.revenue_lines, ...t.favourable_expense_lines].map(l => l.account_name),
+            activityAccounts: t.activity_lines.map(l => l.account_name),
+          }
         })(),
+        commentarySettingsProblems: commentaryPlacementProblems(settings?.pdf_layout).map(describeCommentaryPlacementProblem),
       })
       fetch('/api/monthly-report/preflight', {
         method: 'POST',
@@ -1907,6 +2018,7 @@ export default function MonthlyReportPage() {
                 // The heading order the Actual vs Budget tab groups with, so
                 // the two tabs list the expense groups identically.
                 expenseGroupOrder={report?.settings?.expense_group_order ?? settings?.expense_group_order ?? null}
+                budgetSource={report?.settings?.budget_source ?? settings?.budget_source ?? null}
               />
             )}
           </>

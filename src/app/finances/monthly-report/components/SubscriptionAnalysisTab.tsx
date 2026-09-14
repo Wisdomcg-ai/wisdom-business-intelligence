@@ -2,6 +2,7 @@
 
 import { Loader2, CreditCard, Settings, AlertTriangle, TrendingUp, PauseCircle } from 'lucide-react'
 import type { SubscriptionDetailData, SubscriptionLeakageSummary } from '../types'
+import { subscriptionDetailOnTotalBudget } from '@/lib/monthly-report/subscription-page'
 
 interface SubscriptionAnalysisTabProps {
   data: SubscriptionDetailData | null
@@ -77,6 +78,10 @@ export default function SubscriptionAnalysisTab({ data, isLoading, error, onOpen
     )
   }
 
+  // The totals' budget as this tab showed it before the client joined the
+  // budget store — the same default as the pack's standard page, whose vendor
+  // rows this table repeats with no Unallocated row to reconcile an approved total.
+  const shown = subscriptionDetailOnTotalBudget(data, 'pre_budget_store').detail
   const currentMonthLabel = formatMonthLabel(data.report_month)
   const priorMonthLabel = formatPriorMonthLabel(data.report_month)
 
@@ -95,17 +100,17 @@ export default function SubscriptionAnalysisTab({ data, isLoading, error, onOpen
             </tr>
           </thead>
           <tbody>
-            {data.accounts.map((account) => (
+            {shown.accounts.map((account) => (
               <AccountGroup key={account.account_code} account={account} />
             ))}
 
             {/* Grand Total */}
             <tr className="bg-brand-navy text-white font-semibold">
               <td className="px-4 py-2.5 text-sm">Grand Total</td>
-              <td className="px-4 py-2.5 text-sm text-right">{fmt(data.grand_total.prior_month)}</td>
-              <td className="px-4 py-2.5 text-sm text-right">{fmt(data.grand_total.budget)}</td>
-              <td className="px-4 py-2.5 text-sm text-right">{fmt(data.grand_total.actual)}</td>
-              <td className="px-4 py-2.5 text-sm text-right">{fmt(data.grand_total.variance)}</td>
+              <td className="px-4 py-2.5 text-sm text-right">{fmt(shown.grand_total.prior_month)}</td>
+              <td className="px-4 py-2.5 text-sm text-right">{fmt(shown.grand_total.budget)}</td>
+              <td className="px-4 py-2.5 text-sm text-right">{fmt(shown.grand_total.actual)}</td>
+              <td className="px-4 py-2.5 text-sm text-right">{fmt(shown.grand_total.variance)}</td>
             </tr>
           </tbody>
         </table>
