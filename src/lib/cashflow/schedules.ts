@@ -23,6 +23,43 @@ export const SYSTEM_SCHEDULES: Record<string, BasePeriods> = {
   quarterly_payg_instalment:  [4, 4, 4, 7, 7, 7, 10, 10, 10, 2, 2, 2],
   quarterly_feb_may_aug_nov:  [5, 5, 5, 8, 8, 8, 11, 11, 11, 2, 2, 2],
   annual_aug:                 [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8],
+  /**
+   * PAYG withholding on a monthly activity statement, with each quarter's
+   * third month paid on the tax agent's BAS date instead of the 21st: Sep and
+   * Oct in November, Nov in December, Dec and Jan in February, Feb in March,
+   * Mar and Apr in May, May in June, Jun and Jul in August. Read off Urban
+   * Road's August 2026 Calxa pack, whose PAYG row pays Nov 21,008 (Sep + Oct),
+   * Dec 13,130 (Nov), Feb 21,701 (Dec + Jan), Mar (Feb), May 25,194 (Mar +
+   * Apr), Jun (May) and Aug (Jun).
+   */
+  monthly_ias_quarterly_bas_agent: [2, 3, 5, 5, 6, 8, 8, 9, 11, 11, 12, 2],
+  /** The same monthly IAS, self-lodged: every month the 21st of the next, December's in February. */
+  monthly_ias_quarterly_bas_self:  [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 2],
+  /** One month in arrears: Calxa's super on Urban Road's pack (Oct 5,042 = September's super). */
+  monthly_arrears:            [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1],
+  /**
+   * Paid in the month it accrues. Payday Super (from 1 July 2026) is paid
+   * within days of each pay run, and Urban Road's ledger shows it: Super
+   * Payable is cleared every week and holds only the last run's $1,260.47 at
+   * a month-end.
+   */
+  payday:                     [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+}
+
+/**
+ * The 'YYYY-MM' an accrual in `accrualKey` is paid in, per `basePeriods`.
+ *
+ * The schedule says only the calendar month; the year is the first one at or
+ * after the accrual — offset (due − accrual + 12) % 12 months, so 0 is the
+ * same month. A September accrual on quarterly_feb_may_aug_nov is due 11 →
+ * November of the same year; a December one is due 2 → February of the next.
+ */
+export function dueMonthKey(accrualKey: string, basePeriods: BasePeriods): string {
+  const [y, m] = accrualKey.split('-').map(Number)
+  const due = getPaymentMonth(m, basePeriods)
+  const offset = (due - m + 12) % 12
+  const total = y * 12 + (m - 1) + offset
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`
 }
 
 /**

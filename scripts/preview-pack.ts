@@ -21,7 +21,9 @@
  *   wages                wages-detail-load (stored payslips; no live fallback)
  *   payroll grid         payroll-grid-load
  *   ratio analysis       account-actuals-load
- *   cashflow             select-forecast + cashflow-assumptions-load + opening-bank-load + pack-cashflow
+ *   cashflow             pack-cash-model-load + pack-cash-model when the business's cash_model
+ *                        is on; otherwise select-forecast + cashflow-assumptions-load +
+ *                        opening-bank-load + pack-cashflow
  *   external metrics     external-metrics-load
  *   memo                 the snapshot's coach_notes
  *   money flow           money-flow-load
@@ -414,9 +416,38 @@ async function main() {
     note('wages', 'skipped', sections.payroll_detail ? 'no wages_account_names — the app loads nothing' : 'settings.sections.payroll_detail is off — the app loads nothing')
   }
 
+  // Cashflow, cash model v2 — the business's cash_model from these settings,
+  // so --settings-override '{"cash_model":{…}}' renders the model before
+  // anyone saves it. Off (no cash_model, or the column not yet migrated)
+  // falls through to the v1 block below, exactly as the app does.
+  const { parseCashModelConfig } = await import('@/lib/monthly-report/cash-model-config')
+  const { loadPackCashModel } = await import('@/lib/monthly-report/pack-cash-model-load')
+  const cashModelLoad = await loadPackCashModel(admin, bizId, reportMonth, {
+    config: parseCashModelConfig(settings.cash_model),
+    bankAccountIds,
+  })
+  if (cashModelLoad.status !== 'off') {
+    const { buildPackCashModel } = await import('@/lib/monthly-report/pack-cash-model')
+    const model = cashModelLoad.status === 'ready'
+      ? buildPackCashModel({ fullYear: eager.fullYearReport, reportMonth, config: cashModelLoad.config, inputs: cashModelLoad.inputs })
+      : cashModelLoad
+    if (model.status === 'ready') {
+      eager.cashflowForecast = model.cashflow
+      eager.cashflowBasis = model.basis
+      for (const w of model.warnings) warnings.push(`cash model: ${w}`)
+      const ties = model.reconciliation.map((r) => `${r.month} net ${r.net_movement.toFixed(2)} = bank ${r.bank_delta.toFixed(2)}`).join(', ')
+      note('cashflow', 'live-built',
+        `cash model v2 (stored mirrors + approved budget${settingsOverride?.includes('cash_model') ? ', cash_model from --settings-override' : ''}): ${ties}; ` +
+        `budget from ${model.cashflow.cash_model?.first_forecast_month ?? '(none)'} at debtors ${model.cashflow.cash_model?.dso_days} / creditors ${model.cashflow.cash_model?.dpo_days} days`)
+    } else {
+      eager.cashflowReason = model.reason
+      note('cashflow', 'live-built', `cash model v2 REFUSED — the pack prints: ${model.reason}`)
+    }
+  }
+
   // Cashflow — the forecast is picked by the CLOCK (getForecastFiscalYear), as
   // in the app.
-  {
+  if (cashModelLoad.status === 'off') {
     const { getForecastFiscalYear } = await import('@/app/finances/forecast/utils/fiscal-year')
     const { pickForecast, forecastPeriodsFor } = await import('@/lib/forecast/select-forecast')
     const { resolveBusinessProfileIds } = await import('@/lib/business/resolveBusinessProfileIds')

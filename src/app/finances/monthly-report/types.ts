@@ -97,6 +97,12 @@ export interface MonthlyReportSettings {
    * Empty/absent = every asset account in the balance sheet's Bank section.
    */
   bank_account_ids?: string[] | null
+  /**
+   * The pack's cashflow model v2 switch and settings (cash-model-config).
+   * Absent/null or enabled: false = the v1 cashflow pages, as every client
+   * printed before. Read raw; parseCashModelConfig decides what it means.
+   */
+  cash_model?: unknown
   wages_account_names?: string[]
   pdf_layout?: import('./types/pdf-layout').PDFLayout | null
   /** WD.3 — standing commentary bullets; null/undefined = none. */

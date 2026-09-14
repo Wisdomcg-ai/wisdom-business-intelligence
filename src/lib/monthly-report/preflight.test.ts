@@ -47,10 +47,11 @@ const byKey = (inputs: PreflightInputs) => {
   return { results, get: (k: string) => results.find((r) => r.key === k)! }
 }
 
-describe('WF.2 — seventeen rows, always', () => {
+describe('WF.2 — eighteen rows, always', () => {
   it('a bare run still renders every check (absences are skips, not gaps)', () => {
     const { results } = byKey({ report: baseReport() })
-    expect(results).toHaveLength(17)
+    expect(results).toHaveLength(18)
+    expect(results.find((r) => r.key === 'cash_model_ties')?.status).toBe('skip')
     const skips = results.filter((r) => r.status === 'skip').map((r) => r.key)
     expect(skips).toContain('freshness')
     expect(skips).toContain('payroll_ties')

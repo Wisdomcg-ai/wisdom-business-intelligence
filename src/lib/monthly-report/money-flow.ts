@@ -163,7 +163,7 @@ const CURRENT_YEAR_EARNINGS_ID = 'abababab-abab-abab-abab-abababababab'
  * both are Xero system accounts with stable wording, and Urban Road has two
  * ("Retained Earnings" and "Retained Earnings b/f").
  */
-function isEarningsRow(r: BsRowInput): boolean {
+export function isEarningsRow(r: BsRowInput): boolean {
   if (r.account_type !== 'equity') return false
   if (r.account_id === CURRENT_YEAR_EARNINGS_ID) return true
   const n = r.account_name.toLowerCase()

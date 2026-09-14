@@ -884,6 +884,20 @@ export interface CashflowForecastMonth {
   depreciation_addback?: number    // Non-cash add-back for identified depn accounts
   company_tax_payment?: number     // Positive amount when tax is paid this month
   capex_payment?: number           // Positive amount = CapEx cash outflow this month
+
+  // Cash model v2 (monthly-report pack) — set on ACTUAL months only, never by
+  // the engine. An actual month's rows must add to the bank movement, so the
+  // balance-sheet movements the engine has no section for travel here.
+  /** Equity movements other than the profit (capital in, drawings, dividends), signed as cash. */
+  equity_lines?: CashflowLine[]
+  movement_in_equity?: number
+  /**
+   * What stops the month's rows adding to the bank movement, stated as rows
+   * rather than hidden in another figure: a P&L and a balance sheet from
+   * different syncs, and movements under 50c that no row lists.
+   */
+  unreconciled_lines?: CashflowLine[]
+  unreconciled_movement?: number
 }
 
 export interface CashflowForecastData {
@@ -908,6 +922,25 @@ export interface CashflowForecastData {
    * wages start in August. The pack sets it; see buildPackCashflowForecast.
    */
   expense_group_order?: string[]
+  /**
+   * Set only by the pack's cash model v2 (buildPackCashModel): its months
+   * before `first_forecast_month` are the bank's actual cash, the rest the
+   * approved budget. Absent on every v1 and forecast-module cashflow, which
+   * renderers read as "print as you always have".
+   */
+  cash_model?: {
+    version: 2
+    /** The last actual month ('YYYY-MM'). */
+    last_actual_month: string
+    /** The first budget month, or null when the whole year is actual. */
+    first_forecast_month: string | null
+    dso_days: number | null
+    dpo_days: number | null
+    /** The sentence the page prints under the table and in the chart's box. */
+    basis: string
+    /** What the coach is told before sending (preflight, harness); never printed in the pack. */
+    warnings: string[]
+  }
 }
 
 // Validation concern for forecast review

@@ -141,6 +141,10 @@ export function packCashflowBasisFor(
   reportMonth: string,
   cashflow: CashflowForecastData | null | undefined,
 ): string | null {
+  // Cash model v2 carries its own sentence: its banked months are the bank's
+  // cash, not "the actual P&L, cash timing estimated", and saying the v1
+  // words over them would be false.
+  if (cashflow?.cash_model) return cashflow.cash_model.basis
   const a = cashflow?.assumptions
   return packCashflowBasis(
     buildPackCashflowLines(fullYear ?? null, reportMonth),
