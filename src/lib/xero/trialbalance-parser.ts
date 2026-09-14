@@ -11,14 +11,22 @@
  *
  * Xero TB column shape (verified across orgs in capture summaries):
  *   Cells[0] = Account label (with Id='account' attribute holding GUID)
- *   Cells[1] = Debit (current period — usually $0 for date-only TB)
- *   Cells[2] = Credit (current period — usually $0 for date-only TB)
+ *   Cells[1] = Debit  — the movement for the CALENDAR MONTH of `date`
+ *   Cells[2] = Credit — the movement for the CALENDAR MONTH of `date`
  *   Cells[3] = YTD Debit
  *   Cells[4] = YTD Credit
  *
- * For ?date= TB queries (single point-in-time), the YTD columns hold the
- * cumulative balances we want for the gate. We use YTD if non-zero anywhere,
- * otherwise fall back to Debit/Credit. This matches Xero's PDF output.
+ * This header used to say Cells[1]/[2] were "usually $0 for date-only TB".
+ * The committed captures prove otherwise, to the cent: Envisage 30-Apr-26
+ * Sales-CFO Credit 11,462.50 against YTD 112,975.00; IICT-HK (FY from April)
+ * Apr-26 month == YTD; and the FX system accounts' Debit−Credit reproduces
+ * the same month's single-period P&L FXGROUPID row in 6 of 6 IICT/JDS months
+ * (Feb–Apr 2026). The OpenAPI spec does not state it — a Xero change would
+ * surface as FX-split invariant fallbacks, not as wrong figures.
+ *
+ * For ?date= TB queries, the YTD columns hold the cumulative balances gate 3
+ * wants (parseTrialBalance); the month movements are what the FX account
+ * split wants (parseTrialBalanceMovements).
  *
  * Pure: same input → same output. No I/O, no clock.
  */
@@ -155,6 +163,40 @@ export function parseTrialBalance(report: unknown): ParsedTBRow[] {
   for (const node of top.Rows) {
     if (node.RowType !== 'Section') continue
     walkSection(node, null, useYTD, out)
+  }
+  return out
+}
+
+/**
+ * Parse a Reports/TrialBalance?date= response into per-account MONTH
+ * movements: always Cells[1]/[2] (Debit/Credit for the calendar month of
+ * `date`), never the YTD columns. Used by the FX account split to break
+ * Xero's merged "Foreign Currency Gains and Losses" P&L row into its system
+ * accounts.
+ *
+ * Refuses (throws) any response that is not the five-column shape: the month
+ * meaning of Cells[1]/[2] is proven only there, and on a three-column report
+ * those cells could be balances. A throw lands the caller on its merged-row
+ * fallback, which is correct; guessing would not be.
+ *
+ * parseTrialBalance (gate 3, YTD) is unchanged.
+ */
+export function parseTrialBalanceMovements(report: unknown): ParsedTBRow[] {
+  const r = report as { Reports?: XeroReport[] } | null
+  const top = r?.Reports?.[0]
+  if (!top || !Array.isArray(top.Rows)) {
+    throw new Error('TrialBalance response has no report rows')
+  }
+  const header = top.Rows.find((row) => row?.RowType === 'Header')
+  if (!Array.isArray(header?.Cells) || header.Cells.length < 5) {
+    throw new Error(
+      `TrialBalance header is not Account|Debit|Credit|YTD Debit|YTD Credit (cells=${header?.Cells?.length ?? 'none'})`,
+    )
+  }
+  const out: ParsedTBRow[] = []
+  for (const node of top.Rows) {
+    if (node.RowType !== 'Section') continue
+    walkSection(node, null, false, out)
   }
   return out
 }

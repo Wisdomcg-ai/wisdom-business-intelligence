@@ -9,7 +9,13 @@
  *   - Σ debit == Σ credit when input is balanced
  */
 import { describe, it, expect } from 'vitest'
-import { parseTrialBalance, trialBalanceTotals } from '@/lib/xero/trialbalance-parser'
+import fs from 'fs'
+import path from 'path'
+import {
+  parseTrialBalance,
+  parseTrialBalanceMovements,
+  trialBalanceTotals,
+} from '@/lib/xero/trialbalance-parser'
 
 const ACC_REVENUE = 'aaaaaaaa-1111-1111-1111-aaaaaaaaaaaa'
 const ACC_BANK = 'bbbbbbbb-2222-2222-2222-bbbbbbbbbbbb'
@@ -163,5 +169,59 @@ describe('parseTrialBalance', () => {
     expect(totals.debit).toBeCloseTo(1500, 2)
     expect(totals.credit).toBeCloseTo(1500, 2)
     expect(Math.abs(totals.delta)).toBeLessThan(0.01)
+  })
+})
+
+// ─── FX account split — month movements ─────────────────────────────────────
+
+function tbFixture(name: string): unknown {
+  return JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', `${name}.json`), 'utf8')).response
+}
+
+describe('parseTrialBalanceMovements (committed captures)', () => {
+  it('IICT-HK 31-Mar-26: the month movement columns, never YTD', () => {
+    const rows = parseTrialBalanceMovements(tbFixture('iict-hk-trialbalance-2026-03-31'))
+    const realised = rows.find((r) => r.account_id === '6bd44c18-bd28-4745-9e00-0de6cb25a03b')!
+    const unrealised = rows.find((r) => r.account_id === '6bd82684-a94f-495b-b3c3-505fbb95a960')!
+    // 499 month Debit 64.42 (YTD 734.46); 498 month Credit 11,014.60 (YTD Credit 8,123.46).
+    expect(realised.debit - realised.credit).toBeCloseTo(64.42, 2)
+    expect(unrealised.debit - unrealised.credit).toBeCloseTo(-11014.6, 2)
+    expect(realised.account_name).toBe('Realised Currency Gains (499)')
+  })
+
+  it('JDS 30-Apr-26: 199 −13.06, 198 −3,222.68', () => {
+    const rows = parseTrialBalanceMovements(tbFixture('jds-trialbalance-2026-04-30'))
+    const realised = rows.find((r) => r.account_id === 'c2878a4c-bef9-408c-9df6-d709c3b64e61')!
+    const unrealised = rows.find((r) => r.account_id === '63450033-d387-4f9f-857e-0927d0902019')!
+    expect(realised.debit - realised.credit).toBeCloseTo(-13.06, 2)
+    expect(unrealised.debit - unrealised.credit).toBeCloseTo(-3222.68, 2)
+  })
+
+  it('leaves gate 3 exactly as it was: parseTrialBalance still reads YTD', () => {
+    const report = tbFixture('iict-hk-trialbalance-2026-03-31')
+    const ytd = parseTrialBalance(report)
+    const realised = ytd.find((r) => r.account_id === '6bd44c18-bd28-4745-9e00-0de6cb25a03b')!
+    expect(realised.debit).toBeCloseTo(734.46, 2)
+    const unrealised = ytd.find((r) => r.account_id === '6bd82684-a94f-495b-b3c3-505fbb95a960')!
+    expect(unrealised.credit).toBeCloseTo(8123.46, 2)
+    // Same rows, same order — the two parsers differ only in the columns read.
+    const mov = parseTrialBalanceMovements(report)
+    expect(mov.map((r) => r.account_id)).toEqual(ytd.map((r) => r.account_id))
+  })
+
+  it('refuses a report that is not the five-column shape (movement meaning unproven there)', () => {
+    const threeCol = {
+      Reports: [
+        {
+          Rows: [
+            { RowType: 'Header', Cells: [{ Value: '' }, { Value: 'Debit' }, { Value: 'Credit' }] },
+            section('Expenses', [row('Realised Currency Gains', ACC_BANK, ['10.00', ''])]),
+          ],
+        },
+      ],
+    }
+    expect(() => parseTrialBalanceMovements(threeCol)).toThrow(/header/i)
+    expect(() => parseTrialBalanceMovements({ Reports: [] })).toThrow()
+    expect(() => parseTrialBalanceMovements(null)).toThrow()
   })
 })

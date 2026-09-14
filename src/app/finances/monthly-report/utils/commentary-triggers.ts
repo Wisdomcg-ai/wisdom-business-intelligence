@@ -88,6 +88,12 @@ const FX_KEYWORDS = [
   'realised gain', 'realised loss', 'unrealised gain', 'unrealised loss',
   'realized gain', 'realized loss', 'unrealized gain', 'unrealized loss',
   'fx gain', 'fx loss', 'foreign exchange', 'foreign currency',
+  // The FX account split (sync, sections.fx_account_split) replaces Xero's
+  // merged "Foreign Currency Gains and Losses" row with the three system
+  // accounts. Unrealised/Realised Currency Gains already match 'currency
+  // gain'; Bank Revaluations (Urban Road 497) matches nothing above and would
+  // start triggering commentary the day it gets its own name.
+  'bank revaluation',
 ]
 
 export function isFxAccount(accountName: string): boolean {

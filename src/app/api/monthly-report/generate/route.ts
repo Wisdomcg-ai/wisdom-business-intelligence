@@ -434,6 +434,14 @@ async function postHandler(request: Request) {
         // fails silently, printing the account twice: once with the actual and
         // a $0 budget, once budget-only with a $0 actual.
         //
+        // That P&L row is Xero's MERGED FX row (three system accounts under
+        // one FXGROUPID). With the FX account split on, a split month carries
+        // 497/498/499 as coded rows instead, and the merged row survives only
+        // in a month whose Trial Balance did not tie — the fallback state.
+        // Borrowing 62700 from the mapping bound that merged 919.25 to 62700's
+        // $2 budget ("2 / 919 / (917)"); the fix for a fallback month is data
+        // (null the mapping's code), not this tier.
+        //
         // Inert wherever the budget lines carry no codes — the resolver does
         // not select forecast_pl_lines.account_code, so budgetByCode is empty
         // on the forecast path and every client not on the budget store falls

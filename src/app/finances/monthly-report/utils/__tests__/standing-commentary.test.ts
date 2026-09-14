@@ -39,6 +39,15 @@ describe('WD.3 — FX excluded from commentary triggers', () => {
     }
   })
 
+  it('the FX account split rows: all three are FX, including Bank Revaluations', () => {
+    // Before the split these three were ONE merged row named "Foreign Currency
+    // Gains and Losses". Bank Revaluations (Urban Road 497) is the one whose
+    // own name carries no currency keyword.
+    for (const name of ['Bank Revaluations', 'Unrealised Currency Gains', 'Realised Currency Gains', 'Foreign Currency Gains and Losses']) {
+      expect(isFxAccount(name), name).toBe(true)
+    }
+  })
+
   it('a $9,000 FX swing fires NO trigger; the rent line beside it still does', () => {
     const triggers = collectCommentaryTriggers(reportWith([
       {
