@@ -8,6 +8,7 @@ import {
   getFiscalYearEndDate,
   generateFiscalMonthKeys,
 } from '@/lib/utils/fiscal-year-utils'
+import { pickForecast, forecastPeriodsFor } from '@/lib/forecast/select-forecast'
 import type {
   FinancialForecast,
   PLLine,
@@ -175,35 +176,15 @@ export class ForecastService {
         .order('updated_at', { ascending: false })
         .limit(10)
 
-      if (existing && existing.length > 0) {
-        // H7 — selection order matters. Since drafts are created is_active=false
-        // (PR-A), an abandoned wizard session leaves the NEWEST row: it has
-        // assumptions (autosave wrote them) but zero forecast_pl_lines, so the
-        // page fell back to "estimated" YTD actuals and the real active
-        // forecast became invisible. The old `assumptions != null` guard was
-        // also dead code — the column defaults to '{}', which is never null.
-        // Prefer: active → has assumptions → newest.
-        const forecast =
-          existing.find(f => f.is_active) ||
-          existing.find(f => f.assumptions && Object.keys(f.assumptions).length > 0) ||
-          existing[0]
-        // Map wizard_v4 assumptions from category_assumptions if dedicated column doesn't exist
-        if (!forecast.assumptions && forecast.category_assumptions?.wizard_v4?.assumptions) {
-          forecast.assumptions = forecast.category_assumptions.wizard_v4.assumptions
-        }
+      // Selection (active → has assumptions → newest) and the period check are
+      // shared with scripts/preview-pack.ts — see lib/forecast/select-forecast.
+      const forecast = pickForecast(existing)
+      if (forecast) {
         console.log('[Forecast] Found existing forecast:', forecast.id, 'fiscal_year:', forecast.fiscal_year)
 
         // Calculate correct periods based on current date (handles rolling forecasts)
-        const periods = this.calculateForecastPeriods(fiscalYear)
-
         // Check if forecast needs updating (dates changed — fiscal_year already matched by query)
-        const needsUpdate =
-          forecast.baseline_start_month !== periods.baseline_start_month ||
-          forecast.baseline_end_month !== periods.baseline_end_month ||
-          forecast.actual_start_month !== periods.actual_start_month ||
-          forecast.actual_end_month !== periods.actual_end_month ||
-          forecast.forecast_start_month !== periods.forecast_start_month ||
-          forecast.forecast_end_month !== periods.forecast_end_month
+        const { periods, needsUpdate } = forecastPeriodsFor(forecast, fiscalYear)
 
         if (needsUpdate) {
           console.log('[Forecast] Updating forecast dates:', {

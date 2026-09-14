@@ -38,7 +38,6 @@ import {
   shouldShowMultiCurrencyToast,
   buildMultiCurrencyToastMessage,
 } from './utils/multi-currency-toast'
-import { generateCashflowForecast, getDefaultCashflowAssumptions } from '@/lib/cashflow/engine'
 import { getForecastFiscalYear } from '@/app/finances/forecast/utils/fiscal-year'
 import { useMonthlyReport } from './hooks/useMonthlyReport'
 import { useConsolidatedReport } from './hooks/useConsolidatedReport'
@@ -46,7 +45,7 @@ import { useFullYearReport } from './hooks/useFullYearReport'
 import { useSubscriptionDetail } from './hooks/useSubscriptionDetail'
 import { rollUpContractors } from '@/lib/monthly-report/contractor-rollup'
 import { parseRatioAnalysisConfig, requiredWindow } from '@/lib/monthly-report/ratio-table'
-import { applyPackOpening, buildPackCashflowLines, packCashflowBasis, packOpeningFromAssumptions } from '@/lib/monthly-report/pack-cashflow-lines'
+import { buildPackCashflowForecast, packCashflowBasisFor, packCashflowPlLines } from '@/lib/monthly-report/pack-cashflow'
 import type { OpeningBank } from '@/lib/monthly-report/opening-bank'
 import { useWagesDetail } from './hooks/useWagesDetail'
 import { useXeroConnection } from './hooks/useXeroConnection'
@@ -428,36 +427,28 @@ export default function MonthlyReportPage() {
       }
       if (forecast?.id) {
         const forecastLines = await ForecastService.loadPLLines(forecast.id)
+        const month = reportMonth ?? selectedMonth
         // Actuals for the months already banked, the approved budget for the
         // rest. Falls back to the forecast's own lines when the Full Year
         // report is not to hand, which is what every caller did before.
-        const composed = buildPackCashflowLines(fullYear ?? null, reportMonth ?? selectedMonth)
-        const plLines = composed.lines.length > 0 ? composed.lines : forecastLines
-        if (plLines.length > 0) {
-          const month = reportMonth ?? selectedMonth
+        // The composition is shared with scripts/preview-pack.ts — see
+        // lib/monthly-report/pack-cashflow.
+        if (packCashflowPlLines(fullYear, month, forecastLines).length > 0) {
           const [assumptionsRes, opening] = await Promise.all([
             fetch(`/api/forecast/cashflow/assumptions?forecast_id=${forecast.id}`),
             loadOpeningBank(businessId, month),
           ])
-          let assumptions = getDefaultCashflowAssumptions()
+          let savedAssumptions = null
           if (assumptionsRes.ok) {
-            const { data: savedAssumptions } = await assumptionsRes.json()
-            if (savedAssumptions) {
-              assumptions = {
-                ...assumptions,
-                ...savedAssumptions,
-                loans: savedAssumptions.loans || [],
-                planned_stock_changes: savedAssumptions.planned_stock_changes || {},
-              }
-            }
+            savedAssumptions = (await assumptionsRes.json()).data ?? null
           }
-          // AFTER the merge, so a balance saved by the forecast module's Xero
-          // sync can neither replace the real opening bank nor put debtors,
-          // creditors and ATO balances back on top of months that are actuals.
-          // Urban Road's pack opened at $0 without this. See applyPackOpening.
-          const result = generateCashflowForecast(plLines, null, applyPackOpening(assumptions, opening, forecast.actual_start_month), forecast)
-          setCashflowForecast(result)
-          return result
+          const result = buildPackCashflowForecast({
+            fullYear, reportMonth: month, forecast, forecastLines, savedAssumptions, opening,
+          })
+          if (result) {
+            setCashflowForecast(result)
+            return result
+          }
         }
       }
     } catch (err) {
@@ -1326,11 +1317,7 @@ export default function MonthlyReportPage() {
       // described the previous month's split. The opening is read off the
       // cashflow that will actually be printed, so the sentence and the
       // numbers beneath it cannot describe two different starting balances.
-      cashflowBasis: packCashflowBasis(
-        buildPackCashflowLines(fyReport ?? null, selectedMonth),
-        (m) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-AU', { month: 'short', year: 'numeric' }),
-        packOpeningFromAssumptions(cfData?.assumptions),
-      ),
+      cashflowBasis: packCashflowBasisFor(fyReport, selectedMonth, cfData),
       payrollGrid: payroll,
       accountActuals,
       wagesDetail: wDetail || undefined,
@@ -1987,11 +1974,7 @@ export default function MonthlyReportPage() {
             // opening bank could not be read instead of showing $0-based
             // balances as if they were real.
             basis={cashflowForecast
-              ? packCashflowBasis(
-                  buildPackCashflowLines(fullYearReport ?? null, selectedMonth),
-                  (m) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-AU', { month: 'short', year: 'numeric' }),
-                  packOpeningFromAssumptions(cashflowForecast.assumptions),
-                )
+              ? packCashflowBasisFor(fullYearReport, selectedMonth, cashflowForecast)
               : null}
           />
         )}

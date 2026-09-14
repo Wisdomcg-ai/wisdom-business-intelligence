@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import { loadReportTemplates } from '@/lib/monthly-report/report-settings-load'
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
@@ -83,18 +84,16 @@ async function getHandler(request: Request) {
     const denied = await requireBusinessAccess(businessId)
     if (denied) return denied
 
-    const { data, error } = await supabase
-      .from('report_templates')
-      .select('*')
-      .eq('business_id', businessId)
-      .order('name')
-
-    if (error) {
+    // The same read scripts/preview-pack.ts applies the default template from.
+    let templates
+    try {
+      templates = await loadReportTemplates(supabase, businessId)
+    } catch (error) {
       Sentry.captureException(error, { tags: { route: 'monthly-report/templates' }, extra: { context: "[Templates] GET error" } } as any)
       return NextResponse.json({ error: 'Failed to fetch templates' }, { status: 500 })
     }
 
-    return NextResponse.json({ templates: data || [] })
+    return NextResponse.json({ templates })
   } catch (err) {
     Sentry.captureException(err, { tags: { route: 'monthly-report/templates' }, extra: { context: "[Templates] GET exception" } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

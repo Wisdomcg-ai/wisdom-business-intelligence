@@ -11,6 +11,7 @@ import { requireSectionPermission } from '@/lib/permissions/requireSectionPermis
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 import { z } from 'zod'
 import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
+import { DEFAULT_REPORT_SECTIONS, DEFAULT_REPORT_SETTINGS, loadReportSettings } from '@/lib/monthly-report/report-settings-load'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,40 +42,10 @@ const supabase = createClient(
   getSupabaseSecretKey()
 )
 
-const DEFAULT_SECTIONS = {
-  revenue_detail: true,
-  cogs_detail: true,
-  opex_detail: true,
-  payroll_detail: false,
-  subscription_detail: false,
-  balance_sheet: false,
-  cashflow: false,
-  trend_charts: true,
-  chart_revenue_vs_expenses: true,
-  chart_revenue_breakdown: true,
-  chart_variance_heatmap: true,
-  chart_budget_burn_rate: true,
-  chart_break_even: true,
-  chart_cash_runway: false,
-  chart_cumulative_net_cash: false,
-  chart_working_capital_gap: false,
-  chart_team_cost_pct: false,
-  chart_cost_per_employee: false,
-  chart_subscription_creep: false,
-}
-
-const DEFAULT_SETTINGS = {
-  sections: DEFAULT_SECTIONS,
-  show_prior_year: true,
-  show_ytd: true,
-  show_unspent_budget: true,
-  show_budget_next_month: true,
-  show_budget_annual_total: true,
-  budget_forecast_id: null,
-  budget_source: 'forecast',
-  subscription_account_codes: [],
-  wages_account_names: [],
-}
+// The defaults, and the GET's read-and-merge, are shared with
+// scripts/preview-pack.ts — see lib/monthly-report/report-settings-load.
+const DEFAULT_SECTIONS = DEFAULT_REPORT_SECTIONS
+const DEFAULT_SETTINGS = DEFAULT_REPORT_SETTINGS
 
 /**
  * GET /api/monthly-report/settings?business_id=xxx
@@ -122,38 +93,15 @@ async function getHandler(request: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { data: settings, error } = await supabase
-      .from('monthly_report_settings')
-      .select('*')
-      .eq('business_id', businessId)
-      .maybeSingle()
-
-    if (error) {
+    let loaded
+    try {
+      loaded = await loadReportSettings(supabase, businessId)
+    } catch (error) {
       Sentry.captureException(error, { tags: { route: 'monthly-report/settings' }, extra: { context: "[Monthly Report Settings] Error fetching settings" } } as any)
       return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 })
     }
 
-    // If no row exists, return defaults without creating a row
-    if (!settings) {
-      return NextResponse.json({
-        settings: {
-          business_id: businessId,
-          ...DEFAULT_SETTINGS,
-        },
-        is_default: true,
-      })
-    }
-
-    // Merge stored sections with defaults so keys added after initial save are always present
-    const mergedSettings = {
-      ...settings,
-      sections: { ...DEFAULT_SECTIONS, ...(settings.sections ?? {}) },
-    }
-
-    return NextResponse.json({
-      settings: mergedSettings,
-      is_default: false,
-    })
+    return NextResponse.json(loaded)
 
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'monthly-report/settings' }, extra: { context: "Error in GET /api/monthly-report/settings" } } as any)
