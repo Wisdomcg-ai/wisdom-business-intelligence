@@ -52,7 +52,10 @@ export type FxSplitKeptReason =
   | 'unreconciled'
   /** No FX system account in the catalog, or none of them in the Trial Balance. */
   | 'no_system_accounts'
-  /** More than one merged row in a month — not a shape Xero is known to send. */
+  /**
+   * More than one merged row in a month, or a coded FX account already on the
+   * P&L as its own row — neither is a shape Xero is known to send.
+   */
   | 'ambiguous'
 
 export type FxSplitOutcome =
@@ -108,6 +111,17 @@ export function splitFxGroupMonth(input: {
   const fxIds = fxSystemAccountIds(input.catalog)
   if (fxIds.length === 0) return { kind: 'kept', merged: row, reason: 'no_system_accounts' }
 
+  // A coded FX account that already has its own P&L row this month would be
+  // emitted twice on the same (business, tenant, account_id, month, basis) —
+  // and Postgres rejects the WHOLE upsert ("ON CONFLICT DO UPDATE command
+  // cannot affect row a second time"), erroring the tenant. Xero groups these
+  // accounts, so this is not expected; decided without a Trial Balance, so it
+  // costs no request either.
+  const fxIdSet = new Set(fxIds)
+  if (input.plRows.some((r) => fxIdSet.has(r.account_id))) {
+    return { kind: 'kept', merged: row, reason: 'ambiguous' }
+  }
+
   // Revenue-side FX layouts are left alone rather than re-signed: an org that
   // drags the group into Other Income would need every coded row's sign
   // flipped to keep the total, and that is a guess about intent.
@@ -119,7 +133,6 @@ export function splitFxGroupMonth(input: {
     return { kind: 'kept', merged: row, reason: 'section' }
   }
 
-  const fxIdSet = new Set(fxIds)
   const movement = new Map<string, number>()
   let seen = false
   for (const tb of input.tbMovements) {

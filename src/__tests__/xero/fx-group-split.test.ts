@@ -240,6 +240,21 @@ describe('splitFxGroupMonth — Urban Road', () => {
     expect(out.rows.map((r) => r.account_code)).toEqual(['498', '499'])
   })
 
+  it('a coded FX account already on the P&L as its own row → kept, ambiguous (never a duplicate natural key)', () => {
+    // Were 497 both its own P&L row AND a split row, dbRows would carry two rows
+    // on (business, tenant, account_id, month, basis) and Postgres would reject
+    // the whole upsert ("ON CONFLICT DO UPDATE command cannot affect row a
+    // second time") — a tenant error from a supplementary feature.
+    const plRows = [
+      ...urPlRows('2026-08-01'),
+      { account_id: ACC_497, account_code: '497', account_name: 'Bank Revaluations', account_type: 'opex' as const, period_month: '2026-08-01', amount: 0.01, basis: 'accruals' as const },
+    ]
+    const out = splitFxGroupMonth({ plRows, tbMovements: urTb('2026-08-01'), catalog: urCatalog(), tenantId: UR_TENANT })
+    expect(out).toMatchObject({ kind: 'kept', reason: 'ambiguous' })
+    // Decided without a Trial Balance, so the tenant run spends no request on it.
+    expect(splitFxGroupMonth({ plRows, tbMovements: [], catalog: urCatalog(), tenantId: UR_TENANT })).toMatchObject({ kind: 'kept', reason: 'ambiguous' })
+  })
+
   it('print order is Bank Revaluations, Unrealised, Realised', () => {
     expect(FX_SYSTEM_ACCOUNTS).toEqual(['BANKCURRENCYGAIN', 'UNREALISEDCURRENCYGAIN', 'REALISEDCURRENCYGAIN'])
     expect(fxSystemAccountIds(urCatalog())).toEqual([ACC_497, ACC_498, ACC_499])

@@ -377,6 +377,10 @@ export type StubConfig = {
   storedPlRows?: Array<Record<string, unknown>>
   /** Make the xero_pl_lines select fail. */
   plSelectError?: { message: string; code?: string } | null
+  /** The fx_split record of this tenant's previous finished sync_jobs row. */
+  priorFxSplit?: Record<string, unknown> | null
+  /** Make the previous sync_jobs read fail. */
+  syncJobsSelectError?: { message: string; code?: string } | null
 }
 
 export function installSupabaseStub(target: any, cfg: StubConfig) {
@@ -396,6 +400,10 @@ export function installSupabaseStub(target: any, cfg: StubConfig) {
       else if (st.table === 'monthly_report_settings') rows = cfg.settings ? [cfg.settings] : []
       else if (st.table === 'xero_connections') rows = cfg.connections
       else if (st.table === 'account_mappings') return { data: null, error: null, count: 1 }
+      else if (st.table === 'sync_jobs') {
+        if (cfg.syncJobsSelectError) return { data: null, error: cfg.syncJobsSelectError }
+        rows = cfg.priorFxSplit ? [{ fx_split: cfg.priorFxSplit }] : []
+      }
       else if (st.table === 'xero_pl_lines') {
         if (cfg.plSelectError) return { data: null, error: cfg.plSelectError }
         rows = (cfg.storedPlRows ?? []).filter((r) =>

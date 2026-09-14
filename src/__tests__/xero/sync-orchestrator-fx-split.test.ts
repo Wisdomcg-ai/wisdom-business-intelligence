@@ -105,6 +105,39 @@ function storedSplit(stamp: (month: string) => string, over: Record<string, [num
 const tbMonths = (fetches: FetchRecord[]) =>
   fetches.map((f) => f.url.match(/TrialBalance\?date=(\d{4}-\d{2})/)?.[1]).filter(Boolean)
 
+/** Would any recorded delete remove this row? Evaluates the sweeps' own filters. */
+function swept(sweeps: Array<{ filters: Array<[string, string, unknown]> }>, row: Record<string, unknown>): boolean {
+  return sweeps.some((s) =>
+    s.filters.every(([op, col, val]) => {
+      if (op === 'eq') return row[col] === val
+      if (op === 'not.in') {
+        const ids = String(val).slice(1, -1).split(',').map((x) => x.replace(/^"|"$/g, ''))
+        return !ids.includes(String(row[col]))
+      }
+      return true
+    }),
+  )
+}
+
+/** A previous run's fx_split record: every month kept, as the TB said then. */
+function priorAllUnreconciled(checkedAt: (month: string) => string) {
+  return {
+    enabled: true,
+    applied: [],
+    reused: [],
+    zero: [],
+    kept: ALL_MONTHS.map((month) => ({
+      month,
+      reason: 'unreconciled',
+      delta: -UR_FX_SPLIT[month]![0],
+      merged: UR_FX_MERGED[month],
+      checked_at: checkedAt(month),
+    })),
+    residuals: [],
+    tb_requests: 15,
+  }
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   vi.setSystemTime(new Date('2026-09-14T02:00:00Z'))
@@ -201,6 +234,40 @@ describe('FX account split — first enabled run (nothing stored)', () => {
     expect(cash.some((x) => CODED.includes(x.account_id))).toBe(false)
     expect(r.tbFetches).toHaveLength(15)
   })
+
+  it('cash_basis on too: the accruals merged row a flag-off sync left is swept — FX is never counted twice', async () => {
+    // The sweep's id list per month was the UNION of accruals and cash ids with
+    // no basis filter. The cash twin is never split, so it still carries the
+    // merged id — which then protected the stale ACCRUALS merged row sitting
+    // beside the new coded rows: FX expense doubled on every accruals reader,
+    // and every later run repeated it.
+    const r = await run({ cfg: { settings: { sections: { fx_account_split: true, cash_basis: true } } } })
+    const at = (basis: string, account_id: string) => ({
+      business_id: UR_PROFILE, tenant_id: UR_TENANT, period_month: '2026-08-01', basis, account_id,
+    })
+    const before = [
+      at('accruals', UR_FX_GROUP_ID), // left by the flag-off syncs
+      at('cash', UR_FX_GROUP_ID),
+      at('accruals', ACC_SALES),
+      at('cash', ACC_SALES),
+      ...CODED.map((id) => at('accruals', id)),
+    ]
+    const survivors = before.filter((row) => !swept(r.sweeps, row)).map((x) => `${x.basis}:${x.account_id}`)
+    expect(survivors.sort()).toEqual(
+      ['cash:' + UR_FX_GROUP_ID, 'accruals:' + ACC_SALES, 'cash:' + ACC_SALES, ...CODED.map((id) => 'accruals:' + id)].sort(),
+    )
+    // The accruals-scoped sweep runs only in months whose accruals ids differ
+    // from the union — here every month (the cash twin carries the merged id).
+    const basisSweeps = r.sweeps.filter((x) => x.filters.some(([op, col]) => op === 'eq' && col === 'basis'))
+    expect(basisSweeps).toHaveLength(15)
+    expect(basisSweeps.every((x) => x.filters.some(([op, col, v]) => op === 'eq' && col === 'basis' && v === 'accruals'))).toBe(true)
+  })
+
+  it('without cash_basis the sweep is exactly the per-month union sweep — no basis-scoped deletes', async () => {
+    const r = await run({})
+    expect(r.sweeps).toHaveLength(15)
+    expect(r.sweeps.some((x) => x.filters.some(([, col]) => col === 'basis'))).toBe(false)
+  })
 })
 
 describe('FX account split — steady state (closed months reused)', () => {
@@ -265,8 +332,9 @@ describe('FX account split — every failure degrades to the merged row', () => 
     const fx = r.jobUpdates[0].reconciliation.pl.fx_split
     expect(fx.applied).toEqual([])
     expect(fx.kept).toHaveLength(15)
-    expect(fx.kept.find((k: any) => k.month === '2026-07-01')).toEqual({ month: '2026-07-01', reason: 'unreconciled', delta: -76.93 })
-    expect(fx.kept.find((k: any) => k.month === '2026-08-01')).toEqual({ month: '2026-08-01', reason: 'unreconciled', delta: -96.72 })
+    expect(fx.kept.find((k: any) => k.month === '2026-07-01')).toEqual({ month: '2026-07-01', reason: 'unreconciled', delta: -76.93, merged: 238.61, checked_at: '2026-09-14T02:00:00.000Z' })
+    expect(fx.kept.find((k: any) => k.month === '2026-08-01')).toEqual({ month: '2026-08-01', reason: 'unreconciled', delta: -96.72, merged: 919.25, checked_at: '2026-09-14T02:00:00.000Z' })
+    expect(r.tbFetches).toHaveLength(15)
     // The sweep keeps the merged id — a previous run's coded rows would go.
     const augSweep = r.sweeps.find((s) => s.filters.some(([op, col, v]) => op === 'eq' && col === 'period_month' && v === '2026-08-01'))!
     expect(String(augSweep.filters.find(([op]) => op === 'not.in')![2])).toContain(UR_FX_GROUP_ID)
@@ -276,6 +344,62 @@ describe('FX account split — every failure degrades to the merged row', () => 
       tags: { invariant: 'xero_sync_fx_split', business_id: UR_PROFILE, tenant_id: UR_TENANT },
     })
     expect(r.jobUpdates[0].status).toBe('success')
+  })
+
+  it('Bank Revaluations absent, NEXT run: closed months the TB already failed at the same merged amount are not re-read; no new Sentry event', async () => {
+    // Before: every 6-hourly run re-fetched all 15 Trial Balances (nothing is
+    // stored to reuse when a month keeps its merged row) and raised a Sentry
+    // warning — +60 Xero calls and 4 events a day for as long as the condition
+    // lasted. Now: 2 open months + ONE rotation month (the one checked longest
+    // ago) per run, and a warning only for a month/reason not already recorded.
+    const checkedAt = (m: string) => (m === '2026-01-01' ? '2026-09-01T04:00:00.000Z' : '2026-09-13T22:00:00.000Z')
+    const book = urbanRoadBook({ tb: (m) => urbanRoadTb(m, { omit497: true }) })
+    const r = await run({ books: { [UR_TENANT]: book }, cfg: { priorFxSplit: priorAllUnreconciled(checkedAt) } })
+    expect(r.result.status).toBe('success')
+    expect(tbMonths(r.fetches).sort()).toEqual(['2026-01', '2026-08', '2026-09'])
+    const fx = r.jobUpdates[0].reconciliation.pl.fx_split
+    expect(fx.kept).toHaveLength(15)
+    expect(fx.tb_requests).toBe(3)
+    // Carried forward with the stamp of the Trial Balance that actually said so.
+    expect(fx.kept.find((k: any) => k.month === '2026-07-01')).toEqual({
+      month: '2026-07-01', reason: 'unreconciled', delta: -76.93, merged: 238.61, checked_at: '2026-09-13T22:00:00.000Z',
+    })
+    expect(fx.kept.find((k: any) => k.month === '2026-01-01').checked_at).toBe('2026-09-14T02:00:00.000Z')
+    expect(r.accruals.filter((x) => x.account_id === UR_FX_GROUP_ID)).toHaveLength(15)
+    expect(r.fxSentry).toHaveLength(0)
+    // The read is one row, scoped to this business + tenant's finished P&L syncs.
+    const read = r.stub.events.find((e) => e.table === 'sync_jobs' && e.op === 'select')!
+    expect(read.filters).toEqual([
+      ['eq', 'business_id', UR_PROFILE],
+      ['eq', 'tenant_id', UR_TENANT],
+      ['eq', 'job_type', 'xero_pl_sync'],
+      ['in', 'status', ['success', 'partial']],
+      ['order', 'started_at', { ascending: false }],
+      ['limit', 'n', 1],
+    ])
+  })
+
+  it('a closed month whose merged amount moved since the TB failed is re-read (a restatement is never skipped)', async () => {
+    const book = urbanRoadBook({ tb: (m) => urbanRoadTb(m, { omit497: true }) })
+    const prior = priorAllUnreconciled(() => '2026-09-13T22:00:00.000Z')
+    prior.kept = prior.kept.map((k) => (k.month === '2026-03-01' ? { ...k, merged: 328.43 } : k))
+    const r = await run({ books: { [UR_TENANT]: book }, cfg: { priorFxSplit: prior } })
+    expect(tbMonths(r.fetches)).toContain('2026-03')
+  })
+
+  it('a new kept month still raises ONE warning; the previous-run read failing degrades to fetch-everything', async () => {
+    const book = urbanRoadBook({ tb: (m) => urbanRoadTb(m, { omit497: true }) })
+    const r = await run({ books: { [UR_TENANT]: book }, cfg: { syncJobsSelectError: { message: 'timeout', code: '57014' } } })
+    expect(r.result.status).toBe('success')
+    expect(r.tbFetches).toHaveLength(15)
+    expect(r.jobUpdates[0].reconciliation.pl.fx_split.prior_read_error).toBe('timeout')
+    expect(r.fxSentry).toHaveLength(1)
+
+    const prior = priorAllUnreconciled(() => '2026-09-13T22:00:00.000Z')
+    prior.kept = prior.kept.filter((k) => k.month !== '2026-09-01') // Sep-26 kept for the first time
+    sentry.captureMessage.mockClear()
+    const r2 = await run({ books: { [UR_TENANT]: book }, cfg: { priorFxSplit: prior } })
+    expect(r2.fxSentry).toHaveLength(1)
   })
 
   it('(e) TB 500 → merged rows kept, months_failed empty, tenant success, one retry then the rest skip, ONE Sentry warning', async () => {
@@ -299,20 +423,52 @@ describe('FX account split — every failure degrades to the merged row', () => 
     expect(r.result.xero_request_count).toBe(34)
   })
 
-  it('TB failing after a closed month reused → reuse still applies to the remaining closed months', async () => {
+  it('TB failing with stored splits that still tie → every such month re-emits its stored split, closed, rotation and open alike', async () => {
+    // Before: the rotation month (Jul-25) and the open months kept the merged
+    // row on a passing 503, so the sweep deleted a stored split that still tied
+    // and the next run brought it back — a month's grouping flipped between
+    // syncs, and a pack generated in that window printed different subtotals.
+    // Aug-26 is the month Matt's September pack reports, and it is OPEN.
     const stamp = (m: string) => (m === '2025-07-01' ? '2026-09-01T00:00:00+00:00' : '2026-09-13T22:00:00+00:00')
     const book = urbanRoadBook({ tb: () => jsonResponse({ error: 'svc' }, 503) })
     const r = await run({ books: { [UR_TENANT]: book }, cfg: { storedPlRows: storedSplit(stamp) }, advanceMs: 30_000 })
-    const fx = r.jobUpdates[0].reconciliation.pl.fx_split
-    // Current FY first: Jul-26 reused, Aug-26 open → fetch fails, Sep-26 skipped;
-    // prior FY: Jul-25 (the rotation month) skipped, the other 11 reused.
-    expect(fx.reused.sort()).toEqual(ALL_MONTHS.filter((m) => !['2025-07-01', '2026-08-01', '2026-09-01'].includes(m)))
-    expect(fx.kept.map((k: any) => [k.month, k.reason])).toEqual([
+    const job = r.jobUpdates[0]
+    expect(job.status).toBe('success')
+    const fx = job.reconciliation.pl.fx_split
+    expect(fx.reused.sort()).toEqual(ALL_MONTHS)
+    expect(fx.kept).toEqual([])
+    // Current FY first: Aug-26 is the failed fetch, Sep-26 skipped after it;
+    // prior FY: Jul-25 is the rotation month, skipped.
+    expect(fx.reused_after_fetch_failure.map((k: any) => [k.month, k.reason])).toEqual([
       ['2026-08-01', 'fetch_failed'],
       ['2026-09-01', 'fetch_skipped'],
       ['2025-07-01', 'fetch_skipped'],
     ])
-    expect(r.jobUpdates[0].status).toBe('success')
+    expect(fx.reused_after_fetch_failure[0].error).toBeTruthy()
+    // No merged row anywhere; every month's coded rows keep their stored stamp.
+    expect(r.accruals.some((x) => x.account_id === UR_FX_GROUP_ID)).toBe(false)
+    for (const month of ALL_MONTHS) {
+      const coded = r.accruals.filter((x) => x.period_month === month && CODED.includes(x.account_id))
+      expect(coded.map((x) => x.amount)).toEqual(UR_FX_SPLIT[month])
+      expect(coded.every((x) => x.updated_at === stamp(month))).toBe(true)
+    }
+    // A failed fetch is still news: ONE warning.
+    expect(r.fxSentry).toHaveLength(1)
+  })
+
+  it('TB failing where the stored split no longer ties → the merged row stays (a stale breakdown is never re-emitted)', async () => {
+    const stamp = () => '2026-09-13T22:00:00+00:00'
+    const book = urbanRoadBook({ tb: () => jsonResponse({ error: 'svc' }, 503) })
+    const r = await run({
+      books: { [UR_TENANT]: book },
+      cfg: { storedPlRows: storedSplit(stamp, { '2026-08-01': [96.72, 400, 338.26] }) },
+      advanceMs: 30_000,
+    })
+    const fx = r.jobUpdates[0].reconciliation.pl.fx_split
+    expect(fx.kept).toEqual([expect.objectContaining({ month: '2026-08-01', reason: 'fetch_failed' })])
+    const aug = r.accruals.filter((x) => x.period_month === '2026-08-01')
+    expect(aug.some((x) => x.account_id === UR_FX_GROUP_ID)).toBe(true)
+    expect(aug.some((x) => CODED.includes(x.account_id))).toBe(false)
   })
 
   it('(f) TB 429 daily → tenant paused, exactly like any other Xero call', async () => {

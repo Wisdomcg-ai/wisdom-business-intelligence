@@ -33,7 +33,38 @@
  *     is a correct fallback, and a persistent 5xx at the default backoff
  *     (1+2+5+15s per month) would spend ~6 minutes of the fleet's 700s on 15
  *     months. After the first failed fetch the rest of the tenant's months skip
- *     the fetch (reason 'fetch_skipped') — reuse still applies.
+ *     the fetch (reason 'fetch_skipped').
+ *   - A month whose fetch failed or was skipped re-emits its stored split when
+ *     that split still ties to this run's merged row — closed, rotation OR open
+ *     month (reused_after_fetch_failure). Keeping the merged row instead let
+ *     the sweep delete a split that was still right, and the next run restore
+ *     it: the grouping flipped between syncs on a passing 503 or a minute-limit
+ *     429, and the September pack reports August, an OPEN month.
+ *   - A CLOSED month the previous run's Trial Balance could not split
+ *     ('unreconciled' / 'no_system_accounts') against the SAME merged amount is
+ *     not re-read — except the one checked longest ago (a second rotation), so
+ *     a fixed ledger is picked up within ~13 runs. Nothing is stored for such a
+ *     month, so without this every run re-fetched all ~15 TBs indefinitely
+ *     (Urban Road, were 497 absent from its TB: +60 calls a day). A moved
+ *     merged amount is a restatement and always re-reads.
+ *
+ * SENTRY: one warning per tenant per run, and only when a month/reason is kept
+ * (or reused after a failed fetch) that the previous run did not already
+ * record. The standing record lives in sync_jobs.reconciliation.pl.fx_split;
+ * the warning is for news. If the previous record cannot be read, every kept
+ * month counts as new (the pre-dedupe behaviour).
+ *
+ * ROLLOUT: leave sections.fx_account_split OFF for a business until its gate-0
+ * capture proves (a) Bank Revaluations appears in its Trial Balance and ties,
+ * and (b) its /Accounts response carries SystemAccount on the three FX
+ * accounts (scripts/capture-trialbalance-fixture.ts --with-accounts). Either
+ * failing is safe — every month keeps its merged row — but it is a flag that
+ * does nothing except spend requests.
+ *
+ * ROLLBACK: turning the flag off restores the merged row in every month the
+ * sync still fetches (both FY windows — the sweep removes the coded rows).
+ * Months older than the prior FY are no longer synced, so any split there
+ * stays split: totals unchanged, grouping as three accounts.
  */
 import * as Sentry from '@sentry/nextjs'
 import type { CatalogMap } from './accounts-catalog'
@@ -53,6 +84,10 @@ export type FxSplitKeptEntry = {
   reason: string
   delta?: number
   error?: string
+  /** A Trial Balance verdict only: the merged amount it could not split. */
+  merged?: number
+  /** A Trial Balance verdict only: when a TB last said so (carried while not re-read). */
+  checked_at?: string
 }
 
 /** sync_jobs.reconciliation.pl.fx_split */
@@ -61,7 +96,7 @@ export type FxSplitRecord = {
   skipped_reason?: 'multi_org'
   /** Months whose merged row was replaced from a Trial Balance fetched this run. */
   applied: string[]
-  /** Closed months whose stored split still ties and was re-emitted. */
+  /** Months whose stored split still ties and was re-emitted (closed, or after a failed fetch). */
   reused: string[]
   /** Months whose merged row was exactly 0.00 — nothing emitted, nothing fetched. */
   zero: string[]
@@ -72,6 +107,10 @@ export type FxSplitRecord = {
   tb_requests: number
   /** Present only when the stored-split read failed (every month then fetched). */
   stored_read_error?: string
+  /** Present only when a month's fetch failed/was skipped and its stored split was re-emitted. */
+  reused_after_fetch_failure?: FxSplitKeptEntry[]
+  /** Present only when the previous run's record could not be read. */
+  prior_read_error?: string
 }
 
 export function emptyFxSplitRecord(enabled: boolean): FxSplitRecord {
@@ -92,6 +131,19 @@ function trialBalanceUrl(periodMonth: string): string {
 
 type StoredRow = { account_id: string; amount: number; updated_at: string }
 
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+/** Reasons a fetched Trial Balance gave that the next run need not re-read. */
+const TB_VERDICTS = new Set(['unreconciled', 'no_system_accounts'])
+
+/** Oldest instant first; an unparseable stamp counts as oldest. */
+function instant(stamp: string | undefined): number {
+  const t = Date.parse(stamp ?? '')
+  return Number.isFinite(t) ? t : -Infinity
+}
+
 export type FxSplitTenantRun = {
   readonly record: FxSplitRecord
   /**
@@ -104,7 +156,7 @@ export type FxSplitTenantRun = {
   substitute(rows: readonly ParsedPLRow[]): ParsedPLRow[]
   /** A reused row's stored updated_at; undefined means "now". */
   storedUpdatedAt(row: ParsedPLRow): string | undefined
-  /** ONE Sentry warning per tenant per run, only when a month kept its merged row. */
+  /** ONE Sentry warning per tenant per run, only for a kept/degraded month the previous run did not record. */
   report(): void
 }
 
@@ -152,6 +204,41 @@ export async function createFxSplitTenantRun(opts: {
     }
   }
 
+  // The previous finished run's record, for the two things above that need
+  // memory: TB verdicts not to re-read, and which kept months are news. One
+  // row off the (business_id, tenant_id, started_at) index; this run's own row
+  // is still 'running', so the status filter skips it.
+  const priorTbVerdicts = new Map<string, FxSplitKeptEntry & { merged: number; checked_at: string }>()
+  const priorKeys = new Set<string>()
+  try {
+    const res = (await supabase
+      .from('sync_jobs')
+      .select('fx_split:reconciliation->pl->fx_split')
+      .eq('business_id', profileId)
+      .eq('tenant_id', tenantId)
+      .eq('job_type', 'xero_pl_sync')
+      .in('status', ['success', 'partial'])
+      .order('started_at', { ascending: false })
+      .limit(1)) as any
+    if (res?.error) throw new Error(res.error.message ?? res.error.code ?? 'unknown')
+    const prior = (res?.data?.[0]?.fx_split ?? null) as Partial<FxSplitRecord> | null
+    const entries = (x: unknown): FxSplitKeptEntry[] =>
+      Array.isArray(x) ? x.filter((e) => e && typeof e.month === 'string' && typeof e.reason === 'string') : []
+    for (const e of [...entries(prior?.kept), ...entries(prior?.reused_after_fetch_failure)]) {
+      priorKeys.add(`${e.month}|${e.reason}`)
+    }
+    for (const e of entries(prior?.kept)) {
+      if (TB_VERDICTS.has(e.reason) && typeof e.merged === 'number' && typeof e.checked_at === 'string') {
+        priorTbVerdicts.set(e.month, e as FxSplitKeptEntry & { merged: number; checked_at: string })
+      }
+    }
+  } catch (err) {
+    // A read: the run re-reads every month and reports every kept month.
+    priorTbVerdicts.clear()
+    priorKeys.clear()
+    record.prior_read_error = err instanceof Error ? err.message : String(err)
+  }
+
   // Rotation: the closed in-run month whose stored rows are oldest.
   // Compared as instants: PostgREST returns '+00:00' offsets, not 'Z'. An
   // unparseable stamp counts as oldest, so that month is the one re-read.
@@ -161,21 +248,33 @@ export async function createFxSplitTenantRun(opts: {
     if (month >= openFrom) continue
     const stored = storedByMonth.get(month)
     if (!stored || stored.length === 0) continue
-    const oldest = Math.min(...stored.map((s) => {
-      const t = Date.parse(s.updated_at)
-      return Number.isFinite(t) ? t : -Infinity
-    }))
+    const oldest = Math.min(...stored.map((s) => instant(s.updated_at)))
     if (rotationStamp === null || oldest < rotationStamp) {
       rotationStamp = oldest
       rotationMonth = month
     }
   }
 
+  // Verdict rotation: the closed in-run month whose TB verdict is oldest.
+  let verdictRotationMonth: string | null = null
+  let verdictRotationStamp: number | null = null
+  for (const month of [...opts.runMonths].sort()) {
+    if (month >= openFrom) continue
+    const prior = priorTbVerdicts.get(month)
+    if (!prior) continue
+    const t = instant(prior.checked_at)
+    if (verdictRotationStamp === null || t < verdictRotationStamp) {
+      verdictRotationStamp = t
+      verdictRotationMonth = month
+    }
+  }
+  const checkedAt = opts.today.toISOString()
+
   const substitutions = new Map<string, ParsedPLRow[]>()
   const reusedStamps = new WeakMap<ParsedPLRow, string>()
   let fetchFailed = false
 
-  const keep = (month: string, reason: string, extra: { delta?: number; error?: string } = {}) => {
+  const keep = (month: string, reason: string, extra: Omit<FxSplitKeptEntry, 'month' | 'reason'> = {}) => {
     record.kept.push({ month, reason, ...extra })
   }
 
@@ -235,10 +334,13 @@ export async function createFxSplitTenantRun(opts: {
 
         const open = periodMonth >= openFrom
         const stored = storedByMonth.get(periodMonth)
-        if (!open && stored && stored.length > 0 && periodMonth !== rotationMonth) {
-          // Re-check the stored split against THIS run's merged row with the
-          // same rule a fresh Trial Balance gets. A restated month fails it
-          // and falls through to a fetch.
+        const mergedAmount = round2(merged[0]!.amount)
+
+        // Re-check the stored split against THIS run's merged row with the
+        // same rule a fresh Trial Balance gets. A restated month fails it.
+        // 'refused' = it tied but apply() kept the merged row (recorded there).
+        const tryReuse = (): 'applied' | 'refused' | 'no' => {
+          if (!stored || stored.length === 0) return 'no'
           const asMovements: ParsedTBRow[] = stored.map((s) => ({
             account_id: s.account_id,
             account_name: '',
@@ -247,17 +349,41 @@ export async function createFxSplitTenantRun(opts: {
             credit: 0,
           }))
           const reuse = decide(asMovements)
-          if (reuse.kind === 'split') {
-            const stamps = new Map(stored.map((s) => [s.account_id, s.updated_at]))
-            if (apply(periodMonth, reuse, accrualRows, stamps)) record.reused.push(periodMonth)
-            return 0
-          }
+          if (reuse.kind !== 'split') return 'no'
+          const stamps = new Map(stored.map((s) => [s.account_id, s.updated_at]))
+          return apply(periodMonth, reuse, accrualRows, stamps) ? 'applied' : 'refused'
         }
 
-        if (fetchFailed) {
-          keep(periodMonth, 'fetch_skipped')
+        /** No fresh Trial Balance this run: a tying stored split, else the merged row. */
+        const withoutTb = (reason: 'fetch_failed' | 'fetch_skipped', error?: string): number => {
+          const entry: FxSplitKeptEntry = { month: periodMonth, reason, ...(error !== undefined ? { error } : {}) }
+          const reused = tryReuse()
+          if (reused === 'applied') {
+            record.reused.push(periodMonth)
+            ;(record.reused_after_fetch_failure ??= []).push(entry)
+          } else if (reused === 'no') {
+            record.kept.push(entry)
+          }
           return 0
         }
+
+        if (!open && periodMonth !== rotationMonth) {
+          const reused = tryReuse()
+          if (reused === 'applied') record.reused.push(periodMonth)
+          if (reused !== 'no') return 0
+        }
+
+        const verdict = priorTbVerdicts.get(periodMonth)
+        if (!open && verdict && verdict.merged === mergedAmount && periodMonth !== verdictRotationMonth) {
+          keep(periodMonth, verdict.reason, {
+            ...(typeof verdict.delta === 'number' ? { delta: verdict.delta } : {}),
+            merged: verdict.merged,
+            checked_at: verdict.checked_at,
+          })
+          return 0
+        }
+
+        if (fetchFailed) return withoutTb('fetch_skipped')
 
         let json: unknown
         try {
@@ -270,10 +396,7 @@ export async function createFxSplitTenantRun(opts: {
         } catch (fetchErr) {
           if (fetchErr instanceof RateLimitDailyExceededError) throw fetchErr
           fetchFailed = true
-          keep(periodMonth, 'fetch_failed', {
-            error: (fetchErr instanceof Error ? fetchErr.message : String(fetchErr)).slice(0, 200),
-          })
-          return 0
+          return withoutTb('fetch_failed', (fetchErr instanceof Error ? fetchErr.message : String(fetchErr)).slice(0, 200))
         }
         record.tb_requests++
         requested = 1
@@ -282,7 +405,11 @@ export async function createFxSplitTenantRun(opts: {
         if (outcome.kind === 'split') {
           if (apply(periodMonth, outcome, accrualRows, null)) record.applied.push(periodMonth)
         } else if (outcome.kind === 'kept') {
-          keep(periodMonth, outcome.reason, outcome.delta !== undefined ? { delta: outcome.delta } : {})
+          keep(periodMonth, outcome.reason, {
+            ...(outcome.delta !== undefined ? { delta: outcome.delta } : {}),
+            // A TB verdict carries what the next run needs to skip re-reading it.
+            ...(TB_VERDICTS.has(outcome.reason) ? { merged: mergedAmount, checked_at: checkedAt } : {}),
+          })
         }
         return requested
       } catch (err) {
@@ -290,6 +417,14 @@ export async function createFxSplitTenantRun(opts: {
         // Splitter or parser threw: the merged row stays. The request, if one
         // was made before the throw, is still counted.
         substitutions.delete(periodMonth)
+        record.reused = record.reused.filter((m) => m !== periodMonth)
+        record.applied = record.applied.filter((m) => m !== periodMonth)
+        record.zero = record.zero.filter((m) => m !== periodMonth)
+        record.residuals = record.residuals.filter((x) => x.month !== periodMonth)
+        if (record.reused_after_fetch_failure) {
+          record.reused_after_fetch_failure = record.reused_after_fetch_failure.filter((e) => e.month !== periodMonth)
+          if (record.reused_after_fetch_failure.length === 0) delete record.reused_after_fetch_failure
+        }
         keep(periodMonth, 'error', { error: (err instanceof Error ? err.message : String(err)).slice(0, 200) })
         return requested
       }
@@ -314,7 +449,9 @@ export async function createFxSplitTenantRun(opts: {
     },
 
     report() {
-      if (record.kept.length === 0) return
+      const degraded = [...record.kept, ...(record.reused_after_fetch_failure ?? [])]
+      const fresh = degraded.filter((e) => !priorKeys.has(`${e.month}|${e.reason}`))
+      if (fresh.length === 0) return
       try {
         Sentry.captureMessage('FX account split kept the merged FX row', {
           level: 'warning',
@@ -323,7 +460,11 @@ export async function createFxSplitTenantRun(opts: {
             business_id: profileId,
             tenant_id: tenantId,
           },
-          extra: { kept: record.kept },
+          extra: {
+            new: fresh,
+            kept: record.kept,
+            ...(record.reused_after_fetch_failure ? { reused_after_fetch_failure: record.reused_after_fetch_failure } : {}),
+          },
         } as any)
       } catch {
         // Sentry failure must not abort.

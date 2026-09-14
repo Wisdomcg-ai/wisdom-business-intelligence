@@ -1108,8 +1108,9 @@ export async function syncBusinessXeroPL(
           // ran on the unsplit monthlyRows, because the FY-total oracle still
           // carries the merged row. The per-month stale-row sweep below then
           // removes the merged row in a split month and the coded rows in a
-          // fallback month, so no delete code is needed. Cash rows are never
-          // split (v1). A reused closed month keeps its stored updated_at.
+          // fallback month. Cash rows are never split (v1) — which is why, with
+          // cash_basis also on, the sweep adds an accruals-scoped pass (below).
+          // A reused month keeps its stored updated_at.
           const accrualRowsForDb = fxRun ? fxRun.substitute(monthlyRows) : monthlyRows
           const dbRows = [...accrualRowsForDb, ...cashMonthlyRows].map((r) => {
             const catEntry = catalog.get(r.account_id)
@@ -1200,15 +1201,16 @@ export async function syncBusinessXeroPL(
               monthToAccountIds.set(r.period_month, arr)
             }
             let staleSwept = 0
-            for (const [month, ids] of monthToAccountIds) {
+            const sweepMonth = async (month: string, ids: string[], basis?: 'accruals') => {
               const inClause = `(${ids.map((id) => `"${id}"`).join(',')})`
-              const sweepRes = (await supabase
+              let q = supabase
                 .from('xero_pl_lines')
                 .delete({ count: 'exact' })
                 .eq('business_id', profileId)
                 .eq('tenant_id', conn.tenant_id)
                 .eq('period_month', month)
-                .not('account_id', 'in', inClause)) as any
+              if (basis) q = q.eq('basis', basis)
+              const sweepRes = (await q.not('account_id', 'in', inClause)) as any
               if (sweepRes?.error) {
                 try {
                   Sentry.captureMessage('xero_pl_lines stale-row sweep failed', {
@@ -1218,6 +1220,7 @@ export async function syncBusinessXeroPL(
                       business_id: profileId,
                       tenant_id: conn.tenant_id,
                       period_month: month,
+                      ...(basis ? { basis } : {}),
                     },
                     extra: {
                       error:
@@ -1227,9 +1230,38 @@ export async function syncBusinessXeroPL(
                 } catch {
                   /* ignore */
                 }
-                continue
+                return
               }
               staleSwept += sweepRes?.count ?? 0
+            }
+            for (const [month, ids] of monthToAccountIds) {
+              await sweepMonth(month, ids)
+            }
+            // FX account split + WD.7 cash twin: the union sweep above keeps any
+            // row whose id was written under EITHER basis. The cash twin is
+            // never split, so it still writes the merged FX id — which then
+            // protected the stale ACCRUALS merged row from earlier flag-off
+            // syncs, sitting beside the new coded rows: FX expense counted twice
+            // on every accruals reader (statements, full year, wide_compat,
+            // forecast actuals), re-created every run. So, only when the split
+            // is live and a month's accruals ids differ from its union, sweep
+            // accruals against the accruals ids alone. Flag-off never reaches
+            // here — its sweep, and so its golden, is unchanged.
+            if (fxRun && cashMonthlyRows.length > 0) {
+              const accrualIdsByMonth = new Map<string, Set<string>>()
+              for (const r of dbRows) {
+                if (r.basis !== 'accruals') continue
+                const set = accrualIdsByMonth.get(r.period_month) ?? new Set<string>()
+                set.add(r.account_id)
+                accrualIdsByMonth.set(r.period_month, set)
+              }
+              for (const [month, ids] of monthToAccountIds) {
+                const accrualIds = accrualIdsByMonth.get(month)
+                // No accruals rows written this month: nothing to key a sweep on.
+                if (!accrualIds || accrualIds.size === 0) continue
+                if (ids.every((id) => accrualIds.has(id))) continue
+                await sweepMonth(month, Array.from(accrualIds), 'accruals')
+              }
             }
             if (staleSwept > 0) {
               console.log(
