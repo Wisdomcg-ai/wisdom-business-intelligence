@@ -1694,11 +1694,15 @@ export default function MonthlyReportPage() {
     await reportStatus.refresh()
   }
 
+  // Also the bar's "Reopen balance sheet" (package B). Refresh before a
+  // failure is surfaced: the status revert can land while the balance-sheet
+  // reopen does not, and the bar must show the month as it now is — Draft,
+  // still offering the reopen.
   const handleRevertToDraft = async () => {
     if (!businessId || !report) return
     const res = await revertToDraft(businessId, `${report.report_month}-01`)
-    if (!res.ok) throw res
     await reportStatus.refresh()
+    if (!res.ok) throw res
   }
 
   const [isExporting, setIsExporting] = useState(false)
@@ -1960,6 +1964,7 @@ export default function MonthlyReportPage() {
             <ReportStatusBar
               status={reportStatus.status}
               sentAt={reportStatus.sentAt}
+              sentBalanceSheetAt={reportStatus.sentBalanceSheetAt}
               role={userRole}
               onMarkReady={handleMarkReady}
               onApproveAndSend={handleApproveAndSend}

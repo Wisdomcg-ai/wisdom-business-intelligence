@@ -8,7 +8,8 @@
 //   - approve_and_send  : * → approved (+ snapshot, + the balance sheets the PDF printed),
 //                         Resend send, → sent on success (D-02/D-11/D-15)
 //   - revert_to_draft   : approved|sent → draft, preserving snapshot (D-03/D-18); reopens
-//                         the sent balance sheets (marked, kept as the record)
+//                         the sent balance sheets (marked, kept as the record). On a month
+//                         already back in draft it only reopens them ("Reopen balance sheet")
 //   - resend            : re-send an already-approved/sent report (D-13)
 //   - mark_discussed    : stamp discussed_at/discussed_by — CFO board final stage
 //   - unmark_discussed  : clear the discussed stamp (mistake recovery)
@@ -247,7 +248,13 @@ async function handleUnmarkDiscussed(businessId: string, periodMonth: string) {
 async function handleRevert(businessId: string, periodMonth: string) {
   // D-03/D-18: revert approved|sent → draft, preserve frozen payload.
   await revertReportIfApproved(supabase as any, businessId, periodMonth)
-  await reopenSentBalanceSheets(businessId, periodMonth)
+  // Package B: and reopen the sent balance sheets. The status revert stands
+  // either way, but a reopen that did not land is not 'Reverted to draft': the
+  // month still prints the sent copy, so the coach is told — and the bar keeps
+  // offering the reopen from draft, which posts this same action to retry.
+  if ((await reopenSentBalanceSheets(businessId, periodMonth)) === 'failed') {
+    return errorResponse('The balance sheet the client was sent could not be reopened — exports still print it. Try again.', 500)
+  }
   return NextResponse.json({ success: true, status: 'draft' })
 }
 
@@ -256,15 +263,21 @@ async function handleRevert(businessId: string, periodMonth: string) {
  * (lib/monthly-report/balance-sheet-freeze.ts): the copy is marked
  * `reopened_at`, so exports stop printing it, and kept — with the rest of
  * snapshot_data (D-18) — as the record of what the client was sent. The silent
- * reverts (revertReportIfApproved from a save) never come here.
+ * reverts (revertReportIfApproved from a save) never come here. Every save
+ * after a send is one of those, so the month is usually back in draft by the
+ * time the coach wants the live sheet; the bar then offers "Reopen balance
+ * sheet", which comes here through the same action.
  *
  * snapshot_data is one jsonb blob, so this is a read-modify-write, guarded on
  * the approval it read: an Approve & Send landing in between writes a new
  * snapshot_taken_at, and this stands down rather than writing the old payload
- * over the new one. Never fails the revert; a reopen that does not land is a
- * month still printing the sent copy, captured under the invariant.
+ * over the new one — 'failed', since that new copy is still printing. Every
+ * 'failed' is captured under the invariant and surfaced by the caller.
  */
-async function reopenSentBalanceSheets(businessId: string, periodMonth: string) {
+async function reopenSentBalanceSheets(
+  businessId: string,
+  periodMonth: string,
+): Promise<'reopened' | 'nothing_to_reopen' | 'failed'> {
   const extra = { businessId, periodMonth }
   const tags = { route: 'cfo/report-status', invariant: 'balance-sheet-freeze', stage: 'revert_to_draft' }
   try {
@@ -276,22 +289,36 @@ async function reopenSentBalanceSheets(businessId: string, periodMonth: string) 
       .maybeSingle()
     if (readError) {
       Sentry.captureException(readError, { tags, extra } as any)
-      return
+      return 'failed'
     }
     const snapshot = row?.snapshot_data as Record<string, unknown> | null | undefined
     const sent = snapshot?.[FROZEN_BALANCE_SHEETS_KEY] as Record<string, unknown> | null | undefined
-    if (!row || !sent || typeof sent !== 'object' || typeof sent.reopened_at === 'string') return
+    if (!row || !sent || typeof sent !== 'object' || typeof sent.reopened_at === 'string') return 'nothing_to_reopen'
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('cfo_report_status')
       .update({
         snapshot_data: { ...snapshot, [FROZEN_BALANCE_SHEETS_KEY]: { ...sent, reopened_at: new Date().toISOString() } },
       })
       .eq('id', row.id)
       .eq('snapshot_taken_at', row.snapshot_taken_at)
-    if (error) Sentry.captureException(error, { tags, extra } as any)
+      .select('id')
+    if (error) {
+      Sentry.captureException(error, { tags, extra } as any)
+      return 'failed'
+    }
+    if ((data?.length ?? 0) === 0) {
+      Sentry.captureMessage('[BalanceSheet freeze] sent copy not reopened — a new Approve & Send landed between the read and the write', {
+        level: 'warning',
+        tags,
+        extra,
+      } as any)
+      return 'failed'
+    }
+    return 'reopened'
   } catch (err) {
     Sentry.captureException(err, { tags, extra } as any)
+    return 'failed'
   }
 }
 

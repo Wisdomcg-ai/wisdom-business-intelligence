@@ -13,7 +13,8 @@
  *     exactly as it was.
  *   - revert_to_draft is the deliberate reopen: the sent copy is marked
  *     reopened (kept as the record of what was sent), the rest of
- *     snapshot_data untouched (D-18).
+ *     snapshot_data untouched (D-18). On a month a save already flipped back
+ *     to draft it only reopens; a reopen that does not land fails the action.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
@@ -313,21 +314,62 @@ describe('revert_to_draft is the deliberate reopen', () => {
     expect(reopenWrite.update).not.toHaveBeenCalled()
   })
 
-  it('a reopen that does not land is captured with stage revert_to_draft — the revert itself still stands', async () => {
+  it('a reopen that does not land is captured with stage revert_to_draft, and the action says it failed — the status revert itself still stands', async () => {
+    const revertWrite = chain({ data: null, error: null })
     tables({
       cfo_report_status: [
         chain({ data: { id: 'status-1', status: 'sent' }, error: null }),
-        chain({ data: null, error: null }),
+        revertWrite,
         chain({ data: { id: 'status-1', snapshot_data: { ...snapshotData, [FROZEN_BALANCE_SHEETS_KEY]: frozen }, snapshot_taken_at: TAKEN_AT }, error: null }),
         chain({ data: null, error: { message: 'statement timeout' } }),
       ],
     })
     const res = await POST(req({ action: 'revert_to_draft', business_id: BIZ, period_month: '2026-08-01' }))
-    expect(res.status).toBe(200)
+    // Not a 200 'Reverted to draft': exports still print the sent copy, and the
+    // coach is told so — the bar keeps offering the reopen from draft to retry.
+    expect(res.status).toBe(500)
+    expect(await res.json()).toMatchObject({ success: false, error: expect.stringMatching(/balance sheet/i) })
+    expect(revertWrite.updateArgs[0]).toMatchObject({ status: 'draft' })
     expect(captureException).toHaveBeenCalledWith(
       { message: 'statement timeout' },
       expect.objectContaining({ tags: expect.objectContaining({ invariant: 'balance-sheet-freeze', stage: 'revert_to_draft' }) }),
     )
+  })
+
+  it('a reopen whose guard matched nothing (a new send landed between read and write) is not reported as done', async () => {
+    tables({
+      cfo_report_status: [
+        chain({ data: { id: 'status-1', status: 'sent' }, error: null }),
+        chain({ data: null, error: null }),
+        chain({ data: { id: 'status-1', snapshot_data: { ...snapshotData, [FROZEN_BALANCE_SHEETS_KEY]: frozen }, snapshot_taken_at: TAKEN_AT }, error: null }),
+        chain({ data: [], error: null }),
+      ],
+    })
+    const res = await POST(req({ action: 'revert_to_draft', business_id: BIZ, period_month: '2026-08-01' }))
+    expect(res.status).toBe(500)
+    expect(captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('not reopened'),
+      expect.objectContaining({ tags: expect.objectContaining({ invariant: 'balance-sheet-freeze', stage: 'revert_to_draft' }) }),
+    )
+  })
+
+  it('a month a save already flipped back to draft: the same action reopens the kept copy and leaves the status alone', async () => {
+    // What the bar's "Reopen balance sheet" posts — after a send, the first
+    // draft save silently reverts the status, so Revert to Draft is gone.
+    const revertRead = chain({ data: { id: 'status-1', status: 'draft' }, error: null })
+    const reopenRead = chain({
+      data: { id: 'status-1', snapshot_data: { ...snapshotData, [FROZEN_BALANCE_SHEETS_KEY]: frozen }, snapshot_taken_at: TAKEN_AT },
+      error: null,
+    })
+    const reopenWrite = chain({ data: [{ id: 'status-1' }], error: null })
+    tables({ cfo_report_status: [revertRead, reopenRead, reopenWrite] })
+
+    const res = await POST(req({ action: 'revert_to_draft', business_id: BIZ, period_month: '2026-08-01' }))
+    expect(res.status).toBe(200)
+    expect(revertRead.update).not.toHaveBeenCalled()
+    expect(reopenWrite.updateArgs[0]).not.toHaveProperty('status')
+    expect(reopenWrite.updateArgs[0].snapshot_data[FROZEN_BALANCE_SHEETS_KEY]).toEqual({ ...frozen, reopened_at: expect.any(String) })
+    expect(captureException).not.toHaveBeenCalled()
   })
 })
 

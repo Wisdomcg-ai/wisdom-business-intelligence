@@ -59,6 +59,10 @@
  *     it marks the copy `reopened_at` and keeps it as the record of what was
  *     sent. The silent reverts (a draft save, a commentary run, a settings or
  *     layout save, a Finalise) leave it standing — the client still has it.
+ *     They also take Revert to Draft off the status bar, so the bar says a
+ *     copy is kept whatever the status (useReportStatus reads its stamps) and
+ *     from draft offers "Reopen balance sheet", the same action. A reopen that
+ *     does not land fails that action out loud, and the offer stays.
  * A new Approve & Send replaces snapshot_data and keeps what THAT PDF printed,
  * which is the sent copy again when the report is unchanged. The send never
  * writes the snapshot, so a Finalise freeze is never overwritten; when one

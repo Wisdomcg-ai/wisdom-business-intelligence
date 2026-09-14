@@ -12,10 +12,12 @@
  * The trap this pins concretely: after the send the page is still unlocked (a
  * draft snapshot), so the first commentary blur POSTs a draft save — and a
  * draft save strips a Finalise freeze from report_data and silently reverts the
- * sent status to draft. The sent copy lives where that save never writes.
+ * sent status to draft. The sent copy lives where that save never writes. And
+ * because that revert takes Revert to Draft off the bar, the bar itself (the
+ * real hook reading the same database) must still offer the reopen.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, act } from '@testing-library/react'
+import { render, act, screen, fireEvent, waitFor } from '@testing-library/react'
 import React from 'react'
 import { NextRequest } from 'next/server'
 
@@ -121,10 +123,14 @@ vi.mock('@sentry/nextjs', () => ({
   captureException: (...a: unknown[]) => captureException(...a),
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
-// The browser client: a single-entity business (no consolidation branch).
+// The browser client: a single-entity business (no consolidation branch), and
+// the status pill's own read of cfo_report_status from the same database.
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
-    from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ eq: () => Promise.resolve({ count: 1 }) }) }) }) }),
+    from: (table: string) =>
+      table === 'cfo_report_status'
+        ? from(table)
+        : { select: () => ({ eq: () => ({ eq: () => ({ eq: () => Promise.resolve({ count: 1 }) }) }) }) },
   }),
 }))
 vi.mock('@/app/finances/monthly-report/services/monthly-report-pdf-service', () => ({
@@ -143,6 +149,9 @@ import * as reportStatusRoute from '@/app/api/cfo/report-status/route'
 import { approveAndSend, resendReport, revertToDraft } from '@/app/finances/monthly-report/services/approve-and-send'
 import { useMonthlyReport } from '@/app/finances/monthly-report/hooks/useMonthlyReport'
 import { useAutoSaveReport, type UseAutoSaveReportReturn } from '@/app/finances/monthly-report/hooks/useAutoSaveReport'
+import { useReportStatus } from '@/app/finances/monthly-report/hooks/useReportStatus'
+import ReportStatusBar from '@/app/finances/monthly-report/components/ReportStatusBar'
+import { toast } from 'sonner'
 import {
   FROZEN_BALANCE_SHEETS_KEY,
   balanceSheetsForExport,
@@ -226,6 +235,35 @@ function mountPage() {
   return page
 }
 
+/**
+ * The status bar as page.tsx wires it: the real useReportStatus reading
+ * cfo_report_status, the real bar, and handleRevertToDraft over the real
+ * orchestrator and route.
+ */
+function mountStatusBar() {
+  function Bar() {
+    const reportStatus = useReportStatus(BIZ, `${MONTH}-01`)
+    const handleRevertToDraft = async () => {
+      const res = await revertToDraft(BIZ, `${MONTH}-01`)
+      await reportStatus.refresh()
+      if (!res.ok) throw res
+    }
+    return (
+      <ReportStatusBar
+        status={reportStatus.status}
+        sentAt={reportStatus.sentAt}
+        sentBalanceSheetAt={reportStatus.sentBalanceSheetAt}
+        role="coach"
+        onMarkReady={() => undefined}
+        onApproveAndSend={() => undefined}
+        onResend={() => undefined}
+        onRevertToDraft={handleRevertToDraft}
+      />
+    )
+  }
+  return render(<Bar />)
+}
+
 /** loadPdfSections' balance-sheet block, as page.tsx composes it. */
 async function pagePrintsBalanceSheets(page: ReturnType<typeof mountPage>, loadedSnapshotStatus: 'draft' | 'final') {
   const stored = loadedSnapshotStatus === 'final' ? await page.reportApi!.fetchSnapshot(MONTH) : null
@@ -268,6 +306,8 @@ beforeEach(() => {
   built.length = 0
   captureMessage.mockReset()
   captureException.mockReset()
+  vi.mocked(toast.success).mockClear()
+  vi.mocked(toast.error).mockClear()
   sendMonthlyReport.mockReset()
   sendMonthlyReport.mockResolvedValue({ success: true, id: 'msg-1', statusCode: 200 })
   vi.stubGlobal('fetch', vi.fn(browserFetch))
@@ -277,7 +317,7 @@ afterEach(() => {
 })
 
 describe('sent from draft: every later copy prints the sheet the client was sent', () => {
-  it('keeps it through a resend, the post-send auto-save, a second send and an export — until Revert to Draft', async () => {
+  it('keeps it through a resend, the post-send auto-save and an export — until the coach reopens it from the bar, with no second email', async () => {
     const page = mountPage()
 
     // 1. Approve & Send from draft. The PDF prints Xero as it stands.
@@ -319,22 +359,68 @@ describe('sent from draft: every later copy prints the sheet the client was sent
     expect(await pagePrintsBalanceSheets(page, 'draft')).toEqual({ mom: { data: mom }, yoy: { data: yoy } })
     expect(xero.gets).toBe(0)
 
-    // 6. Approve & Send again (the pill says Draft): that PDF prints the sent
-    //    copy too, and the copy it keeps is the same sheet.
-    const again = await pagePrintsBalanceSheets(page, 'draft')
-    expect((await approveAndSend(sendParams(again))).ok).toBe(true)
-    expect(built.at(-1)!.balanceSheets).toEqual({ mom: { data: mom }, yoy: { data: yoy } })
-    expect(statusRow().snapshot_data[FROZEN_BALANCE_SHEETS_KEY]).toMatchObject({ mom, yoy })
+    // 6. The pill says Draft, so Revert to Draft is not on the bar — but the
+    //    bar says the balance sheet is the sent copy and offers the reopen.
+    //    No second email to the client is needed to get it back.
+    mountStatusBar()
+    await screen.findByText(/Balance sheet as sent/)
+    expect(screen.getByText('Draft')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Revert to Draft/i })).not.toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Reopen balance sheet/i }))
+    })
+    await waitFor(() => expect(screen.queryByText(/Balance sheet as sent/)).not.toBeInTheDocument())
+    expect(sendMonthlyReport).toHaveBeenCalledTimes(2) // the send and the resend, nothing more
 
-    // 7. Revert to Draft — the deliberate reopen. The record of what was sent
-    //    stays; exports go back to the rules they always had (a draft asks Xero).
-    expect((await revertToDraft(BIZ, `${MONTH}-01`)).ok).toBe(true)
+    // 7. Reopened. The record of what was sent stays; exports go back to the
+    //    rules they always had (a draft asks Xero).
     expect(statusRow().status).toBe('draft')
     expect(statusRow().snapshot_data[FROZEN_BALANCE_SHEETS_KEY]).toMatchObject({ mom, yoy, reopened_at: expect.any(String) })
     expect(statusRow().snapshot_data.report).toBeTruthy() // D-18: the client's link still renders
     expect((await pagePrintsBalanceSheets(page, 'draft')).mom).toEqual({ data: movedMom })
 
+    // 8. The next Approve & Send prints the sheet as it now stands, and keeps that.
+    const again = await pagePrintsBalanceSheets(page, 'draft')
+    expect((await approveAndSend(sendParams(again))).ok).toBe(true)
+    expect(built.at(-1)!.balanceSheets).toEqual({ mom: { data: movedMom }, yoy: { data: yoy } })
+    expect(statusRow().snapshot_data[FROZEN_BALANCE_SHEETS_KEY]).toMatchObject({ mom: movedMom, yoy })
+    expect(statusRow().snapshot_data[FROZEN_BALANCE_SHEETS_KEY].reopened_at).toBeUndefined()
+
     expect(captureException).not.toHaveBeenCalled()
+  })
+
+  it('Revert to Draft whose reopen does not land: the coach is told, and the reopen stays on the bar to retry', async () => {
+    const page = mountPage()
+    const printed = await pagePrintsBalanceSheets(page, 'draft')
+    expect((await approveAndSend(sendParams(printed))).ok).toBe(true)
+    xero.mom = movedMom
+
+    mountStatusBar()
+    await screen.findByText(/Sent/)
+    // The status revert lands; the write that reopens the copy does not.
+    db.failWrite = (table, op, payload) =>
+      table === 'cfo_report_status' && op === 'update' && 'snapshot_data' in payload ? { message: 'statement timeout' } : null
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Revert to Draft/i }))
+    })
+    await screen.findByText('Draft')
+    expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/balance sheet/i))
+    expect(toast.success).not.toHaveBeenCalledWith('Reverted to draft')
+    expect(captureException).toHaveBeenCalledWith(
+      { message: 'statement timeout' },
+      expect.objectContaining({ tags: expect.objectContaining({ invariant: 'balance-sheet-freeze', stage: 'revert_to_draft' }) }),
+    )
+    // Still the sent copy — and the bar still offers to reopen it.
+    expect(await pagePrintsBalanceSheets(page, 'draft')).toEqual({ mom: { data: mom }, yoy: { data: yoy } })
+    expect(screen.getByText(/Balance sheet as sent/)).toBeInTheDocument()
+
+    db.failWrite = null
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Reopen balance sheet/i }))
+    })
+    await waitFor(() => expect(statusRow().snapshot_data[FROZEN_BALANCE_SHEETS_KEY].reopened_at).toEqual(expect.any(String)))
+    expect((await pagePrintsBalanceSheets(page, 'draft')).mom).toEqual({ data: movedMom })
+    expect(sendMonthlyReport).toHaveBeenCalledTimes(1)
   })
 
   it('an existing Finalise freeze is kept: the send prints it, keeps that same copy, and never writes the snapshot', async () => {
