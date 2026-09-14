@@ -17,6 +17,7 @@ import {
   createVendorKey,
   extractVendorName,
   extractVendorInfo,
+  vendorCompanyName,
 } from '@/lib/utils/vendor-normalization';
 
 describe('B2 — vendor-normalization single source of truth', () => {
@@ -99,5 +100,24 @@ describe('B2 — vendor-normalization single source of truth', () => {
     // The grouping must wrap the vendor name with createVendorKey before using
     // it as the map key.
     expect(src).toMatch(/\bcreateVendorKey\s*\(\s*txn\.vendor\s*\)/);
+  });
+});
+
+describe('the company name is display only', () => {
+  // The commentary quotes "Google" on an ad-spend account (vendorCompanyName),
+  // but Step 6, subscription_budgets and subscription_vendor_actuals key the
+  // vendor by the mapped product name. Those keys must not move.
+  it('extractVendorName and createVendorKey are unchanged for the mapped product names', () => {
+    expect(extractVendorName('Google', '')).toBe('Google Workspace');
+    expect(createVendorKey(extractVendorName('Google', ''))).toBe('googleworkspace');
+    expect(extractVendorName('Microsoft', '')).toBe('Microsoft 365');
+    expect(createVendorKey(extractVendorName('Microsoft', ''))).toBe('microsoft365');
+  });
+
+  it('maps only product names to the company that bills them', () => {
+    expect(vendorCompanyName('Google Workspace')).toBe('Google');
+    expect(vendorCompanyName('Microsoft 365')).toBe('Microsoft');
+    expect(vendorCompanyName('Slack')).toBe('Slack');
+    expect(vendorCompanyName('Allied Express Transport Pty Ltd')).toBe('Allied Express Transport Pty Ltd');
   });
 });

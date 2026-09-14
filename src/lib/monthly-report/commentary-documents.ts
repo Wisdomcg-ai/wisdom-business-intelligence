@@ -48,7 +48,7 @@
  * arithmetic is linear.
  */
 
-import { extractVendorInfo, createVendorKey } from '@/lib/utils/vendor-normalization'
+import { extractVendorInfo, createVendorKey, vendorCompanyName } from '@/lib/utils/vendor-normalization'
 import { monthRangeWhere } from '@/lib/reconciliation/where-clauses'
 import { toStatementAmount, type XeroDocumentMoney, type XeroLineMoney } from './commentary-money'
 
@@ -367,6 +367,16 @@ function xeroDate(raw: string | null | undefined): string {
  * then line description), so a credit against a supplier's own bill nets inside
  * that supplier's total, and one with nothing to net against becomes its own
  * negative row — "less Hardware Concepts credit ($1,571)" in the draft.
+ *
+ * `vendorNames` decides what a mapped vendor is called. 'product' (the default,
+ * and what a subscription account wants) keeps the subscription wizard's name —
+ * "Google Workspace", the same row the subscription page prints. 'company'
+ * names the business that billed it — "Google" — for every other account, where
+ * the product name is simply wrong: Urban Road's Google Ads bill on Marketing
+ * Digital Ad Spend was quoted as Workspace. Every line of one account gets the
+ * same choice, so a supplier's bills and bank lines still group into one row.
+ * Nothing here is a stored key: summariseVendors groups in memory, and Step 6
+ * and the subscription page keep calling extractVendorName for theirs.
  */
 export function collectAccountTransactions(input: {
   accountCode: string
@@ -375,8 +385,9 @@ export function collectAccountTransactions(input: {
   bankTransactions: readonly XeroCommentaryDocument[]
   creditNotes?: readonly XeroCommentaryDocument[]
   baseCurrency: string | null
+  vendorNames?: 'product' | 'company'
 }): VendorTransaction[] {
-  const { accountCode, side, invoices, bankTransactions, creditNotes = [], baseCurrency } = input
+  const { accountCode, side, invoices, bankTransactions, creditNotes = [], baseCurrency, vendorNames = 'product' } = input
   const out: VendorTransaction[] = []
 
   const take = (doc: XeroCommentaryDocument, kind: CommentaryDocumentKind) => {
@@ -393,7 +404,7 @@ export function collectAccountTransactions(input: {
       const converted = toStatementAmount(li, doc, baseCurrency)
       out.push({
         date,
-        vendor: info.vendor,
+        vendor: vendorNames === 'company' && info.source === 'mapping' ? vendorCompanyName(info.vendor) : info.vendor,
         context: info.context,
         // `|| 0` keeps a zero line from becoming -0.
         amount: sign * converted.amount || 0,
@@ -488,8 +499,25 @@ export function summariseVendors(transactions: readonly VendorTransaction[]): Ve
   // moment refunds were signed as refunds: a remainder of small credits would
   // vanish, and the list would stop summing to what it quotes. A remainder
   // that nets to nothing says nothing and stays out.
+  //
+  // A remainder of ONE supplier keeps its name. "Others" stands for suppliers
+  // too small to name one by one; when there is only one of them, the name
+  // costs no more room than the word. Urban Road's August International Orders
+  // ended "Others ($81)" where Calxa says "Prodigi ($81)". The same applies to a
+  // remainder that nets negative: a single small refund is a named credit
+  // ("less Prodigi credit ($40)"), not "less other credits".
+  //
+  // A supplier that rounds to $0 is not counted: a $0.30 bank fee, or a charge
+  // and its refund, adds nothing to the remainder, so it must not turn "Prodigi
+  // ($81)" back into "Others ($81)". expandOthers drops the same $0 rows when a
+  // placement names the remainder, and the two have to agree.
   if (othersTotal !== 0) {
-    significant.push({ vendor: 'Others', amount: othersTotal, transactions: othersTransactions })
+    const remainderVendors = sorted.filter(e => Math.abs(e.amount) < OTHERS_THRESHOLD && e.converted !== false && e.amount !== 0)
+    if (remainderVendors.length === 1) {
+      significant.push(remainderVendors[0])
+    } else {
+      significant.push({ vendor: 'Others', amount: othersTotal, transactions: othersTransactions })
+    }
   }
 
   return significant

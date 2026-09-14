@@ -32,6 +32,8 @@ export interface EmployeeRow {
 }
 
 export interface PayrollGridEmployee {
+  /** Xero's EmployeeID; null for a payslip Xero did not tie to one. */
+  employee_id: string | null
   name: string
   start_date: string | null
   /**
@@ -67,6 +69,15 @@ export interface PayrollGrid {
 }
 
 const round2 = (n: number): number => Math.round(n * 100) / 100
+
+/**
+ * "Suzanne  Atkin" → "Suzanne Atkin". Xero stores the payslip's name as first
+ * name + ' ' + last name, and Urban Road's first names carry a trailing space,
+ * so two of its six employees printed with a visible gap.
+ */
+export function cleanEmployeeName(name: string | null | undefined): string {
+  return (name ?? '').replace(/\s+/g, ' ').trim()
+}
 
 /** "2026-08-31" → "2026-08". */
 function monthOf(isoDate: string): string {
@@ -105,7 +116,7 @@ export function buildPayrollGrid(
     const key = p.employee_id ?? `name:${p.employee_name}`
     let row = byEmployee.get(key)
     if (!row) {
-      row = { name: (p.employee_name ?? '').trim(), id: p.employee_id ?? null, cells: new Map() }
+      row = { name: cleanEmployeeName(p.employee_name), id: p.employee_id ?? null, cells: new Map() }
       byEmployee.set(key, row)
     }
     // Two payslips in the same run (an adjustment run posted the same day) add.
@@ -120,6 +131,7 @@ export function buildPayrollGrid(
       const cells: Record<string, number | null> = {}
       for (const d of runDates) cells[d] = row.cells.has(d) ? row.cells.get(d)! : null
       return {
+        employee_id: row.id,
         name: row.name,
         start_date: row.id ? startDateOf.get(row.id) ?? null : null,
         weekly: allAgree ? round2(first) : null,
@@ -157,4 +169,98 @@ export function buildPayrollGrid(
     employees: employeeRows,
     grand_total: round2(monthRows.reduce((t, m) => t + m.total, 0)),
   }
+}
+
+// ── The roster ───────────────────────────────────────────────────────────────
+
+export interface RosteredEmployee extends PayrollGridEmployee {
+  /** Ordinary hours a week, from the roster. Null = not stated. */
+  standard_units: number | null
+  /** The standing weekly salary budget, from the roster. Null = not stated. */
+  weekly_salary: number | null
+}
+
+export interface RosterEntry {
+  name: string
+  employee_id?: string
+  standard_units?: number | null
+  weekly_salary?: number | null
+}
+
+export interface RosteredPayroll {
+  employees: RosteredEmployee[]
+  /**
+   * The Weekly Salary (Budget) column's total — only when every printed
+   * employee has one. A total over the four that were typed in, printed under a
+   * column of six, is a smaller number under the same heading.
+   */
+  weekly_salary_total: number | null
+  /** Paid in the window but not on the roster — printed after it, and worth telling the coach. */
+  not_on_roster: string[]
+}
+
+/**
+ * Put the grid's employees in roster order and give each the roster's standing
+ * figures.
+ *
+ * An employee on the roster who was not paid in the window is not printed: the
+ * grid is what was paid, and a row of dashes for a leaver is noise. Anyone
+ * paid but not on the roster is kept — dropping a person from a payroll page
+ * because a list was out of date would under-state wages against a Total that
+ * still includes them — and follows the roster in the grid's own order.
+ *
+ * With an empty roster the grid's order stands, unchanged.
+ */
+export function applyPayrollRoster(grid: PayrollGrid, roster: readonly RosterEntry[]): RosteredPayroll {
+  const key = (name: string) => cleanEmployeeName(name).toLowerCase()
+  const byId = new Map<string, number>()
+  const byName = new Map<string, number[]>()
+  roster.forEach((r, i) => {
+    if (r.employee_id && !byId.has(r.employee_id)) byId.set(r.employee_id, i)
+    byName.set(key(r.name), [...(byName.get(key(r.name)) ?? []), i])
+  })
+
+  // A name only stands in for a missing id. An entry that names an id belongs
+  // to that Xero record alone: a re-hire on a new record, paid in the same
+  // window under the same name, is somebody the roster has not placed — matched
+  // by name it would take the entry's Weekly Salary (Budget), count it twice in
+  // the column total, and never be listed as not on the roster.
+  const nameMatch = (e: PayrollGridEmployee): number | undefined =>
+    (byName.get(key(e.name)) ?? []).find((i) => !roster[i].employee_id || !e.employee_id)
+
+  const placed = grid.employees.map((e, gridIndex) => {
+    const rosterIndex =
+      (e.employee_id ? byId.get(e.employee_id) : undefined) ?? nameMatch(e)
+    const entry = rosterIndex === undefined ? undefined : roster[rosterIndex]
+    return {
+      gridIndex,
+      rosterIndex,
+      row: {
+        ...e,
+        standard_units: entry?.standard_units ?? null,
+        weekly_salary: entry?.weekly_salary ?? null,
+      } as RosteredEmployee,
+    }
+  })
+
+  placed.sort((a, b) => {
+    const ar = a.rosterIndex ?? Number.POSITIVE_INFINITY
+    const br = b.rosterIndex ?? Number.POSITIVE_INFINITY
+    return ar === br ? a.gridIndex - b.gridIndex : ar - br
+  })
+
+  const employees = placed.map((p) => p.row)
+  const allStated = employees.length > 0 && employees.every((e) => e.weekly_salary !== null)
+  return {
+    employees,
+    weekly_salary_total: allStated
+      ? round2(employees.reduce((t, e) => t + (e.weekly_salary as number), 0))
+      : null,
+    not_on_roster: roster.length === 0 ? [] : placed.filter((p) => p.rosterIndex === undefined).map((p) => p.row.name),
+  }
+}
+
+/** Every employee's pay in one run — the Total row's cell. */
+export function runTotal(grid: PayrollGrid, runDate: string): number {
+  return round2(grid.employees.reduce((t, e) => t + (e.cells[runDate] ?? 0), 0))
 }

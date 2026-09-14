@@ -30,9 +30,11 @@ import {
   filterAccounts,
   formFromWidget,
   hasUnrecognised,
+  layoutPreset,
   moveRatio,
   otherAverages,
   removeRatio,
+  setLayoutPreset,
   setPageAverage,
   setRatioNoAverages,
   toggleAccount,
@@ -119,6 +121,7 @@ export default function RatioSettingsPanel({ widget, businessId, onCancel, onApp
   )
 
   const pageOthers = otherAverages(form.trailing)
+  const preset = layoutPreset(form)
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-end">
@@ -220,6 +223,25 @@ export default function RatioSettingsPanel({ widget, businessId, onCancel, onApp
                 onChange={(e) => setForm({ ...form, showAmounts: e.target.checked })}
               />
               Show the dollar amounts above each percentage
+            </label>
+
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-gray-700">Layout</span>
+              <select
+                value={preset}
+                onChange={(e) => {
+                  const next = e.target.value
+                  if (next === 'pack' || next === 'sheet') setForm(setLayoutPreset(form, next))
+                }}
+                className={inputClass}
+              >
+                {preset === 'custom' && <option value="custom">Custom — set up by hand</option>}
+                <option value="pack">Report style — one row per average, a heading over each ratio</option>
+                <option value="sheet">Spreadsheet style — income first, each average in its own block, in a grid</option>
+              </select>
+              {preset === 'custom' && (
+                <span className={helpClass}>This page mixes the two layouts. It is kept as it is unless you pick one.</span>
+              )}
             </label>
           </section>
 

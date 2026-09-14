@@ -35,16 +35,11 @@ describe('resolveSectionFilter', () => {
 })
 
 describe('sectionTableTitle', () => {
-  it('single sections get their Calxa-style names', () => {
-    expect(sectionTableTitle(['Revenue'])).toBe('Income Analysis')
-    expect(sectionTableTitle(['Cost of Sales'])).toBe('COGS Analysis')
-    expect(sectionTableTitle(['Operating Expenses'])).toBe('Expenses Analysis')
-  })
-
-  it('multi-section filters join their names', () => {
-    expect(sectionTableTitle(['Revenue', 'Other Income'])).toBe(
-      'Income Analysis + Other Income Analysis',
-    )
+  it('every section table is titled as Calxa titles pages 4, 6 and 10', () => {
+    expect(sectionTableTitle(['Revenue'])).toBe('Actual vs Budget')
+    expect(sectionTableTitle(['Cost of Sales'])).toBe('Actual vs Budget')
+    expect(sectionTableTitle(['Operating Expenses'])).toBe('Actual vs Budget')
+    expect(sectionTableTitle(['Revenue', 'Other Income'])).toBe('Actual vs Budget')
   })
 
   it('null filter keeps the default full-statement title', () => {

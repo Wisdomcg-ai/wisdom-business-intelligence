@@ -113,7 +113,10 @@ export function forecastAbsentNote(report: FullYearReport | null | undefined): s
   if (!report || hasForecastBudget(report)) return null
   const fy = report.fiscal_year ? `FY${report.fiscal_year}` : 'this fiscal year'
   return hasApprovedBudget(report)
-    ? `No forecast exists for ${fy}; the approved budget is the only yardstick on this page, and Projected is actuals to date.`
+    // No claim about Projected here: where the approved budget is the yardstick
+    // the Full Year months and Projected follow it (full-year-basis), so
+    // "Projected is actuals to date" was false on exactly the page it described.
+    ? `No forecast exists for ${fy}; the approved budget is the only yardstick on this page.`
     : `No forecast exists for ${fy}, so this page has no yardstick to measure against and Projected is actuals to date.`
 }
 

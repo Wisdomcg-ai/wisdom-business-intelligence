@@ -5,7 +5,7 @@
  * bank account, plus the liabilities most likely to be mistaken for one.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { isBankRow, openingBalanceDate, totalBankAt, type BankRowInput } from '../opening-bank'
+import { isBankRow, openingBalanceDate, parseBankAccountIds, totalBankAt, type BankRowInput } from '../opening-bank'
 import { deriveMoneyFlow } from '../money-flow'
 
 const UR = '8519c134-ed81-4d9b-8f07-ce499d12b7ee'
@@ -130,6 +130,155 @@ describe('totalBankAt', () => {
       row('liability', 'Current Liabilities', '5', '2026-06-30', 'b'),
     ], '2026-06-30', TWO)
     expect(v.status).toBe('unavailable')
+  })
+})
+
+describe('a chosen bank set — Calxa counts two of Urban Road\'s accounts', () => {
+  const CBA = '6532a9b0-e2c4-48c9-bcc3-65757e80d4e4'
+  const SAVER = 'cd058bf3-c1a1-4379-b886-424aa5e77e7f'
+  const AMEX = '0aca1d06-e22b-4d9c-b172-8c4a59aee56b'
+  const withId = (account_id: string, r: BankRowInput): BankRowInput => ({ ...r, account_id })
+  const rows: BankRowInput[] = [
+    withId('paypal', row('asset', 'Bank', '2641.06')),
+    withId(SAVER, row('asset', 'Bank', '86037.86')),
+    withId(CBA, row('asset', 'Bank', '31948.67')),
+    withId('tax-savings', row('asset', 'Bank', '45000.00')),
+    withId(AMEX, row('liability', 'Current Liabilities', '65862.42')),
+  ]
+
+  it('isBankRow reads the list when there is one, the section when there is not', () => {
+    expect(isBankRow({ section: 'Bank', account_type: 'asset', account_id: 'paypal' }, [CBA, SAVER])).toBe(false)
+    expect(isBankRow({ section: 'Current Assets', account_type: 'asset', account_id: CBA }, [CBA])).toBe(true)
+    expect(isBankRow({ section: 'Bank', account_type: 'asset', account_id: 'paypal' }, null)).toBe(true)
+  })
+
+  it('a chosen credit card is still not cash', () => {
+    expect(isBankRow({ section: 'Current Liabilities', account_type: 'liability', account_id: AMEX }, [AMEX])).toBe(false)
+  })
+
+  it("opens FY2027 on CBA Cheque + Bus Online Saver at 30 Jun 2026: 117,986.53", () => {
+    expect(totalBankAt(rows, '2026-06-30', AUD, [CBA, SAVER]))
+      .toEqual({ status: 'read', amount: 117986.53, asAt: '2026-06-30' })
+    // Unchanged without a choice.
+    expect(totalBankAt(rows, '2026-06-30', AUD)).toMatchObject({ amount: 165627.59 })
+  })
+
+  it('a list naming nothing in the balance sheet is unavailable, not $0', () => {
+    expect(totalBankAt(rows, '2026-06-30', AUD, ['closed-account'])).toEqual({
+      status: 'unavailable',
+      asAt: '2026-06-30',
+      reason: 'none of the bank accounts chosen for this report is in the synced balance sheet',
+    })
+  })
+
+  it('a list that only partly matches is unavailable, not a smaller total read as fact', () => {
+    // CBA alone is 31,948.67. Reading it as the opening bank because the saver
+    // could not be found would open the year $86,038 short, without a word.
+    expect(totalBankAt(rows, '2026-06-30', AUD, [CBA, 'closed-saver'])).toEqual({
+      status: 'unavailable',
+      asAt: '2026-06-30',
+      reason: '1 of the 2 bank accounts chosen for this report is not in the synced balance sheet at 2026-06-30',
+    })
+  })
+
+  it('a chosen account that is not an asset is unavailable too, and says which way it is wrong', () => {
+    expect(totalBankAt(rows, '2026-06-30', AUD, [CBA, SAVER, AMEX])).toEqual({
+      status: 'unavailable',
+      asAt: '2026-06-30',
+      reason: '1 of the 3 bank accounts chosen for this report is not an asset in the synced balance sheet',
+    })
+  })
+
+  it('an AccountID pasted in upper case still matches the mirror\'s lower-case uuid', () => {
+    expect(totalBankAt(rows, '2026-06-30', AUD, parseBankAccountIds([CBA.toUpperCase(), SAVER])))
+      .toEqual({ status: 'read', amount: 117986.53, asAt: '2026-06-30' })
+  })
+
+  it('an upper-case list passed straight in, not through parseBankAccountIds, still counts every account', () => {
+    // The loaders' opts.bankAccountIds and these exported functions take a raw
+    // list. The presence check matched case-insensitively while the sum did
+    // not, so the saver was "present" but dropped: 86,037.86 read as a fact.
+    expect(totalBankAt(rows, '2026-06-30', AUD, [CBA.toUpperCase(), SAVER]))
+      .toEqual({ status: 'read', amount: 117986.53, asAt: '2026-06-30' })
+    expect(isBankRow({ section: 'Current Assets', account_type: 'asset', account_id: CBA }, [CBA.toUpperCase()])).toBe(true)
+    expect(isBankRow({ section: 'Bank', account_type: 'asset', account_id: CBA.toUpperCase() }, [` ${CBA} `])).toBe(true)
+  })
+
+  describe('a chosen account Xero left off that day\'s balance sheet', () => {
+    // The mirror has no row for an account with nothing in it: Urban Road's USD
+    // PayPal is on the sheet at 31 Jul 2026 at $0 and gone at 30 Sep, Wise AUD
+    // appears once in fifteen month-ends, eWay not since Sep 2025. A chosen
+    // account opened mid-year is absent from the sheet the year opens on the
+    // same way. Reading any of those as "not in the balance sheet" made the
+    // cashflow opening unavailable for the whole year.
+    const USD_PAYPAL = '1b2c3d4e-0000-4000-8000-000000000001'
+    const balanced: BankRowInput[] = [
+      withId(CBA, row('asset', 'Bank', '31948.67')),
+      withId(SAVER, row('asset', 'Bank', '86037.86')),
+      withId('trade-creditors', row('liability', 'Current Liabilities', '100000.00')),
+      withId('retained', row('equity', 'Equity', '17986.53')),
+    ]
+    const known = (account_type = 'asset') => [{ tenant_id: UR, account_id: USD_PAYPAL, account_type }]
+
+    it('is $0 that day when the mirror holds the account on another date and the sheet balances', () => {
+      expect(totalBankAt(balanced, '2026-06-30', AUD, [CBA, SAVER, USD_PAYPAL], { knownAccounts: known() }))
+        .toEqual({ status: 'read', amount: 117986.53, asAt: '2026-06-30' })
+    })
+
+    it('without that evidence it is still not in the balance sheet — unavailable, as before', () => {
+      expect(totalBankAt(balanced, '2026-06-30', AUD, [CBA, SAVER, USD_PAYPAL])).toMatchObject({
+        status: 'unavailable',
+        reason: '1 of the 3 bank accounts chosen for this report is not in the synced balance sheet at 2026-06-30',
+      })
+    })
+
+    it('a sheet that does not balance could have dropped a row that held money — unavailable, never $0', () => {
+      const dropped = balanced.filter((r) => r.account_id !== 'retained')
+      expect(totalBankAt(dropped, '2026-06-30', AUD, [CBA, SAVER, USD_PAYPAL], { knownAccounts: known() })).toEqual({
+        status: 'unavailable',
+        asAt: '2026-06-30',
+        reason: '1 of the 3 bank accounts chosen for this report is not in the synced balance sheet at 2026-06-30, and that balance sheet does not balance, so it cannot be read as $0',
+      })
+    })
+
+    it('an account the mirror holds only as a liability is not bank, present that day or not', () => {
+      expect(totalBankAt(balanced, '2026-06-30', AUD, [CBA, SAVER, USD_PAYPAL], { knownAccounts: known('liability') })).toMatchObject({
+        status: 'unavailable',
+        reason: '1 of the 3 bank accounts chosen for this report is not an asset in the synced balance sheet',
+      })
+    })
+
+    it('an id the mirror has never held is still unavailable beside one left off at $0', () => {
+      expect(totalBankAt(balanced, '2026-06-30', AUD, [CBA, SAVER, USD_PAYPAL, 'closed-saver'], { knownAccounts: known() })).toMatchObject({
+        status: 'unavailable',
+        reason: '1 of the 4 bank accounts chosen for this report is not in the synced balance sheet at 2026-06-30',
+      })
+    })
+
+    it('an account known only to another organisation is not evidence for this one', () => {
+      expect(totalBankAt(balanced, '2026-06-30', AUD, [CBA, SAVER, USD_PAYPAL], {
+        knownAccounts: [{ tenant_id: 'another-org', account_id: USD_PAYPAL, account_type: 'asset' }],
+      })).toMatchObject({ status: 'unavailable' })
+    })
+  })
+
+  it('a list naming only one of two organisations\' accounts says so, not that none is in the balance sheet', () => {
+    const OTHER = 'second-org'
+    const twoOrgs = [...AUD, { tenant_id: OTHER, currency: 'AUD' }]
+    const both: BankRowInput[] = [...rows, withId('other-bank', row('asset', 'Bank', '500.00', '2026-06-30', OTHER))]
+    expect(totalBankAt(both, '2026-06-30', twoOrgs, [CBA, SAVER])).toEqual({
+      status: 'unavailable',
+      asAt: '2026-06-30',
+      reason: 'no bank account chosen for this report is in the balance sheet of 1 of the 2 Xero organisations',
+    })
+  })
+
+  it('parseBankAccountIds: ids trimmed, lower-cased and de-duplicated; empty, missing or malformed is no choice', () => {
+    expect(parseBankAccountIds([` ${CBA} `, SAVER, CBA.toUpperCase(), '', 7])).toEqual([CBA, SAVER])
+    expect(parseBankAccountIds([])).toBeNull()
+    expect(parseBankAccountIds(null)).toBeNull()
+    expect(parseBankAccountIds(undefined)).toBeNull()
+    expect(parseBankAccountIds('6532a9b0')).toBeNull()
   })
 })
 

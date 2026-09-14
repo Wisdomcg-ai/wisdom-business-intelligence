@@ -27,21 +27,37 @@
 /** autoTable's colour shape: a fixed triple, not a number[]. */
 export type RGB = [number, number, number]
 
+// The colours below were SAMPLED off Urban Road's August 2026 Calxa pack
+// (pages 2, 4 and 10 rasterised at 144dpi), not picked by eye. The earlier
+// values were eyeballed from July and were each a shade off — a band a little
+// too purple, a red a little too brown — which is the difference between a
+// pack that looks like the one the client already receives and one that looks
+// like an imitation of it.
+
 /** The period band — muted, so it frames the columns without competing with them. */
-export const BAND: RGB = [169, 165, 176]
+export const BAND: RGB = [172, 170, 176]
 /** The column-label row beneath the band. */
-export const BAND_SUB: RGB = [240, 240, 240]
+export const BAND_SUB: RGB = [241, 241, 241]
 export const BAND_SUB_TEXT: RGB = [55, 55, 55]
 /** Section names ("Income", "Cost of Sales") — present, not loud. */
-export const SECTION_TEXT: RGB = [130, 130, 130]
+export const SECTION_TEXT: RGB = [128, 128, 128]
 /** Hairline under a row. */
 export const RULE: RGB = [223, 223, 223]
 /** Heavier rule above a total. */
 export const RULE_STRONG: RGB = [140, 140, 140]
-/** The year-to-date column block. */
-export const GROUP_SHADE: RGB = [247, 247, 247]
-/** Unfavourable figures. Calxa's red, not a warning red. */
-export const NEGATIVE: RGB = [192, 0, 0]
+/** The rule under a statement total — Calxa's, which is the band's light tone, not grey. */
+export const TOTAL_RULE: RGB = [211, 212, 217]
+/** Group rows (and the year-to-date block on pages that shade one). */
+export const GROUP_SHADE: RGB = [245, 245, 245]
+/**
+ * The budget columns. Calxa shades "Budgets" and "YTD Budget" down the whole
+ * table so the eye can find the yardstick in a row of nine figures; where that
+ * column crosses a group row, or the header, it goes one step darker.
+ */
+export const BUDGET_SHADE: RGB = [245, 245, 245]
+export const BUDGET_SHADE_STRONG: RGB = [232, 232, 232]
+/** Unfavourable figures. Calxa's red — pure red, sampled; the only colour it spends on a number. */
+export const NEGATIVE: RGB = [255, 0, 0]
 export const TEXT: RGB = [33, 33, 33]
 
 /**
@@ -159,22 +175,252 @@ export interface BandGroup {
  *
  * Returned as an autoTable head row, to be placed above the existing one.
  */
-export function periodBandRow(groups: readonly BandGroup[]) {
+export function periodBandRow(
+  groups: readonly BandGroup[],
+  opts: { fontSize?: number; fontStyle?: 'bold' | 'normal'; minCellHeight?: number } = {},
+) {
   return groups.map((g) => ({
     content: g.label,
     colSpan: g.colSpan,
     styles: {
       fillColor: g.tone === 'dark' ? rgb(BAND) : rgb(BAND_LIGHT),
       textColor: rgb(BAND_TEXT),
-      fontStyle: 'bold' as const,
+      fontStyle: opts.fontStyle ?? ('bold' as const),
       halign: 'center' as const,
-      fontSize: 7.5,
+      valign: 'middle' as const,
+      fontSize: opts.fontSize ?? 7.5,
+      ...(opts.minCellHeight ? { minCellHeight: opts.minCellHeight } : {}),
       lineWidth: { top: 0, right: 0, bottom: 0, left: 0 },
     },
   }))
 }
 
 /** The lighter half of the alternating period band. */
-export const BAND_LIGHT: RGB = [220, 220, 225]
-/** Text on either band tone — near-black, as Calxa sets it. */
-export const BAND_TEXT: RGB = [38, 38, 42]
+export const BAND_LIGHT: RGB = [211, 212, 217]
+/** Text on either band tone — Calxa sets it black. */
+export const BAND_TEXT: RGB = [0, 0, 0]
+
+// =====================================================================
+// The Actual vs Budget statements — Calxa pages 2, 4, 6 and 10-11
+// =====================================================================
+//
+// Everything below is measured off the August 2026 pack with pdftotext -bbox
+// (Calxa's pages are A4 at 1pt = 1pt of ours, and Arial and Helvetica share
+// their metrics, so the sizes transfer exactly):
+//
+//   title 24pt, period line 12pt caps; band 12pt on a 9.2mm row; column names
+//   10pt regular, centred, on a 9.5mm row; figures 10pt at a 14.3pt (5.04mm)
+//   pitch; section heading 11pt grey bold; account names indented 5mm under a
+//   section and 9.5mm under a group; label column 62.5mm and nine figure
+//   columns of 22.7mm across a 267mm table.
+
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+/**
+ * 'YYYY-MM' → 'Aug 2026', from a fixed table.
+ *
+ * Never toLocaleDateString: en-AU's short September is "Sept", which put
+ * "Sept 2026" beside Calxa's "Sep 2026" on the pages that are meant to be
+ * indistinguishable from it. Anything unparseable comes back as it went in.
+ */
+export function packMonthYear(monthKey: string): string {
+  const m = /^(\d{4})-(\d{2})/.exec(monthKey ?? '')
+  const idx = m ? Number(m[2]) - 1 : -1
+  return m && idx >= 0 && idx < 12 ? `${MONTHS_SHORT[idx]} ${m[1]}` : monthKey
+}
+
+/**
+ * The period a page title prints: 'August 2026' → 'Aug 2026'.
+ *
+ * Callers hand drawPageTitle a long month ("Wages Analysis — August 2026"),
+ * and Calxa's line reads "MONTH: AUG 2026". Folding it here fixes every
+ * titled page at once. A fiscal year or a date range passes through untouched.
+ */
+export function shortPeriodMonth(period: string): string {
+  const m = /^([A-Za-z]+) (\d{4})$/.exec(period)
+  if (!m) return period
+  const idx = MONTHS_LONG.findIndex((name) => name.toLowerCase() === m[1].toLowerCase())
+  return idx >= 0 ? `${MONTHS_SHORT[idx]} ${m[2]}` : period
+}
+
+/**
+ * The year-to-date band: 'Jul 2026 - Aug 2026'.
+ *
+ * Calxa names the months, not the fiscal year. "YTD FY2027" asks the reader to
+ * know when FY2027 starts; the range tells them. July-start, as every other
+ * date in the monthly report assumes (DEFAULT_YEAR_START_MONTH).
+ */
+export function ytdPeriodLabel(reportMonth: string, fiscalYear: number, yearStartMonth = 7): string {
+  const start = `${fiscalYear - (yearStartMonth === 1 ? 0 : 1)}-${String(yearStartMonth).padStart(2, '0')}`
+  return `${packMonthYear(start)} - ${packMonthYear(reportMonth)}`
+}
+
+/**
+ * What the pack calls a section. The data keys are WisdomBI's ('Revenue',
+ * 'Operating Expenses'); the page says what Calxa says ('Income', 'Expense'),
+ * singular, the way the client has read it every month.
+ */
+const SECTION_LABELS: Record<string, string> = {
+  Revenue: 'Income',
+  'Cost of Sales': 'Cost of Sales',
+  'Operating Expenses': 'Expense',
+  'Other Income': 'Other Income',
+  'Other Expenses': 'Other Expense',
+}
+
+export function sectionDisplayLabel(category: string): string {
+  return SECTION_LABELS[category] ?? category
+}
+
+export function sectionTotalLabel(category: string): string {
+  return `Total ${sectionDisplayLabel(category)}`
+}
+
+/** Which of a statement's optional columns are on. */
+export interface StatementColumnOptions {
+  reportMonth: string
+  fiscalYear: number
+  /** The word over the month budget column (the yardstick — see statementYardstick). */
+  budgetLabel: string
+  ytdBudgetLabel: string
+  showYtd: boolean
+  showUnspent: boolean
+  showNextMonth: boolean
+  showAnnual: boolean
+  showPriorYear: boolean
+  showVariancePercent: boolean
+}
+
+export interface StatementColumns {
+  /** Column names, label column first (blank, as Calxa leaves it). */
+  labels: string[]
+  band: BandGroup[]
+  /** Budget-figure columns — shaded down the table. */
+  budgetCols: number[]
+  /** Dollar-variance columns. */
+  varianceCols: number[]
+  figureCount: number
+}
+
+/**
+ * The column set of an Actual vs Budget statement, in the order buildLineRow
+ * emits cells: Budget | Actual | Variance [| Var %] then the YTD trio [| YTD
+ * Var %], then Unspent Budget | Budget - Next Month | Budget - Annual Total
+ * [| Prior Yr].
+ *
+ * Calxa's set is the nine without the percentages or the prior year. Those
+ * stay optional because other clients' packs carry them; the defaults a caller
+ * passes decide.
+ */
+export function statementColumns(o: StatementColumnOptions): StatementColumns {
+  const labels: string[] = ['', o.budgetLabel, 'Actual', 'Variance']
+  const budgetCols = [1]
+  const varianceCols = [3]
+  const band: BandGroup[] = [
+    { label: '', colSpan: 1, tone: 'dark' },
+    { label: packMonthYear(o.reportMonth), colSpan: 0, tone: 'light' },
+  ]
+  if (o.showVariancePercent) labels.push('Var (%)')
+  band[1].colSpan = labels.length - 1
+
+  if (o.showYtd) {
+    const start = labels.length
+    labels.push(o.ytdBudgetLabel, 'YTD Actuals', 'Variance')
+    budgetCols.push(start)
+    varianceCols.push(start + 2)
+    if (o.showVariancePercent) labels.push('YTD Var (%)')
+    band.push({ label: ytdPeriodLabel(o.reportMonth, o.fiscalYear), colSpan: labels.length - start, tone: 'dark' })
+  }
+
+  // Calxa leaves the band over the three budget-derived columns BLANK. It was
+  // labelled "Budget", and then the prior-year actual landed under it too.
+  const trailingStart = labels.length
+  if (o.showUnspent) labels.push('Unspent\nBudget')
+  if (o.showNextMonth) labels.push('Budget -\nNext Month')
+  if (o.showAnnual) labels.push('Budget -\nAnnual Total')
+  if (labels.length > trailingStart) {
+    band.push({ label: '', colSpan: labels.length - trailingStart, tone: o.showYtd ? 'light' : 'dark' })
+  }
+
+  // The prior year is an ACTUAL, and gets its own band naming the month it is.
+  if (o.showPriorYear) {
+    const [y, m] = o.reportMonth.split('-')
+    labels.push('Actual')
+    band.push({
+      label: packMonthYear(`${Number(y) - 1}-${m}`),
+      colSpan: 1,
+      tone: band[band.length - 1].tone === 'dark' ? 'light' : 'dark',
+    })
+  }
+
+  return { labels, band, budgetCols, varianceCols, figureCount: labels.length - 1 }
+}
+
+/**
+ * autoTable options for the Actual vs Budget statements.
+ *
+ * Not packTableStyles: those serve the insert pages (contractors, payroll,
+ * ratios), which Calxa takes from spreadsheets and sets denser and bolder.
+ * The statements are Calxa's own report pages, and this is their grain.
+ */
+export function statementTableStyles(fontSize = 10) {
+  // Calxa's 14.3pt pitch at 10pt; the padding scales with the type so a
+  // smaller portrait table keeps the same proportions.
+  const pad = fontSize >= 10 ? 0.5 : 0.4
+  return {
+    theme: 'plain' as const,
+    styles: {
+      fontSize,
+      cellPadding: { top: pad, right: 0.6, bottom: pad, left: 1.1 },
+      textColor: [0, 0, 0] as RGB,
+      lineColor: rgb(TOTAL_RULE),
+      lineWidth: { top: 0, right: 0, bottom: 0, left: 0 },
+      overflow: 'linebreak' as const,
+      valign: 'middle' as const,
+    },
+    headStyles: {
+      fillColor: rgb(BAND_SUB),
+      textColor: [0, 0, 0] as RGB,
+      fontStyle: 'normal' as const,
+      fontSize,
+      halign: 'center' as const,
+      valign: 'middle' as const,
+      lineWidth: { top: 0, right: 0, bottom: 0, left: 0 },
+    },
+    bodyStyles: { fillColor: [255, 255, 255] as RGB },
+    alternateRowStyles: { fillColor: [255, 255, 255] as RGB },
+  }
+}
+
+/** Indent, in mm, for an account under a section (1) or under a group (2). */
+export const INDENT_MM = { 0: 0, 1: 4.9, 2: 9.5 } as const
+
+/**
+ * A margin the way Calxa's Additional Information prints it.
+ *
+ * Whole percent ("56%"); a variance in whole POINTS with no sign ("15");
+ * negatives in brackets either way ("(1%)", "(6)"). Rounded half away from
+ * zero, so a -5.5 is "(6)" and not the "(5)" Math.round would give.
+ */
+export function marginPercentText(profit: number, income: number): string {
+  if (!Number.isFinite(profit) || !Number.isFinite(income) || income === 0) return '—'
+  const n = roundAway((profit / income) * 100)
+  return n < 0 ? `(${-n}%)` : `${n}%`
+}
+
+export function marginPointsText(points: number | null): string {
+  if (points === null || !Number.isFinite(points)) return '—'
+  const n = roundAway(points)
+  return n < 0 ? `(${-n})` : `${n}`
+}
+
+/** profit / income × 100, or null when there is no income to divide by. */
+export function marginOf(profit: number, income: number): number | null {
+  return Number.isFinite(profit) && Number.isFinite(income) && income !== 0 ? (profit / income) * 100 : null
+}
+
+function roundAway(n: number): number {
+  const r = Math.round(Math.abs(n))
+  return r === 0 ? 0 : Math.sign(n) * r
+}

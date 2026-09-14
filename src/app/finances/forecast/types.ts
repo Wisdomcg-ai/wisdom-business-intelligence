@@ -77,6 +77,13 @@ export interface PLLine {
   account_class?: string
   category?: string
   subcategory?: string
+  /**
+   * The report heading the account prints under (account_mappings
+   * report_subcategory), when the caller has one. Only the monthly-report pack
+   * sets it; the cashflow engine groups expenses by it and falls back to its
+   * account-name keywords without it.
+   */
+  report_group?: string | null
   sort_order?: number
   actual_months: { [key: string]: number } // e.g., { "2024-07": 10000, "2024-08": 12000 }
   forecast_months: { [key: string]: number }
@@ -886,6 +893,21 @@ export interface CashflowForecastData {
   totals: CashflowForecastMonth       // Annual total column
   lowest_bank_balance: number
   lowest_bank_month: string
+  /**
+   * Account names in statement order, when the caller knows it. The engine
+   * emits each month's lines in the order money first arrives, so an account
+   * whose first cash month is late (Services, Art Supplies) printed after
+   * accounts that follow it in the chart of accounts. The pack sets this from
+   * its P&L lines; renderers without it keep first-appearance order.
+   */
+  line_order?: string[]
+  /**
+   * Expense group headings in the order to print them after the coach's own
+   * order. Without it a renderer can only use the order groups first have
+   * cash, which put Dragon Roofing's Employment Expense last because its
+   * wages start in August. The pack sets it; see buildPackCashflowForecast.
+   */
+  expense_group_order?: string[]
 }
 
 // Validation concern for forecast review

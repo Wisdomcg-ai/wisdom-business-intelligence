@@ -27,7 +27,10 @@ const PayrollGridPostSchema = z.object({
   business_id: z.string(),
   report_month: z.string(),
   fiscal_year: z.number(),
-  /** How many months to show, ending at report_month. Calxa shows two. */
+  /**
+   * How many months to show, ending at report_month. The caller works it out
+   * from the placement (payrollWindowForLayout); two when nothing says otherwise.
+   */
   months: z.number().int().min(1).max(6).optional(),
 })
 

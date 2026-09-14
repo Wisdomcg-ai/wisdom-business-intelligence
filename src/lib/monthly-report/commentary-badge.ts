@@ -55,6 +55,10 @@ export function commentaryBadge(
     case 'bs_movement_dollar':
     case 'bs_movement_percent':
       return { text: `${money(variance)} movement`, tone: 'neutral' }
+    case 'account_activity':
+      // Listed because the pack's page names every account that moved, not
+      // because a threshold fired: the variance is real, the verdict is not.
+      return { text: `${money(variance)} ${variance < 0 ? 'over' : 'under'} budget`, tone: 'neutral' }
     default:
       return variance < 0
         ? { text: `${money(variance)} over budget`, tone: 'bad' }

@@ -7,6 +7,8 @@
  *   2. Revenue under-budget       — shortfall ≥ $500 OR ≥ 10% of budget  (whichever fires)
  *   3. Favourable expense swing   — variance ≥ $500 AND ≥ 20% of budget  (both required)
  *   4. Balance-sheet movement     — |MoM change| ≥ $5,000 OR ≥ 10% of opening
+ *   5. Activity (opt-in)          — any other cost account that moved, in the
+ *                                   categories a pack's commentary covers in full
  *
  * Each emitted line carries a `trigger_reason` so the commentary route + UI
  * know WHY the row surfaced. The same account never appears in more than one
@@ -31,6 +33,7 @@ export type TriggerReason =
   | 'expense_favourable_significant'
   | 'bs_movement_dollar'
   | 'bs_movement_percent'
+  | 'account_activity'
 
 export interface TriggerLine {
   account_name: string
@@ -55,6 +58,13 @@ export interface TriggerPayload {
   revenue_lines: TriggerLine[]
   favourable_expense_lines: TriggerLine[]
   bs_lines: TriggerLine[]
+  /**
+   * Every other account that moved this month, in the categories named by
+   * `options.allWithActivity`. Empty unless a pack asks for it: Calxa's COGS
+   * commentary names the suppliers of all ten cost of sales accounts Urban Road
+   * used in August, and only four of them crossed a variance threshold.
+   */
+  activity_lines: TriggerLine[]
 }
 
 // ─── Thresholds (locked per CONTEXT D-S1) ──────────────────────────────────
@@ -110,7 +120,10 @@ function toTriggerLine(line: ReportLine, reason: TriggerReason, hasBudget = true
 export function collectCommentaryTriggers(
   report: GeneratedReport,
   balanceSheet?: BalanceSheetData | null,
+  options: { allWithActivity?: readonly string[] } = {},
 ): TriggerPayload {
+  const activityCategories = new Set(options.allWithActivity ?? [])
+  const activity_lines: TriggerLine[] = []
   const expense_lines: TriggerLine[] = []
   const revenue_lines: TriggerLine[] = []
   const favourable_expense_lines: TriggerLine[] = []
@@ -142,7 +155,14 @@ export function collectCommentaryTriggers(
             favourable_expense_lines.push(
               toTriggerLine(line, 'expense_favourable_significant', hasBudget),
             )
+            continue
           }
+        }
+
+        // (5) Activity — only where a pack's commentary covers every account
+        // that moved. Whole cents, so a rounding residue is not a movement.
+        if (activityCategories.has(category) && Number.isFinite(line.actual) && Math.round(line.actual * 100) !== 0) {
+          activity_lines.push(toTriggerLine(line, 'account_activity', hasBudget))
         }
       }
     } else if (REVENUE_CATEGORIES.has(category)) {
@@ -205,7 +225,7 @@ export function collectCommentaryTriggers(
     }
   }
 
-  return { expense_lines, revenue_lines, favourable_expense_lines, bs_lines }
+  return { expense_lines, revenue_lines, favourable_expense_lines, bs_lines, activity_lines }
 }
 
 function bsToTriggerLine(row: BalanceSheetRow, reason: TriggerReason): TriggerLine {

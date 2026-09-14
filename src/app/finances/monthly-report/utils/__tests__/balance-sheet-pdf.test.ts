@@ -158,7 +158,7 @@ describe('WG.1 — assessBalanceSheetForPdf', () => {
 
   it("keeps the four pages for an org whose equity says Total Owner's Funds", () => {
     // The concrete shape. AU orgs label the equity block half a dozen ways;
-    // mapSubtotalLabel in Xero/balance-sheet/route.ts deliberately passes this
+    // mapTotalLabel in lib/monthly-report/balance-sheet-rows.ts deliberately passes this
     // one through because only the exact strings are normalised, so the
     // `includes('equity')` predicate here misses it — on a sheet that adds up
     // to the cent. Withholding four of twenty-seven pages over an unrecognised
@@ -185,8 +185,9 @@ describe('WG.1 — assessBalanceSheetForPdf', () => {
   })
 
   it('carries the API’s Net-Assets-vs-Equity badge through to the page', () => {
-    // A different check from the equation: route.ts compares two rows Xero
-    // printed, at a 0.01 threshold, and the tab renders it as an amber badge.
+    // A different check from the equation: buildBalanceSheetData in
+    // lib/monthly-report/balance-sheet-rows.ts compares two rows Xero printed,
+    // at the $0.05 BS materiality, and the tab renders it as an amber badge.
     // The PDF never read it, so a sheet 13c out warned the coach on screen and
     // handed the client a clean page.
     const thirteenCentsOut: BalanceSheetData = { ...sheet(), balances: false }

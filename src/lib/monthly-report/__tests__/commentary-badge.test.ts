@@ -37,6 +37,13 @@ describe('commentaryBadge', () => {
     })
   })
 
+  it('an account listed only because it moved is neither an alarm nor good news', () => {
+    // No threshold fired on it (Calxa's COGS page lists every account that
+    // moved), so red or green would announce a verdict nobody reached.
+    expect(commentaryBadge(-420, 'account_activity')).toEqual({ text: '$420 over budget', tone: 'neutral' })
+    expect(commentaryBadge(16325, 'account_activity')).toEqual({ text: '$16,325 under budget', tone: 'neutral' })
+  })
+
   it('reads the expense sign convention when a pre-71-04 row has no reason', () => {
     expect(commentaryBadge(-1200)).toEqual({ text: '$1,200 over budget', tone: 'bad' })
     expect(commentaryBadge(1200)).toEqual({ text: '$1,200 under budget', tone: 'good' })

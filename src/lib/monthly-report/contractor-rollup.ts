@@ -150,3 +150,41 @@ export function rollUpContractors(
     },
   }
 }
+
+/**
+ * What the Contractor Analysis page says about its rows, from the route's own
+ * account of what it read — undefined when there is nothing to say.
+ *
+ * The route answers 200 with no rows for three different things: a month in
+ * which nobody was paid, a business with no Xero connection, and an org whose
+ * token lapsed or whose fetch came back short. Only the first may be printed
+ * as "no contractor payments were found"; printed for the other two it is a
+ * statement to a client about money nobody checked. So the empty sentence
+ * needs `complete === true`, a partial answer names what was not read — with
+ * rows too, since a missing org's contractors are not in them — and an answer
+ * that does not say (an older response, a payload file) is could-not-confirm
+ * when it has no rows.
+ */
+export function contractorLoadReason(
+  data: (Pick<SubscriptionDetailData, 'complete' | 'incomplete_reason'> & { grand_total?: Pick<SubscriptionDetailData['grand_total'], 'actual'> }) | null | undefined,
+  rowCount: number,
+): string | undefined {
+  if (data?.complete === false) {
+    return data.incomplete_reason
+      ? `the contractor figures could not be fully read from Xero (${data.incomplete_reason})`
+      : 'the contractor figures could not be fully read from Xero'
+  }
+  if (rowCount > 0) return undefined
+  if (data?.complete === true) {
+    // A complete crawl covers bills and bank transactions only. Spend posted
+    // by journal is in the ledger and in neither, and the route's grand total
+    // is the ledger's figure for these accounts (kept after an account with no
+    // vendors is dropped) — so "nobody was paid" is only true when it is 0.
+    const ledger = data.grand_total?.actual ?? 0
+    if (Math.abs(ledger) >= 0.5) {
+      return `no contractor bills or payments were found in Xero, though the ledger shows $${Math.round(ledger).toLocaleString('en-AU')} on these accounts this month`
+    }
+    return 'no contractor payments were found in Xero for this month'
+  }
+  return 'the contractor figures could not be confirmed as complete'
+}

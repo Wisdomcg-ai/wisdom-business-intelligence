@@ -3,10 +3,11 @@
  * does.
  *
  * It printed Operating Expenses as one flat run while the Actual vs Budget page
- * two pages earlier gathered the same accounts under nine headings, each with a
- * "Total <group>" row — and Calxa's Full Year page groups them too. Same
- * membership (the line's `group`), same heading order (the report settings),
- * same shading.
+ * two pages earlier gathered the same accounts under nine headings — and
+ * Calxa's Current Year Budget page groups them too. Same membership (the line's
+ * `group`) and heading order (the report settings) as that page; the layout is
+ * Calxa's Full Year one: the group heading row CARRIES the subtotal and there
+ * is no trailing "Total <group>" row.
  */
 import { describe, it, expect } from 'vitest'
 import { MonthlyReportPDFService } from '../monthly-report-pdf-service'
@@ -54,32 +55,41 @@ function fullYearRuns(fy: FullYearReport, order: string[] | null = ORDER): strin
 }
 
 const indexOf = (runs: string[], text: string) => {
-  const i = runs.indexOf(text)
+  // A client on the forecast keeps the variance columns, and the narrower label
+  // column ellipsizes the longest names ("Memberships & Registra...").
+  const i = runs.findIndex((r) => r === text || (r.endsWith('...') && text.startsWith(r.slice(0, -3))))
   expect(i, `"${text}" is on the page`).toBeGreaterThanOrEqual(0)
   return i
 }
 
 describe('Full Year page — expense groups', () => {
-  it('prints each group under its heading with a Total row, in the coach order, ungrouped last', () => {
+  it('prints each group heading before its accounts, in the coach order, ungrouped last', () => {
     const runs = fullYearRuns(groupedFullYear())
     const sequence = [
       'Employment Expense',
       'Employ - Wages & Salaries',
-      'Total Employment Expense',
       'Bank and Other Fees',
       'Bank Fees',
       'Memberships & Registrations',
-      'Total Bank and Other Fees',
       'Bank Revaluations',
-      'Total Operating Expenses',
+      'Total Expense',
     ].map((t) => indexOf(runs, t))
     expect([...sequence].sort((a, b) => a - b)).toEqual(sequence)
+  })
+
+  it('puts the group subtotal ON the heading row, with no trailing Total row', () => {
+    const runs = fullYearRuns(groupedFullYear())
+    expect(runs).not.toContain('Total Employment Expense')
+    expect(runs).not.toContain('Total Bank and Other Fees')
+    // Bank Fees (0.01) + Memberships (0.02) of the template line's 30,000 July actual.
+    const heading = indexOf(runs, 'Bank and Other Fees')
+    expect(runs[heading + 1]).toBe('900')
   })
 
   it('leaves the section subtotal row as it was', () => {
     const runs = fullYearRuns(groupedFullYear())
     const flat = fullYearRuns(groupedFullYear(false))
-    const after = (r: string[]) => r.slice(r.indexOf('Total Operating Expenses'), r.indexOf('Total Operating Expenses') + 16)
+    const after = (r: string[]) => r.slice(r.indexOf('Total Expense'), r.indexOf('Total Expense') + 14)
     expect(after(runs)).toEqual(after(flat))
   })
 
@@ -89,30 +99,51 @@ describe('Full Year page — expense groups', () => {
     expect(indexOf(runs, 'Employment Expense')).toBeLessThan(indexOf(runs, 'Bank and Other Fees'))
   })
 
-  it('keeps a long group total on one line of the 38mm Account column', () => {
-    // Urban Road's real FX heading. "Total Foreign Currency Gains and Losses"
-    // wrapped to two lines — "Losses" alone underneath — making it the only
-    // double-height subtotal on the page.
+  it('keeps a long group name on one line of the label column', () => {
+    // Urban Road's real FX heading once wrapped to two lines — "Losses" alone
+    // underneath — making it the only double-height row on the page. Calxa
+    // shortens the same label.
     const fy = groupedFullYear()
     const opex = fy.sections.find((s) => s.category === 'Operating Expenses')!
     opex.lines = [
       ...opex.lines,
-      { ...opex.lines[1], account_name: 'Realised Currency Gains', account_code: '499', group: 'Foreign Currency Gains and Losses' },
+      { ...opex.lines[1], account_name: 'Realised Currency Gains and Losses on Foreign Exchange', account_code: '499', group: 'Foreign Currency Gains and Losses on Revaluation' },
     ]
     const runs = fullYearRuns(fy)
-    const total = runs.filter((r) => r.startsWith('Total Foreign Currency'))
-    expect(total).toHaveLength(1)
-    expect(runs).not.toContain('Losses')
-    // The heading row spans the table, so the full name is still printed.
-    expect(runs).toContain('Foreign Currency Gains and Losses')
+    expect(runs.filter((r) => r.startsWith('Foreign Currency Gains'))).toHaveLength(1)
+    expect(runs).not.toContain('Revaluation')
+    expect(runs).not.toContain('Exchange')
   })
 
-  it('prints no headings and no group totals for a client that has grouped nothing', () => {
+  it('prints no headings for a client that has grouped nothing', () => {
     const runs = fullYearRuns(groupedFullYear(false))
-    expect(runs).not.toContain('Total Employment Expense')
-    expect(runs).not.toContain('Total Bank and Other Fees')
     expect(runs).not.toContain('Employment Expense')
+    expect(runs).not.toContain('Bank and Other Fees')
     expect(runs).toContain('Employ - Wages & Salaries')
-    expect(runs).toContain('Total Operating Expenses')
+    expect(runs).toContain('Total Expense')
+  })
+
+  it('prints no group row that only repeats its section heading', () => {
+    // Envisage maps all five income accounts to the group "Income", and the
+    // page names the Revenue section "Income": the page read "Income / Income"
+    // over a group subtotal equal to Total Income two rows further down.
+    const fy = groupedFullYear()
+    const rev = fy.sections.find((s) => s.category === 'Revenue')!
+    rev.lines = rev.lines.map((ln) => ({ ...ln, group: 'Income' }))
+    const runs = fullYearRuns(fy)
+    expect(runs.filter((r) => r === 'Income')).toHaveLength(1)
+    const sequence = ['Income', 'Sales', 'Total Income'].map((t) => indexOf(runs, t))
+    expect([...sequence].sort((a, b) => a - b)).toEqual(sequence)
+  })
+
+  it('keeps such a row when the section has other groups, because then its subtotal is its own', () => {
+    const fy = groupedFullYear()
+    const rev = fy.sections.find((s) => s.category === 'Revenue')!
+    rev.lines = [
+      { ...rev.lines[0], group: 'Income' },
+      { ...rev.lines[0], account_name: 'Grants', account_code: '42000', group: 'Government' },
+    ]
+    const runs = fullYearRuns(fy, [...ORDER, 'Income', 'Government'])
+    expect(runs.filter((r) => r === 'Income')).toHaveLength(2)
   })
 })

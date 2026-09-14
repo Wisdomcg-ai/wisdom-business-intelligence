@@ -71,6 +71,32 @@ export function statementYardstick(
   }
 }
 
+/**
+ * The words the PDF PACK prints over its budget columns — Calxa's, for every
+ * client: "Budgets" over the month, "YTD Budget" over the year to date, and no
+ * note.
+ *
+ * The browser tab keeps statementYardstick. The reason it says "Approved
+ * Budget" was a pack that printed a Forecast column and an Approved Budget
+ * column side by side on its Full Year page; that page is now Calxa's Current
+ * Year Budget page and carries no forecast column, so the pack holds one
+ * yardstick and one word names it. Matt accepted this on 14 Sep 2026 (the
+ * column-names decision), along with taking the provenance sentence out of the
+ * pack. Forecast-basis clients printed "Budget" here and get Calxa's "Budgets"
+ * too — the same column set (Variance, YTD Actuals, Unspent Budget) is already
+ * Calxa's for every client.
+ *
+ * Deliberately independent of budget_source: the no-budget reason card
+ * (noBudgetNote) still says why a column is empty; nothing here is a claim
+ * about where the figures came from.
+ */
+export const PACK_BUDGET_LABEL = 'Budgets'
+export const PACK_YTD_BUDGET_LABEL = 'YTD Budget'
+
+export function packStatementYardstick(): StatementYardstick {
+  return { columnLabel: PACK_BUDGET_LABEL, ytdColumnLabel: PACK_YTD_BUDGET_LABEL, note: null }
+}
+
 export interface PageYardstick {
   /** Column head over the budget figures. */
   columnLabel: string
@@ -163,6 +189,27 @@ export function wagesEmployeeYardstick(
 }
 
 /**
+ * The Wages page's two yardsticks in the pack: the tab's availability and
+ * absent-reason (a column of dashes still has to say why), without the
+ * provenance sentence. The account column reads "Budget" on either source —
+ * "Approved Budget" there only ever existed to tell it apart from the Full
+ * Year page's forecast column, which the pack no longer prints. The
+ * per-employee column keeps its own head ("Forecast" for a budget-store
+ * client), which says what the removed note said.
+ */
+export function packWagesYardstick(provenance?: BudgetProvenance | null): PageYardstick {
+  const y = wagesYardstick(provenance)
+  return { ...y, columnLabel: 'Budget', note: null }
+}
+
+export function packWagesEmployeeYardstick(
+  provenance: BudgetProvenance | null | undefined,
+  planExists: boolean,
+): PageYardstick {
+  return { ...wagesEmployeeYardstick(provenance, planExists), note: null }
+}
+
+/**
  * Why the budget columns are empty, in one sentence.
  *
  * A column of dashes with nothing explaining them is the empty-state-as-
@@ -175,28 +222,36 @@ export function absentSentence(
   reason: NoBudgetReason | null | undefined,
   fiscalYear: number | string | null | undefined,
 ): string {
+  return `No budget for this month — Budget and Variance columns are shown as “—” because ${noBudgetBecause(reason, fiscalYear)}.`
+}
+
+/**
+ * The "because" clause of absentSentence on its own, for a page whose columns
+ * are not the statement's (the Subscription page's TOTAL row).
+ */
+export function noBudgetBecause(
+  reason: NoBudgetReason | null | undefined,
+  fiscalYear: number | string | null | undefined,
+): string {
   const fy = fiscalYear ? `FY${fiscalYear}` : 'this fiscal year'
-  const because = (() => {
-    switch (reason) {
-      case 'no_version_in_force':
-        return `no approved budget version is locked for ${fy}`
-      case 'version_not_yet_effective':
-        return 'the approved budget version takes effect after this month'
-      case 'multiple_versions_in_force':
-        return 'more than one approved budget version is in force, so none was applied'
-      case 'version_has_no_lines':
-        return 'the approved budget version has no lines'
-      case 'budget_read_failed':
-        return 'the approved budget could not be read'
-      case 'invalid_report_month':
-        return 'this month cannot be matched to a budget period'
-      // No reason is the forecast path: the resolver only explains itself for
-      // a client on the budget store.
-      default:
-        return `no active forecast was found for ${fy}`
-    }
-  })()
-  return `No budget for this month — Budget and Variance columns are shown as “—” because ${because}.`
+  switch (reason) {
+    case 'no_version_in_force':
+      return `no approved budget version is locked for ${fy}`
+    case 'version_not_yet_effective':
+      return 'the approved budget version takes effect after this month'
+    case 'multiple_versions_in_force':
+      return 'more than one approved budget version is in force, so none was applied'
+    case 'version_has_no_lines':
+      return 'the approved budget version has no lines'
+    case 'budget_read_failed':
+      return 'the approved budget could not be read'
+    case 'invalid_report_month':
+      return 'this month cannot be matched to a budget period'
+    // No reason is the forecast path: the resolver only explains itself for
+    // a client on the budget store.
+    default:
+      return `no active forecast was found for ${fy}`
+  }
 }
 
 /**

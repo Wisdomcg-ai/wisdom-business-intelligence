@@ -31,12 +31,22 @@
  * The posted check and the signs are the commentary's (#516), not a second
  * copy of them.
  *
- * The amount stays the document's gross `LineAmount`, as both readers have
- * always quoted it (and as the active budgets were seeded). Moving to the
- * P&L's net-of-GST, organisation-currency basis (`toStatementAmount`) is a
- * separate change, because it re-bases those budgets.
+ * Which money a line is quoted in is where they part again:
+ *
+ * - Step 6 keeps the document's gross `LineAmount`, as it has always quoted it
+ *   and as the active subscription budgets were seeded. Moving it re-bases
+ *   those budgets, which is a separate change.
+ * - The report route reads `subscriptionStatementLinesOf`, which carries both:
+ *   the gross amount every client's page still prints (against those same
+ *   gross budgets), and the P&L's basis — net of GST, in the organisation's
+ *   currency (the commentary's `toStatementAmount`) — for a placement that
+ *   opts in to a TOTAL row that is the P&L account. Vendor rows in any other
+ *   money cannot add up to that: Urban Road's August 2026 IT Costs Software
+ *   rows summed $15,397 under a $14,726 total, Edi Cloud's bill quoted at
+ *   $1,125 where the ledger posted $1,022.73 and Cloudflare in US dollars.
  */
 
+import { toStatementAmount } from '@/lib/monthly-report/commentary-money'
 import {
   postedLineSign,
   type XeroCommentaryDocument,
@@ -47,7 +57,11 @@ export interface SubscriptionLine {
   accountCode: string
   contactName: string
   description: string
-  /** Signed: + spend, − refund or credit line. The document's own currency, gross. */
+  /**
+   * Signed: + spend, − refund or credit line. The document's own currency,
+   * gross — except from subscriptionStatementLinesOf, where it is the P&L's
+   * money (see `grossAmount` and `converted` there).
+   */
   amount: number
   kind: 'invoice' | 'bank'
   documentId: string
@@ -83,6 +97,57 @@ export function subscriptionLinesOf(
   accountCodes: ReadonlySet<string>,
 ): SubscriptionLine[] {
   return linesOf(doc, kind, accountCodes, postedLineSign(doc, kind, 'expense'))
+}
+
+/** A report-page line: the statement amount, and what it was before. */
+export interface StatementSubscriptionLine extends SubscriptionLine {
+  /** Signed, the document's own currency, tax included when it was — Step 6's figure. */
+  grossAmount: number
+  /**
+   * False when the document is foreign and carries no usable CurrencyRate.
+   * `amount` is then 0: a foreign figure printed as dollars is the failure
+   * toStatementAmount exists to prevent, so the caller must say the line was
+   * left out rather than add it.
+   */
+  converted: boolean
+  /** The document's currency, when it is not the organisation's. */
+  sourceCurrency?: string
+  /** Present when `converted` is false. */
+  reason?: string
+}
+
+/**
+ * subscriptionLinesOf's lines, each restated in the money the P&L is stated in:
+ * GST off an Inclusive line, then divided by the document's own CurrencyRate.
+ * The same arithmetic, in the same order, as the commentary's supplier lists —
+ * so the report page and the commentary quote a vendor identically.
+ *
+ * `baseCurrency` is xero_connections.functional_currency; unknown is tolerated
+ * the way toBaseAmount tolerates it.
+ */
+export function subscriptionStatementLinesOf(
+  doc: SubscriptionDocument,
+  kind: 'invoice' | 'bank',
+  accountCodes: ReadonlySet<string>,
+  baseCurrency: string | null | undefined,
+): StatementSubscriptionLine[] {
+  const sign = postedLineSign(doc, kind, 'expense')
+  const lines = linesOf(doc, kind, accountCodes, sign)
+  if (lines.length === 0) return []
+  // linesOf keeps LineItems order and skips only other accounts, so walk the
+  // same filter to pair each line with the item it came from.
+  const items = (doc.LineItems || []).filter((li) => !!li.AccountCode && accountCodes.has(li.AccountCode))
+  return lines.map((line, i) => {
+    const stated = toStatementAmount(items[i], doc, baseCurrency)
+    return {
+      ...line,
+      grossAmount: line.amount,
+      amount: stated.converted ? sign * stated.amount || 0 : 0,
+      converted: stated.converted,
+      ...(stated.sourceCurrency ? { sourceCurrency: stated.sourceCurrency } : {}),
+      ...(stated.reason ? { reason: stated.reason } : {}),
+    }
+  })
 }
 
 /**

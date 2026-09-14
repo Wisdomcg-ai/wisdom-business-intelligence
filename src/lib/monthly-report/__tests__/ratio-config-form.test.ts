@@ -15,10 +15,12 @@ import {
   filterAccounts,
   formFromWidget,
   hasUnrecognised,
+  layoutPreset,
   moveRatio,
   otherAverages,
   ratioCount,
   removeRatio,
+  setLayoutPreset,
   setPageAverage,
   setRatioNoAverages,
   toggleAccount,
@@ -243,6 +245,66 @@ describe('the round-trip rule', () => {
       show_amounts: true,
       ratios: [{ label: '', numerator: { accounts: [] }, denominator: { total: 'income' } }],
     })
+  })
+})
+
+describe('the layout choice', () => {
+  const SHEET_KEYS = { amounts_order: 'denominator_first', average_blocks: true, block_headings: false, table_style: 'grid' }
+
+  it('a page that never chose a layout writes none of the four settings', () => {
+    const { form } = formFromWidget(URBAN_ROAD_CONFIG, URBAN_ROAD_TITLE)
+    expect(layoutPreset(form)).toBe('pack')
+    const out = applied(form).config
+    for (const key of Object.keys(SHEET_KEYS)) expect(out).not.toHaveProperty(key)
+  })
+
+  it('spreadsheet style writes all four, in the schema’s order, and round-trips byte-identical', () => {
+    const form = setLayoutPreset(formFromWidget(URBAN_ROAD_CONFIG, URBAN_ROAD_TITLE).form, 'sheet')
+    expect(layoutPreset(form)).toBe('sheet')
+    const out = applied(form)
+    expect(Object.keys(out.config)).toEqual([
+      'months_shown', 'trailing_averages', 'show_amounts',
+      'amounts_order', 'average_blocks', 'block_headings', 'table_style',
+      'ratios',
+    ])
+    expect(out.config).toMatchObject(SHEET_KEYS)
+    expect(out.parsed).toMatchObject(SHEET_KEYS)
+
+    const again = applied(formFromWidget(out.config, out.titleOverride).form)
+    expect(JSON.stringify(again.config)).toBe(JSON.stringify(out.config))
+  })
+
+  it('back to report style removes them, rather than writing the defaults out', () => {
+    const sheet = { ...URBAN_ROAD_CONFIG, ...SHEET_KEYS }
+    const form = setLayoutPreset(formFromWidget(sheet, undefined).form, 'pack')
+    expect(JSON.stringify(applied(form).config)).toBe(JSON.stringify(URBAN_ROAD_CONFIG))
+  })
+
+  it('a mix set up by hand is "custom", and kept exactly on Apply', () => {
+    const mixed = { ...URBAN_ROAD_CONFIG, amounts_order: 'denominator_first' }
+    const { form, notes } = formFromWidget(mixed, undefined)
+    expect(notes).toEqual([])
+    expect(layoutPreset(form)).toBe('custom')
+    expect(applied(form).config).toEqual({
+      months_shown: 3, trailing_averages: [6, 3], show_amounts: true, amounts_order: 'denominator_first',
+      ratios: URBAN_ROAD_CONFIG.ratios,
+    })
+    // Stored defaults spelled out are still the report style.
+    expect(layoutPreset(formFromWidget({ ...URBAN_ROAD_CONFIG, table_style: 'pack' }, undefined).form)).toBe('pack')
+  })
+
+  it('a layout value of the wrong type is reset with a note naming what was there', () => {
+    const { form, notes } = formFromWidget({ ...URBAN_ROAD_CONFIG, table_style: 'sheet', average_blocks: 'yes' }, undefined)
+    expect(form.layout.tableStyle).toBeUndefined()
+    expect(form.layout.averageBlocks).toBeUndefined()
+    expect(notes).toEqual([
+      'The average blocks setting could not be read ("yes"); it was reset to the default.',
+      'The table style could not be read ("sheet"); it was reset to the default.',
+    ])
+    // Applied as it was stored, parse refuses it — and the panel names the setting in words.
+    const refused = parseRatioAnalysisConfig({ ...URBAN_ROAD_CONFIG, table_style: 'sheet' })
+    expect(refused.ok).toBe(false)
+    expect(describeReason(!refused.ok ? refused.reason : '')).toMatch(/^Table style /)
   })
 })
 
