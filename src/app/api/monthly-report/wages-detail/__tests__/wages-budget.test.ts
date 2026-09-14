@@ -143,7 +143,7 @@ describe('the per-employee column is a different object', () => {
 
 describe('the per-employee column from the Payroll Report roster', () => {
   it('is available, headed "Budget", with one plain line naming the source', () => {
-    const y = wagesEmployeeYardstick({ source: 'budget_version' }, true, { status: 'applied', missing: [] })
+    const y = wagesEmployeeYardstick({ source: 'budget_version' }, true, { status: 'applied', missing: [], unchecked: [] })
     expect(y).toEqual({
       columnLabel: 'Budget',
       note: 'Per-employee budgets are the Payroll Report roster’s weekly salaries × this month’s pay runs.',
@@ -153,7 +153,7 @@ describe('the per-employee column from the Payroll Report roster', () => {
   })
 
   it('names anyone the roster gives no weekly salary, and says the total is left out', () => {
-    const y = wagesEmployeeYardstick({ source: 'budget_version' }, true, { status: 'applied', missing: ['Thomas White', 'Casual Person'] })
+    const y = wagesEmployeeYardstick({ source: 'budget_version' }, true, { status: 'applied', missing: ['Thomas White', 'Casual Person'], unchecked: [] })
     expect(y.note).toBe(
       'Per-employee budgets are the Payroll Report roster’s weekly salaries × this month’s pay runs. ' +
         'No weekly salary on the roster for Thomas White and Casual Person, so their Budget is shown as “—” and the Budget total is left out.',

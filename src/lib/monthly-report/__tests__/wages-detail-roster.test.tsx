@@ -20,7 +20,7 @@ import golden from './fixtures/wages-detail-golden.json'
 import { fakeSupabase } from './fake-supabase'
 import {
   UR_BUSINESS, UR_PROFILE, FC_BUSINESS, FC_PROFILE, UR_APPROVED_BUDGET, FC_RESOLVED_FORECAST, UR_WAGES_ACCOUNTS,
-  UR_EMPLOYEES, UR_AUGUST_RUNS, payslip, urWagesTables, urLayout, urRosterWithSalaries, urRosterWithoutSalaries,
+  UR_EMPLOYEES, UR_AUGUST_RUNS, payslip, urWagesTables, urLayout, urRosterWithSalaries, urRosterWithoutSalaries, urXeroEmployees,
   forecastClientTables, forecastClientRoster,
 } from './urban-road-wages-fixture'
 
@@ -85,7 +85,7 @@ describe('Urban Road, August 2026 — the roster fills the per-employee Budget',
     })
     expect(data.employees.some((e) => e.budget_missing)).toBe(false)
     expect(data.employee_plan_available).toBe(true)
-    expect(data.employee_roster).toEqual({ status: 'applied', missing: [] })
+    expect(data.employee_roster).toEqual({ status: 'applied', missing: [], unchecked: [] })
     expect(data.employee_totals.budget).toBe(52519.25)
   })
 
@@ -107,7 +107,7 @@ describe('Urban Road, August 2026 — the roster fills the per-employee Budget',
     const { data } = await loadUr({ pdf_layout: urLayout(roster) })
     const thomas = byName(data)['Thomas White']
     expect(thomas).toMatchObject({ actual_total: 3000, budget_total: 0, variance: 0, budget_missing: true })
-    expect(data.employee_roster).toEqual({ status: 'applied', missing: ['Thomas White'] })
+    expect(data.employee_roster).toEqual({ status: 'applied', missing: ['Thomas White'], unchecked: [] })
     expect(data.employees.filter((e) => !e.budget_missing).every((e) => e.budget_total > 0)).toBe(true)
   })
 
@@ -209,6 +209,63 @@ describe('the tab and the pack print the roster budgets', () => {
     expect(joined).toMatch(/Thomas White \| 3,000 \| [^|0-9]* \| [^|0-9]* \|/)
     expect(joined).toContain('Andrea Shinners | 12,500 | 12,500 | 0')
     expect(joined).toContain('Thomas White')
+  })
+})
+
+describe('a rostered employee with a weekly salary who was not paid this month', () => {
+  // Thomas White, $600 a week, with no August payslip — on unpaid leave, or gone.
+  const withoutThomas = () => urAugustSlipsPlus([]).filter((s) => s.employee_name !== 'Thomas White')
+  const employeesWith = (thomas: Record<string, unknown>) =>
+    urXeroEmployees().map((e) => (e.employee_id === 'd2224afe-842c-458f-b851-05b6de773d47' ? { ...e, ...thomas } : e))
+
+  it('stays on the page with their budget, so the employee Budget total is the whole roster’s', async () => {
+    const { data } = await loadUr({ pdf_layout: urLayout(urRosterWithSalaries()), slips: withoutThomas() })
+    expect(byName(data)['Thomas White']).toMatchObject({ actual_total: 0, budget_total: 3000, variance: 3000, pay_runs: [], pay_frequency: 'Weekly' })
+    expect(data.employee_totals).toEqual({ actual: 49519, budget: 52519.25, variance: 3000.25 })
+    expect(data.employee_roster).toEqual({ status: 'applied', missing: [], unchecked: [] })
+  })
+
+  it('is not budgeted when Xero says they left before the month’s runs', async () => {
+    const { data } = await loadUr({
+      pdf_layout: urLayout(urRosterWithSalaries()),
+      slips: withoutThomas(),
+      employees: employeesWith({ termination_date: '2026-07-24' }),
+    })
+    expect(byName(data)['Thomas White']).toBeUndefined()
+    expect(data.employee_totals.budget).toBe(49519.25)
+    expect(data.employee_roster).toEqual({ status: 'applied', missing: [], unchecked: [] })
+  })
+
+  it('a leaver paid part of the month is budgeted up to their last day', async () => {
+    const slips = urAugustSlipsPlus([]).filter((s) => s.employee_name !== 'Thomas White' || s.payment_date <= '2026-08-17')
+    const { data } = await loadUr({ pdf_layout: urLayout(urRosterWithSalaries()), slips, employees: employeesWith({ termination_date: '2026-08-12' }) })
+    expect(byName(data)['Thomas White']).toMatchObject({ actual_total: 1800, budget_total: 1800, variance: 0 })
+  })
+
+  it('someone Xero has no employee record for is named, not budgeted, and the total is not stated', async () => {
+    const roster = [...urRosterWithSalaries(), { name: 'Jordan Casual', weekly_salary: 900 }]
+    const { data } = await loadUr({ pdf_layout: urLayout(roster) })
+    expect(byName(data)['Jordan Casual']).toBeUndefined()
+    expect(data.employee_roster).toEqual({ status: 'applied', missing: [], unchecked: ['Jordan Casual'] })
+    render(<WagesAnalysisTab data={data} isLoading={false} error={null} />)
+    const total = screen.getAllByText('Total').at(-1)!.closest('tr')!
+    expect([...total.querySelectorAll('td')].slice(-2).map((td) => td.textContent)).toEqual(['—', '—'])
+    expect(screen.getByText(/Jordan Casual was not paid this month and has no Xero employee record/)).toBeTruthy()
+  })
+
+  it('the tab shows them paid nothing against their budget, and the total covers everyone', async () => {
+    const { data } = await loadUr({ pdf_layout: urLayout(urRosterWithSalaries()), slips: withoutThomas() })
+    render(<WagesAnalysisTab data={data} isLoading={false} error={null} />)
+    const thomas = screen.getByText('Thomas White').closest('tr')!
+    expect([...thomas.querySelectorAll('td')].slice(-3).map((td) => td.textContent)).toEqual(['—', '$3,000', '$3,000'])
+    const total = screen.getAllByText('Total').at(-1)!.closest('tr')!
+    expect([...total.querySelectorAll('td')].slice(-3).map((td) => td.textContent)).toEqual(['$49,519', '$52,519', '$3,000'])
+  })
+
+  it('the pack prints them too', async () => {
+    const { data } = await loadUr({ pdf_layout: urLayout(urRosterWithSalaries()), slips: withoutThomas() })
+    const joined = packRuns(data, 'budget_version').join(' | ')
+    expect(joined).toMatch(/Thomas White \| [^|]* \| 3,000 \| 3,000/)
   })
 })
 

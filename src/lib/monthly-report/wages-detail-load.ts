@@ -27,7 +27,13 @@ import {
 } from '@/app/api/monthly-report/wages-detail/_helpers'
 import type { WagesDetailData } from '@/app/finances/monthly-report/types'
 import { cleanEmployeeName } from './payroll-grid'
-import { budgetRosterFromLayout, rosterEmployeeBudgets, type RosterEmployeeBudget } from './wages-roster-budget'
+import {
+  budgetRosterFromLayout,
+  rosterEmployeeBudgets,
+  type RosterEmployeeBudget,
+  type RosterEmployeeRecord,
+  type RosterUnpaidBudget,
+} from './wages-roster-budget'
 
 type Client = any
 
@@ -40,10 +46,12 @@ export interface WagesDetailLoadInput {
   /** Who asked — recorded on the not-owned-forecast warning only. */
   actor_id?: string | null
   /**
-   * The pack layout being rendered, when it is not the stored one — the
-   * harness's --layout-file, so a roster is looked at before anyone saves it.
-   * Absent: the business's stored monthly_report_settings.pdf_layout. The
-   * route never passes it; the page reads the saved layout.
+   * The pack layout being rendered, whose Payroll Report roster sets the
+   * per-employee budgets. The page sends the layout it holds — just saved, or a
+   * default template's applied on load and never saved — and the harness the
+   * one it renders, so the Wages Analysis page reads the roster the Payroll
+   * Report page prints. Null: no layout, so no roster. Absent (undefined): the
+   * business's stored monthly_report_settings.pdf_layout.
    */
   pdf_layout?: unknown
 }
@@ -444,6 +452,7 @@ export async function loadWagesDetail(
   // is exactly what it was — and only where a roster gives someone a weekly
   // salary, so a client without one reads nothing more than before.
   let rosterBudgets: Map<string, RosterEmployeeBudget> | null = null
+  let rosterUnpaid: { budgets: RosterUnpaidBudget[]; payCycle: string | null } = { budgets: [], payCycle: null }
   let employeeRoster: WagesDetailData['employee_roster']
   const budgetRoster = forecastEmployees.length === 0
     ? budgetRosterFromLayout(input.pdf_layout !== undefined ? input.pdf_layout : reportSettings?.pdf_layout)
@@ -452,7 +461,7 @@ export async function loadWagesDetail(
     const paid = Array.from(employeePayMap.values())
     const { data: employeeRows, error: employeeErr } = await supabase
       .from('xero_employees')
-      .select('employee_id, start_date')
+      .select('employee_id, first_name, last_name, start_date, termination_date')
       .in('business_id', ids.all)
     if (employeeErr) {
       // Without start dates a mid-month starter would be budgeted for the
@@ -460,9 +469,15 @@ export async function loadWagesDetail(
       Sentry.captureException(employeeErr, { tags: { route: 'monthly-report/wages-detail', invariant: 'wages-roster-start-dates-read' }, extra: { business_id, report_month } } as any)
       employeeRoster = { status: 'unavailable', reason: 'start_dates_unreadable' }
     } else {
-      const startDateOf = new Map<string, string | null>(
-        ((employeeRows || []) as { employee_id: string; start_date: string | null }[]).map((r) => [r.employee_id, r.start_date]),
-      )
+      const records: RosterEmployeeRecord[] = ((employeeRows || []) as {
+        employee_id: string; first_name: string | null; last_name: string | null; start_date: string | null; termination_date: string | null
+      }[]).map((r) => ({
+        employee_id: r.employee_id,
+        name: `${r.first_name ?? ''} ${r.last_name ?? ''}`,
+        start_date: r.start_date,
+        termination_date: r.termination_date,
+      }))
+      const recordOf = new Map(records.map((r) => [r.employee_id, r]))
       const result = rosterEmployeeBudgets({
         roster: budgetRoster,
         payslips: paid.flatMap((e) => e.payslips.map((ps) => ({
@@ -471,11 +486,18 @@ export async function loadWagesDetail(
           period_start: ps.periodStart || null,
           period_end: ps.periodEnd || null,
         }))),
-        employees: paid.map((e) => ({ employee_id: e.employeeId, name: e.name, start_date: startDateOf.get(e.employeeId) ?? null })),
+        employees: paid.map((e) => ({
+          employee_id: e.employeeId,
+          name: e.name,
+          start_date: recordOf.get(e.employeeId)?.start_date ?? null,
+          termination_date: recordOf.get(e.employeeId)?.termination_date ?? null,
+        })),
+        records,
       })
       if (result.ok) {
         rosterBudgets = new Map(paid.map((e, i) => [e.employeeId, result.employees[i]]))
-        employeeRoster = { status: 'applied', missing: [] }
+        rosterUnpaid = { budgets: result.unpaid, payCycle: result.pay_cycle }
+        employeeRoster = { status: 'applied', missing: [], unchecked: result.unchecked }
       } else {
         employeeRoster = { status: 'unavailable', reason: result.reason }
       }
@@ -609,6 +631,28 @@ export async function loadWagesDetail(
       variance_percent: Math.round(variancePct * 10) / 10,
       source: forecastMatch ? 'both' : 'xero',
       ...(budgetMissing ? { budget_missing: true } : {}),
+    })
+  }
+
+  // Rostered with a weekly salary but paid nothing this month: they keep their
+  // budget and a row, as a forecast's budgeted-not-paid employee does below —
+  // a missing person is a real variance, and the Budget total is the roster's.
+  // A leaver has no weeks in the month and no row (wages-roster-budget).
+  for (const r of rosterUnpaid.budgets) {
+    const cycle = rosterUnpaid.payCycle ?? ''
+    empBudgetTotal += r.budget
+    employees.push({
+      name: r.name,
+      position: '',
+      category: 'Wages Admin',
+      pay_frequency: FREQUENCY_LABELS[cycle] || cycle,
+      budget_per_period: r.budget,
+      actual_total: 0,
+      budget_total: r.budget,
+      pay_runs: [],
+      variance: r.budget,
+      variance_percent: 100,
+      source: 'roster' as const,
     })
   }
 

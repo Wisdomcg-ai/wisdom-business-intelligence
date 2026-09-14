@@ -67,7 +67,11 @@ export const urAugustSlips = () =>
   UR_EMPLOYEES.flatMap((e) => UR_AUGUST_RUNS.map((d) => payslip(e.id, e.payslip, d, e.perRun)))
 
 export const urXeroEmployees = () =>
-  UR_EMPLOYEES.map((e) => ({ business_id: UR_PROFILE, tenant_id: UR_TENANT, employee_id: e.id, start_date: e.start }))
+  UR_EMPLOYEES.map((e) => ({
+    business_id: UR_PROFILE, tenant_id: UR_TENANT, employee_id: e.id,
+    first_name: e.roster.split(' ')[0], last_name: e.roster.split(' ').slice(1).join(' '),
+    start_date: e.start, termination_date: null as string | null,
+  }))
 
 type RosterRow = { name: string; employee_id?: string; standard_units?: number | null; weekly_salary?: number | null }
 

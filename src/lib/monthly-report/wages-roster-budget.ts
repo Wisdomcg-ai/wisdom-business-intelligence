@@ -13,7 +13,7 @@
  * Pure: the loader reads the layout, payslips and start dates and hands them in.
  */
 import { parsePayrollGridConfig, type PayrollRosterEntry } from './payroll-grid-config'
-import { rosterMatcher } from './payroll-grid'
+import { cleanEmployeeName, rosterMatcher } from './payroll-grid'
 
 /** Weeks in one pay period, by Xero calendar type. */
 const WEEKS_PER_PAY_PERIOD: Readonly<Record<string, number>> = {
@@ -59,6 +59,16 @@ export function budgetRosterFromLayout(layout: unknown): PayrollRosterEntry[] | 
   return null
 }
 
+/**
+ * All of a pack layout the wages loader reads — its budget roster — as a string.
+ * Wages data built from one layout is stale for another with a different key;
+ * the page compares them so a saved roster is never printed beside wages
+ * budgeted from the last one.
+ */
+export function wagesLayoutKey(layout: unknown): string {
+  return JSON.stringify(budgetRosterFromLayout(layout))
+}
+
 /** One payslip line, as far as the weeks are concerned. */
 export interface RosterPayslip {
   payment_date: string
@@ -72,15 +82,35 @@ export interface RosterPaidEmployee {
   name: string
   /** Xero's start date; null when no employee record is stored. */
   start_date: string | null
+  /** Xero's termination date; null or absent when they have not left, or no record is stored. */
+  termination_date?: string | null
+}
+
+/** A stored Xero employee record (xero_employees), paid this month or not. */
+export interface RosterEmployeeRecord {
+  employee_id: string
+  /** First and last name. */
+  name: string
+  start_date: string | null
+  termination_date: string | null
 }
 
 export interface RosterEmployeeBudget {
   /** Null when the roster gives this employee no weekly salary. */
   weekly_salary: number | null
-  /** Weeks covered by the month's pay runs that fell on or after their start date. */
+  /** Weeks covered by the month's pay runs that fell inside their employment (start to termination). */
   weeks: number
   /** weekly_salary × weeks, to the cent. Null — not $0 — when there is no weekly salary. */
   budget: number | null
+}
+
+/** A roster entry with a weekly salary that no payslip this month matched. */
+export interface RosterUnpaidBudget {
+  /** The roster's name for them. */
+  name: string
+  weekly_salary: number
+  weeks: number
+  budget: number
 }
 
 /**
@@ -99,26 +129,48 @@ export type RosterBudgetUnavailableReason =
   | 'start_dates_unreadable'
 
 export type RosterBudgets =
-  /** One entry per employee passed in, in the same order. */
-  | { ok: true; employees: RosterEmployeeBudget[] }
+  | {
+      ok: true
+      /** One entry per employee passed in, in the same order. */
+      employees: RosterEmployeeBudget[]
+      /** Rostered with a weekly salary, not paid this month, and employed for at least one of its runs. */
+      unpaid: RosterUnpaidBudget[]
+      /**
+       * Rostered with a weekly salary and not paid this month, but with no one
+       * Xero employee record to say whether they were employed — cleaned names.
+       * Not budgeted, and not a guess either way.
+       */
+      unchecked: string[]
+      /** The month's one pay cycle; null when it had no runs. */
+      pay_cycle: string | null
+    }
   | { ok: false; reason: RosterBudgetUnavailableReason }
 
 const round2 = (n: number): number => Math.round(n * 100) / 100
 
 /**
- * Each paid employee's budget for the month: weekly salary × the weeks covered
- * by the ORGANISATION's pay runs in the month — not the runs that happened to
- * pay them, or a week of unpaid leave would lower their budget with their pay.
+ * Each rostered employee's budget for the month: weekly salary × the weeks
+ * covered by the ORGANISATION's pay runs in the month — not the runs that
+ * happened to pay them, or a week of unpaid leave would lower their budget with
+ * their pay.
  *
  * A pay run is its pay period. Two runs paying the same period (an off-cycle
  * run for a week already paid) cover it once; a run whose period Xero did not
  * record counts by its payment date. A run paid before an employee's Xero start
- * date is not theirs.
+ * date is not theirs, nor is one whose period began after their termination
+ * date.
+ *
+ * Someone the roster gives a weekly salary who was not paid at all this month
+ * is still budgeted (`unpaid`) — unpaid leave is a real variance, and leaving
+ * them out would total the column over part of the team. Their dates come from
+ * their Xero record (`records`), matched by the roster's own rule: a leaver has
+ * no weeks and is left out; with no record to check, they are `unchecked`.
  */
 export function rosterEmployeeBudgets(input: {
   roster: readonly PayrollRosterEntry[]
   payslips: readonly RosterPayslip[]
   employees: readonly RosterPaidEmployee[]
+  records?: readonly RosterEmployeeRecord[]
 }): RosterBudgets {
   const periods = new Map<string, { cycle: string; start: string | null; end: string | null; lastPaid: string }>()
   for (const slip of input.payslips) {
@@ -144,16 +196,41 @@ export function rosterEmployeeBudgets(input: {
     if (dated[i].start! <= dated[i - 1].end!) return { ok: false, reason: 'overlapping_pay_periods' }
   }
 
+  const weeksEmployed = (start: string | null | undefined, termination: string | null | undefined) =>
+    all
+      .filter((p) => (!start || start <= p.lastPaid) && (!termination || termination >= (p.start ?? p.lastPaid)))
+      .reduce((total, p) => total + (weeksPerPayPeriod(p.cycle) as number), 0)
+
   const matchRoster = rosterMatcher(input.roster)
-  return {
-    ok: true,
-    employees: input.employees.map((employee) => {
-      const index = matchRoster(employee)
-      const weekly = index === undefined ? null : input.roster[index].weekly_salary ?? null
-      const weeks = all
-        .filter((p) => !employee.start_date || employee.start_date <= p.lastPaid)
-        .reduce((total, p) => total + (weeksPerPayPeriod(p.cycle) as number), 0)
-      return { weekly_salary: weekly, weeks, budget: weekly === null ? null : round2(weekly * weeks) }
-    }),
+  const paidEntries = new Set<number>()
+  const employees = input.employees.map((employee) => {
+    const index = matchRoster(employee)
+    if (index !== undefined) paidEntries.add(index)
+    const weekly = index === undefined ? null : input.roster[index].weekly_salary ?? null
+    const weeks = weeksEmployed(employee.start_date, employee.termination_date)
+    return { weekly_salary: weekly, weeks, budget: weekly === null ? null : round2(weekly * weeks) }
+  })
+
+  const recordsFor = new Map<number, RosterEmployeeRecord[]>()
+  for (const record of input.records ?? []) {
+    const index = matchRoster(record)
+    if (index !== undefined) recordsFor.set(index, [...(recordsFor.get(index) ?? []), record])
   }
+
+  const unpaid: RosterUnpaidBudget[] = []
+  const unchecked: string[] = []
+  input.roster.forEach((entry, index) => {
+    const weekly = entry.weekly_salary
+    if (typeof weekly !== 'number' || paidEntries.has(index) || all.length === 0) return
+    const found = recordsFor.get(index) ?? []
+    // Two records under one name (a name-only entry, two orgs) could be two people.
+    if (found.length !== 1) {
+      unchecked.push(cleanEmployeeName(entry.name))
+      return
+    }
+    const weeks = weeksEmployed(found[0].start_date, found[0].termination_date)
+    if (weeks > 0) unpaid.push({ name: cleanEmployeeName(entry.name), weekly_salary: weekly, weeks, budget: round2(weekly * weeks) })
+  })
+
+  return { ok: true, employees, unpaid, unchecked, pay_cycle: all[0]?.cycle ?? null }
 }

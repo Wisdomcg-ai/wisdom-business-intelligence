@@ -405,10 +405,10 @@ async function main() {
       fiscal_year: fiscalYear,
       wages_account_names: wagesNames,
       budget_forecast_id: settings.budget_forecast_id || undefined,
-      // The per-employee Budget reads the Payroll Report roster. The route
-      // reads the STORED layout; a --layout-file stands in for it here, so a
-      // roster is looked at on this page before anyone saves it.
-      ...(layoutFile ? { pdf_layout: pdfLayout } : {}),
+      // The per-employee Budget reads the Payroll Report roster of the layout
+      // being rendered — the page sends the one it prints — so a --layout-file
+      // roster is looked at before anyone saves it, and --no-layout reads none.
+      pdf_layout: pdfLayout,
     })
     eager.wagesDetail = wages.data
     if (wages.live_fallback === 'skipped_no_fetcher') {

@@ -3,7 +3,7 @@
 import { Fragment, useState } from 'react'
 import { ChevronRight, Loader2, Users, Settings } from 'lucide-react'
 import type { WagesDetailData } from '../types'
-import { wagesYardstick, wagesEmployeeYardstick } from '../utils/budget-yardstick'
+import { wagesYardstick, wagesEmployeeYardstick, rosterBudgetTotalIsPartial } from '../utils/budget-yardstick'
 
 interface WagesAnalysisTabProps {
   data: WagesDetailData | null
@@ -115,9 +115,10 @@ export default function WagesAnalysisTab({ data, isLoading, error, onOpenSetting
     data.employee_plan_available ?? true,
     data.employee_roster,
   )
-  // A roster that gives someone no weekly salary leaves the total over part of
-  // the team; it is not printed under the team's heading.
-  const empTotalStated = empYardstick.available && !(data.employee_roster?.status === 'applied' && data.employee_roster.missing.length > 0)
+  // A roster that leaves someone's budget out — no weekly salary, or unpaid with
+  // no Xero record — leaves the total over part of the team; it is not printed
+  // under the team's heading.
+  const empTotalStated = empYardstick.available && !rosterBudgetTotalIsPartial(data.employee_roster)
   const dash = <span className="text-gray-400">—</span>
   const budgetCell = (v: number) => (yardstick.available ? (v ? fmt(v) : dash) : dash)
   const empBudgetCell = (v: number) => (empYardstick.available ? (v ? fmt(v) : dash) : dash)

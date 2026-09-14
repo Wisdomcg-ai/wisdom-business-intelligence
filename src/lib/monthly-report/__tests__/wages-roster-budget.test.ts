@@ -210,6 +210,72 @@ describe('the weeks the month covered', () => {
   })
 })
 
+describe('a rostered employee the month did not pay', () => {
+  // Thomas White is on the roster at $600 a week and has no August payslip.
+  const others = UR_EMPLOYEES.filter((e) => e.roster !== 'Thomas White')
+  const paidOthers = () => others.map((e) => ({ employee_id: e.id, name: e.payslip, start_date: e.start }))
+  const slips = () => others.flatMap(() => UR_AUGUST_RUNS.map((d) => run(d)))
+  const records = (thomas: { name?: string; start_date?: string | null; termination_date?: string | null } = {}) =>
+    UR_EMPLOYEES.map((e) => ({
+      employee_id: e.id, name: e.roster, start_date: e.start, termination_date: null,
+      ...(e.roster === 'Thomas White' ? thomas : {}),
+    }))
+
+  it('keeps their budget: on leave is still on the team, and a missing person is a real variance', () => {
+    const res = rosterEmployeeBudgets({ roster: urRosterWithSalaries(), payslips: slips(), employees: paidOthers(), records: records() })
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    expect(res.unpaid).toEqual([{ name: 'Thomas White', weekly_salary: 600, weeks: 5, budget: 3000 }])
+    expect(res.unchecked).toEqual([])
+    expect(res.pay_cycle).toBe('WEEKLY')
+    const total = [...res.employees, ...res.unpaid].reduce((t, e) => t + (e.budget ?? 0), 0)
+    expect(Math.round(total * 100) / 100).toBe(52519.25)
+  })
+
+  it('is not budgeted once Xero says they left before any of the month’s runs', () => {
+    // The first August run paid 28 July – 3 August; he left on 24 July.
+    const res = rosterEmployeeBudgets({ roster: urRosterWithSalaries(), payslips: slips(), employees: paidOthers(), records: records({ termination_date: '2026-07-24' }) })
+    expect(res.ok && [res.unpaid, res.unchecked]).toEqual([[], []])
+  })
+
+  it('a leaver is budgeted for the runs whose pay period began on or before their last day', () => {
+    // Left on the 12th: the run paid on the 17th covered 11–17 August, so it is
+    // his; the 24th and the 31st are not.
+    const res = rosterEmployeeBudgets({
+      roster: urRosterWithSalaries(),
+      payslips: augustRuns(),
+      employees: UR_EMPLOYEES.map((e) => ({ employee_id: e.id, name: e.payslip, start_date: e.start, termination_date: e.roster === 'Thomas White' ? '2026-08-12' : null })),
+    })
+    expect(res.ok && res.employees[4]).toEqual({ weekly_salary: 600, weeks: 3, budget: 1800 })
+    expect(res.ok && res.employees[0].weeks).toBe(5)
+  })
+
+  it('a name-only entry finds its Xero record by the cleaned name', () => {
+    const roster = urRosterWithSalaries().map((r) => (r.name === 'Thomas White' ? { name: 'Thomas White', weekly_salary: 600 } : r))
+    const onLeave = rosterEmployeeBudgets({ roster, payslips: slips(), employees: paidOthers(), records: records({ name: 'Thomas  White' }) })
+    expect(onLeave.ok && onLeave.unpaid.map((u) => u.budget)).toEqual([3000])
+    const left = rosterEmployeeBudgets({ roster, payslips: slips(), employees: paidOthers(), records: records({ name: 'thomas white', termination_date: '2026-07-24' }) })
+    expect(left.ok && [left.unpaid, left.unchecked]).toEqual([[], []])
+  })
+
+  it('an entry Xero has no employee record for is could-not-check: named, not budgeted, never guessed', () => {
+    const roster = [...urRosterWithSalaries(), { name: 'Jordan  Casual', weekly_salary: 900 }]
+    const res = rosterEmployeeBudgets({ roster, payslips: augustRuns(), employees: urPaid(), records: records() })
+    expect(res.ok && [res.unpaid, res.unchecked]).toEqual([[], ['Jordan Casual']])
+  })
+
+  it('an entry with no weekly salary that was not paid is nobody’s budget', () => {
+    const roster = urRosterWithSalaries().map((r) => (r.name === 'Thomas White' ? { ...r, weekly_salary: null } : r))
+    const res = rosterEmployeeBudgets({ roster, payslips: slips(), employees: paidOthers(), records: records() })
+    expect(res.ok && [res.unpaid, res.unchecked]).toEqual([[], []])
+  })
+
+  it('a month with no pay runs budgets nobody who was not paid', () => {
+    const res = rosterEmployeeBudgets({ roster: [...urRosterWithSalaries(), { name: 'No Record', weekly_salary: 1 }], payslips: [], employees: [], records: records() })
+    expect(res.ok && [res.unpaid, res.unchecked]).toEqual([[], []])
+  })
+})
+
 describe('no roster budget for the month — stated, never guessed', () => {
   const employees = [{ employee_id: 'e1', name: 'A', start_date: null }]
   const roster = [{ name: 'A', weekly_salary: 1000 }]

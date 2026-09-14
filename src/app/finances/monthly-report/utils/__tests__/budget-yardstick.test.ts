@@ -13,7 +13,7 @@
  * "Budget" names it. Their output does not change, note included.
  */
 import { describe, it, expect } from 'vitest'
-import { statementYardstick, packStatementYardstick, packWagesYardstick, packWagesEmployeeYardstick } from '../budget-yardstick'
+import { statementYardstick, packStatementYardstick, packWagesYardstick, packWagesEmployeeYardstick, wagesEmployeeYardstick } from '../budget-yardstick'
 
 describe('the pack words (Matt, 14 Sep 2026)', () => {
   it("Calxa's 'Budgets' / 'YTD Budget' and no note, whatever the source — the tab keeps its own", () => {
@@ -34,15 +34,28 @@ describe('the pack words (Matt, 14 Sep 2026)', () => {
   })
 
   it('keeps the roster source line — "Budget" alone would read as a split of the approved budget — and has no total row to mention', () => {
-    expect(packWagesEmployeeYardstick({ source: 'budget_version' }, true, { status: 'applied', missing: [] })).toEqual({
+    expect(packWagesEmployeeYardstick({ source: 'budget_version' }, true, { status: 'applied', missing: [], unchecked: [] })).toEqual({
       columnLabel: 'Budget',
       note: 'Per-employee budgets are the Payroll Report roster’s weekly salaries × this month’s pay runs.',
       available: true,
       absentNote: null,
     })
-    expect(packWagesEmployeeYardstick({ source: 'budget_version' }, true, { status: 'applied', missing: ['Thomas White'] }).note).toBe(
+    expect(packWagesEmployeeYardstick({ source: 'budget_version' }, true, { status: 'applied', missing: ['Thomas White'], unchecked: [] }).note).toBe(
       'Per-employee budgets are the Payroll Report roster’s weekly salaries × this month’s pay runs. ' +
         'No weekly salary on the roster for Thomas White, so their Budget is shown as “—”.',
+    )
+  })
+
+  it('names a rostered person who was not paid and whom Xero has no record of — their budget is not counted', () => {
+    expect(packWagesEmployeeYardstick({ source: 'budget_version' }, true, { status: 'applied', missing: [], unchecked: ['Jordan Casual'] }).note).toBe(
+      'Per-employee budgets are the Payroll Report roster’s weekly salaries × this month’s pay runs. ' +
+        'Jordan Casual was not paid this month and has no Xero employee record, so their budget is not counted.',
+    )
+    expect(wagesEmployeeYardstick({ source: 'budget_version' }, true, { status: 'applied', missing: ['Thomas White'], unchecked: ['Jordan Casual', 'Sam Lee'] }).note).toBe(
+      'Per-employee budgets are the Payroll Report roster’s weekly salaries × this month’s pay runs. ' +
+        'No weekly salary on the roster for Thomas White, so their Budget is shown as “—”. ' +
+        'Jordan Casual and Sam Lee were not paid this month and have no Xero employee record, so their budgets are not counted ' +
+        'and the Budget total is left out.',
     )
   })
 })

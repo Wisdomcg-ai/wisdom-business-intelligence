@@ -170,7 +170,7 @@ export function wagesEmployeeYardstick(
   roster?: WagesDetailData['employee_roster'],
 ): PageYardstick {
   if (roster?.status === 'applied') {
-    return { columnLabel: 'Budget', note: rosterNote(roster.missing, true), available: true, absentNote: null }
+    return { columnLabel: 'Budget', note: rosterNote(roster, true), available: true, absentNote: null }
   }
   if (roster?.status === 'unavailable') {
     return {
@@ -214,18 +214,35 @@ const ROSTER_UNAVAILABLE_BECAUSE: Record<RosterBudgetUnavailableReason, string> 
 }
 
 /**
- * Where roster budgets come from, and who has none. `hasTotalRow` is the tab's
- * total row, which is left out rather than print a sum over part of the team
- * under the team's heading; the pack's employee table has no total row.
+ * Does the roster leave anyone's budget out of the employee Budget total? A
+ * paid employee with no weekly salary, or an unpaid one Xero has no record of.
+ * Then the total covers only part of the team and is not printed as the team's.
  */
-function rosterNote(missing: readonly string[], hasTotalRow: boolean): string {
-  const source = 'Per-employee budgets are the Payroll Report roster’s weekly salaries × this month’s pay runs.'
-  if (missing.length === 0) return source
-  const names = missing.length === 1 ? missing[0] : `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]}`
-  return (
-    `${source} No weekly salary on the roster for ${names}, so their Budget is shown as “—”` +
-    `${hasTotalRow ? ' and the Budget total is left out' : ''}.`
-  )
+export function rosterBudgetTotalIsPartial(roster?: WagesDetailData['employee_roster']): boolean {
+  return roster?.status === 'applied' && (roster.missing.length > 0 || roster.unchecked.length > 0)
+}
+
+/**
+ * Where roster budgets come from, and whose budget is not counted. `hasTotalRow`
+ * is the tab's total row, which is left out rather than print a sum over part of
+ * the team under the team's heading; the pack's employee table has no total row.
+ */
+function rosterNote(roster: { missing: readonly string[]; unchecked: readonly string[] }, hasTotalRow: boolean): string {
+  const list = (names: readonly string[]) =>
+    names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+  const sentences = ['Per-employee budgets are the Payroll Report roster’s weekly salaries × this month’s pay runs']
+  if (roster.missing.length > 0) {
+    sentences.push(`No weekly salary on the roster for ${list(roster.missing)}, so their Budget is shown as “—”`)
+  }
+  if (roster.unchecked.length > 0) {
+    const one = roster.unchecked.length === 1
+    sentences.push(
+      `${list(roster.unchecked)} ${one ? 'was' : 'were'} not paid this month and ${one ? 'has' : 'have'} no Xero employee record, ` +
+        `so their ${one ? 'budget is' : 'budgets are'} not counted`,
+    )
+  }
+  const partial = sentences.length > 1
+  return `${sentences.join('. ')}${partial && hasTotalRow ? ' and the Budget total is left out' : ''}.`
 }
 
 /**
@@ -254,7 +271,7 @@ export function packWagesEmployeeYardstick(
 ): PageYardstick {
   return {
     ...wagesEmployeeYardstick(provenance, planExists, roster),
-    note: roster?.status === 'applied' ? rosterNote(roster.missing, false) : null,
+    note: roster?.status === 'applied' ? rosterNote(roster, false) : null,
   }
 }
 

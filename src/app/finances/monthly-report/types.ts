@@ -756,7 +756,8 @@ export interface WagesEmployeeLine {
   pay_runs: WagesPayRunEntry[]
   variance: number
   variance_percent: number
-  source: 'xero' | 'forecast' | 'both'
+  /** 'roster': on the Payroll Report roster with a weekly salary, and not paid this month. */
+  source: 'xero' | 'forecast' | 'both' | 'roster'
   /**
    * The Payroll Report roster gives this employee no weekly salary, so there
    * is no budget to measure them against: budget_total and variance are 0 and
@@ -832,15 +833,18 @@ export interface WagesDetailData {
    * from the Payroll Report roster's weekly salaries: no forecast employee
    * plan applied, and a roster gives someone a weekly salary.
    *
-   * 'applied'      budgets are weekly salary × this month's pay runs. `missing`
-   *                names the paid employees the roster gives no weekly salary;
-   *                when it is not empty, employee_totals.budget covers only the
-   *                rest and is not printed as the team's budget.
+   * 'applied'      budgets are weekly salary × this month's pay runs, and a
+   *                rostered employee who was not paid keeps a row and their
+   *                budget. `missing` names the paid employees the roster gives
+   *                no weekly salary; `unchecked` the unpaid ones with a weekly
+   *                salary but no Xero employee record to say whether they were
+   *                employed. When either is not empty, employee_totals.budget
+   *                covers only the rest and is not printed as the team's budget.
    * 'unavailable'  the month's pay runs could not be counted in weeks without
    *                guessing; `reason` says why.
    */
   employee_roster?:
-    | { status: 'applied'; missing: string[] }
+    | { status: 'applied'; missing: string[]; unchecked: string[] }
     | { status: 'unavailable'; reason: import('@/lib/monthly-report/wages-roster-budget').RosterBudgetUnavailableReason }
   employees: WagesEmployeeLine[]
   employee_totals: { actual: number; budget: number; variance: number }
