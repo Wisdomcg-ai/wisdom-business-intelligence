@@ -72,6 +72,8 @@ export interface ActualCashReconciliation {
   payg_separated: boolean
   /** Wages were booked but no pay runs are synced for the month: wages print gross, PAYG as its raw movement. */
   payslips_missing: boolean
+  /** Pay runs withheld tax this month but no wages account (wages_codes) booked anything: PAYG prints as its raw movement. */
+  payslip_tax_unmatched: boolean
 }
 
 export type ActualCashMonth = CashflowForecastMonth & { reconciliation: ActualCashReconciliation }
@@ -177,8 +179,15 @@ export function deriveActualCashMonth(args: {
   // PAYG and super come out of the expense rows only when there is a
   // liability row for them to go through; otherwise the expense is paid as
   // booked and the liability's movement prints as it is.
-  const payslipTax = args.payslips && paygIds.size > 0 ? args.payslips.tax : 0
-  const paygSeparated = !!args.payslips && paygIds.size > 0
+  //
+  // PAYG also needs a wages row to come out of. The first cut took the
+  // payslips' tax off the PAYG row whenever there were payslips, whether or
+  // not a wages row added it back: Urban Road with no (or a misspelt) wages
+  // code printed July with an "Unexplained difference" of exactly the
+  // payslips' $9,688.07 PAYG, and Net Movement still read the bank's figure.
+  const wagesBooked = payments.some(isWages)
+  const paygSeparated = !!args.payslips && paygIds.size > 0 && wagesBooked
+  const payslipTax = paygSeparated ? args.payslips!.tax : 0
   const superViaLiability = superIds.size > 0
 
   // ── Income ──
@@ -315,6 +324,7 @@ export function deriveActualCashMonth(args: {
       residual,
       unknown_tax_accounts: unknownTax,
       payslips_missing: wages.length > 0 && !args.payslips,
+      payslip_tax_unmatched: !!args.payslips && paygIds.size > 0 && !wagesBooked && Math.abs(args.payslips.tax) >= 0.005,
       payg_separated: paygSeparated,
     },
   }

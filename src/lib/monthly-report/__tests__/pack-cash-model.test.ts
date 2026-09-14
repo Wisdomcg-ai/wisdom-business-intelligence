@@ -140,7 +140,7 @@ describe('buildPackCashModel — the year, Jul 2026 to Jun 2027', () => {
 
   it('says in the basis which months are the bank\'s and that account rows are apportioned', () => {
     expect(model.basis).toBe(
-      'Opening bank $117,987 at 30 Jun 2026 · Jul 2026 to Aug 2026 actual cash from the bank and balance sheet; totals are actual, each account\'s share of receipts and payments is apportioned by its P&L · approved budget Sep 2026 to Jun 2027 · debtors 19 days, creditors 29 days, expenses on creditor days · BAS Nov/Feb/May/Aug',
+      'Opening bank $117,987 at 30 Jun 2026 · Jul 2026 to Aug 2026 actual cash from the bank and balance sheet; totals are actual, each account\'s share of receipts and payments is apportioned by its P&L · approved budget Sep 2026 to Jun 2027 · debtors 19 days, creditors 29 days, expenses on creditor days · BAS Nov/Feb/May/Aug · wages net of PAYG at 23.06% (Aug 2026 payslips), PAYG paid Sep/Nov/Dec/Feb/Mar/May/Jun/Aug, super each pay run',
     )
   })
 })

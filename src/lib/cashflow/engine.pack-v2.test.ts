@@ -82,12 +82,15 @@ describe('gstRateForLine', () => {
   it('cash basis: GST on the cash as it is received and paid', () => {
     const lines2 = [line('Canvas', 'Revenue', 1100 / 1.1)]
     const out = generateCashflowForecast(lines2, null, baseAssumptions({ dso_days: 30 }), window, [], {
-      gstRateForLine: () => 0.1, gstBasis: 'cash', firstMonthSpill: false, schedules: { ...schedules, gst: SYSTEM_SCHEDULES.monthly },
+      gstRateForLine: () => 0.1, gstBasis: 'cash', firstMonthSpill: false, schedules: { ...schedules, gst: SYSTEM_SCHEDULES.monthly_activity_statement },
       openingReceivables: { amount: 2200, weights: { Canvas: 1 } },
     })
-    // July: only the opening debtors' GST (200) is cash; due July on the monthly schedule.
-    expect(v(out.months[0].liability_lines, 'GST / BAS Payment')).toBeCloseTo(-200, 2)
-    expect(v(out.months[1].liability_lines, 'GST / BAS Payment')).toBeCloseTo(-100, 2)
+    // July collects only the opening debtors, whose GST the opening GST
+    // liability already carries (see the next describe) — so no GST due in
+    // August. August collects July's 1,100: its 100 of GST is due in September.
+    expect(v(out.months[0].liability_lines, 'GST / BAS Payment')).toBe(0)
+    expect(v(out.months[1].liability_lines, 'GST / BAS Payment')).toBe(0)
+    expect(v(out.months[2].liability_lines, 'GST / BAS Payment')).toBeCloseTo(-100, 2)
   })
 })
 
@@ -148,5 +151,23 @@ describe('opexTimedByDpo', () => {
     const out = generateCashflowForecast(lines, null, baseAssumptions({ dpo_days: 29, gst_applicable_expense_pct: 0 }), window, [], { opexTimedByDpo: true, firstMonthSpill: false })
     expect(opex(out.months[0], 'Ad Spend')).toBeCloseTo(100, 2)
     expect(opex(out.months[1], 'Ad Spend')).toBeCloseTo(3000, 2)
+  })
+})
+
+describe('gstBasis: cash, with opening debtors and creditors', () => {
+  it('does not charge GST on the opening balances again — the ledger GST account the caller opens on already holds it', () => {
+    const lines = [line('Canvas', 'Revenue', 0), line('Antons', 'Cost of Sales', 0)]
+    const out = generateCashflowForecast(lines, null, baseAssumptions({ dso_days: 0, dpo_days: 0 }), window, [], {
+      gstRateForLine: () => 0.1,
+      gstBasis: 'cash',
+      firstMonthSpill: false,
+      openingReceivables: { amount: 1100, weights: { Canvas: 1 } },
+      openingPayables: { amount: 550, weights: { Antons: 1 } },
+      schedules: { ...schedules, gst: SYSTEM_SCHEDULES.monthly_activity_statement },
+      liabilityLabels: { gst: 'GST Collected & Paid' },
+    })
+    expect(v(out.months[0].income_lines, 'Canvas')).toBeCloseTo(1100, 2)
+    // July's receipts and payments are the opening balances only: no GST due in August.
+    expect(v(out.months[1].liability_lines, 'GST Collected & Paid')).toBe(0)
   })
 })

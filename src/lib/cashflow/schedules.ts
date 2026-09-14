@@ -35,6 +35,14 @@ export const SYSTEM_SCHEDULES: Record<string, BasePeriods> = {
   monthly_ias_quarterly_bas_agent: [2, 3, 5, 5, 6, 8, 8, 9, 11, 11, 12, 2],
   /** The same monthly IAS, self-lodged: every month the 21st of the next, December's in February. */
   monthly_ias_quarterly_bas_self:  [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 2],
+  /**
+   * A monthly activity statement (GST or PAYG withholding): due the 21st of
+   * the month after the period, except December's, due 21 February. Not
+   * `monthly` above, which is due the month it accrues — the cash model's
+   * first cut offered 'monthly' for GST and PAYG and so paid September's GST
+   * in September, a month before the ATO takes it.
+   */
+  monthly_activity_statement: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 2],
   /** One month in arrears: Calxa's super on Urban Road's pack (Oct 5,042 = September's super). */
   monthly_arrears:            [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1],
   /**

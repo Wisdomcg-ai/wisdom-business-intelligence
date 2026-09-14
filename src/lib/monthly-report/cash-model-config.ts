@@ -25,7 +25,14 @@
 import { z } from 'zod'
 import { SYSTEM_SCHEDULES, type BasePeriods } from '@/lib/cashflow/schedules'
 
-const accountIds = z.array(z.string().trim().min(1)).default([])
+/**
+ * A list the coach must state, even as []. The first cut defaulted the
+ * payroll lists to [] — so a cash_model with wages_codes simply left out
+ * parsed as on, took the payslips' PAYG off the PAYG row with no wages row to
+ * put it back, and printed Urban Road's July with a $9,688.07 "Unexplained
+ * difference". A client with no payroll writes [] and means it.
+ */
+const statedList = z.array(z.string().trim().min(1))
 const days = z.union([z.literal('derived'), z.number().finite().min(0).max(365)]).default('derived')
 
 const configSchema = z.object({
@@ -46,7 +53,11 @@ const configSchema = z.object({
   creditors_account_ids: z.array(z.string().trim().min(1)).min(1),
   gst: z.object({
     basis: z.enum(['accrual', 'cash']),
-    schedule: z.enum(['quarterly_bas_au', 'quarterly_feb_may_aug_nov', 'monthly']),
+    /**
+     * 'monthly_activity_statement', never 'monthly': SYSTEM_SCHEDULES.monthly
+     * is due the month it accrues, and a monthly BAS is due the month after.
+     */
+    schedule: z.enum(['quarterly_bas_au', 'quarterly_feb_may_aug_nov', 'monthly_activity_statement']),
     /**
      * The GST liability accounts (GST Collected & Paid, GST adjustments).
      * Required: an actual month grosses every line up by its tax type and
@@ -65,25 +76,56 @@ const configSchema = z.object({
   }).strict(),
   paygw: z.object({
     /** The account Xero Payroll posts PAYG withheld to. */
-    liability_account_ids: accountIds,
-    schedule: z.enum(['monthly_ias_quarterly_bas_agent', 'monthly_ias_quarterly_bas_self', 'quarterly_bas_au', 'quarterly_feb_may_aug_nov', 'monthly']),
+    liability_account_ids: statedList,
+    schedule: z.enum(['monthly_ias_quarterly_bas_agent', 'monthly_ias_quarterly_bas_self', 'quarterly_bas_au', 'quarterly_feb_may_aug_nov', 'monthly_activity_statement']),
     /** 'payslips' = tax ÷ wages on the latest actual month's pay runs; or a fixed rate. */
     rate: z.union([z.literal('payslips'), z.number().finite().min(0).max(1)]),
   }).strict(),
   super: z.object({
-    payable_account_ids: accountIds,
+    payable_account_ids: statedList,
     /** The super expense account codes. */
-    expense_codes: z.array(z.string().trim().min(1)).default([]),
+    expense_codes: statedList,
     schedule: z.enum(['payday', 'monthly_arrears', 'quarterly_super_au']),
   }).strict(),
   /** The wages expense account codes (paid net of PAYG). */
-  wages_codes: z.array(z.string().trim().min(1)).default([]),
+  wages_codes: statedList,
   /** Other ATO balances at the report-month end: paid in the first forecast month, or left out. */
   opening_ato_accounts: z.array(z.object({
     account_id: z.string().trim().min(1),
     pay: z.enum(['first_forecast_month', 'excluded']),
   }).strict()).default([]),
-}).strict()
+}).strict().superRefine((cfg, ctx) => {
+  // PAYG goes through its liability row only by coming OUT of the wages rows;
+  // with no wages codes nothing puts it back and the month cannot tie.
+  if (cfg.paygw.liability_account_ids.length > 0 && cfg.wages_codes.length === 0) {
+    ctx.addIssue({ code: 'custom', path: ['wages_codes'], message: 'PAYG liability accounts are set, so wages_codes must name the wages accounts PAYG is withheld from' })
+  }
+  // Likewise super paid through its payable account is taken out of the
+  // super expense rows, which the expense codes name.
+  if (cfg.super.payable_account_ids.length > 0 && cfg.super.expense_codes.length === 0) {
+    ctx.addIssue({ code: 'custom', path: ['super', 'expense_codes'], message: 'super payable accounts are set, so expense_codes must name the super expense accounts' })
+  }
+  // One account in two roles has its movement counted twice in an actual
+  // month (as debtors AND as GST, say) and the rows stop adding to the bank.
+  const seen = new Map<string, string>()
+  const roles: Array<[string, readonly string[]]> = [
+    ['debtors_account_ids', cfg.debtors_account_ids],
+    ['creditors_account_ids', cfg.creditors_account_ids],
+    ['gst.account_ids', cfg.gst.account_ids],
+    ['paygw.liability_account_ids', cfg.paygw.liability_account_ids],
+    ['super.payable_account_ids', cfg.super.payable_account_ids],
+  ]
+  for (const [role, ids] of roles) {
+    for (const id of ids) {
+      const key = id.trim().toLowerCase()
+      const other = seen.get(key)
+      if (other && other !== role) {
+        ctx.addIssue({ code: 'custom', path: [role], message: `account ${id} is also in ${other} — an account can have one role` })
+      }
+      seen.set(key, other ?? role)
+    }
+  }
+})
 
 export type CashModelConfig = z.infer<typeof configSchema>
 

@@ -490,11 +490,18 @@ export function generateCashflowForecast(
     for (const [label, w] of entries) place(label, opening.amount * (w / total))
   }
 
+  // On a cash GST basis the GST inside the opening debtors and creditors is
+  // not charged again when they are collected and paid: the caller's opening
+  // GST liability is the ledger's GST account, which Xero posts when the
+  // invoice or bill is raised, so it already holds that GST. Counting it on
+  // receipt too paid it twice. (Accrual basis never reads these amounts.)
+  const openingGstOf = (amount: number, r: number) => (options.gstBasis === 'cash' ? 0 : amount * (r / (1 + r)))
+
   if (options.openingReceivables) {
     allocateOpening(options.openingReceivables, 'Opening Debtors Collected', (label, amount) => {
       const line = revenueLines.find((l) => l.account_name === label)
       const r = line ? rateOf(line, gstRate) : 0
-      cashReceipts[allMonths[0]].push({ label, amount, gst: amount * (r / (1 + r)) })
+      cashReceipts[allMonths[0]].push({ label, amount, gst: openingGstOf(amount, r) })
     })
   } else if (assumptions.opening_trade_debtors > 0 && allMonths.length > 0) {
     const debtorGross = assumptions.opening_trade_debtors // Already GST-inclusive from BS
@@ -509,12 +516,12 @@ export function generateCashflowForecast(
       const opex = opexLines.find((l) => l.account_name === label)
       if (opex) {
         const r = rateOf(opex, opexFallbackRate(opex))
-        cashOpExPayments[allMonths[0]].push({ label, amount, group: expenseGroupOf(opex), gst: amount * (r / (1 + r)) })
+        cashOpExPayments[allMonths[0]].push({ label, amount, group: expenseGroupOf(opex), gst: openingGstOf(amount, r) })
         return
       }
       const cogs = cogsLines.find((l) => l.account_name === label)
       const r = cogs ? rateOf(cogs, gstRate) : 0
-      cashCOGSPayments[allMonths[0]].push({ label, amount, gst: amount * (r / (1 + r)) })
+      cashCOGSPayments[allMonths[0]].push({ label, amount, gst: openingGstOf(amount, r) })
     })
   } else if (assumptions.opening_trade_creditors > 0 && allMonths.length > 0) {
     const creditorGross = assumptions.opening_trade_creditors // Already GST-inclusive from BS

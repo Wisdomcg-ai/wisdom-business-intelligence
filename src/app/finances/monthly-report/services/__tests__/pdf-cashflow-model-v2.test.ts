@@ -88,6 +88,22 @@ describe('cash pages — a cash model that could not be built', () => {
     expect(text).not.toContain('Bank at Beginning')
   })
 
+  it('a layout placing both the chart and the table prints the reason once, not twice', () => {
+    const pdfLayout = {
+      version: 1,
+      pages: [
+        { id: 'p1', orientation: 'portrait', widgets: [{ id: 'es', type: 'executive_summary', col: 0, row: 0, colSpan: 2, rowSpan: 3 }] },
+        { id: 'p2', orientation: 'landscape', widgets: [{ id: 'chart', type: 'chart_cashflow_forecast', col: 0, row: 0, colSpan: 3, rowSpan: 3 }] },
+        { id: 'p3', orientation: 'landscape', widgets: [{ id: 'table', type: 'cashflow_forecast_table', col: 0, row: 0, colSpan: 3, rowSpan: 3 }] },
+      ],
+    }
+    const pages = pagesOf({ pdfLayout, cashflowReason: 'the debtors account 905e1394-typo is not on the balance sheet' })
+    const reasons = pages.filter((runs) => runs.join(' ').includes('The cashflow is not available for this month'))
+    expect(reasons).toHaveLength(1)
+    // And no blank page where the chart would have been: the summary and the reason.
+    expect(pages).toHaveLength(2)
+  })
+
   it('a placed table or chart widget with only a reason still counts as having something to print', () => {
     const svc: any = new MonthlyReportPDFService(fixtureReport(), { cashflowReason: 'x' } as any)
     expect(svc.hasDataForWidget('cashflow_forecast_table')).toBe(true)

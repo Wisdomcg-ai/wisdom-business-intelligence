@@ -470,6 +470,7 @@ export class MonthlyReportPDFService {
           this.standingHostId = undefined
           this.openedPages = new Set([1])
           this.coverPage = null
+          this.cashflowReasonPrinted = false
           this.doc = new jsPDF('portrait', 'mm', 'a4')
           this.pageWidth = A4_SHORT
           this.pageHeight = A4_LONG
@@ -2663,9 +2664,17 @@ export class MonthlyReportPDFService {
   }
 
   /** A cash-model-v2 business with no cashflow: the page, its title and why. */
+  /**
+   * Once per pack. A layout that places both the chart and the table reaches
+   * this from each placement, and the first cut printed the same reason page
+   * twice.
+   */
+  private cashflowReasonPrinted = false
+
   private addCashflowReasonPage(): void {
     const reason = (this.options.cashflowReason ?? '').trim()
-    if (!reason) return
+    if (!reason || this.cashflowReasonPrinted) return
+    this.cashflowReasonPrinted = true
     this.addPage('landscape')
     this.drawPageTitle(`Cashflow Forecast — ${this.formatMonth(this.report.report_month)}`)
     this.drawReasonCard(`The cashflow is not available for this month: ${reason.replace(/\.$/, '')}.`)
@@ -4077,6 +4086,11 @@ export class MonthlyReportPDFService {
    * Dispatch rendering for a widget type within a bounding box.
    * Falls back to a placeholder if the widget can't be rendered.
    */
+  /** Whether the layout in force places a widget of this type anywhere. */
+  private layoutPlaces(type: WidgetType): boolean {
+    return (this.activeLayout?.pages ?? []).some((p) => Array.isArray(p.widgets) && p.widgets.some((w) => w.type === type))
+  }
+
   private renderWidget(widget: import('../types/pdf-layout').LayoutWidget, box: WidgetBoundingBox): void {
     const type = widget.type
     const methodName = WIDGET_METHOD_MAP[type]
@@ -4124,6 +4138,10 @@ export class MonthlyReportPDFService {
       case 'chart_working_capital_gap':
         return !!this.options.cashflowForecast
       case 'chart_cashflow_forecast':
+        // A reason prints once, from the table's placement when the layout
+        // has one — otherwise the chart's page would be left blank (or, before
+        // the reason page learnt to print once, a second identical page).
+        return !!this.options.cashflowForecast || (!!this.options.cashflowReason && !this.layoutPlaces('cashflow_forecast_table'))
       case 'cashflow_forecast_table':
         return !!this.options.cashflowForecast || !!this.options.cashflowReason
       case 'subscription_detail':

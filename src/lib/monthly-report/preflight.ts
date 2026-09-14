@@ -22,6 +22,7 @@ import type {
 } from '@/app/finances/monthly-report/types'
 import type { MoneyFlow } from '@/lib/monthly-report/money-flow'
 import type { CashflowForecastData } from '@/app/finances/forecast/types'
+import { UNEXPLAINED_LABEL } from '@/lib/monthly-report/pack-cash-actuals'
 import { moneyFlowProof } from '@/lib/monthly-report/money-flow-rows'
 import { netProfitFromBuckets } from '@/lib/finance/net-profit'
 import { SUPERANNUATION } from '@/app/finances/forecast/constants'
@@ -74,6 +75,12 @@ export interface PreflightInputs {
   commentarySettingsProblems?: string[] | null
   /** The cashflow going into the pack — checked only when it is cash model v2. */
   cashflow?: CashflowForecastData | null
+  /**
+   * Why a cash-model-v2 business has no cashflow (the reason its cash pages
+   * print). Set only when v2 is on: without it a refused model read as
+   * 'skip', the same as a client that never turned v2 on.
+   */
+  cashflowReason?: string | null
   /** The budget forecast's superannuation_rate (null = unset → statutory default). */
   budgetSuperRate?: number | null
   /** The budget forecast's actual_end_month ('YYYY-MM') — months at or before
@@ -390,13 +397,27 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
   // must open on the bank the actuals close on.
   {
     const cf = inputs.cashflow
-    if (!cf?.cash_model) {
+    if (!cf && inputs.cashflowReason) {
+      push('cash_model_ties', 'Cashflow ties to the bank', 'fail', `The cash model is on but could not be built, so the cash pages print a reason instead: ${inputs.cashflowReason.replace(/\.$/, '')}.`)
+    } else if (!cf?.cash_model) {
       push('cash_model_ties', 'Cashflow ties to the bank', 'skip', 'The cashflow is not on cash model v2 — its banked months are estimated, not tied.')
     } else {
       const problems: string[] = []
       const actual = cf.months.filter((m) => m.source === 'actual')
       for (const m of actual) {
         const delta = r2(m.bank_at_end - m.bank_at_beginning)
+        // On the ROWS, not on net_movement: net_movement is built as the rows
+        // plus an "Unexplained difference" row of whatever size makes it the
+        // bank's figure, so comparing it with the bank could never fail. The
+        // bank at each end is the balance-sheet mirror's; the rows are what
+        // the page says moved it.
+        const rows = r2(m.cash_inflows - m.cash_outflows + m.movement_in_assets + m.movement_in_liabilities
+          + (m.movement_in_equity ?? 0) + m.other_inflows)
+        const explained = r2((m.unreconciled_lines ?? []).filter((l) => l.label !== UNEXPLAINED_LABEL).reduce((s, l) => s + l.value, 0))
+        const unexplained = r2(delta - rows - explained)
+        if (Math.abs(unexplained) >= 1) {
+          problems.push(`${m.monthLabel}'s rows add to ${r2(rows + explained)} against a bank movement of ${delta} — ${unexplained} Unexplained difference`)
+        }
         if (Math.abs(r2(m.net_movement - delta)) > 0.01) {
           problems.push(`${m.monthLabel} moves ${m.net_movement} against a bank movement of ${delta}`)
         }
