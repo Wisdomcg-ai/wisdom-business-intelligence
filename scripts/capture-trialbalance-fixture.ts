@@ -54,6 +54,14 @@ function parseArgs(argv: string[]): CliArgs | { help: true } {
     else if (a.startsWith('--label=')) out.label = a.slice('--label='.length)
     else if (a.startsWith('--accounts-label=')) out.accountsLabel = a.slice('--accounts-label='.length)
     else if (a === '--include-inactive') out.includeInactive = true
+    else {
+      // Reject, never ignore: a mistyped flag (e.g. --with-accounts for
+      // --accounts-label=) would otherwise refresh the token and write a
+      // capture without the /Accounts file, and the gate-0 test that needs it
+      // would stay skipped — gate 0 looking passed when it never ran.
+      console.error(`[capture-trialbalance-fixture] unknown argument: ${a}`)
+      process.exit(1)
+    }
   }
   if (!out.businessId || !out.tenantId || !out.balanceDate || !out.label) {
     return { help: true }

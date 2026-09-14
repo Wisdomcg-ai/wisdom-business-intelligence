@@ -256,11 +256,82 @@ describe('FX account split — first enabled run (nothing stored)', () => {
     expect(survivors.sort()).toEqual(
       ['cash:' + UR_FX_GROUP_ID, 'accruals:' + ACC_SALES, 'cash:' + ACC_SALES, ...CODED.map((id) => 'accruals:' + id)].sort(),
     )
-    // The accruals-scoped sweep runs only in months whose accruals ids differ
-    // from the union — here every month (the cash twin carries the merged id).
-    const basisSweeps = r.sweeps.filter((x) => x.filters.some(([op, col]) => op === 'eq' && col === 'basis'))
-    expect(basisSweeps).toHaveLength(15)
-    expect(basisSweeps.every((x) => x.filters.some(([op, col, v]) => op === 'eq' && col === 'basis' && v === 'accruals'))).toBe(true)
+    // With the split live and cash_basis on, every sweep is basis-scoped: one
+    // accruals and one cash sweep per month, and no unscoped union sweep.
+    const basisOf = (x: { filters: Array<[string, string, unknown]> }) =>
+      x.filters.find(([op, col]) => op === 'eq' && col === 'basis')?.[2]
+    expect(r.sweeps).toHaveLength(30)
+    expect(r.sweeps.filter((x) => basisOf(x) === 'accruals')).toHaveLength(15)
+    expect(r.sweeps.filter((x) => basisOf(x) === 'cash')).toHaveLength(15)
+  })
+
+  it('cash_basis on too, a month whose cash P&L fetch fails keeps every stored cash row — the merged FX row included', async () => {
+    // The cash twin's failure never marks the month failed, so the month is
+    // still swept. The union sweep keyed on dbRows had no cash ids for that
+    // month, so it equalled the accruals ids — which, after the split, no
+    // longer carry the merged id — and its unscoped delete took the stored
+    // CASH merged row (and any cash-only account) until a later run's cash
+    // fetch succeeded.
+    const book = urbanRoadBook()
+    const fetches: FetchRecord[] = []
+    const router = routeXero({ [UR_TENANT]: book }, fetches)
+    const stub = installSupabaseStub(supabaseMock, {
+      connections: [UR_CONNECTION],
+      settings: { sections: { fx_account_split: true, cash_basis: true } },
+    })
+    vi.spyOn(global, 'fetch').mockImplementation((async (input: any, init?: any) => {
+      const url = String(input)
+      if (url.includes('paymentsOnly=true') && url.includes('fromDate=2026-08-01&toDate=2026-08-31')) {
+        fetches.push({ url, tenant: String(init?.headers?.['xero-tenant-id'] ?? '') })
+        return jsonResponse({ Message: 'bad request' }, 400)
+      }
+      return router(input, init)
+    }) as any)
+    const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
+    const result = await syncBusinessXeroPL(UR_BIZ)
+    expect(result.status).toBe('success')
+    const sweeps = stub.events.filter((e) => e.table === 'xero_pl_lines' && e.op === 'delete')
+
+    const CASH_ONLY = '11111111-aaaa-4aaa-8aaa-000000000999'
+    const at = (month: string, basis: string, account_id: string) => ({
+      business_id: UR_PROFILE, tenant_id: UR_TENANT, period_month: month, basis, account_id,
+    })
+    const stored = (month: string) => [
+      at(month, 'accruals', UR_FX_GROUP_ID),
+      ...CODED.map((id) => at(month, 'accruals', id)),
+      at(month, 'accruals', ACC_SALES),
+      at(month, 'cash', UR_FX_GROUP_ID),
+      at(month, 'cash', ACC_SALES),
+      at(month, 'cash', CASH_ONLY),
+    ]
+    const survivors = (month: string) =>
+      stored(month).filter((row) => !swept(sweeps, row)).map((x) => `${x.basis}:${x.account_id}`).sort()
+
+    // Aug-26 (cash fetch failed): accruals swept as usual, every cash row kept.
+    expect(survivors('2026-08-01')).toEqual(
+      [
+        ...CODED.map((id) => 'accruals:' + id),
+        'accruals:' + ACC_SALES,
+        'cash:' + UR_FX_GROUP_ID,
+        'cash:' + ACC_SALES,
+        'cash:' + CASH_ONLY,
+      ].sort(),
+    )
+    // Jul-26 (cash fetch succeeded): the cash sweep runs against today's cash ids.
+    expect(survivors('2026-07-01')).toEqual(
+      [...CODED.map((id) => 'accruals:' + id), 'accruals:' + ACC_SALES, 'cash:' + UR_FX_GROUP_ID, 'cash:' + ACC_SALES].sort(),
+    )
+    // Accruals is never counted twice in any month.
+    for (const month of ALL_MONTHS) {
+      const left = stored(month).filter((row) => row.basis === 'accruals' && !swept(sweeps, row)).map((x) => x.account_id)
+      expect(left.includes(UR_FX_GROUP_ID) && CODED.some((id) => left.includes(id))).toBe(false)
+    }
+    // No cash sweep at all for the failed month.
+    const augCashSweeps = sweeps.filter((s) =>
+      s.filters.some(([op, col, v]) => op === 'eq' && col === 'period_month' && v === '2026-08-01') &&
+      s.filters.some(([op, col, v]) => op === 'eq' && col === 'basis' && v === 'cash'),
+    )
+    expect(augCashSweeps).toHaveLength(0)
   })
 
   it('without cash_basis the sweep is exactly the per-month union sweep — no basis-scoped deletes', async () => {

@@ -57,7 +57,11 @@
  * ROLLOUT: leave sections.fx_account_split OFF for a business until its gate-0
  * capture proves (a) Bank Revaluations appears in its Trial Balance and ties,
  * and (b) its /Accounts response carries SystemAccount on the three FX
- * accounts (scripts/capture-trialbalance-fixture.ts --with-accounts). Either
+ * accounts (scripts/capture-trialbalance-fixture.ts
+ * --label=<slug>-trialbalance-YYYY-MM-DD --accounts-label=<slug>-accounts; see
+ * that script's docblock). Gate 0 has run only when
+ * fx-split-gate0-captures.test.ts runs rather than skips — it skips while the
+ * capture files are absent. Either
  * failing is safe — every month keeps its merged row — but it is a flag that
  * does nothing except spend requests.
  *
