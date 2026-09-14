@@ -1,5 +1,6 @@
-import type { GeneratedReport, BudgetProvenance } from '../types'
+import type { GeneratedReport, BudgetProvenance, WagesDetailData } from '../types'
 import type { NoBudgetReason } from '@/lib/budgets/resolve-budget'
+import type { RosterBudgetUnavailableReason } from '@/lib/monthly-report/wages-roster-budget'
 
 /**
  * What the word "Budget" means on the monthly statement — in one place, because
@@ -152,10 +153,12 @@ export function wagesYardstick(provenance?: BudgetProvenance | null): PageYardst
 /**
  * The word over the wages page's PER-EMPLOYEE budget column.
  *
- * A different object from the account column above it: the per-employee plan
- * exists only inside a forecast, and the approved budget is not split by
- * employee. So on a budget-store client's page the two columns cannot both be
- * headed "Budget" — that is the same defect one table lower down.
+ * A different object from the account column above it: the approved budget is
+ * not split by employee, so the per-employee plan is a forecast's — or, for a
+ * client with no forecast plan, the Payroll Report roster's weekly salaries
+ * (`roster`, which the loader sets only then). So on a budget-store client's
+ * page the two columns cannot both be headed "Budget" over a forecast — that
+ * is the same defect one table lower down.
  *
  * `planExists` is the availability guard: with no plan every figure in the
  * column is 0, and $0 against a real actual is a 100% favourable variance on
@@ -164,7 +167,22 @@ export function wagesYardstick(provenance?: BudgetProvenance | null): PageYardst
 export function wagesEmployeeYardstick(
   provenance: BudgetProvenance | null | undefined,
   planExists: boolean,
+  roster?: WagesDetailData['employee_roster'],
 ): PageYardstick {
+  if (roster?.status === 'applied') {
+    return { columnLabel: 'Budget', note: rosterNote(roster, true), available: true, absentNote: null }
+  }
+  if (roster?.status === 'unavailable') {
+    return {
+      columnLabel: 'Budget',
+      note: null,
+      available: false,
+      absentNote:
+        `The Payroll Report roster’s weekly salaries could not be turned into this month’s budget because ` +
+        `${ROSTER_UNAVAILABLE_BECAUSE[roster.reason] ?? 'the pay runs could not be counted'}, ` +
+        'so the per-employee Budget and Variance columns are shown as “—”.',
+    }
+  }
   if (!planExists) {
     return {
       columnLabel: 'Budget',
@@ -188,6 +206,45 @@ export function wagesEmployeeYardstick(
   return { columnLabel: 'Budget', note: null, available: true, absentNote: null }
 }
 
+const ROSTER_UNAVAILABLE_BECAUSE: Record<RosterBudgetUnavailableReason, string> = {
+  unknown_pay_cycle: 'a pay run this month has no recognised pay cycle',
+  mixed_pay_cycles: 'this month’s pay runs are on more than one pay cycle',
+  overlapping_pay_periods: 'this month’s pay runs cover overlapping pay periods',
+  start_dates_unreadable: 'the employees’ start dates could not be read',
+}
+
+/**
+ * Does the roster leave anyone's budget out of the employee Budget total? A
+ * paid employee with no weekly salary, or an unpaid one Xero has no record of.
+ * Then the total covers only part of the team and is not printed as the team's.
+ */
+export function rosterBudgetTotalIsPartial(roster?: WagesDetailData['employee_roster']): boolean {
+  return roster?.status === 'applied' && (roster.missing.length > 0 || roster.unchecked.length > 0)
+}
+
+/**
+ * Where roster budgets come from, and whose budget is not counted. `hasTotalRow`
+ * is the tab's total row, which is left out rather than print a sum over part of
+ * the team under the team's heading; the pack's employee table has no total row.
+ */
+function rosterNote(roster: { missing: readonly string[]; unchecked: readonly string[] }, hasTotalRow: boolean): string {
+  const list = (names: readonly string[]) =>
+    names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+  const sentences = ['Per-employee budgets are the Payroll Report roster’s weekly salaries × this month’s pay runs']
+  if (roster.missing.length > 0) {
+    sentences.push(`No weekly salary on the roster for ${list(roster.missing)}, so their Budget is shown as “—”`)
+  }
+  if (roster.unchecked.length > 0) {
+    const one = roster.unchecked.length === 1
+    sentences.push(
+      `${list(roster.unchecked)} ${one ? 'was' : 'were'} not paid this month and ${one ? 'has' : 'have'} no Xero employee record, ` +
+        `so their ${one ? 'budget is' : 'budgets are'} not counted`,
+    )
+  }
+  const partial = sentences.length > 1
+  return `${sentences.join('. ')}${partial && hasTotalRow ? ' and the Budget total is left out' : ''}.`
+}
+
 /**
  * The Wages page's two yardsticks in the pack: the tab's availability and
  * absent-reason (a column of dashes still has to say why), without the
@@ -196,6 +253,11 @@ export function wagesEmployeeYardstick(
  * Year page's forecast column, which the pack no longer prints. The
  * per-employee column keeps its own head ("Forecast" for a budget-store
  * client), which says what the removed note said.
+ *
+ * The one note the pack keeps is the roster's. Its column is headed "Budget"
+ * under an account table headed "Budget" over the approved budget, and without
+ * the line a reader takes the per-employee figures for a split of that budget —
+ * they are the coach's roster, which happens to tie to it for Urban Road.
  */
 export function packWagesYardstick(provenance?: BudgetProvenance | null): PageYardstick {
   const y = wagesYardstick(provenance)
@@ -205,8 +267,12 @@ export function packWagesYardstick(provenance?: BudgetProvenance | null): PageYa
 export function packWagesEmployeeYardstick(
   provenance: BudgetProvenance | null | undefined,
   planExists: boolean,
+  roster?: WagesDetailData['employee_roster'],
 ): PageYardstick {
-  return { ...wagesEmployeeYardstick(provenance, planExists), note: null }
+  return {
+    ...wagesEmployeeYardstick(provenance, planExists, roster),
+    note: roster?.status === 'applied' ? rosterNote(roster, false) : null,
+  }
 }
 
 /**

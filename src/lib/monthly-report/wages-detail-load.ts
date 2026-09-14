@@ -26,6 +26,14 @@ import {
   buildWagesBudgetResolver,
 } from '@/app/api/monthly-report/wages-detail/_helpers'
 import type { WagesDetailData } from '@/app/finances/monthly-report/types'
+import { cleanEmployeeName } from './payroll-grid'
+import {
+  budgetRosterFromLayout,
+  rosterEmployeeBudgets,
+  type RosterEmployeeBudget,
+  type RosterEmployeeRecord,
+  type RosterUnpaidBudget,
+} from './wages-roster-budget'
 
 type Client = any
 
@@ -37,6 +45,15 @@ export interface WagesDetailLoadInput {
   budget_forecast_id?: string
   /** Who asked — recorded on the not-owned-forecast warning only. */
   actor_id?: string | null
+  /**
+   * The pack layout being rendered, whose Payroll Report roster sets the
+   * per-employee budgets. The page sends the layout it holds — just saved, or a
+   * default template's applied on load and never saved — and the harness the
+   * one it renders, so the Wages Analysis page reads the roster the Payroll
+   * Report page prints. Null: no layout, so no roster. Absent (undefined): the
+   * business's stored monthly_report_settings.pdf_layout.
+   */
+  pdf_layout?: unknown
 }
 
 /** One employee's payslips for the month, however they were obtained. */
@@ -46,7 +63,8 @@ export interface EmployeePayData {
   jobTitle?: string
   calendarType: string
   annualSalary?: number
-  payslips: { date: string; periodStart: string; periodEnd: string; gross: number; tax: number; superAmt: number; net: number }[]
+  /** calendarType is the run's own, where the payslip carried one; otherwise the employee's. */
+  payslips: { date: string; periodStart: string; periodEnd: string; gross: number; tax: number; superAmt: number; net: number; calendarType?: string | null }[]
 }
 
 export interface LivePayrollResult {
@@ -124,7 +142,7 @@ export async function loadWagesDetail(
   // 'forecast'` test would switch every one of them onto the budget store.
   const { data: reportSettings } = await supabase
     .from('monthly_report_settings')
-    .select('budget_source')
+    .select('budget_source, pdf_layout')
     .eq('business_id', business_id)
     .maybeSingle()
   const budgetSource: 'forecast' | 'budget_version' =
@@ -377,6 +395,7 @@ export async function loadWagesDetail(
         tax: Number(slip.tax ?? 0),
         superAmt: Number(slip.super_amount ?? 0),
         net: Number(slip.net_pay ?? 0),
+        calendarType: slip.calendar_type ?? null,
       })
     }
   }
@@ -424,6 +443,64 @@ export async function loadWagesDetail(
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') {
       console.log('[WagesDetail] Could not fetch Xero payroll data:', err)
+    }
+  }
+
+  // ===== 5b. Per-employee budgets from the Payroll Report roster =====
+  //
+  // Only where no forecast employee plan applies — a forecast client's page
+  // is exactly what it was — and only where a roster gives someone a weekly
+  // salary, so a client without one reads nothing more than before.
+  let rosterBudgets: Map<string, RosterEmployeeBudget> | null = null
+  let rosterUnpaid: { budgets: RosterUnpaidBudget[]; payCycle: string | null } = { budgets: [], payCycle: null }
+  let employeeRoster: WagesDetailData['employee_roster']
+  const budgetRoster = forecastEmployees.length === 0
+    ? budgetRosterFromLayout(input.pdf_layout !== undefined ? input.pdf_layout : reportSettings?.pdf_layout)
+    : null
+  if (budgetRoster) {
+    const paid = Array.from(employeePayMap.values())
+    const { data: employeeRows, error: employeeErr } = await supabase
+      .from('xero_employees')
+      .select('employee_id, first_name, last_name, start_date, termination_date')
+      .in('business_id', ids.all)
+    if (employeeErr) {
+      // Without start dates a mid-month starter would be budgeted for the
+      // whole month. Could-not-check, said on the page, not a guess.
+      Sentry.captureException(employeeErr, { tags: { route: 'monthly-report/wages-detail', invariant: 'wages-roster-start-dates-read' }, extra: { business_id, report_month } } as any)
+      employeeRoster = { status: 'unavailable', reason: 'start_dates_unreadable' }
+    } else {
+      const records: RosterEmployeeRecord[] = ((employeeRows || []) as {
+        employee_id: string; first_name: string | null; last_name: string | null; start_date: string | null; termination_date: string | null
+      }[]).map((r) => ({
+        employee_id: r.employee_id,
+        name: `${r.first_name ?? ''} ${r.last_name ?? ''}`,
+        start_date: r.start_date,
+        termination_date: r.termination_date,
+      }))
+      const recordOf = new Map(records.map((r) => [r.employee_id, r]))
+      const result = rosterEmployeeBudgets({
+        roster: budgetRoster,
+        payslips: paid.flatMap((e) => e.payslips.map((ps) => ({
+          payment_date: ps.date,
+          calendar_type: ps.calendarType !== undefined ? ps.calendarType : e.calendarType,
+          period_start: ps.periodStart || null,
+          period_end: ps.periodEnd || null,
+        }))),
+        employees: paid.map((e) => ({
+          employee_id: e.employeeId,
+          name: e.name,
+          start_date: recordOf.get(e.employeeId)?.start_date ?? null,
+          termination_date: recordOf.get(e.employeeId)?.termination_date ?? null,
+        })),
+        records,
+      })
+      if (result.ok) {
+        rosterBudgets = new Map(paid.map((e, i) => [e.employeeId, result.employees[i]]))
+        rosterUnpaid = { budgets: result.unpaid, payCycle: result.pay_cycle }
+        employeeRoster = { status: 'applied', missing: [], unchecked: result.unchecked }
+      } else {
+        employeeRoster = { status: 'unavailable', reason: result.reason }
+      }
     }
   }
 
@@ -503,6 +580,9 @@ export async function loadWagesDetail(
 
     let budgetTotal = 0
     let category = forecastMatch?.category || 'Wages Admin'
+    // A roster that gives this person no weekly salary: no budget, which is
+    // not a budget of $0 and not a variance of their whole pay.
+    let budgetMissing = false
 
     if (forecastMatch) {
       matchedForecastKeys.add(tokenSortKey(forecastMatch.employee_name))
@@ -516,9 +596,15 @@ export async function loadWagesDetail(
       } else if (forecastMatch.annual_salary && Number(forecastMatch.annual_salary) > 0) {
         budgetTotal = Number(forecastMatch.annual_salary) / 12
       }
+    } else if (rosterBudgets) {
+      // Reached only with no forecast employees at all (5b), so a roster never
+      // sits beside a forecast match.
+      const rostered = rosterBudgets.get(xeData.employeeId)
+      if (rostered?.budget != null) budgetTotal = rostered.budget
+      else budgetMissing = true
     }
 
-    const variance = budgetTotal - totalActual
+    const variance = budgetMissing ? 0 : budgetTotal - totalActual
     const variancePct = budgetTotal !== 0 ? (variance / budgetTotal) * 100 : 0
 
     empActualTotal += totalActual
@@ -544,6 +630,29 @@ export async function loadWagesDetail(
       variance: Math.round(variance * 100) / 100,
       variance_percent: Math.round(variancePct * 10) / 10,
       source: forecastMatch ? 'both' : 'xero',
+      ...(budgetMissing ? { budget_missing: true } : {}),
+    })
+  }
+
+  // Rostered with a weekly salary but paid nothing this month: they keep their
+  // budget and a row, as a forecast's budgeted-not-paid employee does below —
+  // a missing person is a real variance, and the Budget total is the roster's.
+  // A leaver has no weeks in the month and no row (wages-roster-budget).
+  for (const r of rosterUnpaid.budgets) {
+    const cycle = rosterUnpaid.payCycle ?? ''
+    empBudgetTotal += r.budget
+    employees.push({
+      name: r.name,
+      position: '',
+      category: 'Wages Admin',
+      pay_frequency: FREQUENCY_LABELS[cycle] || cycle,
+      budget_per_period: r.budget,
+      actual_total: 0,
+      budget_total: r.budget,
+      pay_runs: [],
+      variance: r.budget,
+      variance_percent: 100,
+      source: 'roster' as const,
     })
   }
 
@@ -615,7 +724,13 @@ export async function loadWagesDetail(
   // use employee totals as the grand total (Xero Payroll doesn't always
   // create P&L line items that appear in the standard P&L report)
   const finalActual = grandActual > 0 ? grandActual : empActualTotal
-  const finalBudget = grandBudget > 0 ? grandBudget : empBudgetTotal
+  // The roster is a per-employee yardstick. The account table's budget stays
+  // the resolver's, so a roster never stands in for an account budget of 0.
+  const finalBudget = grandBudget > 0 ? grandBudget : rosterBudgets ? 0 : empBudgetTotal
+
+  if (employeeRoster?.status === 'applied') {
+    employeeRoster.missing = employees.filter((e) => e.budget_missing).map((e) => cleanEmployeeName(e.name))
+  }
 
   // Also backfill account-level actuals from employee PayRun totals
   // when no P&L line exists for the wages accounts
@@ -643,9 +758,11 @@ export async function loadWagesDetail(
         reason: resolvedBudget.noBudgetReason,
         fiscal_year,
       },
-      // The per-employee plan lives only in a forecast. False means there is
-      // no plan for this month — not that the team is budgeted at nothing.
-      employee_plan_available: forecastEmployees.length > 0,
+      // The per-employee plan is a forecast's, or else the Payroll Report
+      // roster's weekly salaries. False means there is no plan for this month
+      // — not that the team is budgeted at nothing.
+      employee_plan_available: forecastEmployees.length > 0 || employeeRoster?.status === 'applied',
+      ...(employeeRoster ? { employee_roster: employeeRoster } : {}),
       employees,
       employee_totals: {
         actual: Math.round(empActualTotal * 100) / 100,

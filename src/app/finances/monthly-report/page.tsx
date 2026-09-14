@@ -385,13 +385,15 @@ export default function MonthlyReportPage() {
     clear: clearSubscription,
   } = useSubscriptionDetail(businessId)
 
+  // Given the layout the page prints: the per-employee budgets read its Payroll
+  // Report roster, and wages loaded for another roster are not handed back.
   const {
     wagesDetail,
     isLoading: wagesLoading,
     error: wagesError,
     loadWagesDetail,
     clear: clearWages,
-  } = useWagesDetail(businessId)
+  } = useWagesDetail(businessId, settings?.pdf_layout ?? null)
 
   const {
     mappings,

@@ -756,7 +756,14 @@ export interface WagesEmployeeLine {
   pay_runs: WagesPayRunEntry[]
   variance: number
   variance_percent: number
-  source: 'xero' | 'forecast' | 'both'
+  /** 'roster': on the Payroll Report roster with a weekly salary, and not paid this month. */
+  source: 'xero' | 'forecast' | 'both' | 'roster'
+  /**
+   * The Payroll Report roster gives this employee no weekly salary, so there
+   * is no budget to measure them against: budget_total and variance are 0 and
+   * every surface prints a dash. Only ever set on a roster-budgeted page.
+   */
+  budget_missing?: boolean
 }
 
 // WE.1b — one external-metrics series as the GET route returns it, threaded
@@ -812,14 +819,33 @@ export interface WagesDetailData {
    */
   budget_provenance?: BudgetProvenance
   /**
-   * Is there a per-employee plan for this month at all? Only a forecast has
-   * one — the approved budget is not split by employee — so this is false for
-   * a budget-store client with no forecast, and the per-employee Budget and
-   * Variance columns are dashes rather than $0 against a full actual.
+   * Is there a per-employee plan for this month at all? A forecast has one;
+   * the approved budget is not split by employee, so a budget-store client
+   * has one only when its Payroll Report roster supplies weekly salaries
+   * (employee_roster). False: the per-employee Budget and Variance columns are
+   * dashes rather than $0 against a full actual.
    *
    * Optional for the same reason budget_provenance is.
    */
   employee_plan_available?: boolean
+  /**
+   * Present only when the per-employee Budget came — or was meant to come —
+   * from the Payroll Report roster's weekly salaries: no forecast employee
+   * plan applied, and a roster gives someone a weekly salary.
+   *
+   * 'applied'      budgets are weekly salary × this month's pay runs, and a
+   *                rostered employee who was not paid keeps a row and their
+   *                budget. `missing` names the paid employees the roster gives
+   *                no weekly salary; `unchecked` the unpaid ones with a weekly
+   *                salary but no Xero employee record to say whether they were
+   *                employed. When either is not empty, employee_totals.budget
+   *                covers only the rest and is not printed as the team's budget.
+   * 'unavailable'  the month's pay runs could not be counted in weeks without
+   *                guessing; `reason` says why.
+   */
+  employee_roster?:
+    | { status: 'applied'; missing: string[]; unchecked: string[] }
+    | { status: 'unavailable'; reason: import('@/lib/monthly-report/wages-roster-budget').RosterBudgetUnavailableReason }
   employees: WagesEmployeeLine[]
   employee_totals: { actual: number; budget: number; variance: number }
   grand_total: { actual: number; budget: number; variance: number }

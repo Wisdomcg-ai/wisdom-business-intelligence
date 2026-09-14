@@ -30,6 +30,7 @@ const WagesDetailPostSchema = z.object({
   fiscal_year: z.number(),
   wages_account_names: z.array(z.string()).optional(),
   budget_forecast_id: z.string().optional(),
+  pdf_layout: z.any().optional(),
 })
 
 const supabase = createClient(
@@ -271,12 +272,13 @@ async function postHandler(request: Request) {
     }
 
     const body = await request.json()
-    const { business_id, report_month, fiscal_year, wages_account_names, budget_forecast_id } = body as {
+    const { business_id, report_month, fiscal_year, wages_account_names, budget_forecast_id, pdf_layout } = body as {
       business_id: string
       report_month: string
       fiscal_year: number
       wages_account_names: string[]
       budget_forecast_id?: string
+      pdf_layout?: unknown
     }
 
     if (!business_id || !report_month || !fiscal_year) {
@@ -313,9 +315,15 @@ async function postHandler(request: Request) {
 
     // The build lives in lib/monthly-report/wages-detail-load, shared with
     // scripts/preview-pack.ts. Only the live Xero fallback stays here.
+    //
+    // pdf_layout is the layout the page is printing, whose Payroll Report
+    // roster sets the per-employee budgets — so the Wages Analysis page and the
+    // Payroll Report page of one export read one roster. It only picks weekly
+    // salaries for this business's own payslips, which the checks above have
+    // authorised. Not sent: the stored layout.
     const result = await loadWagesDetail(
       supabase,
-      { business_id, report_month, fiscal_year, wages_account_names, budget_forecast_id, actor_id: user.id },
+      { business_id, report_month, fiscal_year, wages_account_names, budget_forecast_id, actor_id: user.id, pdf_layout },
       { fetchLivePayroll: (connection) => fetchLivePayroll(connection, report_month) },
     )
 

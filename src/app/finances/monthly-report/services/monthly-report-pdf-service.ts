@@ -2252,20 +2252,25 @@ export class MonthlyReportPDFService {
       this.doc.text('Employee Detail', this.margin, this.yPosition)
       this.yPosition += 6
 
-      // A different object from the table above: only a forecast carries a
-      // per-employee plan, and the approved budget is not split by employee.
+      // A different object from the table above: the approved budget is not
+      // split by employee, so the per-employee plan is a forecast's or the
+      // Payroll Report roster's.
       const empYardstick = packWagesEmployeeYardstick(
         detail.budget_provenance,
         detail.employee_plan_available ?? true,
+        detail.employee_roster,
       )
       if (empYardstick.absentNote) this.drawReasonCard(empYardstick.absentNote)
+      if (empYardstick.note) this.drawNote(empYardstick.note, undefined, { fontSize: 7.5, color: [120, 120, 120] })
 
+      // Someone the roster gives no weekly salary has no budget: a dash, not $0.
+      const stated = (e: { budget_missing?: boolean }) => empYardstick.available && !e.budget_missing
       const empHeaders = ['Employee', 'Total Paid', empYardstick.columnLabel, 'Var ($)']
       const empData = detail.employees.map(e => [
         e.name,
         this.fmtCurrency(e.actual_total),
-        empYardstick.available ? this.fmtCurrency(e.budget_total) : '—',
-        empYardstick.available ? this.fmtVariance(e.variance) : '—',
+        stated(e) ? this.fmtCurrency(e.budget_total) : '—',
+        stated(e) ? this.fmtVariance(e.variance) : '—',
       ])
 
       const options = (bodyStyles: UserOptions['bodyStyles']): UserOptions => ({
