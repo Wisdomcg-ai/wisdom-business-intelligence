@@ -17,8 +17,13 @@ export const UR_TENANT = "8519c134-ed81-4d9b-8f07-ce499d12b7ee"
 
 /** CBA Cheque Account + Bus Online Saver: the bank set Calxa and decision 20 use. */
 export const UR_BANK_IDS = ['6532a9b0-e2c4-48c9-bcc3-65757e80d4e4', 'cd058bf3-c1a1-4379-b886-424aa5e77e7f']
-/** Amex Business Card and Suzie Credit Card (xero_accounts bank_account_type CREDITCARD). */
-export const UR_CREDIT_CARD_IDS = ['50a3aabd-14b2-4b9c-988e-25e0c3c56b39', '699a2acf-f125-485f-b9d7-dcb8755f95c7']
+/**
+ * Amex Business Card, Suzie Credit Card and American Express® Platinum
+ * Business Card: the ACTIVE xero_accounts rows with bank_account_type
+ * CREDITCARD (all three xero_type BANK, xero_class ASSET), as the loader
+ * builds creditCardAccountIds.
+ */
+export const UR_CREDIT_CARD_IDS = ['50a3aabd-14b2-4b9c-988e-25e0c3c56b39', '699a2acf-f125-485f-b9d7-dcb8755f95c7', '0aca1d06-e22b-4d9c-b172-8c4a59aee56b']
 
 /** xero_accounts.tax_type by account code, for every account the P&L and budget use. */
 export const UR_TAX_TYPES: Record<string, string> = {

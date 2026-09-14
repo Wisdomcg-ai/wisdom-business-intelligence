@@ -373,8 +373,9 @@ export interface CashflowEngineOptions {
    * Payroll by account code, without a PayrollSummary. A wages line is paid
    * NET (accrual x (1 - PAYG rate)) in its month under its own name and its
    * PAYG accrues to the PAYG liability; a super line is not paid as an expense
-   * and accrues to the super liability. By code, never by keyword, so Staff
-   * Amenities and Workers' Compensation are paid as the expenses they are.
+   * and accrues to the super liability. By code (trimmed, any case), never by
+   * keyword, so Staff Amenities and Workers' Compensation are paid as the
+   * expenses they are.
    *
    * Deliberately not routed through PayrollSummary: that path pays GROSS wages
    * and also remits payg_monthly, so it would pay PAYG twice. The defect is
@@ -467,11 +468,15 @@ export function generateCashflowForecast(
     isGSTExemptExpense(line.account_name) ? 0 : gstRate * assumptions.gst_applicable_expense_pct
   const gstAccrualByMonth: Record<string, number> = {}
   const spill = options.firstMonthSpill !== false
+  // Matched trimmed and case-insensitively, as the pack's actual months and
+  // its account check match them: an exact match here let a code typed in
+  // another case tie July and August and then pay the budget's wages gross.
+  const payrollCode = (c: string) => c.trim().toLowerCase()
   const payrollCodes = options.payroll
-    ? { wages: new Set(options.payroll.wagesCodes), super: new Set(options.payroll.superCodes) }
+    ? { wages: new Set(options.payroll.wagesCodes.map(payrollCode)), super: new Set(options.payroll.superCodes.map(payrollCode)) }
     : null
-  const isWagesLine = (l: PLLine) => !!payrollCodes && !!l.account_code && payrollCodes.wages.has(l.account_code)
-  const isSuperLine = (l: PLLine) => !!payrollCodes && !!l.account_code && payrollCodes.super.has(l.account_code)
+  const isWagesLine = (l: PLLine) => !!payrollCodes && !!l.account_code && payrollCodes.wages.has(payrollCode(l.account_code))
+  const isSuperLine = (l: PLLine) => !!payrollCodes && !!l.account_code && payrollCodes.super.has(payrollCode(l.account_code))
   const paygAccrualByMonth: Record<string, number> = {}
   const superAccrualByMonth: Record<string, number> = {}
 

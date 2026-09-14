@@ -349,6 +349,15 @@ function chartClass(a: CashModelAccount | undefined): 'asset' | 'liability' | 'e
  *   any role                       never a bank account, a credit card, an
  *                                  earnings account or a P&L account
  *
+ * A bank account is one the mirror files in the bank (the chosen set, or the
+ * Bank section) or one Xero types BANK. The type is what catches an overdrawn
+ * account: the mirror files it as a liability, outside the Bank section, so
+ * it passed as debtors or an opening ATO account (the final verifier, 14 Sep
+ * 2026 — an overdraft in opening_ato_accounts was paid out in September), and
+ * Xero classes every BANK account ASSET, so in a liability role it was
+ * refused as "an asset". A credit card is Xero type BANK too (Urban Road's
+ * three, bank_account_type CREDITCARD) and says so first.
+ *
  * The kind is Xero's own class where the chart of accounts has it: the
  * balance-sheet mirror files an account by its balance's polarity when the two
  * conflict, and a debtors account in credit is still debtors. Xero's AU payroll
@@ -432,10 +441,14 @@ export function checkCashModelAccounts(
       let wrong: string | null = null
       if (xeroClass === 'revenue' || xeroClass === 'expense' || plIds.has(key) || (!row && !!charted?.account_code && plCodes.has(norm(charted.account_code)))) {
         wrong = 'a profit and loss account, not a balance-sheet account'
-      } else if (row && (isBankRow(row, inputs.bankAccountIds ?? null) || row.section === 'Bank')) {
-        wrong = 'a bank account'
       } else if (cards.has(key)) {
         wrong = 'a credit card'
+      } else if (row && (isBankRow(row, inputs.bankAccountIds ?? null) || row.section === 'Bank')) {
+        wrong = 'a bank account'
+      } else if ((charted?.xero_type ?? '').trim().toUpperCase() === 'BANK') {
+        wrong = row && row.account_type !== 'asset'
+          ? `a bank account (Xero type BANK) the balance sheet files as ${row.account_type === 'equity' ? 'equity' : `a ${row.account_type}`}`
+          : 'a bank account (Xero type BANK)'
       } else if (row && isEarningsRow(row)) {
         wrong = 'an earnings account'
       } else if (kind && !kinds.includes(kind)) {
@@ -496,22 +509,76 @@ export function checkCashModelAccounts(
  */
 function payrollCodesSwapped(plRows: CashPlRow[], cfg: CashModelConfig, months: string[], payslips: Record<string, MonthPayslips>): string | null {
   if (cfg.wages_codes.length === 0 || cfg.super.expense_codes.length === 0) return null
-  const total = (codes: readonly string[]) => {
-    const wanted = new Set(codes.map(norm))
-    let s = 0
-    for (const r of plRows) {
-      if (!r.account_code || !wanted.has(norm(r.account_code))) continue
-      for (const m of months) s += num(r.monthly_values?.[m])
-    }
-    return round2(s)
-  }
-  const wages = total(cfg.wages_codes)
-  const superTotal = total(cfg.super.expense_codes)
+  const wages = bookedTo(plRows, cfg.wages_codes, months)
+  const superTotal = bookedTo(plRows, cfg.super.expense_codes, months)
   const paidWages = months.reduce((s, m) => s + (payslips[m]?.wages ?? 0), 0)
   const paidSuper = months.reduce((s, m) => s + (payslips[m]?.super_amount ?? 0), 0)
   if (paidWages <= 0 || paidSuper >= paidWages || superTotal <= 0 || superTotal <= wages) return null
-  const range = months.length === 1 ? packMonthYear(months[0]) : `${packMonthYear(months[0])} to ${packMonthYear(months[months.length - 1])}`
-  return `wages_codes and super.expense_codes look swapped: ${range} booked ${fmtDollars(superTotal)} to the super codes (${cfg.super.expense_codes.join(', ')}) and ${fmtDollars(wages)} to the wages codes (${cfg.wages_codes.join(', ')}), while the pay runs paid ${fmtDollars(paidWages)} of wages and ${fmtDollars(paidSuper)} of super — check the codes in the cash model settings`
+  return `wages_codes and super.expense_codes look swapped: ${monthsText(months)} booked ${fmtDollars(superTotal)} to the super codes (${cfg.super.expense_codes.join(', ')}) and ${fmtDollars(wages)} to the wages codes (${cfg.wages_codes.join(', ')}), while the pay runs paid ${fmtDollars(paidWages)} of wages and ${fmtDollars(paidSuper)} of super — check the codes in the cash model settings`
+}
+
+/** Σ the P&L booked to `codes` (matched trimmed, any case) over `months`. */
+function bookedTo(plRows: CashPlRow[], codes: readonly string[], months: readonly string[]): number {
+  const wanted = new Set(codes.map(norm))
+  let s = 0
+  for (const r of plRows) {
+    if (!r.account_code || !wanted.has(norm(r.account_code))) continue
+    for (const m of months) s += num(r.monthly_values?.[m])
+  }
+  return round2(s)
+}
+
+/** 'Jul 2026 to Sep 2026, Nov 2026': ascending months, each unbroken run as a range. */
+function monthsText(months: readonly string[]): string {
+  const runs: string[][] = []
+  for (const m of months) {
+    const last = runs[runs.length - 1]
+    if (last && nextMonth(last[last.length - 1]) === m) last.push(m)
+    else runs.push([m])
+  }
+  return runs.map((r) => (r.length === 1 ? packMonthYear(r[0]) : `${packMonthYear(r[0])} to ${packMonthYear(r[r.length - 1])}`)).join(', ')
+}
+
+/**
+ * How far the payroll codes' booked total may sit from the pay runs before
+ * the coach is told. A band, not a refusal: an accrual or a pay run dated
+ * across a month-end moves wages between months, and Urban Road's codes tie
+ * to the cent.
+ */
+const PAYROLL_CODE_TOLERANCE = 0.1
+
+/**
+ * A real expense account in a payroll role, the wrong one. The role check
+ * passes any expense account, and the actual months tie whichever it is (the
+ * rows are apportioned to the bank), so the error lands only in the budget
+ * months: Contractors 61400 added to wages_codes paid Urban Road's budget
+ * contractors net of PAYG — Sep bank 112,605 against 133,602 — ready and
+ * silent (the final verifier, 14 Sep 2026).
+ *
+ * The pay runs say what the wages and super were. Over the actual months that
+ * have pay runs (a month with none is already warned, and its booked wages
+ * are not a difference), the total booked to wages_codes against the pay
+ * runs' wages, and to super.expense_codes against their super: past
+ * PAYROLL_CODE_TOLERANCE of the pay runs' figure, a warning naming the months
+ * and both figures. The model and its output are unchanged.
+ */
+function payrollCodesDisagree(plRows: CashPlRow[], cfg: CashModelConfig, months: string[], payslips: Record<string, MonthPayslips>): string[] {
+  const compared = months.filter((m) => (payslips[m]?.runs ?? 0) > 0)
+  if (compared.length === 0) return []
+  const out: string[] = []
+  const checks = [
+    { role: 'wages_codes', codes: cfg.wages_codes, what: 'wages', paid: (p: MonthPayslips) => p.wages },
+    { role: 'super.expense_codes', codes: cfg.super.expense_codes, what: 'super', paid: (p: MonthPayslips) => p.super_amount },
+  ]
+  for (const { role, codes, what, paid: paidOf } of checks) {
+    if (codes.length === 0) continue
+    const booked = bookedTo(plRows, codes, compared)
+    const paid = round2(compared.reduce((s, m) => s + paidOf(payslips[m]), 0))
+    if (paid <= 0 || Math.abs(booked - paid) <= PAYROLL_CODE_TOLERANCE * paid) continue
+    const pct = Math.round((Math.abs(booked - paid) / paid) * 100)
+    out.push(`${monthsText(compared)}: ${role} (${codes.join(', ')}) booked ${fmtDollars(booked)} against ${fmtDollars(paid)} of ${what} on the pay runs, ${pct}% ${booked > paid ? 'more' : 'less'} — the budget months pay these accounts as ${what}; check ${role} in the cash model settings`)
+  }
+  return out
 }
 
 /**
@@ -563,6 +630,9 @@ export function buildPackCashModel(args: {
   warnings.push(...accountCheck.warnings)
   const swapped = payrollCodesSwapped(inputs.plRows, cfg, actualMonths, payslips)
   if (swapped) return { status: 'refused', reason: swapped }
+  // Early in the list: the preflight row shows the first few warnings, and a
+  // wrong payroll account moves every budget month.
+  warnings.push(...payrollCodesDisagree(inputs.plRows, cfg, actualMonths, payslips))
 
   // ── Actual months ──
   const actual: CashflowForecastMonth[] = []

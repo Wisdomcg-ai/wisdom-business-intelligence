@@ -40,6 +40,35 @@ const at = (model: ReturnType<typeof build>, month: string) => {
   return model.cashflow.months.find((m) => m.month === month)!
 }
 const v = (lines: { label: string; value: number }[] | undefined, label: string) => lines?.find((l) => l.label === label)?.value ?? 0
+const refused = (model: ReturnType<typeof build>, ...parts: string[]) => {
+  expect(model.status).toBe('refused')
+  if (model.status === 'refused') for (const p of parts) expect(model.reason).toContain(p)
+}
+
+/** American Express® Platinum Business Card: prod's xero_accounts types it BANK, bank_account_type CREDITCARD. */
+const AMEX_PLATINUM = '0aca1d06-e22b-4d9c-b172-8c4a59aee56b'
+
+/**
+ * The chart as prod carries it: every account with xero_class (the fixture's
+ * UR_ACCOUNTS has none), balance-sheet accounts by their mirror kind, P&L
+ * accounts REVENUE or EXPENSE by the P&L mirror's type — and, as Xero's
+ * Accounts endpoint returns them, every bank account and credit card of type
+ * BANK, class ASSET, though the mirror files the cards as liabilities.
+ */
+const plType = new Map(UR_PL_ROWS.filter((r) => r.account_code).map((r) => [r.account_code!, r.account_type]))
+const bankTyped = new Set([...UR_BS_ROWS.filter((r) => r.section === 'Bank').map((r) => r.account_id!), ...UR_CREDIT_CARD_IDS])
+const prodChart = (over: Record<string, Partial<(typeof UR_ACCOUNTS)[number]>> = {}) => [
+  ...UR_ACCOUNTS.map((a) => {
+    const t = a.account_code ? plType.get(a.account_code) : undefined
+    return { ...a, xero_class: t === 'revenue' || t === 'other_income' || a.account_code?.startsWith('4') ? 'REVENUE' : 'EXPENSE', ...(a.account_code ? over[a.account_code] : {}) }
+  }),
+  ...UR_BS_ROWS.filter((r) => r.account_id).map((r) => ({
+    xero_account_id: r.account_id!, account_code: r.account_code ?? null, account_name: r.account_name, tax_type: 'BASEXCLUDED',
+    xero_class: bankTyped.has(r.account_id!) ? 'ASSET' : r.account_type.toUpperCase(),
+    ...(bankTyped.has(r.account_id!) ? { xero_type: 'BANK' } : {}),
+    ...(r.account_code ? over[r.account_code] : {}),
+  })),
+]
 
 describe('a configured account that is not on the balance sheet', () => {
   it('refuses, naming the setting and the id, rather than open the forecast on $0 of debtors', () => {
@@ -87,11 +116,6 @@ describe('a configured account that is not on the balance sheet', () => {
  * none of them looked any different to the coach.
  */
 describe('a configured account that is the wrong kind for its role', () => {
-  const refused = (model: ReturnType<typeof build>, ...parts: string[]) => {
-    expect(model.status).toBe('refused')
-    if (model.status === 'refused') for (const p of parts) expect(model.reason).toContain(p)
-  }
-
   it('a P&L account as debtors is refused, not counted as $0 of debtors (Sep receipts 180,933 against 459,361)', () => {
     // code-41000 is Canvas Sales in the chart of accounts: never on the sheet.
     refused(build(calxa({ debtors_account_ids: ['code-41000'] })), 'debtors_account_ids', '#41000', 'profit and loss')
@@ -167,29 +191,12 @@ describe('a configured account that is the wrong kind for its role', () => {
  * July and August still tied.
  */
 describe('the payroll codes and the opening ATO accounts are checked too', () => {
-  const refused = (model: ReturnType<typeof build>, ...parts: string[]) => {
-    expect(model.status).toBe('refused')
-    if (model.status === 'refused') for (const p of parts) expect(model.reason).toContain(p)
-  }
-  /**
-   * The chart as prod carries it: every account with xero_class (the fixture's
-   * UR_ACCOUNTS has none), balance-sheet accounts by their mirror kind, P&L
-   * accounts REVENUE or EXPENSE by the P&L mirror's type.
-   */
-  const plType = new Map(UR_PL_ROWS.filter((r) => r.account_code).map((r) => [r.account_code!, r.account_type]))
-  const prodChart = (over: Record<string, Partial<(typeof UR_ACCOUNTS)[number]>> = {}) => [
-    ...UR_ACCOUNTS.map((a) => {
-      const t = a.account_code ? plType.get(a.account_code) : undefined
-      return { ...a, xero_class: t === 'revenue' || t === 'other_income' || a.account_code?.startsWith('4') ? 'REVENUE' : 'EXPENSE', ...(a.account_code ? over[a.account_code] : {}) }
-    }),
-    ...UR_BS_ROWS.filter((r) => r.account_id).map((r) => ({
-      xero_account_id: r.account_id!, account_code: r.account_code ?? null, account_name: r.account_name, tax_type: 'BASEXCLUDED', xero_class: r.account_type.toUpperCase(),
-      ...(r.account_code ? over[r.account_code] : {}),
-    })),
-  ]
-
-  it('the baseline is still ready on a prod-shaped chart', () => {
-    expect(build(calxa(), { accounts: prodChart() }).status).toBe('ready')
+  it('the baseline is still ready on a prod-shaped chart, and builds the same forecast', () => {
+    const plain = build(calxa())
+    const prod = build(calxa(), { accounts: prodChart() })
+    if (plain.status !== 'ready' || prod.status !== 'ready') throw new Error('not ready')
+    expect(prod.cashflow.months.map((m) => m.bank_at_end)).toEqual(plain.cashflow.months.map((m) => m.bank_at_end))
+    expect(prod.warnings).toEqual(plain.warnings)
   })
 
   it('a revenue account, a missing code or a balance-sheet code in super.expense_codes is refused (Sep bank 138,476 against 133,602)', () => {
@@ -281,6 +288,147 @@ describe('the payroll codes and the opening ATO accounts are checked too', () =>
     const cfg = calxa({ opening_ato_accounts: [{ account_id: id, pay: 'first_forecast_month' }, { account_id: id.toUpperCase(), pay: 'first_forecast_month' }] })
     expect(parseCashModelConfig(cfg).status).toBe('invalid')
     refused(build(cfg), 'opening_ato_accounts', 'more than once')
+  })
+})
+
+/**
+ * The final verifier (14 Sep 2026): the bank check matched only bank ASSET
+ * rows. A Xero BANK account that is overdrawn is filed by the mirror as a
+ * liability, so it passed as debtors or as an opening ATO account — and Xero
+ * classes every BANK account ASSET, so in the liability roles it was refused
+ * for the wrong reason ("an asset").
+ */
+describe('a Xero bank account is refused in every role, overdrawn or not', () => {
+  const tenant = UR_BS_ROWS[0].tenant_id
+  const dates = { '2026-06-30': 2500, '2026-07-31': 2500, '2026-08-31': 2500 }
+  const bsRows = [
+    ...UR_BS_ROWS,
+    // An overdraft of $2,500, filed under Current Liabilities; a director loan keeps A − L − E at 0.
+    { account_id: 'overdrawn-bank', account_code: '11190', account_name: 'CBA Overdraft', account_type: 'liability', section: 'Current Liabilities', tenant_id: tenant, balances_by_date: dates },
+    { account_id: 'director-loan', account_code: '12900', account_name: 'Director Loan', account_type: 'asset', section: 'Current Assets', tenant_id: tenant, balances_by_date: dates },
+  ]
+  const accounts = [...UR_ACCOUNTS, { xero_account_id: 'overdrawn-bank', account_code: '11190', account_name: 'CBA Overdraft', tax_type: 'BASEXCLUDED', xero_class: 'ASSET', xero_type: 'BANK' }]
+
+  it('an overdrawn bank account is refused as debtors, creditors, GST, PAYG, super or an opening ATO account, naming the field and the account', () => {
+    const base = calxa()
+    const od = 'overdrawn-bank'
+    const cases: Array<[string, CashModelConfig]> = [
+      // Ready before: September opened on -$2,500 of debtors (Sep bank -147,326 against 133,602).
+      ['debtors_account_ids', calxa({ debtors_account_ids: [od] })],
+      ['creditors_account_ids', calxa({ creditors_account_ids: [od] })],
+      ['gst.account_ids', calxa({ gst: { ...base.gst, account_ids: [...base.gst.account_ids, od] } })],
+      ['paygw.liability_account_ids', calxa({ paygw: { ...base.paygw, liability_account_ids: [od] } })],
+      ['super.payable_account_ids', calxa({ super: { ...base.super, payable_account_ids: [od] } })],
+      // Ready before: the overdraft paid out in September (Sep bank 131,102).
+      ['opening_ato_accounts', calxa({ opening_ato_accounts: [{ account_id: od, pay: 'first_forecast_month' }] })],
+    ]
+    for (const [role, cfg] of cases) refused(build(cfg, { bsRows, accounts }), role, 'CBA Overdraft', 'bank account')
+    expect(build(calxa(), { bsRows, accounts }).status).toBe('ready')
+  })
+
+  it('the American Express Platinum card (0aca1d06) is a credit card, as prod says: in a role it is refused, not paid its $64,332 out in September', () => {
+    expect(UR_CREDIT_CARD_IDS).toContain(AMEX_PLATINUM)
+    const cfg = calxa({ opening_ato_accounts: [{ account_id: AMEX_PLATINUM, pay: 'first_forecast_month' }] })
+    refused(build(cfg), 'opening_ato_accounts', 'American Express', 'credit card')
+    // By Xero's type alone, for a caller that hands over no card list.
+    refused(build(cfg, { accounts: prodChart(), creditCardAccountIds: [] }), 'opening_ato_accounts', 'American Express', 'bank account')
+  })
+})
+
+/**
+ * The final verifier: a real expense account in a payroll role, the wrong
+ * one, is silent. Contractors added to the wages codes pays the budget's
+ * contractors net of PAYG (Sep bank 112,605 against 133,602), and the actual
+ * months still tie. The pay runs say what the wages and super were; a
+ * difference past 10% is said to the coach. Not a refusal — accruals and pay
+ * dates can split a month — so the model and its output are unchanged.
+ */
+describe('payroll codes that book a different total from the pay runs are warned, not refused', () => {
+  const base = calxa()
+  const payrollWarnings = (model: ReturnType<typeof build>) => {
+    if (model.status !== 'ready') throw new Error(model.reason)
+    return model.warnings.filter((w) => w.includes('on the pay runs'))
+  }
+
+  it('Urban Road\'s codes (wages 62170, super 62160) book what the pay runs paid: no warning, on either chart', () => {
+    expect(payrollWarnings(build(calxa()))).toEqual([])
+    expect(payrollWarnings(build(calxa(), { accounts: prodChart() }))).toEqual([])
+    expect(payrollWarnings(build(calxa({ dso_days: 'derived', dpo_days: 'derived' })))).toEqual([])
+  })
+
+  it('Employ - Superannuation (62160) as the wages code: ready, and warned with the months and both figures', () => {
+    const model = build(calxa({ wages_codes: ['62160'], super: { ...base.super, payable_account_ids: [], expense_codes: [] } }))
+    const w = payrollWarnings(model)
+    expect(w).toHaveLength(1)
+    for (const part of ['wages_codes', '62160', 'Jul 2026 to Aug 2026', '$11,344', '$94,535']) expect(w[0]).toContain(part)
+    if (model.status === 'ready') expect(model.cashflow.cash_model!.warnings).toContain(w[0])
+  })
+
+  it('Contractors (61400) added to the wages codes: warned, and the forecast is what it was', () => {
+    const model = build(calxa({ wages_codes: ['62170', '61400'] }))
+    const w = payrollWarnings(model)
+    expect(w).toHaveLength(1)
+    for (const part of ['wages_codes', '61400', '$155,475', '$94,535']) expect(w[0]).toContain(part)
+    expect(at(model, '2026-09').bank_at_end).toBeCloseTo(112605.16, 2)
+  })
+
+  it('Contractors (61400) added to the super codes: warned for super', () => {
+    const w = payrollWarnings(build(calxa({ super: { ...base.super, expense_codes: ['62160', '61400'] } })))
+    expect(w).toHaveLength(1)
+    for (const part of ['super.expense_codes', '61400', '$72,284', '$11,344']) expect(w[0]).toContain(part)
+  })
+
+  it('10% is the line: $9,000 more of August wages (9.5%) is not warned, $10,000 (10.6%) is', () => {
+    const bump = (d: number) => UR_PL_ROWS.map((r) => (r.account_code === '62170' ? { ...r, monthly_values: { ...r.monthly_values, '2026-08': Number(r.monthly_values?.['2026-08'] ?? 0) + d } } : r))
+    expect(payrollWarnings(build(calxa(), { plRows: bump(9000) }))).toEqual([])
+    expect(payrollWarnings(build(calxa(), { plRows: bump(10000) }))).toHaveLength(1)
+  })
+
+  it('a month with no pay runs synced is not compared: its booked wages are not a difference', () => {
+    const payRuns = UR_PAY_RUNS.filter((r) => !r.payment_date.startsWith('2026-08'))
+    expect(payrollWarnings(build(calxa(), { payRuns }))).toEqual([])
+    const w = payrollWarnings(build(calxa({ wages_codes: ['62170', '61400'] }), { payRuns }))
+    expect(w).toHaveLength(1)
+    expect(w[0]).toContain('Jul 2026')
+    expect(w[0]).not.toContain('Aug 2026')
+  })
+
+  it('reaches the preflight as a warn on the cash model row', async () => {
+    const { runPreflight } = await import('../preflight')
+    const report = { report_month: '2026-08', sections: [], summary: { revenue: { actual: 1 }, cogs: { actual: 0 }, opex: { actual: 0 }, net_profit: { actual: 1 } }, is_draft: true, has_budget: true } as never
+    const moneyFlow = deriveMoneyFlow(UR_BS_ROWS, '2026-08', { bankAccountIds: UR_BANK_IDS, plRows: UR_PL_ROWS })
+    const model = build(calxa({ wages_codes: ['62170', '61400'] }))
+    if (model.status !== 'ready') throw new Error(model.reason)
+    const row = runPreflight({ report, moneyFlow, cashflow: model.cashflow }).find((r) => r.key === 'cash_model_ties')!
+    expect(row.status).toBe('warn')
+    expect(row.detail).toContain('wages_codes')
+  })
+})
+
+/**
+ * The actual months and the role check matched payroll codes case-insensitively
+ * and the engine did not, so a code typed in another case than the chart tied
+ * July and August and then paid the budget's wages gross.
+ */
+describe('payroll codes match whatever their case', () => {
+  it('a wages and super code typed in lower case builds the forecast the chart\'s spelling does (Sep bank 164,529 against 133,602 before)', () => {
+    const recode: Record<string, string> = { '62170': 'EMP-W', '62160': 'EMP-S' }
+    const fy = urbanRoadFullYear()
+    const fullYear = { ...fy, sections: fy.sections.map((s) => ({ ...s, lines: s.lines.map((l) => (l.account_code && recode[l.account_code] ? { ...l, account_code: recode[l.account_code] } : l)) })) }
+    const plRows = UR_PL_ROWS.map((r) => (r.account_code && recode[r.account_code] ? { ...r, account_code: recode[r.account_code] } : r))
+    const accounts = UR_ACCOUNTS.map((a) => (a.account_code && recode[a.account_code] ? { ...a, account_code: recode[a.account_code] } : a))
+    const run = (wages: string, superCode: string) => buildPackCashModel({
+      fullYear, reportMonth: '2026-08',
+      config: calxa({ wages_codes: [wages], super: { ...calxa().super, expense_codes: [superCode] } }),
+      inputs: inputs({ plRows, accounts }),
+    })
+    const chart = run('EMP-W', 'EMP-S')
+    const lower = run('emp-w', 'emp-s')
+    if (chart.status !== 'ready' || lower.status !== 'ready') throw new Error('not ready')
+    expect(at(chart, '2026-09').bank_at_end).toBeCloseTo(133601.98, 2)
+    expect(lower.cashflow.months).toEqual(chart.cashflow.months)
+    expect(lower.basis).toBe(chart.basis)
+    expect(lower.warnings.filter((w) => w.includes('on the pay runs'))).toEqual([])
   })
 })
 
