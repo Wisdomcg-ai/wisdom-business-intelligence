@@ -27,7 +27,12 @@
 
 import type { CashflowForecastData, CashflowLine } from '@/app/finances/forecast/types'
 
-export type PackCashflowRowKind = 'bank' | 'heading' | 'line' | 'group' | 'subtotal' | 'net'
+/**
+ * 'unreconciled' is cash model v2's: a row that says what stops an actual
+ * month's rows adding to the bank movement (a P&L and a balance sheet from
+ * different syncs, movements under 50c). Never printed by a v1 cashflow.
+ */
+export type PackCashflowRowKind = 'bank' | 'heading' | 'line' | 'group' | 'subtotal' | 'net' | 'unreconciled'
 
 export interface PackCashflowRow {
   kind: PackCashflowRowKind
@@ -111,6 +116,24 @@ export function buildPackCashflowRows(
   // Printed at 0 too. A row that disappears when it is empty cannot be told
   // apart from a row the page forgot, and Net Movement adds it either way.
   rows.push(figures('subtotal', 'Other Inflows', 0, months.map((m) => m.other_inflows)))
+
+  // Cash model v2's actual months only; a v1 cashflow carries neither, and
+  // prints exactly the rows it always has.
+  const equity = lineRows((m) => m.equity_lines ?? [], 1, 1)
+  if (equity.length > 0) {
+    rows.push(heading('Equity'))
+    rows.push(...equity)
+    rows.push(figures('subtotal', 'Movement in Equity', 0, months.map((m) => m.movement_in_equity ?? 0)))
+  }
+  const unreconciled = orderLabels(months.flatMap((m) => (m.unreconciled_lines ?? []).map((l) => l.label)), new Map())
+  for (const label of unreconciled) {
+    const values = months.map((m) => valueOf(m.unreconciled_lines ?? [], label))
+    // The table prints whole dollars. Cents of rounding and 7c on a Rounding
+    // account print as a row of noughts that says nothing; a real difference
+    // — Urban Road's $853.80 late credit note — prints as the figure it is.
+    if (values.every((v) => Math.round(v) === 0)) continue
+    rows.push(figures('unreconciled', label, 0, values))
+  }
 
   rows.push(figures('net', 'Net Movement', 0, months.map((m) => m.net_movement)))
 

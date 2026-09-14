@@ -5,6 +5,7 @@ import {
   isPaymentMonth,
   resolveSystemSchedule,
   isValidBasePeriods,
+  dueMonthKey,
 } from './schedules'
 import { daysToDistribution, isValidDistribution } from './distributions'
 
@@ -192,5 +193,48 @@ describe('isValidBasePeriods', () => {
 
   it('rejects non-integer values', () => {
     expect(isValidBasePeriods([1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])).toBe(false)
+  })
+})
+
+// ─── cash model v2 schedules ────────────────────────────────────────────
+
+describe('dueMonthKey', () => {
+  it('same month is offset 0; a later calendar month in the same year; an earlier one in the next', () => {
+    expect(dueMonthKey('2026-09', SYSTEM_SCHEDULES.payday)).toBe('2026-09')
+    expect(dueMonthKey('2026-09', SYSTEM_SCHEDULES.quarterly_feb_may_aug_nov)).toBe('2026-11')
+    expect(dueMonthKey('2026-12', SYSTEM_SCHEDULES.quarterly_feb_may_aug_nov)).toBe('2027-02')
+    expect(dueMonthKey('2026-12', SYSTEM_SCHEDULES.monthly_arrears)).toBe('2027-01')
+  })
+
+  it("reproduces Calxa's PAYG months on Urban Road's pack from the agent's monthly IAS pattern", () => {
+    const due = (m: string) => dueMonthKey(m, SYSTEM_SCHEDULES.monthly_ias_quarterly_bas_agent)
+    // Nov 21,008 = Sep + Oct; Dec 13,130 = Nov; Feb 21,701 = Dec + Jan; Mar = Feb;
+    // May 25,194 = Mar + Apr; Jun = May; Aug = Jun (+ Jul).
+    expect(['2026-09', '2026-10'].map(due)).toEqual(['2026-11', '2026-11'])
+    expect(due('2026-11')).toBe('2026-12')
+    expect(['2026-12', '2027-01'].map(due)).toEqual(['2027-02', '2027-02'])
+    expect(due('2027-02')).toBe('2027-03')
+    expect(['2027-03', '2027-04'].map(due)).toEqual(['2027-05', '2027-05'])
+    expect(due('2027-05')).toBe('2027-06')
+    expect(['2027-06', '2027-07'].map(due)).toEqual(['2027-08', '2027-08'])
+  })
+
+  it('every new schedule is a valid BasePeriods', () => {
+    for (const name of ['monthly_ias_quarterly_bas_agent', 'monthly_ias_quarterly_bas_self', 'monthly_arrears', 'payday']) {
+      expect(isValidBasePeriods(SYSTEM_SCHEDULES[name])).toBe(true)
+    }
+  })
+
+  it('a monthly activity statement is due the month AFTER it accrues, December\'s in February', () => {
+    // SYSTEM_SCHEDULES.monthly is [1..12] — due the month it accrues — and the
+    // cash model's 'monthly' GST and PAYG settings used it, so every monthly
+    // BAS was paid a month early (Sep's GST in Sep, not 21 Oct).
+    const due = (m: string) => dueMonthKey(m, SYSTEM_SCHEDULES.monthly_activity_statement)
+    expect(due('2026-08')).toBe('2026-09')
+    expect(due('2026-09')).toBe('2026-10')
+    expect(due('2026-11')).toBe('2026-12')
+    expect(due('2026-12')).toBe('2027-02')
+    expect(due('2027-01')).toBe('2027-02')
+    expect(isValidBasePeriods(SYSTEM_SCHEDULES.monthly_activity_statement)).toBe(true)
   })
 })

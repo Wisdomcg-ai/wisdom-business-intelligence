@@ -1,0 +1,640 @@
+/**
+ * Cash model v2's guards, from the review of 14 Sep 2026: each case below was
+ * probed on Urban Road's real ledger and printed a plausible page that was
+ * wrong, with no refusal and no preflight fail.
+ *
+ *   - a mistyped account id silently opened the forecast on $0 of debtors
+ *     (September receipts 180,933 against 459,361);
+ *   - a config with PAYG accounts but no wages codes printed a $9,688 /
+ *     $12,110 "Unexplained difference" that the preflight only warned about;
+ *   - a monthly GST schedule paid each month's GST in the month it accrued;
+ *   - the basis called a configured number "(from the ledger)";
+ *   - ATO Creditors (BAS) or PAYG Payroll Tax Withheld could be in no
+ *     forecast payment with nothing said.
+ */
+import { describe, it, expect } from 'vitest'
+import { buildPackCashModel, checkCashModelAccounts, openingGst, type CashModelInputs } from '../pack-cash-model'
+import { parseCashModelConfig, type CashModelConfig } from '../cash-model-config'
+import { deriveMoneyFlow } from '../money-flow'
+import { deriveActualCashMonth, UNEXPLAINED_LABEL, UNEXPLAINED_MATERIALITY } from '../pack-cash-actuals'
+import { payslipsByMonth, taxRateLookup } from '../pack-cash-model'
+import { UR_ACCOUNT_IDS, UR_ACCOUNTS, UR_BANK_IDS, UR_BS_ROWS, UR_CREDIT_CARD_IDS, UR_PAY_RUNS, UR_PL_ROWS } from './urban-road-ledger-fixture'
+import { urbanRoadCashModel } from './urban-road-cash-model-config'
+import { urbanRoadFullYear } from './urban-road-full-year-fixture'
+
+const inputs = (over: Partial<CashModelInputs> = {}): CashModelInputs => ({
+  bsRows: UR_BS_ROWS,
+  plRows: UR_PL_ROWS,
+  accounts: UR_ACCOUNTS,
+  payRuns: UR_PAY_RUNS,
+  bankAccountIds: UR_BANK_IDS,
+  creditCardAccountIds: UR_CREDIT_CARD_IDS,
+  fiscalYearStart: 7,
+  ...over,
+})
+const build = (config: CashModelConfig, over: Partial<CashModelInputs> = {}) =>
+  buildPackCashModel({ fullYear: urbanRoadFullYear(), reportMonth: '2026-08', config, inputs: inputs(over) })
+const calxa = (over: Partial<CashModelConfig> = {}) => urbanRoadCashModel({ dso_days: 19, dpo_days: 29, ...over })
+const at = (model: ReturnType<typeof build>, month: string) => {
+  if (model.status !== 'ready') throw new Error(model.reason)
+  return model.cashflow.months.find((m) => m.month === month)!
+}
+const v = (lines: { label: string; value: number }[] | undefined, label: string) => lines?.find((l) => l.label === label)?.value ?? 0
+const refused = (model: ReturnType<typeof build>, ...parts: string[]) => {
+  expect(model.status).toBe('refused')
+  if (model.status === 'refused') for (const p of parts) expect(model.reason).toContain(p)
+}
+
+/** American Express® Platinum Business Card: prod's xero_accounts types it BANK, bank_account_type CREDITCARD. */
+const AMEX_PLATINUM = '0aca1d06-e22b-4d9c-b172-8c4a59aee56b'
+
+/**
+ * The chart as prod carries it: every account with xero_class (the fixture's
+ * UR_ACCOUNTS has none), balance-sheet accounts by their mirror kind, P&L
+ * accounts REVENUE or EXPENSE by the P&L mirror's type — and, as Xero's
+ * Accounts endpoint returns them, every bank account and credit card of type
+ * BANK, class ASSET, though the mirror files the cards as liabilities.
+ */
+const plType = new Map(UR_PL_ROWS.filter((r) => r.account_code).map((r) => [r.account_code!, r.account_type]))
+const bankTyped = new Set([...UR_BS_ROWS.filter((r) => r.section === 'Bank').map((r) => r.account_id!), ...UR_CREDIT_CARD_IDS])
+const prodChart = (over: Record<string, Partial<(typeof UR_ACCOUNTS)[number]>> = {}) => [
+  ...UR_ACCOUNTS.map((a) => {
+    const t = a.account_code ? plType.get(a.account_code) : undefined
+    return { ...a, xero_class: t === 'revenue' || t === 'other_income' || a.account_code?.startsWith('4') ? 'REVENUE' : 'EXPENSE', ...(a.account_code ? over[a.account_code] : {}) }
+  }),
+  ...UR_BS_ROWS.filter((r) => r.account_id).map((r) => ({
+    xero_account_id: r.account_id!, account_code: r.account_code ?? null, account_name: r.account_name, tax_type: 'BASEXCLUDED',
+    xero_class: bankTyped.has(r.account_id!) ? 'ASSET' : r.account_type.toUpperCase(),
+    ...(bankTyped.has(r.account_id!) ? { xero_type: 'BANK' } : {}),
+    ...(r.account_code ? over[r.account_code] : {}),
+  })),
+]
+
+describe('a configured account that is not on the balance sheet', () => {
+  it('refuses, naming the setting and the id, rather than open the forecast on $0 of debtors', () => {
+    const model = build(calxa({ debtors_account_ids: ['905e1394-typo'] }))
+    expect(model.status).toBe('refused')
+    if (model.status === 'refused') {
+      expect(model.reason).toContain('debtors_account_ids')
+      expect(model.reason).toContain('905e1394-typo')
+    }
+  })
+
+  it('refuses for creditors, GST, PAYG, super and opening ATO accounts too', () => {
+    const base = calxa()
+    const cases: Array<[string, CashModelConfig]> = [
+      ['creditors_account_ids', calxa({ creditors_account_ids: ['nope-1'] })],
+      ['gst.account_ids', calxa({ gst: { ...base.gst, account_ids: [UR_ACCOUNT_IDS.gstCollectedPaid, 'nope-2'] } })],
+      ['paygw.liability_account_ids', calxa({ paygw: { ...base.paygw, liability_account_ids: ['nope-3'] } })],
+      ['super.payable_account_ids', calxa({ super: { ...base.super, payable_account_ids: ['nope-4'] } })],
+      ['opening_ato_accounts', calxa({ opening_ato_accounts: [{ account_id: 'nope-5', pay: 'first_forecast_month' }] })],
+    ]
+    for (const [key, cfg] of cases) {
+      const model = build(cfg)
+      expect(model.status, key).toBe('refused')
+      if (model.status === 'refused') expect(model.reason).toContain(key)
+    }
+  })
+
+  it('an account in the chart of accounts that holds nothing at any month-end is a warning, not a refusal', () => {
+    const base = calxa()
+    const accounts = [...UR_ACCOUNTS, { xero_account_id: 'new-super-acct', account_code: '21400', account_name: 'Super Clearing', tax_type: 'BASEXCLUDED' }]
+    const model = build(calxa({ super: { ...base.super, payable_account_ids: [UR_ACCOUNT_IDS.superPayable, 'new-super-acct'] } }), { accounts })
+    expect(model.status).toBe('ready')
+    if (model.status === 'ready') expect(model.warnings.some((w) => w.includes('Super Clearing') && w.includes('$0'))).toBe(true)
+  })
+
+  it('matches ids case-insensitively, as the money-flow page does', () => {
+    expect(build(calxa({ debtors_account_ids: [UR_ACCOUNT_IDS.tradeDebtors.toUpperCase()] })).status).toBe('ready')
+  })
+})
+
+/**
+ * The second review: a real id in the wrong role. July and August still tie
+ * in every case below — the real Trade Debtors prints as an ordinary asset
+ * row — and Urban Road's preflight row is already 'warn' on the baseline, so
+ * none of them looked any different to the coach.
+ */
+describe('a configured account that is the wrong kind for its role', () => {
+  it('a P&L account as debtors is refused, not counted as $0 of debtors (Sep receipts 180,933 against 459,361)', () => {
+    // code-41000 is Canvas Sales in the chart of accounts: never on the sheet.
+    refused(build(calxa({ debtors_account_ids: ['code-41000'] })), 'debtors_account_ids', '#41000', 'profit and loss')
+  })
+
+  it('a P&L account the P&L mirror carries by AccountID is refused', () => {
+    const plRows = UR_PL_ROWS.map((r) => (r.account_code === '41000' ? { ...r, account_id: 'canvas-sales-id' } : r))
+    refused(build(calxa({ creditors_account_ids: ['canvas-sales-id'] }), { plRows }), 'creditors_account_ids', 'Canvas Sales', 'profit and loss')
+  })
+
+  it('an account Xero classes as REVENUE or EXPENSE is refused even with no P&L activity', () => {
+    const accounts = [...UR_ACCOUNTS, { xero_account_id: 'quiet-expense', account_code: '69999', account_name: 'Quiet Expense', tax_type: 'INPUT', xero_class: 'EXPENSE' }]
+    const base = calxa()
+    refused(build(calxa({ super: { ...base.super, payable_account_ids: ['quiet-expense'] } }), { accounts }), 'super.payable_account_ids', 'Quiet Expense', 'profit and loss')
+  })
+
+  it('a chosen bank account as debtors is refused (Sep bank 128,246 against 157,671)', () => {
+    refused(build(calxa({ dso_days: 'derived', dpo_days: 'derived', debtors_account_ids: [UR_BANK_IDS[0]] })), 'debtors_account_ids', 'CBA Cheque Account', 'bank')
+  })
+
+  it('a Bank-section account outside the chosen bank set is refused too', () => {
+    refused(build(calxa({ debtors_account_ids: ['84b151bf-cc20-4f09-b34a-4c695cc9bff4'] })), 'debtors_account_ids', 'AUD PayPal#001', 'bank')
+  })
+
+  it('debtors and creditors swapped is refused (DSO 20 / DPO 19 against 15 / 26)', () => {
+    refused(
+      build(urbanRoadCashModel({ debtors_account_ids: [UR_ACCOUNT_IDS.tradeCreditors], creditors_account_ids: [UR_ACCOUNT_IDS.tradeDebtors] })),
+      'debtors_account_ids', 'Trade Creditors', 'creditors_account_ids', 'Trade Debtors',
+    )
+  })
+
+  it('an asset as creditors is refused (AUD PayPal, Sep bank 174,161)', () => {
+    refused(build(calxa({ creditors_account_ids: ['84b151bf-cc20-4f09-b34a-4c695cc9bff4'] })), 'creditors_account_ids', 'AUD PayPal#001')
+  })
+
+  it('GST, PAYG and super must be liabilities', () => {
+    const base = calxa()
+    refused(build(calxa({ gst: { ...base.gst, account_ids: [UR_ACCOUNT_IDS.gstCollectedPaid, '685016a3-1638-4286-ac66-91c2265a1c75'] } })), 'gst.account_ids', 'Rental Bond', 'liability')
+    refused(build(calxa({ paygw: { ...base.paygw, liability_account_ids: ['685016a3-1638-4286-ac66-91c2265a1c75'] } })), 'paygw.liability_account_ids', 'Rental Bond', 'liability')
+    refused(build(calxa({ super: { ...base.super, payable_account_ids: ['685016a3-1638-4286-ac66-91c2265a1c75'] } })), 'super.payable_account_ids', 'Rental Bond', 'liability')
+  })
+
+  it('a credit card in any role is refused: the money-flow page flips its sign as a card', () => {
+    const card = UR_BS_ROWS.find((r) => r.account_id === UR_CREDIT_CARD_IDS[0])
+    expect(card).toBeDefined()
+    refused(build(calxa({ creditors_account_ids: [UR_CREDIT_CARD_IDS[0]] })), 'creditors_account_ids', card!.account_name, 'credit card')
+  })
+
+  it('an earnings account in any role is refused', () => {
+    const bsRows = [...UR_BS_ROWS, { account_id: 'cye', account_code: null, account_name: 'Current Year Earnings', account_type: 'equity', section: 'Equity', tenant_id: UR_BS_ROWS[0].tenant_id, balances_by_date: { '2026-06-30': 0, '2026-07-31': 0, '2026-08-31': 0 } }]
+    refused(build(calxa({ opening_ato_accounts: [{ account_id: 'cye', pay: 'excluded' }] }), { bsRows }), 'opening_ato_accounts', 'Current Year Earnings', 'earnings')
+  })
+
+  it('Xero\'s own class wins over the mirror\'s kind for a charted account', () => {
+    // A debtors account the mirror filed as a liability (a credit balance)
+    // is still Xero's ASSET: not refused.
+    const bsRows = UR_BS_ROWS.map((r) => (r.account_id === UR_ACCOUNT_IDS.tradeDebtors ? { ...r, account_type: 'liability' } : r))
+    const accounts = [...UR_ACCOUNTS, { xero_account_id: UR_ACCOUNT_IDS.tradeDebtors, account_code: '11200', account_name: 'Trade Debtors', tax_type: 'BASEXCLUDED', xero_class: 'ASSET' }]
+    const check = checkCashModelAccounts({ bsRows, plRows: UR_PL_ROWS, accounts, bankAccountIds: UR_BANK_IDS, creditCardAccountIds: UR_CREDIT_CARD_IDS }, calxa(), { fyOpening: '2026-06-30', reportEnd: '2026-08-31' })
+    expect('reason' in check ? check.reason : '').toBe('')
+  })
+
+  it('the baseline config is still ready with no new warnings', () => {
+    const model = build(calxa())
+    expect(model.status).toBe('ready')
+    if (model.status === 'ready') expect(model.warnings.some((w) => w.includes('holds nothing'))).toBe(false)
+  })
+})
+
+/**
+ * The third review (wave 6): the payroll codes and the opening ATO accounts
+ * were outside the role check. Each case below built a ready forecast whose
+ * July and August still tied.
+ */
+describe('the payroll codes and the opening ATO accounts are checked too', () => {
+  it('the baseline is still ready on a prod-shaped chart, and builds the same forecast', () => {
+    const plain = build(calxa())
+    const prod = build(calxa(), { accounts: prodChart() })
+    if (plain.status !== 'ready' || prod.status !== 'ready') throw new Error('not ready')
+    expect(prod.cashflow.months.map((m) => m.bank_at_end)).toEqual(plain.cashflow.months.map((m) => m.bank_at_end))
+    expect(prod.warnings).toEqual(plain.warnings)
+  })
+
+  it('a revenue account, a missing code or a balance-sheet code in super.expense_codes is refused (Sep bank 138,476 against 133,602)', () => {
+    const base = calxa()
+    for (const accounts of [UR_ACCOUNTS, prodChart()]) {
+      refused(build(calxa({ super: { ...base.super, expense_codes: ['41000'] } }), { accounts }), 'super.expense_codes', '41000', 'revenue')
+      refused(build(calxa({ super: { ...base.super, expense_codes: ['99999'] } }), { accounts }), 'super.expense_codes', '99999')
+      refused(build(calxa({ super: { ...base.super, expense_codes: ['21490'] } }), { accounts }), 'super.expense_codes', 'Superannuation Payable', 'balance-sheet')
+    }
+  })
+
+  it('a revenue account or a missing code in wages_codes is refused (Sep bank 164,529 against 133,602)', () => {
+    for (const accounts of [UR_ACCOUNTS, prodChart()]) {
+      refused(build(calxa({ wages_codes: ['41000'] }), { accounts }), 'wages_codes', '41000', 'revenue')
+      refused(build(calxa({ wages_codes: ['99999'] }), { accounts }), 'wages_codes', '99999')
+    }
+  })
+
+  it('Xero\'s AU payroll types, which the catalog classes OTHER, are read by type: a wages expense and a PAYG liability are what they say', () => {
+    const accounts = prodChart({
+      '62170': { xero_class: 'OTHER', xero_type: 'WAGESEXPENSE' },
+      '62160': { xero_class: 'OTHER', xero_type: 'SUPERANNUATIONEXPENSE' },
+      '21490': { xero_class: 'OTHER', xero_type: 'SUPERANNUATIONLIABILITY' },
+    })
+    // ATO Creditors (BAS) as a PAYGLIABILITY the mirror filed as an asset: still a liability.
+    const atoCode = UR_BS_ROWS.find((r) => r.account_id === UR_ACCOUNT_IDS.atoCreditorsBas)!.account_code!
+    const withPayg = accounts.map((a) => (a.account_code === atoCode ? { ...a, xero_class: 'OTHER', xero_type: 'PAYGLIABILITY' } : a))
+    const check = checkCashModelAccounts(
+      { bsRows: UR_BS_ROWS.map((r) => (r.account_id === UR_ACCOUNT_IDS.atoCreditorsBas ? { ...r, account_type: 'asset' } : r)), plRows: UR_PL_ROWS, accounts: withPayg, bankAccountIds: UR_BANK_IDS, creditCardAccountIds: UR_CREDIT_CARD_IDS },
+      calxa(), { fyOpening: '2026-06-30', reportEnd: '2026-08-31' },
+    )
+    expect('reason' in check ? check.reason : '').toBe('')
+    expect(build(calxa(), { accounts }).status).toBe('ready')
+    // OTHER with an unknown type falls back to the P&L mirror: Canvas Sales is revenue.
+    refused(build(calxa({ wages_codes: ['41000'] }), { accounts: prodChart({ '41000': { xero_class: 'OTHER' } }) }), 'wages_codes', 'revenue')
+  })
+
+  it('wages and super codes swapped is refused: the configured super cannot be several times the configured wages when the payslips say 12%', () => {
+    // Sep bank 125,076.67 against 133,601.98, ready and silent before.
+    refused(build(calxa({ wages_codes: ['62160'], super: { ...calxa().super, expense_codes: ['62170'] } })), 'wages_codes', 'super.expense_codes', 'swapped')
+  })
+
+  it('an ATO asset in debit is received in the first forecast month, not paid out', () => {
+    const tenant = UR_BS_ROWS[0].tenant_id
+    const dates = { '2026-06-30': 5000, '2026-07-31': 5000, '2026-08-31': 5000 }
+    const bsRows = [
+      ...UR_BS_ROWS,
+      { account_id: 'itr-receivable', account_code: '11900', account_name: 'Income Tax Refund Receivable', account_type: 'asset', section: 'Current Assets', tenant_id: tenant, balances_by_date: dates },
+      { account_id: 'itr-equity', account_code: '31900', account_name: 'Owner Funds Introduced', account_type: 'equity', section: 'Equity', tenant_id: tenant, balances_by_date: dates },
+    ]
+    const baseline = at(build(calxa()), '2026-09').bank_at_end
+    const sep = at(build(calxa({ opening_ato_accounts: [{ account_id: 'itr-receivable', pay: 'first_forecast_month' }] }), { bsRows }), '2026-09')
+    expect(v(sep.liability_lines, 'Income Tax Refund Receivable')).toBe(5000)
+    expect(sep.bank_at_end).toBeCloseTo(baseline + 5000, 2)
+    // A liability in debit is still an inflow (Company Tax Payable/Refund -3,076.24).
+    const tax = at(build(calxa({ opening_ato_accounts: [{ account_id: 'ba8d18f8-f65b-4111-80ee-dc0945290d5c', pay: 'first_forecast_month' }] })), '2026-09')
+    expect(v(tax.liability_lines, 'Company Tax Payable/Refund')).toBe(3076.24)
+  })
+
+  it('a role account the mirror filed under the other kind (its balance turned over) builds the same forecast', () => {
+    // The role check passes Xero's class; the mirror stores the balance
+    // relative to the kind it filed. Trade Debtors filed as a liability and
+    // ATO Creditors (BAS) as an asset, each balance negated, is the same ledger.
+    const flipped = new Set<string>([UR_ACCOUNT_IDS.tradeDebtors, UR_ACCOUNT_IDS.atoCreditorsBas])
+    const bsRows = UR_BS_ROWS.map((r) => (r.account_id && flipped.has(r.account_id)
+      ? { ...r, account_type: r.account_type === 'asset' ? 'liability' : 'asset', balances_by_date: Object.fromEntries(Object.entries(r.balances_by_date).map(([d, x]) => [d, -Number(x)])) }
+      : r))
+    const accounts = prodChart()
+    const baseline = build(calxa({ dso_days: 'derived' }), { accounts })
+    const same = build(calxa({ dso_days: 'derived' }), { accounts, bsRows })
+    if (baseline.status !== 'ready' || same.status !== 'ready') throw new Error('not ready')
+    expect(same.basis).toBe(baseline.basis)
+    for (const m of ['2026-09', '2026-10', '2027-06']) expect(at(same, m).bank_at_end).toBeCloseTo(at(baseline, m).bank_at_end, 2)
+  })
+
+  it('an opening ATO account that is also debtors or creditors is not a config that parses, and the model refuses it too', () => {
+    for (const id of [UR_ACCOUNT_IDS.tradeDebtors, UR_ACCOUNT_IDS.tradeCreditors]) {
+      const cfg = calxa({ opening_ato_accounts: [{ account_id: id, pay: 'first_forecast_month' }] })
+      const parsed = parseCashModelConfig(cfg)
+      expect(parsed.status).toBe('invalid')
+      if (parsed.status === 'invalid') expect(parsed.reason).toContain('opening_ato_accounts')
+      // Built past the parser: Sep bank -144,826 / -246,603 before.
+      refused(build(cfg), 'opening_ato_accounts')
+    }
+  })
+
+  it('one account listed twice in opening_ato_accounts is not a config that parses, and the model refuses it', () => {
+    const id = UR_ACCOUNT_IDS.paygPayrollTaxWithheld
+    const cfg = calxa({ opening_ato_accounts: [{ account_id: id, pay: 'first_forecast_month' }, { account_id: id.toUpperCase(), pay: 'first_forecast_month' }] })
+    expect(parseCashModelConfig(cfg).status).toBe('invalid')
+    refused(build(cfg), 'opening_ato_accounts', 'more than once')
+  })
+})
+
+/**
+ * The final verifier (14 Sep 2026): the bank check matched only bank ASSET
+ * rows. A Xero BANK account that is overdrawn is filed by the mirror as a
+ * liability, so it passed as debtors or as an opening ATO account — and Xero
+ * classes every BANK account ASSET, so in the liability roles it was refused
+ * for the wrong reason ("an asset").
+ */
+describe('a Xero bank account is refused in every role, overdrawn or not', () => {
+  const tenant = UR_BS_ROWS[0].tenant_id
+  const dates = { '2026-06-30': 2500, '2026-07-31': 2500, '2026-08-31': 2500 }
+  const bsRows = [
+    ...UR_BS_ROWS,
+    // An overdraft of $2,500, filed under Current Liabilities; a director loan keeps A − L − E at 0.
+    { account_id: 'overdrawn-bank', account_code: '11190', account_name: 'CBA Overdraft', account_type: 'liability', section: 'Current Liabilities', tenant_id: tenant, balances_by_date: dates },
+    { account_id: 'director-loan', account_code: '12900', account_name: 'Director Loan', account_type: 'asset', section: 'Current Assets', tenant_id: tenant, balances_by_date: dates },
+  ]
+  const accounts = [...UR_ACCOUNTS, { xero_account_id: 'overdrawn-bank', account_code: '11190', account_name: 'CBA Overdraft', tax_type: 'BASEXCLUDED', xero_class: 'ASSET', xero_type: 'BANK' }]
+
+  it('an overdrawn bank account is refused as debtors, creditors, GST, PAYG, super or an opening ATO account, naming the field and the account', () => {
+    const base = calxa()
+    const od = 'overdrawn-bank'
+    const cases: Array<[string, CashModelConfig]> = [
+      // Ready before: September opened on -$2,500 of debtors (Sep bank -147,326 against 133,602).
+      ['debtors_account_ids', calxa({ debtors_account_ids: [od] })],
+      ['creditors_account_ids', calxa({ creditors_account_ids: [od] })],
+      ['gst.account_ids', calxa({ gst: { ...base.gst, account_ids: [...base.gst.account_ids, od] } })],
+      ['paygw.liability_account_ids', calxa({ paygw: { ...base.paygw, liability_account_ids: [od] } })],
+      ['super.payable_account_ids', calxa({ super: { ...base.super, payable_account_ids: [od] } })],
+      // Ready before: the overdraft paid out in September (Sep bank 131,102).
+      ['opening_ato_accounts', calxa({ opening_ato_accounts: [{ account_id: od, pay: 'first_forecast_month' }] })],
+    ]
+    for (const [role, cfg] of cases) refused(build(cfg, { bsRows, accounts }), role, 'CBA Overdraft', 'bank account')
+    expect(build(calxa(), { bsRows, accounts }).status).toBe('ready')
+  })
+
+  it('the American Express Platinum card (0aca1d06) is a credit card, as prod says: in a role it is refused, not paid its $64,332 out in September', () => {
+    expect(UR_CREDIT_CARD_IDS).toContain(AMEX_PLATINUM)
+    const cfg = calxa({ opening_ato_accounts: [{ account_id: AMEX_PLATINUM, pay: 'first_forecast_month' }] })
+    refused(build(cfg), 'opening_ato_accounts', 'American Express', 'credit card')
+    // By Xero's type alone, for a caller that hands over no card list.
+    refused(build(cfg, { accounts: prodChart(), creditCardAccountIds: [] }), 'opening_ato_accounts', 'American Express', 'bank account')
+  })
+})
+
+/**
+ * The final verifier: a real expense account in a payroll role, the wrong
+ * one, is silent. Contractors added to the wages codes pays the budget's
+ * contractors net of PAYG (Sep bank 112,605 against 133,602), and the actual
+ * months still tie. The pay runs say what the wages and super were; a
+ * difference past 10% is said to the coach. Not a refusal — accruals and pay
+ * dates can split a month — so the model and its output are unchanged.
+ */
+describe('payroll codes that book a different total from the pay runs are warned, not refused', () => {
+  const base = calxa()
+  const payrollWarnings = (model: ReturnType<typeof build>) => {
+    if (model.status !== 'ready') throw new Error(model.reason)
+    return model.warnings.filter((w) => w.includes('on the pay runs'))
+  }
+
+  it('Urban Road\'s codes (wages 62170, super 62160) book what the pay runs paid: no warning, on either chart', () => {
+    expect(payrollWarnings(build(calxa()))).toEqual([])
+    expect(payrollWarnings(build(calxa(), { accounts: prodChart() }))).toEqual([])
+    expect(payrollWarnings(build(calxa({ dso_days: 'derived', dpo_days: 'derived' })))).toEqual([])
+  })
+
+  it('Employ - Superannuation (62160) as the wages code: ready, and warned with the months and both figures', () => {
+    const model = build(calxa({ wages_codes: ['62160'], super: { ...base.super, payable_account_ids: [], expense_codes: [] } }))
+    const w = payrollWarnings(model)
+    expect(w).toHaveLength(1)
+    for (const part of ['wages_codes', '62160', 'Jul 2026 to Aug 2026', '$11,344', '$94,535']) expect(w[0]).toContain(part)
+    if (model.status === 'ready') expect(model.cashflow.cash_model!.warnings).toContain(w[0])
+  })
+
+  it('Contractors (61400) added to the wages codes: warned, and the forecast is what it was', () => {
+    const model = build(calxa({ wages_codes: ['62170', '61400'] }))
+    const w = payrollWarnings(model)
+    expect(w).toHaveLength(1)
+    for (const part of ['wages_codes', '61400', '$155,475', '$94,535']) expect(w[0]).toContain(part)
+    expect(at(model, '2026-09').bank_at_end).toBeCloseTo(112605.16, 2)
+  })
+
+  it('Contractors (61400) added to the super codes: warned for super', () => {
+    const w = payrollWarnings(build(calxa({ super: { ...base.super, expense_codes: ['62160', '61400'] } })))
+    expect(w).toHaveLength(1)
+    for (const part of ['super.expense_codes', '61400', '$72,284', '$11,344']) expect(w[0]).toContain(part)
+  })
+
+  it('10% is the line: $9,000 more of August wages (9.5%) is not warned, $10,000 (10.6%) is', () => {
+    const bump = (d: number) => UR_PL_ROWS.map((r) => (r.account_code === '62170' ? { ...r, monthly_values: { ...r.monthly_values, '2026-08': Number(r.monthly_values?.['2026-08'] ?? 0) + d } } : r))
+    expect(payrollWarnings(build(calxa(), { plRows: bump(9000) }))).toEqual([])
+    expect(payrollWarnings(build(calxa(), { plRows: bump(10000) }))).toHaveLength(1)
+  })
+
+  it('a month with no pay runs synced is not compared: its booked wages are not a difference', () => {
+    const payRuns = UR_PAY_RUNS.filter((r) => !r.payment_date.startsWith('2026-08'))
+    expect(payrollWarnings(build(calxa(), { payRuns }))).toEqual([])
+    const w = payrollWarnings(build(calxa({ wages_codes: ['62170', '61400'] }), { payRuns }))
+    expect(w).toHaveLength(1)
+    expect(w[0]).toContain('Jul 2026')
+    expect(w[0]).not.toContain('Aug 2026')
+  })
+
+  it('reaches the preflight as a warn on the cash model row', async () => {
+    const { runPreflight } = await import('../preflight')
+    const report = { report_month: '2026-08', sections: [], summary: { revenue: { actual: 1 }, cogs: { actual: 0 }, opex: { actual: 0 }, net_profit: { actual: 1 } }, is_draft: true, has_budget: true } as never
+    const moneyFlow = deriveMoneyFlow(UR_BS_ROWS, '2026-08', { bankAccountIds: UR_BANK_IDS, plRows: UR_PL_ROWS })
+    const model = build(calxa({ wages_codes: ['62170', '61400'] }))
+    if (model.status !== 'ready') throw new Error(model.reason)
+    const row = runPreflight({ report, moneyFlow, cashflow: model.cashflow }).find((r) => r.key === 'cash_model_ties')!
+    expect(row.status).toBe('warn')
+    expect(row.detail).toContain('wages_codes')
+  })
+})
+
+/**
+ * The actual months and the role check matched payroll codes case-insensitively
+ * and the engine did not, so a code typed in another case than the chart tied
+ * July and August and then paid the budget's wages gross.
+ */
+describe('payroll codes match whatever their case', () => {
+  it('a wages and super code typed in lower case builds the forecast the chart\'s spelling does (Sep bank 164,529 against 133,602 before)', () => {
+    const recode: Record<string, string> = { '62170': 'EMP-W', '62160': 'EMP-S' }
+    const fy = urbanRoadFullYear()
+    const fullYear = { ...fy, sections: fy.sections.map((s) => ({ ...s, lines: s.lines.map((l) => (l.account_code && recode[l.account_code] ? { ...l, account_code: recode[l.account_code] } : l)) })) }
+    const plRows = UR_PL_ROWS.map((r) => (r.account_code && recode[r.account_code] ? { ...r, account_code: recode[r.account_code] } : r))
+    const accounts = UR_ACCOUNTS.map((a) => (a.account_code && recode[a.account_code] ? { ...a, account_code: recode[a.account_code] } : a))
+    const run = (wages: string, superCode: string) => buildPackCashModel({
+      fullYear, reportMonth: '2026-08',
+      config: calxa({ wages_codes: [wages], super: { ...calxa().super, expense_codes: [superCode] } }),
+      inputs: inputs({ plRows, accounts }),
+    })
+    const chart = run('EMP-W', 'EMP-S')
+    const lower = run('emp-w', 'emp-s')
+    if (chart.status !== 'ready' || lower.status !== 'ready') throw new Error('not ready')
+    expect(at(chart, '2026-09').bank_at_end).toBeCloseTo(133601.98, 2)
+    expect(lower.cashflow.months).toEqual(chart.cashflow.months)
+    expect(lower.basis).toBe(chart.basis)
+    expect(lower.warnings.filter((w) => w.includes('on the pay runs'))).toEqual([])
+  })
+})
+
+describe('an actual month that does not add up is a refusal and a preflight fail, never a plug', () => {
+  it('PAYG accounts with no wages codes is not a config that parses', () => {
+    const { wages_codes: _w, ...noWages } = urbanRoadCashModel()
+    expect(parseCashModelConfig(noWages).status).toBe('invalid')
+    const empty = parseCashModelConfig(urbanRoadCashModel({ wages_codes: [] }))
+    expect(empty.status).toBe('invalid')
+    if (empty.status === 'invalid') expect(empty.reason).toContain('wages_codes')
+  })
+
+  it('a super payable account with no super expense codes is not a config that parses', () => {
+    const base = urbanRoadCashModel()
+    const parsed = parseCashModelConfig({ ...base, super: { ...base.super, expense_codes: [] } })
+    expect(parsed.status).toBe('invalid')
+    if (parsed.status === 'invalid') expect(parsed.reason).toContain('expense_codes')
+  })
+
+  it('payroll lists are required, not silently []: a client with no payroll says so explicitly', () => {
+    const base = urbanRoadCashModel()
+    const { super: _s, ...rest } = base
+    const { payable_account_ids: _p, ...superNoPayable } = base.super
+    expect(parseCashModelConfig({ ...rest, super: superNoPayable }).status).toBe('invalid')
+    const noPayroll = parseCashModelConfig({
+      ...base,
+      wages_codes: [],
+      paygw: { ...base.paygw, liability_account_ids: [] },
+      super: { ...base.super, payable_account_ids: [], expense_codes: [] },
+    })
+    expect(noPayroll.status).toBe('on')
+  })
+
+  it('wages codes that book nothing this month do not take the payslip PAYG off the PAYG row', () => {
+    // The probe: payslipTax came off the PAYG row while no wages row put it back.
+    const cfg = urbanRoadCashModel({ wages_codes: ['99999'] })
+    const flow = deriveMoneyFlow(UR_BS_ROWS, '2026-07', { bankAccountIds: UR_BANK_IDS, creditCardAccountIds: UR_CREDIT_CARD_IDS, plRows: UR_PL_ROWS })
+    const labels = urbanRoadFullYear().sections.flatMap((s) => s.lines.map((l) => ({ account_code: l.account_code, account_name: l.account_name, group: l.group })))
+    const cash = deriveActualCashMonth({
+      flow, plRows: UR_PL_ROWS, labels, taxRate: taxRateLookup(UR_ACCOUNTS, cfg.gst.tax_rate_overrides),
+      payslips: payslipsByMonth(UR_PAY_RUNS)['2026-07'], cfg,
+    })
+    expect(cash.unreconciled_lines?.find((l) => l.label === UNEXPLAINED_LABEL)).toBeUndefined()
+    expect(cash.reconciliation.payg_separated).toBe(false)
+    expect(cash.net_movement).toBe(31446.33)
+  })
+
+  it('one account named in two settings is not a config that parses', () => {
+    const base = urbanRoadCashModel()
+    const parsed = parseCashModelConfig({ ...base, debtors_account_ids: [UR_ACCOUNT_IDS.tradeDebtors, UR_ACCOUNT_IDS.gstCollectedPaid] })
+    expect(parsed.status).toBe('invalid')
+    if (parsed.status === 'invalid') expect(parsed.reason).toContain(UR_ACCOUNT_IDS.gstCollectedPaid)
+  })
+
+  it('a code in both wages_codes and super.expense_codes is not a config that parses, and the reason names it', () => {
+    const parsed = parseCashModelConfig(urbanRoadCashModel({ wages_codes: ['62160', '62170'] }))
+    expect(parsed.status).toBe('invalid')
+    if (parsed.status === 'invalid') {
+      expect(parsed.reason).toContain('62160')
+      expect(parsed.reason).toContain('super.expense_codes')
+    }
+    // Case and whitespace do not hide the overlap (the model matches codes normalised).
+    expect(parseCashModelConfig(urbanRoadCashModel({ wages_codes: [' 62160 '] })).status).toBe('invalid')
+  })
+
+  it('the model refuses a month whose rows leave an unexplained difference past the balance sheets\' tolerance', () => {
+    // Built past the parser (as a caller holding a CashModelConfig can): super
+    // named as wages too, so its expense is paid once net of PAYG and again
+    // through Superannuation Payable. (The first cut's case — the GST account
+    // also in debtors — is now refused earlier, as a liability in debtors.)
+    const model = build(calxa({ wages_codes: ['62160', '62170'] }))
+    expect(model.status).toBe('refused')
+    if (model.status === 'refused') {
+      expect(model.reason).toMatch(/^Jul 2026: /)
+      expect(model.reason).toContain('do not add to the bank movement')
+    }
+  })
+
+  it('a $1-$2 unexplained difference is refused too: the label, the refusal and the preflight share one threshold', () => {
+    // Rental Bond nudged 90c up at 31 Jul and 90c down at 31 Aug, with no
+    // other entry: each balance sheet is inside money flow's $1 equation
+    // tolerance, July's residual is 90c (rounding), August's is $1.80. The
+    // first cut refused only past $2, so August printed an "Unexplained
+    // difference" row the preflight failed and could not stop.
+    const bond = '685016a3-1638-4286-ac66-91c2265a1c75'
+    const bsRows = UR_BS_ROWS.map((r) => (r.account_id === bond
+      ? { ...r, balances_by_date: { ...r.balances_by_date, '2026-07-31': 19730.15, '2026-08-31': 19728.35 } }
+      : r))
+    const flow = deriveMoneyFlow(bsRows, '2026-08', { bankAccountIds: UR_BANK_IDS, creditCardAccountIds: UR_CREDIT_CARD_IDS, plRows: UR_PL_ROWS })
+    expect(flow.comparable).toBe(true)
+    const cfg = calxa()
+    const labels = urbanRoadFullYear().sections.flatMap((s) => s.lines.map((l) => ({ account_code: l.account_code, account_name: l.account_name, group: l.group })))
+    const cash = deriveActualCashMonth({
+      flow: flow as never, plRows: UR_PL_ROWS, labels, taxRate: taxRateLookup(UR_ACCOUNTS, cfg.gst.tax_rate_overrides),
+      payslips: payslipsByMonth(UR_PAY_RUNS)['2026-08'], cfg,
+    })
+    const row = cash.unreconciled_lines?.find((l) => l.label === UNEXPLAINED_LABEL)
+    expect(row).toBeDefined()
+    expect(Math.abs(row!.value)).toBeGreaterThanOrEqual(UNEXPLAINED_MATERIALITY)
+    expect(Math.abs(row!.value)).toBeLessThanOrEqual(2)
+
+    const model = build(cfg, { bsRows })
+    expect(model.status).toBe('refused')
+    if (model.status === 'refused') expect(model.reason).toMatch(/^Aug 2026: the cash rows do not add to the bank movement/)
+  })
+
+  it('preflight fails an Unexplained difference over a dollar, and does its arithmetic on the rows', async () => {
+    const { runPreflight } = await import('../preflight')
+    const report = { report_month: '2026-08', sections: [], summary: { revenue: { actual: 1 }, cogs: { actual: 0 }, opex: { actual: 0 }, net_profit: { actual: 1 } }, is_draft: true, has_budget: true } as never
+    const moneyFlow = deriveMoneyFlow(UR_BS_ROWS, '2026-08', { bankAccountIds: UR_BANK_IDS, plRows: UR_PL_ROWS })
+    const model = build(calxa())
+    if (model.status !== 'ready') throw new Error(model.reason)
+    const clean = { ...model.cashflow, cash_model: { ...model.cashflow.cash_model!, warnings: [] } }
+    const check = (cashflow: unknown) => runPreflight({ report, moneyFlow, cashflow: cashflow as never }).find((r) => r.key === 'cash_model_ties')!
+
+    // A plug row: net_movement still equals the bank delta, the rows do not.
+    const plugged = {
+      ...clean,
+      months: clean.months.map((m, i) => (i === 0
+        ? { ...m, unreconciled_lines: [{ label: UNEXPLAINED_LABEL, value: 9688.07 }], unreconciled_movement: 9688.07, movement_in_liabilities: m.movement_in_liabilities - 9688.07 }
+        : m)),
+    }
+    expect(check(plugged)).toMatchObject({ status: 'fail', detail: expect.stringContaining('Unexplained difference') })
+
+    // Rows that do not add to the bank, whatever net_movement claims.
+    const rowsOff = { ...clean, months: clean.months.map((m, i) => (i === 1 ? { ...m, cash_inflows: m.cash_inflows + 250 } : m)) }
+    expect(check(rowsOff).status).toBe('fail')
+  })
+
+  it('preflight fails a cash-model business whose cashflow was refused, instead of skipping', async () => {
+    const { runPreflight } = await import('../preflight')
+    const report = { report_month: '2026-08', sections: [], summary: { revenue: { actual: 1 }, cogs: { actual: 0 }, opex: { actual: 0 }, net_profit: { actual: 1 } }, is_draft: true, has_budget: true } as never
+    const r = runPreflight({ report, cashflow: null, cashflowReason: 'the debtors account is not on the balance sheet' }).find((x) => x.key === 'cash_model_ties')!
+    expect(r).toMatchObject({ status: 'fail', detail: expect.stringContaining('debtors account') })
+  })
+})
+
+describe('a monthly activity statement is paid the month after', () => {
+  it('"monthly" is not a GST or PAYG schedule the config accepts: it paid GST in the month it accrued', () => {
+    const base = urbanRoadCashModel()
+    expect(parseCashModelConfig({ ...base, gst: { ...base.gst, schedule: 'monthly' } }).status).toBe('invalid')
+    expect(parseCashModelConfig({ ...base, paygw: { ...base.paygw, schedule: 'monthly' } }).status).toBe('invalid')
+    expect(parseCashModelConfig({ ...base, gst: { ...base.gst, schedule: 'monthly_activity_statement' } }).status).toBe('on')
+  })
+
+  it('September pays August\'s GST only; October pays September\'s', () => {
+    const base = calxa()
+    const cfg = calxa({ gst: { ...base.gst, schedule: 'monthly_activity_statement' } })
+    const g = openingGst(UR_BS_ROWS, '2026-08', cfg)
+    if ('reason' in g) throw new Error(g.reason)
+    expect(g.dueMonth).toBe('2026-09')
+    expect(g.settledEnd).toBe('2026-07-31')
+    const model = build(cfg)
+    // September: the opening (August's movement) and nothing of September's own.
+    expect(v(at(model, '2026-09').liability_lines, 'GST Collected & Paid')).toBeCloseTo(-g.amount, 2)
+    // October: September's own GST, the 13,888.10 the quarterly run pays in November.
+    expect(Math.abs(v(at(model, '2026-10').liability_lines, 'GST Collected & Paid') + 13888.1)).toBeLessThan(1)
+  })
+})
+
+describe('the basis says where each figure came from', () => {
+  it('a set number and a derived one are labelled each for what it is', () => {
+    const model = build(calxa({ dpo_days: 'derived' }))
+    if (model.status !== 'ready') throw new Error(model.reason)
+    expect(model.basis).toContain('debtors 19 days (set), creditors 26 days (from the ledger)')
+  })
+
+  it('names the PAYG rate and its source, and when PAYG and super are paid', () => {
+    const model = build(calxa())
+    if (model.status !== 'ready') throw new Error(model.reason)
+    expect(model.basis).toContain('wages net of PAYG at 23.06% (Aug 2026 payslips)')
+    expect(model.basis).toContain('super each pay run')
+  })
+})
+
+describe('an ATO balance in no forecast payment is said', () => {
+  it('PAYG on 21390 leaves ATO Creditors (BAS) $10,741 unpaid: warned', () => {
+    const base = calxa()
+    const model = build(calxa({ paygw: { ...base.paygw, liability_account_ids: [UR_ACCOUNT_IDS.paygPayrollTaxWithheld] } }))
+    if (model.status !== 'ready') throw new Error(model.reason)
+    expect(model.warnings.some((w) => w.includes('ATO Creditors (BAS)') && w.includes('$10,741') && w.includes('no forecast payment'))).toBe(true)
+  })
+
+  it('PAYG on 21250 leaves PAYG Payroll Tax Withheld $16,674 unpaid: warned; excluded explicitly: not', () => {
+    const warned = build(calxa())
+    if (warned.status !== 'ready') throw new Error(warned.reason)
+    expect(warned.warnings.some((w) => w.includes('PAYG Payroll Tax Withheld') && w.includes('$16,674'))).toBe(true)
+    const excluded = build(calxa({ opening_ato_accounts: [{ account_id: UR_ACCOUNT_IDS.paygPayrollTaxWithheld, pay: 'excluded' }] }))
+    if (excluded.status !== 'ready') throw new Error(excluded.reason)
+    expect(excluded.warnings.some((w) => w.includes('PAYG Payroll Tax Withheld'))).toBe(false)
+  })
+
+  it('the June GST left over is broken down by account', () => {
+    const model = build(calxa())
+    if (model.status !== 'ready') throw new Error(model.reason)
+    const w = model.warnings.find((x) => x.includes('at 30 Jun 2026'))!
+    expect(w).toContain('GST Collected & Paid $31,515')
+    expect(w).toContain('-$3,080')
+  })
+})
+
+describe('cash-basis GST', () => {
+  it('does not charge GST again on opening debtors and creditors the ledger GST account already holds', () => {
+    const base = calxa()
+    const cash = build(calxa({ gst: { ...base.gst, basis: 'cash' } }))
+    if (cash.status !== 'ready') throw new Error(cash.reason)
+    expect(cash.warnings.some((w) => w.includes('cash basis') && w.includes('opening debtors and creditors'))).toBe(true)
+  })
+})

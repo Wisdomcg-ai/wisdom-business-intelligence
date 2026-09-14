@@ -56,10 +56,13 @@ export function packCashflowChartData(cf: CashflowForecastData): PackCashflowCha
         otherIncome: m.other_inflows,
         // The engine has no Other Expenses or equity cash rows. Zero, stated,
         // rather than an absent series: the legend is Calxa's either way.
+        // Cash model v2's actual months do carry equity (capital in, drawings).
+        // Its unreconciled rows are not stacked: they are what the bars could
+        // not explain, and the bank line still shows the real balance.
         otherExpenses: 0,
         assets: m.movement_in_assets,
         liabilities: m.movement_in_liabilities,
-        equities: 0,
+        equities: m.movement_in_equity ?? 0,
       },
       bankAtEnd: m.bank_at_end,
     }

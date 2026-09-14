@@ -49,6 +49,9 @@ import { payrollWindowForLayout } from '@/lib/monthly-report/payroll-grid-config
 import { parseRatioAnalysisConfig, requiredWindow } from '@/lib/monthly-report/ratio-table'
 import { buildPackCashflowForecast, packCashflowBasisFor, packCashflowPlLines } from '@/lib/monthly-report/pack-cashflow'
 import type { OpeningBank } from '@/lib/monthly-report/opening-bank'
+import { buildPackCashModel } from '@/lib/monthly-report/pack-cash-model'
+import type { CashModelLoadResult } from '@/lib/monthly-report/pack-cash-model-load'
+import { resolvePageCashModel } from '@/lib/monthly-report/cash-model-page-gate'
 import { useWagesDetail } from './hooks/useWagesDetail'
 import { useXeroConnection } from './hooks/useXeroConnection'
 import { useAccountMappings } from './hooks/useAccountMappings'
@@ -121,6 +124,32 @@ async function loadOpeningBank(businessId: string, reportMonth: string): Promise
   }
 }
 
+/**
+ * The cash model v2 switch and inputs (see pack-cash-model-load), asked for
+ * only when the business's settings row carries a cash_model — see
+ * resolvePageCashModel: a client that never turned v2 on does not depend on
+ * this route at all. For one that did, a failed lookup is not "off" (that
+ * would print v1 in v2's place); it is a refusal the page prints.
+ */
+async function fetchCashModel(businessId: string, reportMonth: string, settingsCashModel: unknown): Promise<CashModelLoadResult> {
+  return resolvePageCashModel(settingsCashModel, async () => {
+    try {
+      const res = await fetch(
+        `/api/monthly-report/cash-model?business_id=${encodeURIComponent(businessId)}&report_month=${encodeURIComponent(reportMonth)}`
+      )
+      if (res.ok) {
+        const body = await res.json()
+        const status = body?.cash_model?.status
+        if (status === 'off' || status === 'refused' || status === 'ready') return body.cash_model as CashModelLoadResult
+      }
+      Sentry.captureMessage(`[MonthlyReport] cash model lookup failed (${res.status})`, { tags: { route: 'monthly-report/cash-model' } } as any)
+    } catch (err) {
+      Sentry.captureException(err, { tags: { route: 'monthly-report/cash-model' } } as any)
+    }
+    return null
+  })
+}
+
 export default function MonthlyReportPage() {
   const supabase = createClient()
   const searchParams = useSearchParams()
@@ -176,6 +205,9 @@ export default function MonthlyReportPage() {
   // already has a forecast: it sends them to rebuild something that exists.
   // CashflowTab already renders an `error` prop; nothing ever set it.
   const [cashflowError, setCashflowError] = useState<string | null>(null)
+  // Why a cash-model-v2 business has no cashflow, for the PDF built in the
+  // same pass (a setState is not visible to the pass that made it).
+  const cashflowReasonRef = useRef<string | null>(null)
 
   // Viewer role. Hoisted ABOVE the tab effects below because they reference it
   // in their dependency arrays — leaving it at its old position (further down)
@@ -433,10 +465,35 @@ export default function MonthlyReportPage() {
     fullYear?: import('./types').FullYearReport | null,
     reportMonth?: string,
   ) => {
-    if (!businessId || !userId || cashflowLoading) return
+    // Not before the settings row: its cash_model decides v1 or v2, and a
+    // load that ran first would build v1 for a business on v2.
+    if (!businessId || !userId || !settings || cashflowLoading) return
     setCashflowLoading(true)
     setCashflowError(null)
+    cashflowReasonRef.current = null
     try {
+      // Cash model v2 first: a business that has turned it on never reaches
+      // the clock-picked forecast below (nor its create-on-read), and one whose
+      // model cannot be built says why rather than printing v1 in its place.
+      const cmMonth = reportMonth ?? selectedMonth
+      const cashModel = await fetchCashModel(businessId, cmMonth, settings.cash_model)
+      if (cashModel.status !== 'off') {
+        let reason: string
+        if (cashModel.status === 'ready') {
+          const model = buildPackCashModel({ fullYear, reportMonth: cmMonth, config: cashModel.config, inputs: cashModel.inputs })
+          if (model.status === 'ready') {
+            setCashflowForecast(model.cashflow)
+            return model.cashflow
+          }
+          reason = model.reason
+        } else {
+          reason = cashModel.reason
+        }
+        cashflowReasonRef.current = reason
+        setCashflowError(`The cashflow is not available: ${reason}`)
+        return null
+      }
+
       const forecastFY = getForecastFiscalYear()
       const { forecast, error: forecastErr } = await ForecastService.getOrCreateForecast(businessId, userId, forecastFY)
       if (forecastErr) {
@@ -477,7 +534,7 @@ export default function MonthlyReportPage() {
       setCashflowLoading(false)
     }
     return null
-  }, [businessId, userId, cashflowLoading, selectedMonth])
+  }, [businessId, userId, settings, cashflowLoading, selectedMonth])
 
   // Save active tab
   useEffect(() => {
@@ -684,7 +741,10 @@ export default function MonthlyReportPage() {
 
   // Lazy load cashflow forecast when cashflow tab or charts tab is active
   useEffect(() => {
-    if ((activeTab === 'cashflow' || activeTab === 'charts') && !cashflowForecast && !cashflowLoading && businessId && userId) {
+    // Not again after an error: a refused cash model answers null every time,
+    // and without this each finished load would start the next one. A month
+    // change clears the error, so the next month still loads.
+    if ((activeTab === 'cashflow' || activeTab === 'charts') && !cashflowForecast && !cashflowLoading && !cashflowError && businessId && userId && settings) {
       // The Full Year report carries the actuals and the approved budget this
       // page is now built from, so it is loaded FIRST rather than left to
       // chance — a tab and a pack that disagree about the same month is the
@@ -697,7 +757,7 @@ export default function MonthlyReportPage() {
         await loadCashflowForecast(fy, selectedMonth)
       })()
     }
-  }, [activeTab, cashflowForecast, cashflowLoading, businessId, userId, fullYearReport, fiscalYear, selectedMonth, loadFullYear, loadCashflowForecast])
+  }, [activeTab, cashflowForecast, cashflowLoading, cashflowError, businessId, userId, settings, fullYearReport, fiscalYear, selectedMonth, loadFullYear, loadCashflowForecast])
 
   // Phase 34 (MLTE-04): when the consolidated tab is active and this business
   // is a consolidation parent, fetch the consolidated report. The tab + banner
@@ -948,6 +1008,12 @@ export default function MonthlyReportPage() {
     setCommentary(undefined)
     clearSubscription()
     clearWages()
+    // The cashflow is scoped to the report month too — its actual months end
+    // there — and the export reuses whatever this state holds, so a month
+    // change must not leave the last month's cashflow waiting to be printed.
+    setCashflowForecast(null)
+    setCashflowError(null)
+    cashflowReasonRef.current = null
     // The Full Year page is scoped to the fiscal year, but WHICH months it
     // treats as actual is scoped to the report month — so a month change
     // invalidates it just as a fiscal-year change does.
@@ -1066,6 +1132,7 @@ export default function MonthlyReportPage() {
     accountActuals?: { data: import('@/lib/monthly-report/ratio-table').AccountActuals | null; reason?: string }
     wagesDetail?: import('./types').WagesDetailData
     cashflowForecast?: CashflowForecastData
+    cashflowReason?: string
     externalMetrics?: import('./types').ExternalMetricSeriesData[]
     memo?: string
     moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
@@ -1414,6 +1481,9 @@ export default function MonthlyReportPage() {
       accountActuals,
       wagesDetail: wDetail || undefined,
       cashflowForecast: cfData,
+      // A cash-model-v2 business whose model could not be built: the cash
+      // pages print this reason instead of disappearing from the pack.
+      cashflowReason: cfData ? undefined : (cashflowReasonRef.current ?? undefined),
       externalMetrics: extMetrics,
       memo: memoText,
       moneyFlow,
@@ -1517,6 +1587,8 @@ export default function MonthlyReportPage() {
         subscriptionDetail: opts.subscriptionDetail ?? null,
         externalMetrics: opts.externalMetrics ?? null,
         moneyFlow: opts.moneyFlow ?? null,
+        cashflow: opts.cashflowForecast ?? null,
+        cashflowReason: opts.cashflowReason ?? null,
         consolidated: opts.consolidated?.diagnostics ?? null,
         unmappedCount: unmapped.length,
         dataQualityLevel: dataQuality,
@@ -1676,6 +1748,8 @@ export default function MonthlyReportPage() {
         subscriptionDetail: eager.subscriptionDetail ?? null,
         externalMetrics: eager.externalMetrics ?? null,
         moneyFlow: eager.moneyFlow ?? null,
+        cashflow: eager.cashflowForecast ?? null,
+        cashflowReason: eager.cashflowReason ?? null,
         consolidated: (eager.consolidated as any)?.diagnostics ?? null,
         unmappedCount: unmapped.length,
         dataQualityLevel: dataQuality,
@@ -2088,6 +2162,7 @@ export default function MonthlyReportPage() {
             basis={cashflowForecast
               ? packCashflowBasisFor(fullYearReport, selectedMonth, cashflowForecast)
               : null}
+            groupOrder={settings?.expense_group_order ?? fullYearReport?.expense_group_order ?? null}
           />
         )}
 

@@ -171,6 +171,13 @@ interface PDFOptions {
   accountActuals?: { data: AccountActuals | null; reason?: string }
   wagesDetail?: WagesDetailData
   cashflowForecast?: CashflowForecastData
+  /**
+   * Why a business on cash model v2 has no cashflow (a refused month, terms
+   * that could not be derived, unreadable settings). The cash pages print it
+   * rather than dropping out of the pack — the cf-page-silently-dropped
+   * defect — and never fall back to the v1 pages in its place.
+   */
+  cashflowReason?: string
   /** WE.1b — external-metrics series with this month's values (entered data). */
   externalMetrics?: import('../types').ExternalMetricSeriesData[]
   /** WC.5 — the app's display name for the business ("Urban Road"). */
@@ -463,6 +470,7 @@ export class MonthlyReportPDFService {
           this.standingHostId = undefined
           this.openedPages = new Set([1])
           this.coverPage = null
+          this.cashflowReasonPrinted = false
           this.doc = new jsPDF('portrait', 'mm', 'a4')
           this.pageWidth = A4_SHORT
           this.pageHeight = A4_LONG
@@ -513,6 +521,8 @@ export class MonthlyReportPDFService {
     if (this.options.cashflowForecast && this.options.cashflowForecast.months.length > 0) {
       this.addCashflowForecastPage()
       this.addCashflowForecastChartPage()
+    } else if (this.options.cashflowReason) {
+      this.addCashflowForecastPage()
     }
     if (this.options.fullYearReport) {
       this.addFullYearProjection()
@@ -2460,7 +2470,11 @@ export class MonthlyReportPDFService {
   // The rows themselves — order, signs, labels, the Total — are
   // buildPackCashflowRows'; this method only draws them.
   private addCashflowForecastPage(): void {
-    const cf = this.options.cashflowForecast!
+    if (!this.options.cashflowForecast) {
+      this.addCashflowReasonPage()
+      return
+    }
+    const cf = this.options.cashflowForecast
     this.addPage('landscape')
     this.drawPageTitle(`Cashflow Forecast — ${this.cashflowPeriod(cf)}`)
 
@@ -2505,9 +2519,17 @@ export class MonthlyReportPDFService {
       ]
     })
 
+    // Cash model v2 prints actual months beside budget months, as the Full
+    // Year page does, so each column says which it is. A v1 cashflow keeps its
+    // one header row.
+    const head: string[][] = [headers]
+    if (cf.cash_model) {
+      head.push(['', ...cf.months.map((m) => (m.source === 'actual' ? 'Actual' : 'Budget')), ''])
+    }
+
     const options: UserOptions = {
       startY: this.yPosition,
-      head: [headers],
+      head,
       body,
       theme: 'plain',
       showHead: 'everyPage',
@@ -2542,12 +2564,17 @@ export class MonthlyReportPDFService {
         const col = data.column.index
         if (data.section === 'head') {
           if (col === totalCol) data.cell.styles.fillColor = [...BAND_LIGHT] as RGB
+          if (data.row.index === 1) {
+            data.cell.styles.fontSize = 6.5
+            data.cell.styles.minCellHeight = 3.6
+            data.cell.styles.textColor = [110, 110, 110]
+          }
           return
         }
         const row = (data.cell.raw as { _row?: PackCashflowRow })?._row
         if (!row) return
         const s = data.cell.styles
-        s.fontStyle = row.kind === 'line' ? 'normal' : 'bold'
+        s.fontStyle = row.kind === 'line' ? 'normal' : row.kind === 'unreconciled' ? 'italic' : 'bold'
         if (col === 0) {
           s.halign = 'left'
           s.fontSize = row.kind === 'heading' ? 10.5 : 8.5
@@ -2636,6 +2663,23 @@ export class MonthlyReportPDFService {
     this.yPosition = y
   }
 
+  /**
+   * Once per pack. A layout that places both the chart and the table reaches
+   * addCashflowReasonPage from each placement, and the first cut printed the
+   * same reason page twice.
+   */
+  private cashflowReasonPrinted = false
+
+  /** A cash-model-v2 business with no cashflow: the page, its title and why. */
+  private addCashflowReasonPage(): void {
+    const reason = (this.options.cashflowReason ?? '').trim()
+    if (!reason || this.cashflowReasonPrinted) return
+    this.cashflowReasonPrinted = true
+    this.addPage('landscape')
+    this.drawPageTitle(`Cashflow Forecast — ${this.formatMonth(this.report.report_month)}`)
+    this.drawReasonCard(`The cashflow is not available for this month: ${reason.replace(/\.$/, '')}.`)
+  }
+
   /** 'Jul 2026 - Jun 2027': the months the cash pages cover. */
   private cashflowPeriod(cf: CashflowForecastData): string {
     const first = cf.months[0]?.monthLabel ?? ''
@@ -2651,7 +2695,11 @@ export class MonthlyReportPDFService {
   // in above zero, money out below), a grey Bank At End line, a plain en-AU
   // axis on whole steps, and the basis in a dashed box under the plot.
   private addCashflowForecastChartPage(): void {
-    const cf = this.options.cashflowForecast!
+    if (!this.options.cashflowForecast) {
+      this.addCashflowReasonPage()
+      return
+    }
+    const cf = this.options.cashflowForecast
     const points = packCashflowChartData(cf)
     this.addPage('landscape')
     this.drawPageTitle(`Cashflow Forecast — ${this.cashflowPeriod(cf)}`)
@@ -4034,6 +4082,11 @@ export class MonthlyReportPDFService {
     return box.y >= top ? box : { ...box, y: top, h: box.h - (top - box.y) }
   }
 
+  /** Whether the layout in force places a widget of this type anywhere. */
+  private layoutPlaces(type: WidgetType): boolean {
+    return (this.activeLayout?.pages ?? []).some((p) => Array.isArray(p.widgets) && p.widgets.some((w) => w.type === type))
+  }
+
   /**
    * Dispatch rendering for a widget type within a bounding box.
    * Falls back to a placeholder if the widget can't be rendered.
@@ -4083,9 +4136,14 @@ export class MonthlyReportPDFService {
       case 'chart_cash_runway':
       case 'chart_cumulative_net_cash':
       case 'chart_working_capital_gap':
-      case 'chart_cashflow_forecast':
-      case 'cashflow_forecast_table':
         return !!this.options.cashflowForecast
+      case 'chart_cashflow_forecast':
+        // A reason prints once, from the table's placement when the layout
+        // has one — otherwise the chart's page would be left blank (or, before
+        // the reason page learnt to print once, a second identical page).
+        return !!this.options.cashflowForecast || (!!this.options.cashflowReason && !this.layoutPlaces('cashflow_forecast_table'))
+      case 'cashflow_forecast_table':
+        return !!this.options.cashflowForecast || !!this.options.cashflowReason
       case 'subscription_detail':
       case 'chart_subscription_creep':
         return !!this.options.subscriptionDetail

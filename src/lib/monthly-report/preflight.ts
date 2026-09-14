@@ -21,6 +21,8 @@ import type {
   ReconciliationStatus,
 } from '@/app/finances/monthly-report/types'
 import type { MoneyFlow } from '@/lib/monthly-report/money-flow'
+import type { CashflowForecastData } from '@/app/finances/forecast/types'
+import { UNEXPLAINED_LABEL, UNEXPLAINED_MATERIALITY } from '@/lib/monthly-report/pack-cash-actuals'
 import { moneyFlowProof } from '@/lib/monthly-report/money-flow-rows'
 import { netProfitFromBuckets } from '@/lib/finance/net-profit'
 import { SUPERANNUATION } from '@/app/finances/forecast/constants'
@@ -71,6 +73,14 @@ export interface PreflightInputs {
   activityAccounts?: string[] | null
   /** The layout's commentary settings the pack could not read, one line each. */
   commentarySettingsProblems?: string[] | null
+  /** The cashflow going into the pack — checked only when it is cash model v2. */
+  cashflow?: CashflowForecastData | null
+  /**
+   * Why a cash-model-v2 business has no cashflow (the reason its cash pages
+   * print). Set only when v2 is on: without it a refused model read as
+   * 'skip', the same as a client that never turned v2 on.
+   */
+  cashflowReason?: string | null
   /** The budget forecast's superannuation_rate (null = unset → statutory default). */
   budgetSuperRate?: number | null
   /** The budget forecast's actual_end_month ('YYYY-MM') — months at or before
@@ -378,6 +388,58 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
       push('month_data', 'Month has data', 'pass', 'The report month carries actuals.')
     } else {
       push('month_data', 'Month has data', 'fail', 'Every actual in the month is zero — has the sync reached this month?')
+    }
+  }
+
+  // 18. Cash model ties — v2's actual months are the bank's cash, so they must
+  // add to the bank movement to the cent, the report month's column must be
+  // the money-flow page's "How this Affected Our Bank" total, and the budget
+  // must open on the bank the actuals close on.
+  {
+    const cf = inputs.cashflow
+    if (!cf && inputs.cashflowReason) {
+      push('cash_model_ties', 'Cashflow ties to the bank', 'fail', `The cash model is on but could not be built, so the cash pages print a reason instead: ${inputs.cashflowReason.replace(/\.$/, '')}.`)
+    } else if (!cf?.cash_model) {
+      push('cash_model_ties', 'Cashflow ties to the bank', 'skip', 'The cashflow is not on cash model v2 — its banked months are estimated, not tied.')
+    } else {
+      const problems: string[] = []
+      const actual = cf.months.filter((m) => m.source === 'actual')
+      for (const m of actual) {
+        const delta = r2(m.bank_at_end - m.bank_at_beginning)
+        // On the ROWS, not on net_movement: net_movement is built as the rows
+        // plus an "Unexplained difference" row of whatever size makes it the
+        // bank's figure, so comparing it with the bank could never fail. The
+        // bank at each end is the balance-sheet mirror's; the rows are what
+        // the page says moved it.
+        const rows = r2(m.cash_inflows - m.cash_outflows + m.movement_in_assets + m.movement_in_liabilities
+          + (m.movement_in_equity ?? 0) + m.other_inflows)
+        const explained = r2((m.unreconciled_lines ?? []).filter((l) => l.label !== UNEXPLAINED_LABEL).reduce((s, l) => s + l.value, 0))
+        const unexplained = r2(delta - rows - explained)
+        if (Math.abs(unexplained) >= UNEXPLAINED_MATERIALITY) {
+          problems.push(`${m.monthLabel}'s rows add to ${r2(rows + explained)} against a bank movement of ${delta} — ${unexplained} Unexplained difference`)
+        }
+        if (Math.abs(r2(m.net_movement - delta)) > 0.01) {
+          problems.push(`${m.monthLabel} moves ${m.net_movement} against a bank movement of ${delta}`)
+        }
+      }
+      for (let i = 1; i < cf.months.length; i++) {
+        if (Math.abs(r2(cf.months[i].bank_at_beginning - cf.months[i - 1].bank_at_end)) > 0.01) {
+          problems.push(`${cf.months[i].monthLabel} does not open on ${cf.months[i - 1].monthLabel}'s closing bank`)
+        }
+      }
+      const mf = inputs.moneyFlow
+      const reportCol = cf.months.find((m) => m.month === cf.cash_model!.last_actual_month)
+      if (mf?.comparable && reportCol && Math.abs(r2(reportCol.net_movement - mf.bank.delta)) > 0.01) {
+        problems.push(`${reportCol.monthLabel}'s Net Movement ${reportCol.net_movement} is not the money-flow page's ${mf.bank.delta}`)
+      }
+      const drift = actual.flatMap((m) => (m.unreconciled_lines ?? []).filter((l) => Math.round(l.value) !== 0).map((l) => `${m.monthLabel}: ${l.label} ${l.value}`))
+      if (problems.length > 0) {
+        push('cash_model_ties', 'Cashflow ties to the bank', 'fail', problems.slice(0, 3).join('; ') + '.')
+      } else if (drift.length > 0 || cf.cash_model.warnings.length > 0) {
+        push('cash_model_ties', 'Cashflow ties to the bank', 'warn', [...drift, ...cf.cash_model.warnings].slice(0, 4).join('; ') + '.')
+      } else {
+        push('cash_model_ties', 'Cashflow ties to the bank', 'pass', `Every actual month adds to the bank movement to the cent, and ${reportCol?.monthLabel ?? 'the report month'} matches Where Did Our Money Go.`)
+      }
     }
   }
 
