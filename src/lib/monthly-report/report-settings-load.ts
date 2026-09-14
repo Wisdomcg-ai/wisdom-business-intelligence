@@ -4,8 +4,9 @@
  * filled from the defaults, or the defaults alone when there is no row — and
  * its report templates.
  *
- * Shared by the settings route and scripts/preview-pack.ts, so the harness
- * decides which pages a pack carries from the same settings the export reads.
+ * Shared by the settings and templates routes and scripts/preview-pack.ts, so
+ * the harness decides which pages a pack carries from the same settings (and
+ * the same default template) the export reads.
  * Reads only; the caller supplies the client and is responsible for
  * authorisation. Throws on a database error.
  */

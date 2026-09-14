@@ -44,6 +44,24 @@
  *   balance-sheet-mom.json     GET  /api/Xero/balance-sheet?compare=mom
  *   balance-sheet-yoy.json     GET  /api/Xero/balance-sheet?compare=yoy
  *
+ * Nor can it mirror what the export inherits from how the page got to the
+ * Export button. A headless run has no history, so it takes the clean path:
+ *
+ *   default template     applied here whenever one exists. The page applies it
+ *                        only if settings have already loaded when the
+ *                        templates resolve — it sets hasAppliedDefaultTemplate
+ *                        either way, so a slow settings load exports WITHOUT it
+ *                        for the rest of the visit. A warning is printed when a
+ *                        default template exists.
+ *   forecast periods     corrected in memory here. The app persists the
+ *                        correction first and, if that update fails, runs the
+ *                        cashflow on the stale periods.
+ *   stale tab state      the export reuses the Full Year, subscription, wages
+ *                        and cashflow data a tab already holds
+ *                        (`let fyReport = fullYearReport`, `cashflowForecast ||`),
+ *                        which can belong to a month viewed earlier in the
+ *                        visit. This loads the requested month fresh, every time.
+ *
  * Other switches:
  *
  *   --layout-file layout.json   render THIS layout instead — how a new
@@ -56,18 +74,19 @@
  *   --no-persisted-subscriptions  skip the subscription page rather than
  *                               approximate it
  *
- * Strictly read-only: the database client refuses every write verb and RPC,
- * and fetch refuses any Xero host. It writes nothing but the PDF, and prints
- * a page map — page → widget → where its data came from — at the end.
+ * Strictly read-only: every fetch the process makes — the database client's
+ * included — lets only GET and HEAD leave and refuses any Xero host, and the
+ * client's builders refuse every write verb and RPC by name on top. It writes
+ * nothing but the PDF, and prints a page map — page → widget → where its data
+ * came from — at the end.
  */
 import { config } from 'dotenv'
 import path from 'path'
 config({ path: path.resolve(process.cwd(), '.env.local') })
 
 import fs from 'fs'
-import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
-import { readOnlyClient } from '@/lib/supabase/read-only-client'
+import { createReadOnlyClient, readOnlyFetch } from '@/lib/supabase/read-only-client'
 
 function flag(name: string): boolean {
   return process.argv.includes(`--${name}`)
@@ -88,16 +107,13 @@ if (!businessId || !month || !/^\d{4}-\d{2}$/.test(month)) {
 }
 
 // ── Read-only guards ────────────────────────────────────────────────────────
-const admin = readOnlyClient(createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, getSupabaseSecretKey()))
-
+// The database client's own fetch lets only GET and HEAD leave, so no write
+// reaches prod whichever supabase-js door it takes; the builder-level refusals
+// on top name the table when a loader tries. The global fetch gets the same
+// guard, for anything that fetches on its own — a loader reaching for Xero.
 const realFetch = globalThis.fetch
-globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url
-  if (/xero\.com/i.test(url)) {
-    throw new Error(`preview-pack is read-only and never calls Xero (refused ${new URL(url).host})`)
-  }
-  return realFetch(input, init)
-}) as typeof fetch
+const admin = createReadOnlyClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, getSupabaseSecretKey(), realFetch)
+globalThis.fetch = readOnlyFetch(realFetch)
 
 // The shared loaders keep their routes' development logging ('[WagesDetail] …',
 // '[Forecast] …'). Useful in a dev server's terminal; noise over a page map.
@@ -216,6 +232,12 @@ async function main() {
   const stored = await loadReportSettings(admin, bizId)
   const templated = settingsWithDefaultTemplate(stored.settings, await loadReportTemplates(admin, bizId))
   const settings = templated.settings
+  if (templated.template) {
+    warnings.push(
+      `default template "${templated.template.name}" was applied, but the app applies it only when settings load before ` +
+        'the templates do (page.tsx) — an export can go out on the stored settings instead; check both',
+    )
+  }
   const { getFiscalYearForMonth } = await import('@/app/finances/monthly-report/services/monthly-report-service')
   const fiscalYear = getFiscalYearForMonth(reportMonth)
 
@@ -378,8 +400,9 @@ async function main() {
     if (!forecast) {
       note('cashflow', 'skipped', `no FY${forecastFY} forecast — the app would CREATE an empty shell here (a write); no cashflow either way`)
     } else {
-      // The app persists a period correction and then uses the corrected row;
-      // here the correction is applied in memory only.
+      // The app persists a period correction and then uses the corrected row
+      // (or, if the update fails, the stale one); here the correction is
+      // applied in memory only.
       const { periods, needsUpdate } = forecastPeriodsFor(forecast, forecastFY)
       if (needsUpdate) {
         Object.assign(forecast, { fiscal_year: forecastFY, ...Object.fromEntries(
@@ -399,7 +422,19 @@ async function main() {
           fullYear: eager.fullYearReport, reportMonth, forecast, forecastLines: forecastLines ?? [],
           savedAssumptions: saved?.cashflow ?? null, opening,
         })
-        if (cf) eager.cashflowForecast = cf
+        if (cf) {
+          eager.cashflowForecast = cf
+          // Read before calling July's receipts a double count (an earlier
+          // render of this harness did, wrongly): the engine has no month
+          // before the first to spill from, so it stands in for collections of
+          // the opening debtors with a copy of the first month's own sales, and
+          // the same for COGS. Over the year that is not an overstatement —
+          // the last month's sales spill past the end — but the first month's
+          // cash is a proxy, not the real 30 June balances.
+          warnings.push(`cashflow: ${cf.months?.[0]?.month ?? 'the first month'}'s receipts and COGS payments are the engine's DSO/DPO ` +
+            'stand-in for collecting opening debtors and paying opening creditors (a copy of that month\'s own sales and COGS), ' +
+            'not the real opening balances, which the pack zeroes — a proxy, not a double count, whatever the basis line calls the month')
+        }
         note('cashflow', cf ? 'live-built' : 'skipped',
           `pack-cashflow on forecast "${forecast.name ?? forecast.id}" (FY${forecastFY}${needsUpdate ? ', periods corrected in memory' : ''}), ` +
           `opening ${opening.status === 'read' ? `${opening.amount} at ${opening.asAt}` : `unavailable (${opening.reason})`}`)

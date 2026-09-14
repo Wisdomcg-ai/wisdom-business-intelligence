@@ -126,11 +126,18 @@ export function buildPackCashflowLines(
  * opening creditors in the first month, and remits the ATO balances on their
  * schedule: right for a projection, wrong here, because the pack's early months
  * are built from the ACTUAL accrual P&L. The engine turns that P&L into cash
- * with its DSO/DPO timing — it does not read the cash actually received — so
- * the June debtors and creditors are already represented in the timing spill
- * of the months that follow. Adding the opening balances on top overlaps with
- * it. (Not a claim that the actuals are cash: they are not, which is also why
- * this page's closing balances will not tie to the bank to the dollar.) The ATO rows are no better a
+ * with its DSO/DPO timing — it does not read the cash actually received — and
+ * for the first month, having no earlier month to spill from, it stands in for
+ * collecting the June debtors and paying the June creditors with a copy of
+ * that month's own sales and COGS. Adding the opening balances on top would
+ * collect June twice. (Not a claim that the actuals are cash: they are not,
+ * which is also why this page's closing balances will not tie to the bank to
+ * the dollar.) Nor is the stand-in the real June balances. For Urban Road it
+ * put July receipts ~$277k above the $267k of debtors actually outstanding and
+ * COGS payments ~$178k below the $528k of creditors. It does not inflate the
+ * year — the last month's sales spill past the end, so twelve months of
+ * receipts differ from accrual by 1.1 × (first month − last month), not by a
+ * month's sales — but the first month's cash is a proxy. The ATO rows are no better a
  * signal: GST $31,515, GST adjustments −$3,080, ATO Creditors −$48,970 and
  * PAYG $16,674 net to about −$3,861 — nothing actually owed.
  *
