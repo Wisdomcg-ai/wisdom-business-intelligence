@@ -52,6 +52,19 @@ function mapTypeToCategory(accountType: string): string {
   }
 }
 
+/** The fiscal months from the first to the last one any approved line mentions. */
+function approvedSpan(
+  fyMonths: readonly string[],
+  lines: ReadonlyArray<{ forecast_months?: Record<string, number> | null }>,
+): string[] {
+  const mentioned = (m: string) => lines.some((l) => l.forecast_months?.[m] !== undefined)
+  const first = fyMonths.findIndex(mentioned)
+  if (first === -1) return []
+  let last = fyMonths.length - 1
+  while (!mentioned(fyMonths[last])) last--
+  return fyMonths.slice(first, last + 1)
+}
+
 export async function loadFullYearReport(
   supabase: Client,
   input: FullYearLoadInput,
@@ -813,6 +826,19 @@ export async function loadFullYearReport(
     // version that failed to resolve — whenever there is no approved budget,
     // because the renderer keys the whole column off that.
     approved_budget_label: approvedAvailable ? approvedLabel : null,
+    // Which months the version actually reaches. The resolver answers as soon
+    // as the report month is governed, and every row above fills a month the
+    // budget never mentions with 0 — so without this a six-month budget reads
+    // as a twelve-month one that budgets nothing from January.
+    //
+    // The first to the last month any line mentions, not each month that has a
+    // key: Xero omits a blank cell and a blank cell is $0, so a December no
+    // account was budgeted for has no key anywhere, yet lies inside a budget
+    // that runs to June. Only the edges stay ambiguous — a budget blank from
+    // April onwards is indistinguishable from one that stops in March, since
+    // the import records first_period/last_period from the same non-zero
+    // cells — and an edge gap keeps the forecast, which says so.
+    approved_months_covered: approvedAvailable ? approvedSpan(allFYMonths, approvedLines) : null,
     // Said positively, once, by the only code that knows: a page that cannot
     // tell "no forecast" from "a forecast of zero" renders a missing number
     // as a favourable variance.

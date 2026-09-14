@@ -78,7 +78,33 @@ export function burnRateSubtitle(
   report: Pick<GeneratedReport, 'budget_source'>,
   pctElapsed: number,
 ): string {
-  return `Expense ${burnRateYardstick(report).noun} for current FY (${pctElapsed.toFixed(0)}% of year elapsed)`
+  return burnRateSentence(burnRateYardstick(report).noun, pctElapsed)
+}
+
+function burnRateSentence(noun: string, pctElapsed: number): string {
+  return `Expense ${noun} for current FY (${pctElapsed.toFixed(0)}% of year elapsed)`
+}
+
+/**
+ * The same heading and line for the PDF PACK, which names the approved budget
+ * "Budget" — Matt's column-names decision (14 Sep 2026; see
+ * packStatementYardstick). Its statement pages head the approved budget
+ * "Budgets", so a burn-rate page later in the same pack calling that bar the
+ * "Approved Budget" is the two-words-for-one-yardstick defect over again.
+ *
+ * A forecast client keeps "Forecast Burn Rate": the decision was to change what
+ * the pack called a budget, and this bar is not one. The Charts tab keeps
+ * burnRateYardstick's words, as the tab's statement keeps "Approved Budget".
+ */
+export function packBurnRateLabels(
+  report: Pick<GeneratedReport, 'budget_source'>,
+  pctElapsed: number,
+): { title: string; subtitle: string } {
+  if (report.budget_source === 'budget_version') {
+    return { title: 'Budget Burn Rate', subtitle: burnRateSentence('budget', pctElapsed) }
+  }
+  const { title, noun } = burnRateYardstick(report)
+  return { title, subtitle: burnRateSentence(noun, pctElapsed) }
 }
 
 interface Props {

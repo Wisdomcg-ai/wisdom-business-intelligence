@@ -86,6 +86,15 @@ describe('buildPackCashflowLines', () => {
     expect(built.budgetMonths).toEqual(['2026-09', '2026-10'])
   })
 
+  it('carries the account code and mapping group, so the cash page can print the statement headings', () => {
+    const insurance = { ...line('Insurance excl Workers Comp', 'Operating Expenses', { '2026-07': { a: 2188.24 } }), account_code: '63500', group: 'Other Operating Expenses' }
+    const [built] = buildPackCashflowLines(report([insurance as never]), '2026-08').lines
+    expect(built.account_code).toBe('63500')
+    expect(built.report_group).toBe('Other Operating Expenses')
+    // A payload from before the route emitted groups: no group, keyword fallback.
+    expect(buildPackCashflowLines(report([CANVAS]), '2026-08').lines[0].report_group).toBeNull()
+  })
+
   it('treats the report month itself as an actual, never as a forecast', () => {
     const built = buildPackCashflowLines(report([CANVAS]), '2026-08')
     expect(built.actualMonths).toContain('2026-08')
@@ -113,7 +122,26 @@ describe('packCashflowBasis', () => {
   it('names both halves of the row', () => {
     const built = buildPackCashflowLines(report([CANVAS]), '2026-08')
     expect(packCashflowBasis(built, fmt))
-      .toBe('Actuals Jul 2026 to Aug 2026 · approved budget Sep 2026 to Oct 2026')
+      .toBe('Jul 2026 to Aug 2026 from the actual P&L, cash timing estimated · approved budget Sep 2026 to Oct 2026')
+  })
+
+  it('never calls the banked months\' cash an actual', () => {
+    // The engine times the actual accrual P&L into cash with DSO/DPO, and the
+    // first month's receipts stand in for the opening debtors: Urban Road's
+    // July cash-in printed as $544,739 under a line that said "Actuals".
+    const built = buildPackCashflowLines(report([CANVAS]), '2026-08')
+    const basis = packCashflowBasis(built, fmt, { amount: 167629.81, asAt: '2026-06-30' }, { dsoDays: 30, dpoDays: 30 })!
+    expect(basis).not.toMatch(/\bActuals\b/)
+    expect(basis).toContain('cash timing estimated')
+  })
+
+  it('states the collection and payment terms the cash was timed on', () => {
+    const built = buildPackCashflowLines(report([CANVAS]), '2026-08')
+    expect(packCashflowBasis(built, fmt, undefined, { dsoDays: 19, dpoDays: 29 }))
+      .toBe('Jul 2026 to Aug 2026 from the actual P&L, cash timing estimated · approved budget Sep 2026 to Oct 2026 · debtors 19 days, cost-of-sales creditors 29 days')
+    // No months, nothing the terms were applied to.
+    expect(packCashflowBasis(buildPackCashflowLines(null, '2026-08'), fmt, 'unavailable', { dsoDays: 19, dpoDays: 29 }))
+      .toBe('Opening bank balance unavailable — balances start from $0')
   })
 
   it('says forecast when that is what it used', () => {
@@ -136,7 +164,7 @@ describe('packCashflowBasis', () => {
       variance_amount: 0, variance_percent: 0,
     }
     const built = buildPackCashflowLines(report([short as never]), '2026-07')
-    expect(packCashflowBasis(built, fmt)).toBe('Actuals for Jul 2026 · approved budget for Aug 2026')
+    expect(packCashflowBasis(built, fmt)).toBe('Jul 2026 from the actual P&L, cash timing estimated · approved budget for Aug 2026')
   })
 
   it('says nothing when there is nothing to say', () => {
@@ -159,7 +187,7 @@ describe('packCashflowBasis', () => {
   it('names the opening bank balance and the date it was read at', () => {
     const built = buildPackCashflowLines(report([CANVAS]), '2026-08')
     expect(packCashflowBasis(built, fmt, { amount: 167629.81, asAt: '2026-06-30' }))
-      .toBe('Opening bank $167,630 at 30 Jun 2026 · Actuals Jul 2026 to Aug 2026 · approved budget Sep 2026 to Oct 2026')
+      .toBe('Opening bank $167,630 at 30 Jun 2026 · Jul 2026 to Aug 2026 from the actual P&L, cash timing estimated · approved budget Sep 2026 to Oct 2026')
   })
 
   it('keeps the sign of an overdrawn opening', () => {
@@ -172,7 +200,7 @@ describe('packCashflowBasis', () => {
     const built = buildPackCashflowLines(report([CANVAS]), '2026-08')
     const basis = packCashflowBasis(built, fmt, 'unavailable')!
     expect(basis).toMatch(/^Opening bank balance unavailable/)
-    expect(basis).toContain('Actuals Jul 2026 to Aug 2026')
+    expect(basis).toContain('Jul 2026 to Aug 2026 from the actual P&L')
   })
 })
 

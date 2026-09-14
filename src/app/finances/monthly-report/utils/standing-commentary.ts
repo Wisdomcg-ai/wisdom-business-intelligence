@@ -20,6 +20,12 @@ const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').tri
  * A refer_to matches a pack page when either normalized string contains the
  * other ("Wages" ↔ "Wages Analysis", "Cashflow" ↔ "Cashflow Forecast").
  * Empty refer_to never matches.
+ *
+ * `target`, when a line has one, is what gets matched instead. refer_to is the
+ * wording the client reads, and Calxa's is not always a page name: two of
+ * Urban Road's three lines say only "Refer to summary page", which no page is
+ * called and so would be flagged every month. The target names the page
+ * ("Contractor Analysis") so the gate still checks the page is in the pack.
  */
 export function annotateStandingLines(
   lines: ReadonlyArray<StandingCommentaryLine>,
@@ -29,10 +35,21 @@ export function annotateStandingLines(
   return lines
     .filter((l) => l && typeof l.label === 'string' && l.label.trim() !== '')
     .map((l) => {
-      const target = normalize(l.refer_to ?? '')
+      const target = normalize(typeof l.target === 'string' && l.target.trim() !== '' ? l.target : l.refer_to ?? '')
       const in_pack =
         target !== '' && labels.some((p) => p.includes(target) || target.includes(p))
-      return { label: l.label.trim(), refer_to: (l.refer_to ?? '').trim(), in_pack }
+      // Hand-applied jsonb: anything that is not a non-blank string is dropped
+      // rather than matched.
+      const accounts = (Array.isArray(l.accounts) ? l.accounts : [])
+        .filter((a): a is string => typeof a === 'string' && a.trim() !== '')
+        .map((a) => a.trim())
+      return {
+        label: l.label.trim(),
+        refer_to: (l.refer_to ?? '').trim(),
+        ...(typeof l.target === 'string' && l.target.trim() !== '' ? { target: l.target.trim() } : {}),
+        ...(accounts.length > 0 ? { accounts } : {}),
+        in_pack,
+      }
     })
 }
 

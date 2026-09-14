@@ -94,6 +94,11 @@ export function buildPackCashflowLines(
       lines.push({
         account_name: line.account_name,
         category: line.category,
+        // The code and the mapping group travel with the line so the page can
+        // print the same headings as the statement pages. The engine groups
+        // expenses by report_group; neither changes what is paid or when.
+        account_code: line.account_code ?? undefined,
+        report_group: line.group ?? null,
         actual_months,
         forecast_months,
       } as PLLine)
@@ -231,6 +236,8 @@ export function packCashflowBasis(
   built: PackCashflowLines,
   fmtMonth: (m: string) => string,
   opening?: PackOpening,
+  /** The collection and payment terms the engine timed the cash on. */
+  terms?: { dsoDays: number; dpoDays: number },
 ): string | null {
   const hasMonths = built.actualMonths.length > 0 || built.budgetMonths.length > 0
   // The opening is stated even when there are no months to describe. That is
@@ -247,9 +254,14 @@ export function packCashflowBasis(
   if (built.actualMonths.length > 0) {
     const first = built.actualMonths[0]
     const last = built.actualMonths[built.actualMonths.length - 1]
-    parts.push(first === last
-      ? `Actuals for ${fmtMonth(first)}`
-      : `Actuals ${fmtMonth(first)} to ${fmtMonth(last)}`)
+    // Not "Actuals". The banked months are the actual ACCRUAL P&L, turned into
+    // cash by the same DSO/DPO timing as the budget months — and the first
+    // month's receipts are the engine's stand-in for the opening debtors (see
+    // applyPackOpening). Urban Road's July cash-in printed as $544,739 under a
+    // line that called it an actual; the bank received something else. The
+    // sentence says which half is history without claiming the cash is.
+    const range = first === last ? fmtMonth(first) : `${fmtMonth(first)} to ${fmtMonth(last)}`
+    parts.push(`${range} from the actual P&L, cash timing estimated`)
   }
   if (built.budgetMonths.length > 0) {
     const first = built.budgetMonths[0]
@@ -258,6 +270,14 @@ export function packCashflowBasis(
     parts.push(first === last
       ? `${source} for ${fmtMonth(first)}`
       : `${source} ${fmtMonth(first)} to ${fmtMonth(last)}`)
+  }
+  // The terms replace the "DSO: 30 days | DPO: 30 days" line the table used to
+  // print on its own: they are part of what the figures rest on, so they sit
+  // with the rest of the basis. Only when there are months they were applied to.
+  // "Cost-of-sales creditors", not "creditors": the engine applies DPO to Cost
+  // of Sales only and pays operating expenses in the month they accrue.
+  if (terms && hasMonths) {
+    parts.push(`debtors ${terms.dsoDays} days, cost-of-sales creditors ${terms.dpoDays} days`)
   }
   return parts.join(' · ')
 }

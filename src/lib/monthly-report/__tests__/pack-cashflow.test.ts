@@ -15,8 +15,8 @@ import {
 import { applyPackOpening, buildPackCashflowLines } from '../pack-cashflow-lines'
 import type { OpeningBank } from '../opening-bank'
 import type { FullYearReport } from '@/app/finances/monthly-report/types'
-import { generateCashflowForecast, getDefaultCashflowAssumptions } from '@/lib/cashflow/engine'
-import { FORECAST, smallBusinessPL } from '@/lib/cashflow/__fixtures__/small-business'
+import { generateCashflowForecast, getDefaultCashflowAssumptions, KEYWORD_EXPENSE_GROUP_ORDER } from '@/lib/cashflow/engine'
+import { FORECAST, plLine, smallBusinessPL } from '@/lib/cashflow/__fixtures__/small-business'
 
 const READ: OpeningBank = { status: 'read', amount: 167629.81, asAt: '2025-06-30' }
 
@@ -66,8 +66,11 @@ describe('buildPackCashflowForecast', () => {
     })
     const plLines = buildPackCashflowLines(fullYear(), '2025-08').lines
     const assumptions = { ...getDefaultCashflowAssumptions(), ...saved, loans: [], planned_stock_changes: {} }
-    const byHand = generateCashflowForecast(plLines, null, applyPackOpening(assumptions as never, READ, FORECAST.actual_start_month), FORECAST)
-    expect(built).toEqual(byHand)
+    const byHand = generateCashflowForecast(
+      plLines, null, applyPackOpening(assumptions as never, READ, FORECAST.actual_start_month), FORECAST, [], { signedExpenses: true },
+    )
+    // The engine run, plus the statement and group order the page prints rows in.
+    expect(built).toEqual({ ...byHand, line_order: ['Canvas Sales'], expense_group_order: [...KEYWORD_EXPENSE_GROUP_ORDER] })
     // The read opening replaced the synced one, and the synced debtors were dropped.
     expect(built!.assumptions.opening_bank_balance).toBe(167629.81)
     expect(built!.assumptions.opening_trade_debtors).toBe(0)
@@ -80,6 +83,21 @@ describe('buildPackCashflowForecast', () => {
     })
     expect(built!.assumptions.opening_bank_balance).toBe(0)
     expect(built!.assumptions.balance_date).toBe('')
+  })
+
+  it("keeps the engine's abs on the forecast's own lines, where an expense's sign means nothing", () => {
+    // Prod forecast 9e9c3f8f stores Wages and Salaries actuals as a
+    // cumulative year-to-date series with one −659,999.88 reversal. On the
+    // fallback path — no Full Year report — that month is still a payment.
+    const wages = plLine('Wages and Salaries', 'Operating Expenses', -659999.88)
+    const built = buildPackCashflowForecast({
+      fullYear: null, reportMonth: '2025-08', forecast: FORECAST, forecastLines: [wages], savedAssumptions: null, opening: READ,
+    })!
+    const byHand = generateCashflowForecast(
+      [wages], null, applyPackOpening(mergeCashflowAssumptions(null), READ, FORECAST.actual_start_month), FORECAST,
+    )
+    expect(built.months[0].cash_outflows).toBeGreaterThan(0)
+    expect(built.months.map((m) => m.cash_outflows)).toEqual(byHand.months.map((m) => m.cash_outflows))
   })
 
   it('answers null when there are no lines to run', () => {
@@ -95,8 +113,17 @@ describe('packCashflowBasisFor', () => {
       fullYear: fullYear(), reportMonth: '2025-08', forecast: FORECAST, forecastLines: [], savedAssumptions: null, opening: READ,
     })
     expect(packCashflowBasisFor(fullYear(), '2025-08', cf)).toBe(
-      `Opening bank $167,630 at 30 Jun 2025 · Actuals ${packMonthLabel('2025-07')} to ${packMonthLabel('2025-08')} · approved budget for ${packMonthLabel('2025-09')}`,
+      'Opening bank $167,630 at 30 Jun 2025 · Jul 2025 to Aug 2025 from the actual P&L, cash timing estimated · ' +
+        'approved budget for Sep 2025 · debtors 30 days, cost-of-sales creditors 30 days',
     )
     expect(packCashflowBasisFor(null, '2025-08', null)).toBeNull()
+  })
+})
+
+describe('packMonthLabel', () => {
+  it("prints September as the table header does, never en-AU's \"Sept\"", () => {
+    expect(packMonthLabel('2026-09')).toBe('Sep 2026')
+    expect(packMonthLabel('2027-06')).toBe('Jun 2027')
+    expect(packMonthLabel('not-a-month')).toBe('not-a-month')
   })
 })

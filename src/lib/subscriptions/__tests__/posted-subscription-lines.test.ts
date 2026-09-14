@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { subscriptionChargeLinesOf, subscriptionLinesOf, type SubscriptionDocument } from '../posted-subscription-lines'
+import { subscriptionChargeLinesOf, subscriptionLinesOf, subscriptionStatementLinesOf, type SubscriptionDocument } from '../posted-subscription-lines'
 
 const IT_SOFTWARE = new Set(['63700'])
 const CONTRACTORS = new Set(['61400'])
@@ -196,5 +196,56 @@ describe('subscriptionChargeLinesOf — posted charges only, for the forecast wi
     ]
     expect(lines.map(l => l.amount)).toEqual([400, 400])
     expect(lines.find(l => l.documentId === 'bt-in')).toBeUndefined()
+  })
+})
+
+describe('subscriptionStatementLinesOf — the report page, in the P&L\'s money', () => {
+  it('Edi Cloud CL007500: $1,125 inclusive of $102.27 GST is $1,022.73 — what Xero posted to IT Costs Software', () => {
+    const [line] = subscriptionStatementLinesOf(ediCloud('AUTHORISED'), 'invoice', IT_SOFTWARE, 'AUD')
+    expect(line.amount).toBeCloseTo(1022.73, 2)
+    expect(line.grossAmount).toBe(1125)
+    expect(line.converted).toBe(true)
+    expect(line.sourceCurrency).toBeUndefined()
+  })
+
+  it('an unposted copy still yields nothing', () => {
+    expect(subscriptionStatementLinesOf(ediCloud('VOIDED'), 'invoice', IT_SOFTWARE, 'AUD')).toEqual([])
+  })
+
+  it('a foreign document is divided by its own rate, and a refund received keeps its minus', () => {
+    const doc: SubscriptionDocument = {
+      BankTransactionID: 'usd-refund', Type: 'RECEIVE', Status: 'AUTHORISED', Date: xeroDate('2026-08-20'),
+      Contact: { Name: 'Anthropic' }, CurrencyCode: 'USD', CurrencyRate: 0.65, LineAmountTypes: 'NoTax',
+      LineItems: [{ AccountCode: '63700', LineAmount: 13, TaxAmount: 0, Description: 'credit' }],
+    }
+    const [line] = subscriptionStatementLinesOf(doc, 'bank', IT_SOFTWARE, 'AUD')
+    expect(line.amount).toBeCloseTo(-20, 6)
+    expect(line.grossAmount).toBe(-13)
+    expect(line.sourceCurrency).toBe('USD')
+  })
+
+  it('a foreign document with no rate is not passed through as dollars: amount 0, converted false, and why', () => {
+    const doc: SubscriptionDocument = {
+      BankTransactionID: 'usd-norate', Type: 'SPEND', Status: 'AUTHORISED', Date: xeroDate('2026-08-09'),
+      Contact: { Name: 'Cloudflare' }, CurrencyCode: 'USD', LineAmountTypes: 'NoTax',
+      LineItems: [{ AccountCode: '63700', LineAmount: 25, TaxAmount: 0, Description: 'Pro plan' }],
+    }
+    const [line] = subscriptionStatementLinesOf(doc, 'bank', IT_SOFTWARE, 'AUD')
+    expect(line).toMatchObject({ amount: 0, grossAmount: 25, converted: false, sourceCurrency: 'USD' })
+    expect(line.reason).toContain('no exchange rate')
+  })
+
+  it('pairs each line with its own item when a document mixes accounts', () => {
+    const doc: SubscriptionDocument = {
+      InvoiceID: 'mixed', Type: 'ACCPAY', Status: 'PAID', Date: xeroDate('2026-08-01'), LineAmountTypes: 'Inclusive',
+      Contact: { Name: 'Microsoft' }, CurrencyCode: 'AUD',
+      LineItems: [
+        { AccountCode: '64000', LineAmount: 999, TaxAmount: 90.82, Description: 'hardware' },
+        { AccountCode: '63700', LineAmount: 110, TaxAmount: 10, Description: '365' },
+        { AccountCode: '63700', LineAmount: 55, TaxAmount: 5, Description: 'Teams' },
+      ],
+    }
+    const lines = subscriptionStatementLinesOf(doc, 'invoice', IT_SOFTWARE, 'AUD')
+    expect(lines.map((l) => l.amount)).toEqual([100, 50])
   })
 })

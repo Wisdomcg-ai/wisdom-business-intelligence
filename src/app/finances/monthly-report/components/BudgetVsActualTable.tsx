@@ -287,6 +287,7 @@ function CommentaryLine({
   triggerReason,
   vendors,
   coachNote,
+  draftNote,
   detailTabRef,
   onNoteChange,
   onCommitBlur,
@@ -298,6 +299,13 @@ function CommentaryLine({
   triggerReason?: CommentaryTriggerReason
   vendors: VendorSummary[]
   coachNote: string
+  /**
+   * The generated draft, whole. Shown so a coach writing a note can see what
+   * the generator wrote. It is NOT necessarily the text the pack prints: a
+   * placement can print it without its ratio clause, or print the note in its
+   * place, and this panel does not know which placement an account sits on.
+   */
+  draftNote?: string
   detailTabRef?: 'subscriptions' | 'wages' | null
   onNoteChange?: (accountName: string, note: string) => void
   onCommitBlur?: (accountName: string) => void
@@ -337,6 +345,16 @@ function CommentaryLine({
 
       {/* Vendor drill-down */}
       <TransactionDrillDown vendors={vendors} />
+
+      {draftNote && draftNote.trim() !== '' && (
+        <p
+          className="mt-2 text-xs text-gray-500"
+          data-testid={`commentary-draft-${accountName}`}
+          title="The pack may print this without its ratio clause, or your note in its place — see the layout's commentary settings."
+        >
+          <span className="font-medium text-gray-600">Generated draft:</span> {draftNote}
+        </p>
+      )}
 
       {/* Coach note section — Phase 42 D-04, D-14: always-editable inline textarea.
           Parent controls value via coachNote (D-14 optimistic UI); every keystroke
@@ -469,7 +487,7 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                       a tab that disagrees with the PDF beneath it is the
                       defect, not a cosmetic difference. Ungrouped clients take
                       the flat branch and render exactly as before. */}
-                  {groupExpenseLines(visibleLines, settings.expense_group_order).map((g, gi) => (
+                  {groupExpenseLines(visibleLines, settings.expense_group_order, section.category).map((g, gi) => (
                     <React.Fragment key={`${section.category}-g${gi}`}>
                       {g.name && (
                         <tr className="bg-gray-50">
@@ -597,6 +615,7 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                             triggerReason={entry.trigger_reason}
                             vendors={entry.vendor_summary || []}
                             coachNote={entry.coach_note || ''}
+                            draftNote={entry.draft_note}
                             detailTabRef={entry.detail_tab_ref}
                             onNoteChange={onCommentaryChange}
                             onCommitBlur={onCommitBlur}

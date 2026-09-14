@@ -5,6 +5,13 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import { periodMonthFromReportMonth, stampGeneratedFirst } from '@/lib/reports/cycle-stages'
+import {
+  FROZEN_BALANCE_SHEETS_KEY,
+  markBalanceSheetFreezeDue,
+  readFreezeFinalisedAt,
+  readFrozenBalanceSheets,
+  withoutFrozenBalanceSheets,
+} from '@/lib/monthly-report/balance-sheet-freeze'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -28,8 +35,11 @@ const SnapshotPatchSchema = z.object({
   report_month: z.string(),
   // WD.8: 'set_memo' writes the month's memo (coach_notes) — targeted UPDATE,
   // same narrowness rationale as mark_pdf_exported.
-  action: z.enum(['mark_pdf_exported', 'set_memo']),
+  // 'freeze_balance_sheets' stores the finalised month's two balance-sheet
+  // comparisons into report_data (lib/monthly-report/balance-sheet-freeze.ts).
+  action: z.enum(['mark_pdf_exported', 'set_memo', 'freeze_balance_sheets']),
   memo: z.string().nullable().optional(),
+  balance_sheets: z.any().optional(),
 })
 
 const SnapshotPostSchema = z.object({
@@ -202,18 +212,27 @@ async function postHandler(request: Request) {
     // updates every column present in the payload). Omit the key entirely
     // unless the caller explicitly provided it — an absent key preserves,
     // an explicit null clears.
+    const rowStatus = status || (is_draft ? 'draft' : 'final')
+    const savedAt = new Date().toISOString()
     const row: Record<string, unknown> = {
       business_id,
       report_month,
       fiscal_year,
-      status: status || (is_draft ? 'draft' : 'final'),
+      status: rowStatus,
       is_draft: is_draft ?? true,
       unreconciled_count: unreconciled_count || 0,
-      report_data,
+      // A save replaces the report, and a freeze describes the report it was
+      // taken from — so a save never carries one (the page's in-memory report
+      // still holds whatever freeze it was loaded with). A Finalise instead
+      // records a freeze as OWED, stamped with this finalise's time: the freeze
+      // itself runs in the browser and can die with the tab, and the marker is
+      // what lets the next export see that and recover. Only the
+      // freeze_balance_sheets PATCH writes the sheets; see balance-sheet-freeze.ts.
+      report_data: markBalanceSheetFreezeDue(withoutFrozenBalanceSheets(report_data), rowStatus, report_month, savedAt),
       summary,
       generated_by: generated_by || null,
-      generated_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      generated_at: savedAt,
+      updated_at: savedAt,
     }
     if (coach_notes !== undefined) {
       row.coach_notes = coach_notes || null
@@ -292,13 +311,17 @@ async function patchHandler(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { business_id, report_month, action, memo } = await request.json()
+    const { business_id, report_month, action, memo, balance_sheets } = await request.json()
 
     // withSchema is observe-mode (VALID-05a) — it logs mismatches but does not
     // block, so the handler enforces its own contract.
-    if ((action !== 'mark_pdf_exported' && action !== 'set_memo') || !business_id || !report_month) {
+    if (
+      (action !== 'mark_pdf_exported' && action !== 'set_memo' && action !== 'freeze_balance_sheets') ||
+      !business_id ||
+      !report_month
+    ) {
       return NextResponse.json(
-        { error: "business_id, report_month and action 'mark_pdf_exported' | 'set_memo' are required" },
+        { error: "business_id, report_month and action 'mark_pdf_exported' | 'set_memo' | 'freeze_balance_sheets' are required" },
         { status: 400 },
       )
     }
@@ -325,6 +348,10 @@ async function patchHandler(request: Request) {
     const _hasAccess = await verifyBusinessAccess(user.id, business_id)
     if (!_hasAccess) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    if (action === 'freeze_balance_sheets') {
+      return await freezeBalanceSheets(business_id, report_month, balance_sheets)
     }
 
     const now = new Date().toISOString()
@@ -354,6 +381,81 @@ async function patchHandler(request: Request) {
     Sentry.captureException(error, { tags: { route: 'monthly-report/snapshot' }, extra: { context: '[Snapshot] PATCH error' } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+
+/**
+ * { action: 'freeze_balance_sheets', balance_sheets: { mom, yoy } }
+ *
+ * Stores a FINALISED month's two balance-sheet comparisons into its
+ * report_data, so its exports print the sheet as it was signed off instead of
+ * asking Xero again (balance-sheet-freeze.ts has the why).
+ *
+ * report_data is one jsonb blob, so this is a read-modify-write, and it is
+ * guarded on both ends of that window:
+ *   - status = 'final'. A month unfinalised between the Finalise and this
+ *     call is a draft again, and drafts are never frozen — updated:false.
+ *   - the finalise it belongs to. The Finalise save stamped the freeze as owed
+ *     with its own time; the write matches only that stamp. An unfinalise →
+ *     edit → re-finalise inside the window replaces the stamp, so this freeze
+ *     stands down instead of writing the old report_data back over the new —
+ *     updated:false; the re-finalise freezes for itself.
+ *     It is deliberately NOT updated_at. Export (pdf_exported_at) and a memo
+ *     edit (coach_notes) both bump updated_at without touching report_data,
+ *     and Finalise → Export is the normal flow — so an updated_at guard made
+ *     the freeze lose a race that was never a conflict, and it never retried.
+ * A final month with no stamp was finalised before freezing existed and owes
+ * no freeze: it exports live, as it always has.
+ * updated:false is an answer, not an error: the caller counts it under the
+ * balance-sheet-freeze invariant and the month exports live.
+ */
+async function freezeBalanceSheets(businessId: string, reportMonth: string, sheets: unknown) {
+  const now = new Date().toISOString()
+  const validated = readFrozenBalanceSheets(
+    { ...(sheets && typeof sheets === 'object' ? sheets : {}), frozen_at: now, report_month: reportMonth },
+    reportMonth,
+  )
+  if (!validated) {
+    return NextResponse.json(
+      { error: 'balance_sheets must carry a whole mom and yoy balance sheet for report_month' },
+      { status: 400 },
+    )
+  }
+
+  const { data: snap, error: readError } = await supabase
+    .from('monthly_report_snapshots')
+    .select('status, report_data')
+    .eq('business_id', businessId)
+    .eq('report_month', reportMonth)
+    .maybeSingle()
+  if (readError) {
+    Sentry.captureException(readError, { tags: { route: 'monthly-report/snapshot', invariant: 'balance-sheet-freeze' }, extra: { businessId, reportMonth, stage: 'read' } } as any)
+    return NextResponse.json({ error: 'Failed to freeze the balance sheet' }, { status: 500 })
+  }
+  if (!snap || snap.status !== 'final') {
+    return NextResponse.json({ success: true, updated: false, reason: 'not_final' })
+  }
+  const finalisedAt = readFreezeFinalisedAt(snap.report_data, reportMonth)
+  if (!finalisedAt) {
+    return NextResponse.json({ success: true, updated: false, reason: 'no_freeze_owed' })
+  }
+
+  // The finalise time comes from the stored stamp, never from the request.
+  const frozen = { ...validated, finalised_at: finalisedAt }
+  const reportData = snap.report_data && typeof snap.report_data === 'object' ? snap.report_data : {}
+  const { data, error } = await supabase
+    .from('monthly_report_snapshots')
+    .update({ report_data: { ...reportData, [FROZEN_BALANCE_SHEETS_KEY]: frozen }, updated_at: now })
+    .eq('business_id', businessId)
+    .eq('report_month', reportMonth)
+    .eq('status', 'final')
+    .eq(`report_data->${FROZEN_BALANCE_SHEETS_KEY}->>finalised_at`, finalisedAt)
+    .select('id')
+  if (error) {
+    Sentry.captureException(error, { tags: { route: 'monthly-report/snapshot', invariant: 'balance-sheet-freeze' }, extra: { businessId, reportMonth, stage: 'write' } } as any)
+    return NextResponse.json({ error: 'Failed to freeze the balance sheet' }, { status: 500 })
+  }
+  const updated = (data?.length ?? 0) > 0
+  return NextResponse.json({ success: true, updated, ...(updated ? { frozen_at: now } : { reason: 'refinalised' }) })
 }
 
 export const GET = withQuerySchema('monthly-report/snapshot', SnapshotGetQuerySchema, getHandler)

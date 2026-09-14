@@ -124,7 +124,9 @@ export function generateDefaultLayout(sections?: ReportSections): PDFLayout {
   // ── Core tables (always on, full page each) ──
   // WC.5 — the pack opens with a cover.
   addFullPage('cover_page', 'portrait')
-  addFullPage('executive_summary', 'portrait')
+  // Landscape: Calxa's summary page is, and nine figure columns squeezed into
+  // a portrait page's 180mm dropped their headers to 6pt.
+  addFullPage('executive_summary', 'landscape')
   addFullPage('budget_vs_actual', 'landscape')
   addFullPage('ytd_summary', 'portrait')
 

@@ -12,6 +12,7 @@ import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionCon
 import { z } from 'zod'
 import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 import { DEFAULT_REPORT_SECTIONS, DEFAULT_REPORT_SETTINGS, loadReportSettings } from '@/lib/monthly-report/report-settings-load'
+import { parsePackLogoSetting } from '@/lib/monthly-report/pack-logo-setting'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,6 +35,7 @@ const SettingsPostSchema = z.object({
   wages_account_names: z.array(z.string()).optional(),
   pdf_layout: z.any().optional(),
   standing_commentary: z.any().optional(),
+  pack_logo: z.any().optional(),
   report_month: z.string().optional(),
 })
 
@@ -137,6 +139,7 @@ async function postHandler(request: Request) {
       wages_account_names,
       pdf_layout,
       standing_commentary,
+      pack_logo,
       // Optional: month being edited (YYYY-MM). When provided, an approved/sent report
       // for that month silently reverts to draft per Phase 35 D-16. Settings are business-
       // level so without a month we cannot scope the revert; callers that have a current
@@ -264,6 +267,17 @@ async function postHandler(request: Request) {
     if (budget_source !== undefined) {
       baseData.budget_source = budget_source
     }
+    // The pack's mark: omit-unless-provided like the two above (the UI's
+    // writers post fixed key sets, and a page toggle must not reset a logo),
+    // and validated here because withSchema only observes — an image the PDF
+    // cannot draw is refused now rather than discovered on a client's cover.
+    if (pack_logo !== undefined) {
+      const parsed = parsePackLogoSetting(pack_logo)
+      if (!parsed.ok) {
+        return NextResponse.json({ error: parsed.error, code: 'INVALID_PACK_LOGO' }, { status: 400 })
+      }
+      baseData.pack_logo = parsed.value
+    }
 
     let { data: settings, error } = await supabase
       .from('monthly_report_settings')
@@ -280,7 +294,7 @@ async function postHandler(request: Request) {
     // the old test only matched 'pdf_layout', and only when pdf_layout was sent.
     const droppedColumns: string[] = []
     if (error && (error.code === '42703' || error.code === 'PGRST204')) {
-      for (const col of ['budget_source', 'pdf_layout']) {
+      for (const col of ['budget_source', 'pdf_layout', 'pack_logo']) {
         if (col in baseData && error.message?.includes(col)) {
           delete baseData[col]
           droppedColumns.push(col)

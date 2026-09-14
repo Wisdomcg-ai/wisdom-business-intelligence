@@ -22,7 +22,7 @@ export interface PayrollGridLoadInput {
   business_id: string
   report_month: string
   fiscal_year: number
-  /** How many months to show, ending at report_month. Calxa shows two. */
+  /** How many months to show, ending at report_month. Two unless the placement says otherwise (payroll-grid-config). */
   months?: number
 }
 
@@ -55,12 +55,23 @@ export async function loadPayrollGrid(supabase: Client, input: PayrollGridLoadIn
     return { data: null, reason: 'no Xero connection' }
   }
 
-  const { data: payslips } = await supabase
+  const { data: payslips, error: payslipError } = await supabase
     .from('xero_payslip_lines')
     .select('employee_id, employee_name, payment_date, wages, super_amount')
     .in('tenant_id', tenantIds)
     .gte('payment_date', from)
     .lt('payment_date', to)
+
+  // A failed read is could-not-check. Returned as "no payslips synced", the
+  // page would tell a client their payroll is absent when nobody looked.
+  if (payslipError) {
+    Sentry.captureMessage('[PayrollGrid] payslip read failed', {
+      level: 'warning',
+      tags: { invariant: 'payroll-grid-payslips-read' },
+      extra: { business_id, report_month, message: payslipError.message },
+    } as never)
+    return { data: null, reason: 'the payslips could not be read' }
+  }
 
   if (!payslips || payslips.length === 0) {
     // Not an error: a client whose payroll is not run through Xero has no
@@ -101,10 +112,19 @@ export async function loadPayrollGrid(supabase: Client, input: PayrollGridLoadIn
       // Wages only — the grid's Budget row is the wages line, not the whole
       // employment group. Super has its own line and its own row elsewhere.
       const wanted = new Set(wagesNames.map((n) => n.trim().toLowerCase()))
+      // Only the months of the year that budget belongs to. A window reaching
+      // back past 1 July (June under a July report) would otherwise read the
+      // new year's budget for the old year's month, find nothing, and print a
+      // $0 budget with the whole month's wages as an overrun. Outside the year
+      // there is no budget to difference against, so the row shows a dash.
+      const inYear = window.filter((month) => {
+        const [y, m] = month.split('-').map(Number)
+        return (m >= 7 ? y + 1 : y) === fiscal_year
+      })
       for (const line of resolved.lines) {
         if (!wanted.has((line.account_name ?? '').trim().toLowerCase())) continue
         if ((line.account_name ?? '').toLowerCase().includes('super')) continue
-        for (const month of window) {
+        for (const month of inYear) {
           budgets[month] = (budgets[month] ?? 0) + Math.abs((line.forecast_months || {})[month] || 0)
         }
       }

@@ -9,12 +9,26 @@
  * and the page into 'unavailable'.
  */
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
-import { openingBalanceDate, totalBankAt, type OpeningBank } from './opening-bank'
+import { openingBalanceDate, parseBankAccountIds, totalBankAt, type KnownAccountInput, type OpeningBank } from './opening-bank'
+import { loadBankAccountIds } from './bank-accounts-load'
 
 type Client = any
 
-export async function loadOpeningBank(supabase: Client, businessId: string, reportMonth: string): Promise<OpeningBank> {
+/**
+ * @param opts.bankAccountIds the bank set to use instead of the stored one —
+ *   the preview harness passes its settings (with any --settings-override)
+ *   through here. Omitted, the business's saved choice is read.
+ */
+export async function loadOpeningBank(
+  supabase: Client,
+  businessId: string,
+  reportMonth: string,
+  opts: { bankAccountIds?: string[] | null } = {},
+): Promise<OpeningBank> {
   const ids = await resolveBusinessProfileIds(supabase, businessId)
+  const bankAccountIds = parseBankAccountIds(opts.bankAccountIds !== undefined
+    ? opts.bankAccountIds
+    : await loadBankAccountIds(supabase, businessId))
 
   // The fiscal year is the business's own, not the clock's and not an assumed
   // July: every profile is 7 today, but the day one isn't, a hard-coded July
@@ -47,7 +61,7 @@ export async function loadOpeningBank(supabase: Client, businessId: string, repo
   if (tenants.length > 0) {
     const { data, error } = await supabase
       .from('xero_bs_lines')
-      .select('tenant_id, account_type, section, balance_date, balance')
+      .select('tenant_id, account_id, account_type, section, balance_date, balance')
       .in('business_id', ids.all)
       .in('tenant_id', tenants.map((t: { tenant_id: string }) => t.tenant_id))
       .eq('balance_date', asAt)
@@ -61,9 +75,32 @@ export async function loadOpeningBank(supabase: Client, businessId: string, repo
     rows = data ?? []
   }
 
+  // The chosen accounts as the mirror holds them on ANY date, so an account
+  // Xero left off the opening sheet at $0 is told apart from an id the sync
+  // never wrote (totalBankAt). account_id is a uuid column: an id that is not
+  // one cannot be in the mirror, and sending it would fail the whole query.
+  let knownAccounts: KnownAccountInput[] = []
+  const uuidIds = (bankAccountIds ?? []).filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id))
+  if (tenants.length > 0 && uuidIds.length > 0) {
+    const { data, error } = await supabase
+      .from('xero_bs_lines')
+      .select('tenant_id, account_id, account_type')
+      .in('business_id', ids.all)
+      .in('tenant_id', tenants.map((t: { tenant_id: string }) => t.tenant_id))
+      .in('account_id', uuidIds)
+      .eq('basis', 'accruals')
+    if (error) throw error
+    knownAccounts = (data ?? []).map((r: Record<string, unknown>) => ({
+      tenant_id: (r.tenant_id as string | null) ?? null,
+      account_id: (r.account_id as string | null) ?? null,
+      account_type: String(r.account_type ?? ''),
+    }))
+  }
+
   return totalBankAt(
     rows.map((r) => ({
       tenant_id: (r.tenant_id as string | null) ?? null,
+      account_id: (r.account_id as string | null) ?? null,
       account_type: String(r.account_type ?? ''),
       section: (r.section as string | null) ?? null,
       balance_date: String(r.balance_date ?? ''),
@@ -71,5 +108,7 @@ export async function loadOpeningBank(supabase: Client, businessId: string, repo
     })),
     asAt,
     tenants,
+    bankAccountIds,
+    { knownAccounts },
   )
 }

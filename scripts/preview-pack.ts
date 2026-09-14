@@ -34,15 +34,21 @@
  *                        (subscription_vendor_actuals) through the route's own
  *                        assembler — APPROXIMATE, see subscription-detail-persisted
  *   contractor_detail    skipped (nothing persisted), unless supplied
- *   balance_sheet        prints its "couldn't be produced" reason, unless supplied
+ *   balance_sheet        a FINAL month's copy frozen at Finalise, as the app
+ *                        prints it; otherwise its "couldn't be produced"
+ *                        reason, unless supplied
  *
  * Any of the three can be supplied as the route's JSON response body (copy it
  * from the browser's network tab) in --payload-dir:
  *
  *   subscription-detail.json   POST /api/monthly-report/subscription-detail (subscription codes)
- *   contractor-detail.json     POST /api/monthly-report/subscription-detail (contractor codes)
+ *   contractor-detail.json     POST /api/monthly-report/subscription-detail (contractor codes; with
+ *                              `months` for a Contractors Payment Summary placement)
  *   balance-sheet-mom.json     GET  /api/Xero/balance-sheet?compare=mom
  *   balance-sheet-yoy.json     GET  /api/Xero/balance-sheet?compare=yoy
+ *   commentary.json            the commentary map (POST /api/monthly-report/commentary's
+ *                              `commentary`), in place of the snapshot's — how a
+ *                              commentary rule is looked at before a Regenerate
  *
  * Nor can it mirror what the export inherits from how the page got to the
  * Export button. A headless run has no history, so it takes the clean path:
@@ -73,6 +79,12 @@
  *                               the app's export does
  *   --no-persisted-subscriptions  skip the subscription page rather than
  *                               approximate it
+ *   --settings-override '{"show_prior_year":false}'
+ *                               render with these report settings changed —
+ *                               how a settings change is looked at before
+ *                               anyone saves it (applied to the stored
+ *                               settings AND the snapshot's own copy, which is
+ *                               what the statement pages read)
  *
  * Strictly read-only: every fetch the process makes — the database client's
  * included — lets only GET and HEAD leave and refuses any Xero host, and the
@@ -181,7 +193,7 @@ async function main() {
   // ── Report + commentary + memo: the stored snapshot, as the page loads it ──
   const { data: snap, error: snapErr } = await admin
     .from('monthly_report_snapshots')
-    .select('report_data, commentary, report_month, coach_notes, status')
+    .select('report_data, commentary, report_month, coach_notes, status, generated_at')
     .eq('business_id', bizId)
     .eq('report_month', reportMonth)
     .maybeSingle()
@@ -238,6 +250,18 @@ async function main() {
         'the templates do (page.tsx) — an export can go out on the stored settings instead; check both',
     )
   }
+  const settingsOverride = arg('settings-override')
+  if (settingsOverride) {
+    const patch = JSON.parse(settingsOverride) as Record<string, unknown>
+    Object.assign(settings, patch)
+    report.settings = { ...(report.settings ?? {}), ...patch }
+    warnings.push(`settings overridden for this render only: ${settingsOverride}`)
+  }
+  // The bank set both bank-reading loaders use, from these settings rather
+  // than a second read of the row, so --settings-override '{"bank_account_ids":[…]}'
+  // shows a bank choice before anyone saves it.
+  const { parseBankAccountIds } = await import('@/lib/monthly-report/opening-bank')
+  const bankAccountIds = parseBankAccountIds(settings.bank_account_ids)
   const { getFiscalYearForMonth } = await import('@/app/finances/monthly-report/services/monthly-report-service')
   const fiscalYear = getFiscalYearForMonth(reportMonth)
 
@@ -295,7 +319,9 @@ async function main() {
       eager.subscriptionDetail = assembled.data
       note('subscription', 'persisted',
         `APPROXIMATE — vendor rows from subscription_vendor_actuals (current: ${notes.current_source}, prior: ${notes.prior_source}) ` +
-        'through the route\'s own assembler; account totals, budgets and leakage are the route\'s')
+        'through the route\'s own assembler; account totals, budgets and leakage are the route\'s. ' +
+        'The stored amounts are GROSS document amounts — the default page\'s own figures — with no net-of-GST statement figures, ' +
+        'so a placement on the calxa layout (or basis net) prints gross here, and says so, where the app prints net; its Unallocated row is more negative than the app\'s')
       if (notes.unassigned.length > 0) {
         warnings.push(`subscription: ${notes.unassigned.length} vendor(s) with no budget row, so no known account — placed on ${notes.unassigned[0].placed_on}:\n      ` +
           notes.unassigned.map((u) => `${u.vendor_name} ${u.amount.toFixed(2)}`).join('\n      '))
@@ -314,9 +340,17 @@ async function main() {
   } else {
     const payload = readPayload('contractor-detail.json')
     if (payload) {
-      const { rollUpContractors } = await import('@/lib/monthly-report/contractor-rollup')
+      const { rollUpContractors, contractorLoadReason } = await import('@/lib/monthly-report/contractor-rollup')
       const rolled = rollUpContractors(payload as any)
-      if (rolled.contractors.length > 0) eager.contractorDetail = rolled
+      if (rolled.contractors.length > 0) {
+        eager.contractorDetail = rolled
+        // The route's answer itself, for a placement on the 'calxa' layout —
+        // which prints its months only if the payload carries them (`months`).
+        eager.contractorDetailReport = payload
+      }
+      // The app's own wording, from the payload's own `complete` — a payload
+      // saved before the route reported it is could-not-confirm, not empty.
+      eager.contractorDetailReason = contractorLoadReason(payload as any, rolled.contractors.length)
       note('contractor', rolled.contractors.length > 0 ? 'payload' : 'skipped',
         `${payloadDir}/contractor-detail.json${rolled.contractors.length > 0 ? '' : ' (no contractors — the app omits the data too)'}`)
     } else {
@@ -327,12 +361,15 @@ async function main() {
   // Payroll grid
   if (sections.payroll_detail) {
     const { loadPayrollGrid } = await import('@/lib/monthly-report/payroll-grid-load')
-    const grid = await loadPayrollGrid(admin, { business_id: bizId, report_month: reportMonth, fiscal_year: fiscalYear, months: 2 })
+    const { payrollWindowForLayout } = await import('@/lib/monthly-report/payroll-grid-config')
+    const payrollMonths = payrollWindowForLayout((pdfLayout?.pages ?? []).flatMap((p) => p.widgets ?? []), reportMonth)
+    const grid = await loadPayrollGrid(admin, { business_id: bizId, report_month: reportMonth, fiscal_year: fiscalYear, months: payrollMonths })
     if (grid.data) {
       eager.payrollGrid = grid.data
-      note('payroll', 'live-built', 'payroll-grid-load (stored payslips + resolved wages budget)')
+      note('payroll', 'live-built', `payroll-grid-load, ${payrollMonths} month(s) (stored payslips + resolved wages budget)`)
     } else {
-      note('payroll', 'skipped', `payroll-grid-load: ${grid.reason}`)
+      eager.payrollGridReason = grid.reason
+      note('payroll', 'live-built', `payroll-grid-load: no grid — ${grid.reason} (the page prints it)`)
     }
   } else {
     note('payroll', 'skipped', 'settings.sections.payroll_detail is off — the app loads nothing')
@@ -417,7 +454,7 @@ async function main() {
         note('cashflow', 'skipped', 'no P&L lines to run the engine on — the app shows no cashflow')
       } else {
         const saved = await loadCashflowAssumptions(admin, forecast.id)
-        const opening = await loadOpeningBank(admin, bizId, reportMonth)
+        const opening = await loadOpeningBank(admin, bizId, reportMonth, { bankAccountIds })
         const cf = buildPackCashflowForecast({
           fullYear: eager.fullYearReport, reportMonth, forecast, forecastLines: forecastLines ?? [],
           savedAssumptions: saved?.cashflow ?? null, opening,
@@ -463,8 +500,8 @@ async function main() {
   // Money flow
   {
     const { loadMoneyFlow } = await import('@/lib/monthly-report/money-flow-load')
-    eager.moneyFlow = (await loadMoneyFlow(admin, bizId, reportMonth)).flow
-    note('moneyFlow', 'live-built', 'money-flow-load (stored balance-sheet mirror)')
+    eager.moneyFlow = (await loadMoneyFlow(admin, bizId, reportMonth, { bankAccountIds })).flow
+    note('moneyFlow', 'live-built', `money-flow-load (stored balance-sheet mirror + P&L), bank ${bankAccountIds ? `= ${bankAccountIds.length} chosen account(s)` : "= section 'Bank'"}`)
   }
 
   // Consolidated — a coach/admin view for consolidation parents.
@@ -483,9 +520,16 @@ async function main() {
     }
   }
 
-  // Balance sheets (live Xero in the app)
+  // Balance sheets: a finalised month's frozen copy, as the app prints it;
+  // otherwise live Xero in the app, so a payload or the reason here.
   const wantsBalanceSheet = !!sections.balance_sheet || layoutTypes.has('balance_sheet')
-  if (wantsBalanceSheet) {
+  const { frozenBalanceSheetSources } = await import('@/lib/monthly-report/balance-sheet-freeze')
+  const frozenSheets = wantsBalanceSheet ? frozenBalanceSheetSources(snap, reportMonth) : null
+  if (frozenSheets) {
+    eager.balanceSheets = frozenSheets
+    note('balanceSheet:mom', 'snapshot', 'frozen into the final snapshot at Finalise')
+    note('balanceSheet:yoy', 'snapshot', 'frozen into the final snapshot at Finalise')
+  } else if (wantsBalanceSheet) {
     eager.balanceSheets = {}
     for (const compare of ['mom', 'yoy'] as const) {
       const payload = readPayload(`balance-sheet-${compare}.json`)
@@ -512,10 +556,26 @@ async function main() {
 
   // ── Render, recording which widget each page came from ──
   const { MonthlyReportPDFService } = await import('@/app/finances/monthly-report/services/monthly-report-pdf-service')
+  const { loadPackEntityName } = await import('@/lib/monthly-report/pack-entity-name')
+  const commentaryPayload = readPayload('commentary.json') as Record<string, unknown> | undefined
+  if (commentaryPayload) {
+    const body = (commentaryPayload.commentary ?? commentaryPayload) as Record<string, unknown>
+    warnings.push(`commentary taken from ${path.join(payloadDir!, 'commentary.json')} (${Object.keys(body).length} accounts), not the snapshot`)
+  }
+  const commentaryForPack = commentaryPayload
+    ? ((commentaryPayload.commentary ?? commentaryPayload) as never)
+    : ((snap.commentary ?? undefined) as never)
+  const { loadPackPreparedOn } = await import('@/lib/monthly-report/pack-prepared-on')
+  const preparedOn = await loadPackPreparedOn(admin, bizId, reportMonth, { status: snap.status, generated_at: snap.generated_at })
+  console.log(`  prepared on:          ${preparedOn ? `${preparedOn.at} (${preparedOn.basis})` : 'export date (not finalised or approved)'}`)
+  console.log(`  pack logo:            ${(settings.pack_logo as { kind?: string } | null | undefined)?.kind ?? 'wisdombi (no setting)'}`)
   const svc = new MonthlyReportPDFService(report as never, {
-    commentary: (snap.commentary ?? undefined) as never,
+    commentary: commentaryForPack,
     ...eager,
     businessName: biz?.name ?? undefined,
+    entityName: await loadPackEntityName(admin, bizId),
+    preparedOn,
+    packLogo: settings.pack_logo ?? null,
     sections: settings.sections,
     pdfLayout,
   } as never)
@@ -533,6 +593,21 @@ async function main() {
   const doc = svcAny.generate()
   fs.writeFileSync(out, Buffer.from(doc.output('arraybuffer')))
   const pageCount = doc.getNumberOfPages()
+
+  // What the pack printed in place of a commentary setting it could not read,
+  // the accounts a commentary block left off for want of any text, and the
+  // accounts where a vendor_cap had nothing to redraw from. None is printed in
+  // the pack; all are the coach's to act on.
+  const { commentaryPlacementProblems, describeCommentaryPlacementProblem } =
+    await import('@/app/finances/monthly-report/services/commentary-placement')
+  for (const p of commentaryPlacementProblems(pdfLayout as never)) warnings.push(`commentary setting: ${describeCommentaryPlacementProblem(p)}`)
+  for (const g of (svc.commentaryGaps ?? []) as { widgetId: string | null; account: string; actual: number; reason: string }[]) {
+    const amount = `$${Math.round(Math.abs(g.actual)).toLocaleString('en-AU')}`
+    warnings.push(`commentary: ${g.account} (${amount}) has no bullet under ${g.widgetId ?? 'the statement'} — ${g.reason === 'not_drafted' ? 'never drafted (Regenerate commentary)' : 'empty draft and no coach note'}`)
+  }
+  for (const g of (svc.commentaryCapsIgnored ?? []) as { widgetId: string | null; account: string; reason: string }[]) {
+    warnings.push(`commentary: ${g.account} under ${g.widgetId ?? 'the statement'} printed its stored draft, not the vendor_cap — ${g.reason === 'drafted_before_split' ? 'drafted before draft_facts (Regenerate commentary)' : 'no suppliers stored to redraw from'}`)
+  }
 
   // ── Report ──
   if (warnings.length > 0) {

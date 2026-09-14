@@ -97,7 +97,24 @@ export interface MaybeEmptyFullYearLine {
   approved_annual_budget?: number | null
 }
 
-export function isSilentFullYearLine(line: MaybeEmptyFullYearLine): boolean {
+/**
+ * @param basis what the page fills an unclosed month with. On the
+ *   'approved_budget' basis the forecast is not on the page at all, so a line
+ *   only the forecast mentions is silent there: Urban Road's wizard-only
+ *   SYS-OTHER-INCOME ("Other Income", $18 a month) printed a row of zeros above
+ *   Bank Interest Income on Calxa's Current Year Budget page, which has no such
+ *   row. Omitted = every yardstick counts, the rule before the basis existed.
+ */
+export function isSilentFullYearLine(
+  line: MaybeEmptyFullYearLine,
+  basis?: 'approved_budget' | 'forecast',
+): boolean {
+  if (basis === 'approved_budget') {
+    for (const m of line.months ?? []) {
+      if (!isZero(m?.actual) || !isZero(m?.approved_budget)) return false
+    }
+    return isZero(line.approved_annual_budget)
+  }
   for (const m of line.months ?? []) {
     if (!isZero(m?.actual) || !isZero(m?.budget) || !isZero(m?.approved_budget)) return false
   }
@@ -108,7 +125,10 @@ export function isSilentFullYearLine(line: MaybeEmptyFullYearLine): boolean {
   )
 }
 
-export function withoutSilentFullYearLines<T extends MaybeEmptyFullYearLine>(lines: readonly T[]): T[] {
-  const kept = lines.filter(l => !isSilentFullYearLine(l))
+export function withoutSilentFullYearLines<T extends MaybeEmptyFullYearLine>(
+  lines: readonly T[],
+  basis?: 'approved_budget' | 'forecast',
+): T[] {
+  const kept = lines.filter(l => !isSilentFullYearLine(l, basis))
   return kept.length > 0 ? kept : [...lines]
 }

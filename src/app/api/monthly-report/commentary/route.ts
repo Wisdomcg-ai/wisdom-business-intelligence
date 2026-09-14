@@ -33,6 +33,7 @@ const CommentaryPostSchema = z.object({
   revenue_lines: z.array(z.any()).optional(),
   favourable_expense_lines: z.array(z.any()).optional(),
   bs_lines: z.array(z.any()).optional(),
+  activity_lines: z.array(z.any()).optional(),
   trigger_reasons: z.record(z.string(), z.any()).optional(),
   /**
    * The denominators for the ratio clause, lifted off the generated report so
@@ -68,6 +69,7 @@ type TriggerReason =
   | 'expense_favourable_significant'
   | 'bs_movement_dollar'
   | 'bs_movement_percent'
+  | 'account_activity'
 
 interface TriggerLineInput {
   account_name: string
@@ -190,6 +192,9 @@ async function postHandler(request: Request) {
       revenue_lines = [],
       favourable_expense_lines = [],
       bs_lines = [],
+      // Accounts that triggered nothing but moved, sent only for a pack whose
+      // commentary lists every account in a section (commentary-placement).
+      activity_lines = [],
       trigger_reasons = {},
       ratio_context = null,
     } = body as {
@@ -199,6 +204,7 @@ async function postHandler(request: Request) {
       revenue_lines?: TriggerLineInput[]
       favourable_expense_lines?: TriggerLineInput[]
       bs_lines?: TriggerLineInput[]
+      activity_lines?: TriggerLineInput[]
       trigger_reasons?: Record<string, TriggerReason>
       ratio_context?: RatioContext | null
     }
@@ -241,6 +247,7 @@ async function postHandler(request: Request) {
     for (const l of revenue_lines) { addReason(l.account_name, 'revenue_under_budget_dollar'); addSide(l.account_name, 'revenue') }
     for (const l of favourable_expense_lines) { addReason(l.account_name, 'expense_favourable_significant'); addSide(l.account_name, 'expense') }
     for (const l of bs_lines) { addReason(l.account_name, 'bs_movement_dollar'); addSide(l.account_name, 'balance_sheet') }
+    for (const l of activity_lines) { addReason(l.account_name, 'account_activity'); addSide(l.account_name, 'expense') }
 
     // Phase 65: section-permission gate (LOG_ONLY by default, ENFORCE via env var)
     const _sectionVerdict = await requireSectionPermission(
@@ -282,6 +289,7 @@ async function postHandler(request: Request) {
     for (const l of revenue_lines) pushUnique(l)
     for (const l of favourable_expense_lines) pushUnique(l)
     for (const l of bs_lines) pushUnique(l)
+    for (const l of activity_lines) pushUnique(l)
 
     if (allLines.length === 0) {
       // A real answer: we looked, and nothing crosses a threshold this month.
@@ -478,6 +486,9 @@ async function postHandler(request: Request) {
       trigger_reason?: TriggerReason
       /** The generated facts. Rebuilt every run; safe to overwrite. */
       draft_note?: string
+      /** draft_note's supplier list and ratio clause, apart — see VarianceCommentaryEntry. */
+      draft_facts?: string
+      draft_clause?: string | null
       /** Coach-only: an unconvertible document, or a list that oversums. */
       draft_warnings?: string[]
     }> = {}
@@ -510,7 +521,9 @@ async function postHandler(request: Request) {
       }
 
       // Posted lines only, signed for the account's side, grouped by vendor
-      // with the small ones rolled into "Others".
+      // with the small ones rolled into "Others". A subscription account names
+      // the product ("Google Workspace", as its subscription page does); every
+      // other account names the company that billed it ("Google" on ad spend).
       const significant: VendorSummary[] = summariseVendors(collectAccountTransactions({
         accountCode,
         side: sideByAccount.get(line.account_name) ?? 'expense',
@@ -518,6 +531,7 @@ async function postHandler(request: Request) {
         bankTransactions,
         creditNotes,
         baseCurrency,
+        vendorNames: detail_tab_ref === 'subscriptions' ? 'product' : 'company',
       }))
 
       // The draft: facts only, rebuilt from scratch every run.
@@ -531,6 +545,8 @@ async function postHandler(request: Request) {
       const ctx = ratio_context as RatioContext | null
       const accountActual = typeof line.actual === 'number' ? line.actual : null
       let draft_note = ''
+      let draft_facts = ''
+      let draft_clause: string | null = null
       let draft_warnings: string[] = []
 
       if (accountActual !== null) {
@@ -566,6 +582,8 @@ async function postHandler(request: Request) {
           clause,
         })
         draft_note = draft.body
+        draft_facts = draft.facts
+        draft_clause = draft.clause
         draft_warnings = draft.warnings
       }
 
@@ -576,6 +594,8 @@ async function postHandler(request: Request) {
         detail_tab_ref,
         trigger_reason,
         draft_note,
+        draft_facts,
+        draft_clause,
         draft_warnings,
       }
     }

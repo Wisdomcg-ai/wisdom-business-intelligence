@@ -21,8 +21,10 @@ import type {
   ReconciliationStatus,
 } from '@/app/finances/monthly-report/types'
 import type { MoneyFlow } from '@/lib/monthly-report/money-flow'
+import { moneyFlowProof } from '@/lib/monthly-report/money-flow-rows'
 import { netProfitFromBuckets } from '@/lib/finance/net-profit'
 import { SUPERANNUATION } from '@/app/finances/forecast/constants'
+import { standingLineClaims } from '@/app/finances/monthly-report/services/commentary-placement'
 
 export type PreflightStatus = 'pass' | 'warn' | 'fail' | 'skip'
 
@@ -52,9 +54,23 @@ export interface PreflightInputs {
   /** True when the quality probe itself failed — could-not-check, not clean. */
   qualityCheckFailed?: boolean
   /** Commentary entries keyed by account (coverage + reconciliation checks). */
-  commentary?: Record<string, { coach_note?: string; vendor_summary?: Array<{ vendor: string; amount: number }> }> | null
+  commentary?: Record<string, {
+    coach_note?: string
+    draft_note?: string
+    draft_warnings?: string[]
+    vendor_summary?: Array<{ vendor: string; amount: number }>
+  }> | null
   /** Accounts that fired commentary triggers this month. */
   triggeredAccounts?: string[] | null
+  /**
+   * Accounts a page lists only because they moved (a placement with coverage
+   * all_with_activity — Calxa's COGS page). No trigger fired on them, so the
+   * triggered check never names them; a page that leaves one off for want of
+   * text has to be named here.
+   */
+  activityAccounts?: string[] | null
+  /** The layout's commentary settings the pack could not read, one line each. */
+  commentarySettingsProblems?: string[] | null
   /** The budget forecast's superannuation_rate (null = unset → statutory default). */
   budgetSuperRate?: number | null
   /** The budget forecast's actual_end_month ('YYYY-MM') — months at or before
@@ -100,7 +116,7 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
     )
   } else if ((report.unreconciled_count ?? 0) > 0 || inputs.reconciliation.unreconciled_count > 0) {
     const n = Math.max(report.unreconciled_count ?? 0, inputs.reconciliation.unreconciled_count)
-    push('reconciliation', 'Bank reconciliation (recorded transactions)', 'warn', `${n} unreconciled recorded transaction${n === 1 ? '' : 's'} — the pack is stamped PROVISIONAL.`)
+    push('reconciliation', 'Bank reconciliation (recorded transactions)', 'warn', `${n} unreconciled recorded transaction${n === 1 ? '' : 's'} — the cover says so.`)
   } else {
     push('reconciliation', 'Bank reconciliation (recorded transactions)', 'pass', 'All recorded transactions reconciled. Uncoded bank-feed lines are not visible to this check.')
   }
@@ -226,26 +242,60 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
       push('cash_continuity', 'Cash continuity', 'skip', 'Money-flow derivation not available this run.')
     } else if (!mf.comparable) {
       push('cash_continuity', 'Cash continuity', 'skip', mf.reason ?? 'Money flow not comparable this month.')
-    } else if (Math.abs(mf.continuity_residual) <= 0.01) {
-      push('cash_continuity', 'Cash continuity', 'pass', 'Sources − uses equals the bank movement exactly.')
-    } else {
+    } else if (Math.abs(mf.continuity_residual) > 0.01) {
       push('cash_continuity', 'Cash continuity', 'fail', `Funds flow misses the bank movement by $${Math.abs(mf.continuity_residual)}.`)
+    } else {
+      // The balance sheet's identity holds, but the page proves itself with the
+      // P&L surplus. When the two reports disagree about the month's profit the
+      // page prints a note saying it misses the bank; say the same here, not
+      // "exactly".
+      const { gapNote } = moneyFlowProof(mf)
+      if (gapNote) {
+        push('cash_continuity', 'Cash continuity', 'warn', gapNote)
+      } else {
+        push('cash_continuity', 'Cash continuity', 'pass', 'Earnings + came from − spent equals the bank movement exactly.')
+      }
     }
   }
 
-  // 12. Commentary coverage — every triggered account has words.
+  // 12. Commentary coverage — every triggered account has words; every account
+  // a page lists because it moved has something to print; and every commentary
+  // setting on the layout was read (an unreadable one prints the default block).
   {
     const triggered = inputs.triggeredAccounts ?? null
-    if (triggered == null) {
+    const extra: string[] = []
+
+    const lineByAccount = new Map<string, (typeof report.sections)[number]['lines'][number]>()
+    for (const sec of report.sections) for (const l of sec.lines) lineByAccount.set(l.account_name, l)
+    const standing = report.settings?.standing_commentary ?? []
+    const silent = (inputs.activityAccounts ?? []).filter((account) => {
+      const e = inputs.commentary?.[account]
+      if ((e?.coach_note ?? '').trim() || (e?.draft_note ?? '').trim() || (e?.draft_warnings?.length ?? 0) > 0) return false
+      // A standing line that speaks for the account prints in its place.
+      return !standing.some((s) => standingLineClaims(s, lineByAccount.get(account) ?? { account_name: account }))
+    })
+    if (silent.length > 0) {
+      const named = silent.slice(0, 3).map((a) => `${a} moved $${Math.round(Math.abs(lineByAccount.get(a)?.actual ?? 0)).toLocaleString('en-AU')} and has no commentary`)
+      extra.push(`${named.join('; ')}${silent.length > 3 ? `; and ${silent.length - 3} more` : ''} — the page that lists every account that moved will leave ${silent.length === 1 ? 'it' : 'them'} off.`)
+    }
+    const problems = inputs.commentarySettingsProblems ?? []
+    if (problems.length > 0) {
+      extra.push(`${problems.length} commentary setting${problems.length === 1 ? '' : 's'} could not be read, so the default block prints: ${problems.slice(0, 3).join('; ')}${problems.length > 3 ? '…' : ''}.`)
+    }
+
+    if (triggered == null && extra.length === 0) {
       push('commentary', 'Commentary coverage', 'skip', 'Trigger list not available this run.')
-    } else if (triggered.length === 0) {
-      push('commentary', 'Commentary coverage', 'pass', 'No variance triggers fired this month.')
     } else {
-      const bare = triggered.filter(a => !(inputs.commentary?.[a]?.coach_note ?? '').trim())
-      if (bare.length === 0) {
-        push('commentary', 'Commentary coverage', 'pass', `All ${triggered.length} triggered accounts have commentary.`)
+      const bare = (triggered ?? []).filter(a => !(inputs.commentary?.[a]?.coach_note ?? '').trim())
+      if (bare.length > 0) {
+        extra.unshift(`${bare.length} triggered account${bare.length === 1 ? '' : 's'} (${bare.slice(0, 3).join(', ')}${bare.length > 3 ? '…' : ''}) have no coach note.`)
+      }
+      if (extra.length > 0) {
+        push('commentary', 'Commentary coverage', 'warn', extra.join(' '))
+      } else if (triggered == null || triggered.length === 0) {
+        push('commentary', 'Commentary coverage', 'pass', 'No variance triggers fired this month.')
       } else {
-        push('commentary', 'Commentary coverage', 'warn', `${bare.length} triggered account${bare.length === 1 ? '' : 's'} (${bare.slice(0, 3).join(', ')}${bare.length > 3 ? '…' : ''}) have no coach note.`)
+        push('commentary', 'Commentary coverage', 'pass', `All ${triggered.length} triggered accounts have commentary.`)
       }
     }
   }
@@ -315,7 +365,7 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
     if (!report.is_draft && (report.unreconciled_count ?? 0) > 0) {
       push('draft_state', 'Draft state', 'fail', `Report is marked FINAL with ${report.unreconciled_count} unreconciled transactions.`)
     } else if (report.is_draft) {
-      push('draft_state', 'Draft state', 'warn', 'Exporting a PROVISIONAL pack (watermarked on every page).')
+      push('draft_state', 'Draft state', 'warn', 'Exporting a draft pack — the cover says so in one line.')
     } else {
       push('draft_state', 'Draft state', 'pass', 'Final, with a clean reconciliation gate.')
     }

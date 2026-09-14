@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { MonthlyReportPDFService } from '../monthly-report-pdf-service'
-import { fixtureReport, docText, pageContaining } from './pdf-pack-fixture'
+import { fixtureReport, docText, pageContaining, textRuns } from './pdf-pack-fixture'
 import type { PDFLayout } from '../../types/pdf-layout'
 import type { AccountActuals } from '@/lib/monthly-report/ratio-table'
 
@@ -71,6 +71,24 @@ function render(config: unknown, accountActuals?: { data: AccountActuals | null;
   }).generate() as any
 }
 
+/**
+ * Each string a page draws, with the weight of the font it was set in — the
+ * first occurrence wins. jsPDF selects the font inside each BT block with
+ * `/Fn size Tf`, so the weight is read from the font id in effect at the Tj.
+ */
+function runWeights(doc: any, pageNumber: number): Map<string, 'bold' | 'normal'> {
+  const boldId = doc.internal.getFont('helvetica', 'bold').id
+  const out = new Map<string, 'bold' | 'normal'>()
+  let font = ''
+  for (const op of doc.internal.pages[pageNumber].join('\n').split('\n')) {
+    const tf = /^\/(F\d+) [\d.]+ Tf$/.exec(op.trim())
+    if (tf) font = tf[1]
+    const tj = /^(?:T\* )?\((.*)\) Tj$/.exec(op.trim())
+    if (tj && !out.has(tj[1])) out.set(tj[1], font === boldId ? 'bold' : 'normal')
+  }
+  return out
+}
+
 describe('a placed Ratio Analysis page', () => {
   it('prints the Freight percentages and averages, newest month first', () => {
     const doc = render(CONFIG, { data: URBAN_ROAD })
@@ -125,6 +143,67 @@ describe('a placed Ratio Analysis page', () => {
     expect(doc.internal.getNumberOfPages()).toBe(3)
     // The PDF stream escapes parentheses.
     expect(pageContaining(doc, 'Ratio Analysis \\(continued\\)')).toBe(3)
+  })
+
+  it('a default config keeps the first layout: a heading over each block and one row per average', () => {
+    const text = docText(render(CONFIG, { data: URBAN_ROAD }))
+    expect(text).toContain('FREIGHT % INCOME')
+    expect(text).toContain('6-month avg %')
+    expect(text).not.toContain('Average for the last')
+  })
+
+  it('a page in the sheet layout prints Calxa’s rows, income first, with the averaged dollars', () => {
+    const sheet = {
+      ...CONFIG,
+      amounts_order: 'denominator_first',
+      average_blocks: true,
+      block_headings: false,
+      table_style: 'grid',
+      ratios: [
+        { label: '% of Freight to Customer', numerator: { accounts: ['55000'], label: 'Freight to Customer' }, denominator: { total: 'income' } },
+        { label: "% of Poster's COGS to Income", numerator: { accounts: ['51150'], label: "Poster's COGS" }, denominator: { accounts: ['41700'], label: "Poster's Income" }, trailing_averages: [] },
+      ],
+    }
+    const doc = render(sheet, { data: URBAN_ROAD }, 'COGS Tables')
+    expect(pageContaining(doc, 'COGS Tables')).toBe(2)
+    const runs = textRuns(doc, 2)
+    const at = (s: string) => runs.indexOf(s)
+    // Rows in Calxa's order, top to bottom.
+    const order = [
+      'Total Income', 'Freight to Customer', '% of Freight to Customer',
+      'Average for the last 6 months.', 'Average Total Income', 'Average Freight to Customer', 'Average % of Freight to Customer',
+      'Average for the last 3 months.',
+      "Poster's Income", "Poster's COGS", "% of Poster's COGS to Income",
+    ]
+    for (const label of order) expect(at(label)).toBeGreaterThan(-1)
+    order.slice(1).forEach((label, i) => expect(at(label)).toBeGreaterThan(at(order[i])))
+    for (const figure of ['491,701', '49,722', '10.18%', '530,594', '50,778', '9.60%', '60.12%']) {
+      expect(runs).toContain(figure)
+    }
+    // No block headings; the unbilled August keeps its dash and its reason.
+    expect(runs.some((r) => r === r.toUpperCase() && r.includes('FREIGHT'))).toBe(false)
+    expect(docText(doc)).toContain('No amount posted to Poster')
+  })
+
+  it('in the sheet layout a % row is bold in its figures only; the window headings and averages are bold throughout', () => {
+    // Calxa p8: '% of Freight to Customer' is regular type beside bold 9.65%,
+    // while 'Average for the last 6 months.' and the average % label are bold.
+    const sheet = {
+      ...CONFIG,
+      amounts_order: 'denominator_first',
+      average_blocks: true,
+      block_headings: false,
+      table_style: 'grid',
+      ratios: [{ label: '% of Freight to Customer', numerator: { accounts: ['55000'], label: 'Freight to Customer' }, denominator: { total: 'income' } }],
+    }
+    const doc = render(sheet, { data: URBAN_ROAD }, 'COGS Tables')
+    const weights = runWeights(doc, 2)
+    expect(weights.get('% of Freight to Customer')).toBe('normal')
+    expect(weights.get('9.65%')).toBe('bold')
+    expect(weights.get('Average for the last 6 months.')).toBe('bold')
+    expect(weights.get('Average % of Freight to Customer')).toBe('bold')
+    expect(weights.get('10.18%')).toBe('bold')
+    expect(weights.get('Total Income')).toBe('normal')
   })
 
   it('a page with nothing loaded still exists and says so', () => {

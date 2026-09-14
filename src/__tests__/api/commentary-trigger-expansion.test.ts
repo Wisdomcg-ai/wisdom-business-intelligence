@@ -514,6 +514,31 @@ describe('POST /api/monthly-report/commentary — expanded payload + trigger_rea
     })
   })
 
+  it('Test 9d: activity_lines are drafted as account_activity; a triggered account keeps its trigger', async () => {
+    // A pack whose COGS commentary lists every account that moved sends the
+    // accounts no threshold fired on as activity_lines (Urban Road's Rugs,
+    // $326 against $336). An account in both buckets is the triggered one.
+    const { POST } = await import('@/app/api/monthly-report/commentary/route')
+    const req = new NextRequest('http://localhost/api/monthly-report/commentary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        business_id: 'biz-abc',
+        report_month: '2026-04',
+        expense_lines: [{ account_name: 'Marketing', xero_account_name: 'Marketing', actual: 900, budget: 300 }],
+        activity_lines: [
+          { account_name: 'Travel', xero_account_name: 'Travel', actual: 326.48, budget: 336 },
+          { account_name: 'Marketing', xero_account_name: 'Marketing', actual: 900, budget: 300 },
+        ],
+      }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.commentary.Travel).toMatchObject({ trigger_reason: 'account_activity', draft_facts: '', draft_clause: null })
+    expect(body.commentary.Marketing).toMatchObject({ trigger_reason: 'expense_over_budget_dollar' })
+  })
+
   it('Test 9c: asks Xero for posted documents only, and sales invoices only for revenue lines', async () => {
     // Urban Road, August 2026: drafts, voids and unscoped sales invoices in the
     // month's fetch put ~$800 of phantom freight into the commentary, and 620

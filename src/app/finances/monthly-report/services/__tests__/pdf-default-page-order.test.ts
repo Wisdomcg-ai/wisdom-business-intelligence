@@ -10,8 +10,24 @@
  */
 import { describe, it, expect } from 'vitest'
 import { MonthlyReportPDFService } from '../monthly-report-pdf-service'
-import { fixtureReport, fixtureFullYear, fixtureBalanceSheet, docText, pageContaining } from './pdf-pack-fixture'
+import { fixtureReport, fixtureFullYear, fixtureBalanceSheet, pageContaining } from './pdf-pack-fixture'
 import { DEFAULT_SECTIONS } from '../../types'
+
+/**
+ * The balance-sheet pages, by their title run. Both comparisons carry the same
+ * title since the Calxa header ("Balance Sheet — <client>" over the month) —
+ * the comparison lives in the column band — so a page is identified by the
+ * title and told apart by the band's period label.
+ */
+function balanceSheetPages(doc: any): string[] {
+  const out: string[] = []
+  for (let i = 1; i <= doc.internal.getNumberOfPages(); i++) {
+    const page = doc.internal.pages[i]
+    const text = Array.isArray(page) ? page.join('\n') : ''
+    if (text.includes('(Balance Sheet')) out.push(text)
+  }
+  return out
+}
 
 const sectionsWithBalanceSheet = () => ({
   ...fixtureReport().settings.sections,
@@ -27,9 +43,10 @@ describe('the balance-sheet pages are in the default page order', () => {
         yoy: { data: fixtureBalanceSheet({ compare: 'yoy', prior_label: 'Aug 2025' }) },
       },
     })
-    const text = docText(svc.generate())
-    expect(text).toContain('Balance Sheet vs Prior Month')
-    expect(text).toContain('Balance Sheet vs Same Month Last Year')
+    const pages = balanceSheetPages(svc.generate())
+    expect(pages).toHaveLength(2)
+    expect(pages[0]).toContain('(Jul 2026)')
+    expect(pages[1]).toContain('(Aug 2025)')
   })
 
   it('does not print them when the section is off', () => {
@@ -37,8 +54,7 @@ describe('the balance-sheet pages are in the default page order', () => {
       sections: fixtureReport().settings.sections,
       balanceSheets: { mom: { data: fixtureBalanceSheet() } },
     })
-    const text = docText(svc.generate())
-    expect(text).not.toContain('Balance Sheet vs Prior Month')
+    expect(balanceSheetPages(svc.generate())).toHaveLength(0)
   })
 
   it('puts them after the full-year projection, where the Calxa pack has them', () => {
@@ -47,13 +63,13 @@ describe('the balance-sheet pages are in the default page order', () => {
       fullYearReport: fixtureFullYear({ forecastMonthly: 90_000 }),
       balanceSheets: {
         mom: { data: fixtureBalanceSheet() },
-        yoy: { data: fixtureBalanceSheet({ compare: 'yoy' }) },
+        yoy: { data: fixtureBalanceSheet({ compare: 'yoy', prior_label: 'Aug 2025' }) },
       },
     })
     const doc = svc.generate()
     const fullYear = pageContaining(doc, 'Full Year Projection')
-    const mom = pageContaining(doc, 'Balance Sheet vs Prior Month')
-    const yoy = pageContaining(doc, 'Balance Sheet vs Same Month Last Year')
+    const mom = pageContaining(doc, '(Balance Sheet')
+    const yoy = pageContaining(doc, '(Aug 2025)')
     expect(fullYear).toBeGreaterThan(0)
     expect(mom).toBeGreaterThan(fullYear)
     expect(yoy).toBeGreaterThan(mom)
@@ -66,9 +82,9 @@ describe('the balance-sheet pages are in the default page order', () => {
       sections: sectionsWithBalanceSheet(),
       balanceSheets: { mom: { data: null, reason: 'Xero returned 503' }, yoy: { data: null, reason: 'Xero returned 503' } },
     })
-    const text = docText(svc.generate())
-    expect(text).toContain('Balance Sheet vs Prior Month')
-    expect(text).toContain('Xero returned 503')
+    const pages = balanceSheetPages(svc.generate())
+    expect(pages).toHaveLength(2)
+    for (const page of pages) expect(page).toContain('Xero returned 503')
   })
 
   it('a saved layout still decides its own order — the default flow is not consulted', () => {
@@ -86,10 +102,9 @@ describe('the balance-sheet pages are in the default page order', () => {
         ],
       },
     })
-    const text = docText(svc.generate())
     // The layout places no balance sheet, so the pack has none — the coach's
     // deletion survives, which is the whole point of a saved layout.
-    expect(text).not.toContain('Balance Sheet vs Prior Month')
+    expect(balanceSheetPages(svc.generate())).toHaveLength(0)
   })
 })
 

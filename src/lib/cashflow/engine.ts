@@ -37,6 +37,13 @@ const EXPENSE_GROUP_KEYWORDS: Record<string, string[]> = {
   'Other Operating Expenses': [],
 }
 
+/**
+ * The keyword headings in the order the engine emits them. Exported for the
+ * monthly-report pack, which prints them in this order after the coach's own
+ * mapping groups; the engine's output does not change.
+ */
+export const KEYWORD_EXPENSE_GROUP_ORDER: readonly string[] = Object.keys(EXPENSE_GROUP_KEYWORDS)
+
 const GST_EXEMPT_KEYWORDS = [
   'wage', 'salary', 'super', 'payg', 'worker', 'insurance',
   'bank interest', 'depreciation', 'amortisation', 'amortization',
@@ -49,6 +56,21 @@ function classifyExpenseGroup(accountName: string): string {
     if (keywords.some(kw => lower.includes(kw))) return group
   }
   return 'Other Operating Expenses'
+}
+
+/**
+ * The heading an expense line is paid under: the coach's mapping group when
+ * the caller supplies one (`report_group`), the account-name keywords
+ * otherwise.
+ *
+ * The keywords misfile real charts of accounts — Urban Road's Insurance excl
+ * Workers Comp matched 'worker' into Employment Expense, Telephone & Internet
+ * matched 'internet' into IT, and 'airfare' never matches "Air Fares" — while
+ * the other pages of the same pack group by account_mappings. The group moves
+ * a line between headings only; what is paid, and when, is unchanged.
+ */
+function expenseGroupOf(line: PLLine): string {
+  return line.report_group?.trim() || classifyExpenseGroup(line.account_name)
 }
 
 function isGSTExemptExpense(accountName: string): boolean {
@@ -287,6 +309,24 @@ export interface CashflowEngineOptions {
   xeroAccounts?: import('./account-resolution').XeroAccountRef[]
   /** Capex by month (YYYY-MM → cash outflow in AUD). Positive number = outflow. */
   capexByMonth?: Record<string, number>
+  /**
+   * Keep the sign of a Cost of Sales or expense month: a credit reduces the
+   * payments instead of becoming one.
+   *
+   * Off by default, and only the monthly-report pack turns it on. The COGS and
+   * OpEx loops take `Math.abs` of every month, which turns a credit into a
+   * payment — Urban Road's Repairs & Maintenance Warehouse was credited
+   * $502.83 in July and printed as a $543 outflow. The pack's lines come from
+   * the Xero P&L, where a positive expense is a cost and a negative one is a
+   * credit, so the sign carries meaning there.
+   *
+   * It does not carry meaning in every forecast. Stored forecast_pl_lines are
+   * not all monthly P&L movements: one forecast's Wages and Salaries actuals
+   * are a cumulative year-to-date series with a single −$659,999.88 reversal
+   * in April, and the abs is what keeps that month a payment. Flipping the
+   * default would turn it into a receipt.
+   */
+  signedExpenses?: boolean
 }
 
 export function generateCashflowForecast(
@@ -300,6 +340,7 @@ export function generateCashflowForecast(
   const settings = options.settings ?? null
   const xeroAccounts = options.xeroAccounts ?? []
   const capexByMonth = options.capexByMonth ?? {}
+  const expenseAmount = (v: number) => (options.signedExpenses ? v : Math.abs(v))
   // Build ordered list of all months in the forecast
   const allMonths = buildMonthList(forecast)
 
@@ -401,7 +442,7 @@ export function generateCashflowForecast(
   for (const line of cogsLines) {
     for (let i = 0; i < monthCount; i++) {
       const mk = allMonths[i]
-      const accrualAmount = Math.abs(getLineValue(line, mk, forecast))
+      const accrualAmount = expenseAmount(getLineValue(line, mk, forecast))
       if (accrualAmount === 0) continue
 
       const gstInclusive = accrualAmount * (1 + gstRate)
@@ -444,11 +485,11 @@ export function generateCashflowForecast(
     // via the xero_accounts lookup; otherwise falls back to keyword matching.
     if (resolveIsDepreciation(line, settings, depnLookup)) continue
 
-    const group = classifyExpenseGroup(line.account_name)
+    const group = expenseGroupOf(line)
 
     for (let i = 0; i < monthCount; i++) {
       const mk = allMonths[i]
-      const accrualAmount = Math.abs(getLineValue(line, mk, forecast))
+      const accrualAmount = expenseAmount(getLineValue(line, mk, forecast))
       if (accrualAmount === 0) continue
 
       // GST treatment
@@ -469,12 +510,12 @@ export function generateCashflowForecast(
   const netProfitByMonth: Record<string, number> = {}
   for (const mk of allMonths) {
     const rev = revenueLines.reduce((s, l) => s + getLineValue(l, mk, forecast), 0)
-    const cogs = cogsLines.reduce((s, l) => s + Math.abs(getLineValue(l, mk, forecast)), 0)
+    const cogs = cogsLines.reduce((s, l) => s + expenseAmount(getLineValue(l, mk, forecast)), 0)
     const opex = opexLines.reduce((s, l) => {
       // Exclude depreciation/amortisation from net profit for cash-relevant tax
       // (depreciation IS a tax-deductible expense so it reduces taxable income —
       // keeping it here is correct for simple tax approximation).
-      return s + Math.abs(getLineValue(l, mk, forecast))
+      return s + expenseAmount(getLineValue(l, mk, forecast))
     }, 0)
     netProfitByMonth[mk] = rev - cogs - opex
   }
@@ -487,6 +528,17 @@ export function generateCashflowForecast(
     if (rate <= 0 || schedule === 'none') return {}
     return computeCompanyTaxByMonth(allMonths, netProfitByMonth, { rate, schedule })
   })()
+
+  // The keyword groups in their usual order, then any group a line names that
+  // the keywords do not know, in the order the lines arrive. Without the tail
+  // an account under a mapping heading such as "Foreign Currency Gains and
+  // Losses" would be paid for — its cash is in totalExpenseCash — and then
+  // left off every expense row, so the rows would not add up to the outflow.
+  const expenseGroupOrder = [...Object.keys(EXPENSE_GROUP_KEYWORDS)]
+  for (const line of opexLines) {
+    const g = expenseGroupOf(line)
+    if (!expenseGroupOrder.includes(g)) expenseGroupOrder.push(g)
+  }
 
   // Build monthly cashflow data
   const months: CashflowForecastMonth[] = []
@@ -538,7 +590,7 @@ export function generateCashflowForecast(
 
     // Build expense groups
     const expenseGroups: CashflowExpenseGroup[] = []
-    const groupOrder = Object.keys(EXPENSE_GROUP_KEYWORDS)
+    const groupOrder = expenseGroupOrder
     for (const groupName of groupOrder) {
       const items = expenseGroupMap[groupName]
       if (!items || items.length === 0) continue

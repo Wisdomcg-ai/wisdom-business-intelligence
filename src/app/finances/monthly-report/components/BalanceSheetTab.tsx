@@ -9,25 +9,21 @@ import {
   balanceSheetClassTotals,
 } from '../utils/balance-sheet-pdf'
 import type { BalanceSheetData, BalanceSheetRow, BalanceSheetCompare } from '../types'
+import { bsAmountText, bsPercentText, bsWhole } from '@/lib/monthly-report/balance-sheet-rows'
 
 // ─── Formatting helpers ──────────────────────────────────────────────────────
 
-function formatAmount(value: number | null): string {
-  if (value === null) return '—'
-  const abs = Math.abs(value)
-  const formatted = abs.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
-  return value < 0 ? `(${formatted})` : formatted
-}
+// The pack's own formatters (lib/monthly-report/balance-sheet-rows), so the tab
+// and the PDF page print the same text for the same figure. The tab's copy
+// tested the sign before rounding and showed a red "(0)" for Urban Road's 7c
+// Rounding movement — the same defect the pack had.
+const formatAmount = bsAmountText
+const formatPct = bsPercentText
 
-function formatPct(value: number | null): string {
-  if (value === null) return 'N/A'
-  const abs = Math.abs(value)
-  const formatted = `${Math.round(abs)}%`
-  return value < 0 ? `(${formatted})` : formatted
-}
-
+// Red exactly when the formatter brackets — the same half-away-from-zero
+// rounding, so a (55,020) is never black.
 function isNegative(value: number | null): boolean {
-  return value !== null && value < 0
+  return value !== null && bsWhole(value) < 0
 }
 
 // ─── Cell components ─────────────────────────────────────────────────────────

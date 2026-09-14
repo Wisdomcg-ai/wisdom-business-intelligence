@@ -33,6 +33,10 @@
  *   - a stored value of the wrong type is reset WITH A NOTE naming what was
  *     there — a label that is not text, accounts that are not a list, an entry
  *     that is not a code. Never String()-ed into something that looks valid;
+ *   - the four layout settings (amounts_order, average_blocks, block_headings,
+ *     table_style) are written only when the stored config had them or the
+ *     coach chose a layout — a page that never mentioned them stays silent
+ *     about them, and prints the schema's defaults exactly as before;
  *   - keys this module does not model are carried through verbatim. The schema
  *     is strict, so such a config does not validate: the panel shows parse's
  *     reason and will not Apply it, rather than quietly deleting the key.
@@ -42,7 +46,7 @@
  * decides anything.
  */
 import { STATEMENT_TOTALS, type LedgerAccount, type StatementTotal } from './account-actuals'
-import { parseRatioAnalysisConfig, type RatioAnalysisConfig } from './ratio-table'
+import { AMOUNTS_ORDERS, TABLE_STYLES, parseRatioAnalysisConfig, type RatioAnalysisConfig } from './ratio-table'
 
 // ── State ────────────────────────────────────────────────────────────────────
 
@@ -85,8 +89,34 @@ export interface RatioPageForm {
   monthsShown: number
   trailing: number[]
   showAmounts: boolean
+  /** The layout settings. undefined = not stored; the page prints the schema's default. */
+  layout: RatioLayoutForm
   ratios: RatioForm[]
   extra: Record<string, unknown>
+}
+
+export interface RatioLayoutForm {
+  amountsOrder: RatioAnalysisConfig['amounts_order'] | undefined
+  averageBlocks: boolean | undefined
+  blockHeadings: boolean | undefined
+  tableStyle: RatioAnalysisConfig['table_style'] | undefined
+}
+
+/**
+ * The layout Urban Road's reference sheet uses: income above freight, each
+ * average as its own block with its dollars, no block headings, a cell grid.
+ */
+export const SHEET_LAYOUT: Required<{ [K in keyof RatioLayoutForm]: NonNullable<RatioLayoutForm[K]> }> = {
+  amountsOrder: 'denominator_first',
+  averageBlocks: true,
+  blockHeadings: false,
+  tableStyle: 'grid',
+}
+const PACK_LAYOUT: typeof SHEET_LAYOUT = {
+  amountsOrder: 'numerator_first',
+  averageBlocks: false,
+  blockHeadings: true,
+  tableStyle: 'pack',
 }
 
 export const MAX_RATIOS = 4
@@ -98,7 +128,11 @@ const DEFAULT_MONTHS_SHOWN = 3
 const DEFAULT_TRAILING = [6, 3]
 const DEFAULT_SHOW_AMOUNTS = true
 
-const PAGE_KEYS = new Set(['months_shown', 'trailing_averages', 'show_amounts', 'ratios'])
+const PAGE_KEYS = new Set([
+  'months_shown', 'trailing_averages', 'show_amounts',
+  'amounts_order', 'average_blocks', 'block_headings', 'table_style',
+  'ratios',
+])
 const RATIO_KEYS = new Set(['label', 'numerator', 'denominator', 'trailing_averages'])
 const OPERAND_KEYS = new Set(['accounts', 'total', 'label'])
 
@@ -129,6 +163,7 @@ export function emptyRatioPageForm(): RatioPageForm {
     monthsShown: DEFAULT_MONTHS_SHOWN,
     trailing: [...DEFAULT_TRAILING],
     showAmounts: DEFAULT_SHOW_AMOUNTS,
+    layout: { amountsOrder: undefined, averageBlocks: undefined, blockHeadings: undefined, tableStyle: undefined },
     ratios: [blankRatio()],
     extra: {},
   }
@@ -256,6 +291,26 @@ export function formFromWidget(config: unknown, titleOverride: string | undefine
   if (typeof config.show_amounts === 'boolean') form.showAmounts = config.show_amounts
   else if (config.show_amounts !== undefined) notes.push('"Show the dollar amounts" could not be read and was reset to on.')
 
+  // A layout value of the wrong type is reset to "not stored" — the default the
+  // page already printed, since parse refused it — and named, never coerced.
+  const oneOf = <T extends string>(raw: unknown, allowed: readonly T[], what: string): T | undefined => {
+    if (raw === undefined) return undefined
+    if ((allowed as readonly unknown[]).includes(raw)) return raw as T
+    notes.push(`${what} could not be read (${shown(raw)}); it was reset to the default.`)
+    return undefined
+  }
+  const flag = (raw: unknown, what: string): boolean | undefined => {
+    if (raw === undefined || typeof raw === 'boolean') return raw
+    notes.push(`${what} could not be read (${shown(raw)}); it was reset to the default.`)
+    return undefined
+  }
+  form.layout = {
+    amountsOrder: oneOf(config.amounts_order, AMOUNTS_ORDERS, 'The order of the dollar lines'),
+    averageBlocks: flag(config.average_blocks, 'The average blocks setting'),
+    blockHeadings: flag(config.block_headings, 'The block headings setting'),
+    tableStyle: oneOf(config.table_style, TABLE_STYLES, 'The table style'),
+  }
+
   if (Array.isArray(config.ratios)) {
     form.ratios = []
     config.ratios.forEach((raw, i) => {
@@ -295,10 +350,16 @@ function operandToConfig(op: OperandForm): Record<string, unknown> {
 
 /** The config this form describes — valid or not. Validate before writing it. */
 export function configFromForm(form: RatioPageForm): Record<string, unknown> {
+  const layout: Record<string, unknown> = {}
+  if (form.layout.amountsOrder !== undefined) layout.amounts_order = form.layout.amountsOrder
+  if (form.layout.averageBlocks !== undefined) layout.average_blocks = form.layout.averageBlocks
+  if (form.layout.blockHeadings !== undefined) layout.block_headings = form.layout.blockHeadings
+  if (form.layout.tableStyle !== undefined) layout.table_style = form.layout.tableStyle
   return {
     months_shown: form.monthsShown,
     trailing_averages: [...form.trailing],
     show_amounts: form.showAmounts,
+    ...layout,
     ratios: form.ratios.map((r) => {
       const out: Record<string, unknown> = {
         label: r.label,
@@ -365,6 +426,10 @@ function describePath(path: string): string {
     } else if (p === 'trailing_averages') words.push(words.length ? 'averages' : 'Averages')
     else if (p === 'months_shown') words.push('Months shown')
     else if (p === 'show_amounts') words.push('Show the dollar amounts')
+    else if (p === 'amounts_order') words.push('The order of the dollar lines')
+    else if (p === 'average_blocks') words.push('Average blocks')
+    else if (p === 'block_headings') words.push('Block headings')
+    else if (p === 'table_style') words.push('Table style')
     else if (/^\d+$/.test(p)) words.push(`#${Number(p) + 1}`)
     else words.push(p)
   }
@@ -464,6 +529,34 @@ export function setRatioNoAverages(form: RatioPageForm, index: number, on: boole
     ...r,
     trailing: on ? [] : r.ownTrailing ? [...r.ownTrailing] : undefined,
   }))
+}
+
+export type RatioLayoutPreset = 'pack' | 'sheet' | 'custom'
+
+/**
+ * Which layout the page prints, reading an unstored setting as its default.
+ * 'custom' is a mix set up by hand — the panel names it and keeps it.
+ */
+export function layoutPreset(form: RatioPageForm): RatioLayoutPreset {
+  const effective = (preset: typeof SHEET_LAYOUT) =>
+    (Object.keys(preset) as (keyof RatioLayoutForm)[]).every((k) => (form.layout[k] ?? PACK_LAYOUT[k]) === preset[k])
+  if (effective(PACK_LAYOUT)) return 'pack'
+  if (effective(SHEET_LAYOUT)) return 'sheet'
+  return 'custom'
+}
+
+/**
+ * Choose a layout. 'sheet' writes all four settings; 'pack' removes them, so a
+ * page returned to the default is the config it would have been had the coach
+ * never touched the choice — not four keys restating the defaults.
+ */
+export function setLayoutPreset(form: RatioPageForm, preset: Exclude<RatioLayoutPreset, 'custom'>): RatioPageForm {
+  return {
+    ...form,
+    layout: preset === 'sheet'
+      ? { ...SHEET_LAYOUT }
+      : { amountsOrder: undefined, averageBlocks: undefined, blockHeadings: undefined, tableStyle: undefined },
+  }
 }
 
 /** Windows in a list that have no checkbox — shown as kept, so a [9] is not a mystery. */

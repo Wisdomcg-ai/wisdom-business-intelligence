@@ -3,7 +3,7 @@
  * four runs in July and five in August, six employees, $10,503.85 a week.
  */
 import { describe, it, expect } from 'vitest'
-import { buildPayrollGrid, type PayslipRow } from '../payroll-grid'
+import { buildPayrollGrid, applyPayrollRoster, cleanEmployeeName, runTotal, type PayslipRow } from '../payroll-grid'
 
 const JUL = ['2026-07-06', '2026-07-13', '2026-07-20', '2026-07-27']
 const AUG = ['2026-08-03', '2026-08-10', '2026-08-17', '2026-08-24', '2026-08-31']
@@ -134,5 +134,136 @@ describe('buildPayrollGrid', () => {
     const row = grid.employees.find(e => e.name === 'Casual Hand')!
     expect(row.cells['2026-08-31']).toBe(400)
     expect(row.start_date).toBeNull()
+  })
+})
+
+// ── Names and the roster ─────────────────────────────────────────────────────
+
+/** Calxa page 15's order and standing figures; Xero's ids for the same people. */
+const ROSTER = [
+  { name: 'Andrea Shinners', employee_id: 'e1', standard_units: 38, weekly_salary: 2500 },
+  { name: 'Deborah Leydon', employee_id: 'e2', standard_units: 38, weekly_salary: 2500 },
+  { name: 'Suzanne Atkin', employee_id: 'e5', standard_units: 38, weekly_salary: 1442.31 },
+  { name: 'Lara Powell', employee_id: 'e3', standard_units: 38, weekly_salary: 1923.08 },
+  { name: 'Thomas White', employee_id: 'e6', standard_units: 20, weekly_salary: 600 },
+  { name: 'Cheryl Henderson', employee_id: 'e4', standard_units: 38, weekly_salary: 1538.46 },
+]
+const CALXA_ORDER = ['Andrea Shinners', 'Deborah Leydon', 'Suzanne Atkin', 'Lara Powell', 'Thomas White', 'Cheryl Henderson']
+
+/** The payslips as Xero actually stores two of the names: first name with a trailing space. */
+function asStored(rows: PayslipRow[]): PayslipRow[] {
+  const stored: Record<string, string> = { 'Suzanne Atkin': 'Suzanne  Atkin', 'Thomas White': 'Thomas  White' }
+  return rows.map((p) => ({ ...p, employee_name: stored[p.employee_name] ?? p.employee_name }))
+}
+
+describe('employee names', () => {
+  it("prints 'Suzanne  Atkin' as 'Suzanne Atkin'", () => {
+    expect(cleanEmployeeName('Suzanne  Atkin')).toBe('Suzanne Atkin')
+    expect(cleanEmployeeName(' Thomas \t White ')).toBe('Thomas White')
+    expect(cleanEmployeeName(null)).toBe('')
+    const grid = buildPayrollGrid(asStored(payslips()), EMPLOYEES, ['2026-07', '2026-08'], BUDGETS)
+    expect(grid.employees.map((e) => e.name)).toContain('Suzanne Atkin')
+    expect(grid.employees.map((e) => e.name)).toContain('Thomas White')
+  })
+})
+
+describe('applyPayrollRoster', () => {
+  const grid = () => buildPayrollGrid(asStored(payslips()), EMPLOYEES, ['2026-07', '2026-08'], BUDGETS)
+
+  it("puts Urban Road's employees in Calxa's roster order, not by pay", () => {
+    const r = applyPayrollRoster(grid(), ROSTER)
+    expect(r.employees.map((e) => e.name)).toEqual(CALXA_ORDER)
+    expect(r.employees.map((e) => e.standard_units)).toEqual([38, 38, 38, 38, 20, 38])
+    expect(r.not_on_roster).toEqual([])
+  })
+
+  it('keeps every figure the grid had — the roster reorders, it does not re-add', () => {
+    const g = grid()
+    const r = applyPayrollRoster(g, ROSTER)
+    // $10,503.85 a run, $42,015 in July's four and $52,519 in August's five.
+    expect(runTotal(g, '2026-08-31')).toBeCloseTo(10503.85, 2)
+    expect(g.months.map((m) => Math.round(m.total))).toEqual([42015, 52519])
+    // Against the budget's whole dollars: under a dollar over in each month.
+    expect(g.months.map((m) => Math.abs(m.difference!) < 1)).toEqual([true, true])
+    const paid = r.employees.reduce((t, e) => t + Object.values(e.cells).reduce<number>((s, v) => s + (v ?? 0), 0), 0)
+    expect(paid).toBeCloseTo(g.grand_total, 2)
+  })
+
+  it('totals the Weekly Salary (Budget) column at $10,504 — only when every row has one', () => {
+    expect(applyPayrollRoster(grid(), ROSTER).weekly_salary_total).toBeCloseTo(10503.85, 2)
+    const oneBlank = ROSTER.map((r) => (r.name === 'Thomas White' ? { ...r, weekly_salary: null } : r))
+    expect(applyPayrollRoster(grid(), oneBlank).weekly_salary_total).toBeNull()
+  })
+
+  it('matches by name, ignoring case and spacing, when the roster has no ids', () => {
+    const byName = ROSTER.map(({ employee_id: _id, ...r }) => ({ ...r, name: r.name.toUpperCase().replace(' ', '   ') }))
+    expect(applyPayrollRoster(grid(), byName).employees.map((e) => e.name)).toEqual(CALXA_ORDER)
+  })
+
+  it('an id wins over a name that has since been retyped', () => {
+    const renamed = ROSTER.map((r) => (r.employee_id === 'e5' ? { ...r, name: 'Sue Atkin' } : r))
+    const r = applyPayrollRoster(grid(), renamed)
+    expect(r.employees[2].name).toBe('Suzanne Atkin')
+    expect(r.employees[2].weekly_salary).toBe(1442.31)
+  })
+
+  it('an entry that names an id never matches a different id with the same name — a re-hire on a new record', () => {
+    // Two Xero records for one name, both paid in the window; the roster names
+    // the first. Matching the second by name would give it the same Weekly
+    // Salary (Budget), count that figure twice in the column total, and keep it
+    // out of not_on_roster.
+    const slips: PayslipRow[] = [
+      { employee_id: 'A', employee_name: 'Sam Lee', payment_date: '2026-08-03', wages: 1000, super_amount: 120 },
+      { employee_id: 'B', employee_name: 'Sam Lee', payment_date: '2026-08-10', wages: 900, super_amount: 108 },
+    ]
+    const g = buildPayrollGrid(slips, [], ['2026-08'])
+    const r = applyPayrollRoster(g, [{ name: 'Sam Lee', employee_id: 'A', standard_units: 38, weekly_salary: 1000 }])
+    expect(r.employees.map((e) => [e.employee_id, e.weekly_salary])).toEqual([['A', 1000], ['B', null]])
+    expect(r.weekly_salary_total).toBeNull()
+    expect(r.not_on_roster).toEqual(['Sam Lee'])
+  })
+
+  it('a payslip with no employee id still finds its entry by name, even when the entry carries an id', () => {
+    const slips: PayslipRow[] = [
+      { employee_id: null, employee_name: 'Sam Lee', payment_date: '2026-08-03', wages: 1000, super_amount: 120 },
+    ]
+    const r = applyPayrollRoster(buildPayrollGrid(slips, [], ['2026-08']), [{ name: 'Sam Lee', employee_id: 'A', weekly_salary: 1000 }])
+    expect(r.employees[0].weekly_salary).toBe(1000)
+    expect(r.not_on_roster).toEqual([])
+  })
+
+  it('somebody paid but not on the roster is kept, listed last, and named', () => {
+    const r = applyPayrollRoster(grid(), ROSTER.filter((x) => x.name !== 'Deborah Leydon'))
+    expect(r.employees.map((e) => e.name)).toEqual([...CALXA_ORDER.filter((n) => n !== 'Deborah Leydon'), 'Deborah Leydon'])
+    expect(r.employees[5].weekly_salary).toBeNull()
+    expect(r.not_on_roster).toEqual(['Deborah Leydon'])
+  })
+
+  it('a rostered leaver who was not paid in the window is not printed', () => {
+    const r = applyPayrollRoster(grid(), [...ROSTER.slice(0, 3), { name: 'Sarah Diana Firth', employee_id: 'e7' }, ...ROSTER.slice(3)])
+    expect(r.employees.map((e) => e.name)).toEqual(CALXA_ORDER)
+  })
+
+  it('with no roster, the grid order stands and nobody is flagged', () => {
+    const g = grid()
+    const r = applyPayrollRoster(g, [])
+    expect(r.employees.map((e) => e.name)).toEqual(g.employees.map((e) => e.name))
+    expect(r.not_on_roster).toEqual([])
+    expect(r.weekly_salary_total).toBeNull()
+  })
+
+  it("the budget column is the roster's, not what was paid — March 2026's leave cash-out", () => {
+    // Deborah Leydon was paid $3,850 every run in March 2026 against a $2,500
+    // weekly budget. A column derived from payslips would have printed $3,850
+    // under "Budget".
+    const MAR = ['2026-03-02', '2026-03-09', '2026-03-16', '2026-03-23', '2026-03-30']
+    const march: PayslipRow[] = MAR.map((d) => ({
+      employee_id: 'e2', employee_name: 'Deborah Leydon', payment_date: d, wages: 3850, super_amount: 462,
+    }))
+    const g = buildPayrollGrid(march, EMPLOYEES, ['2026-03'])
+    expect(g.employees[0].weekly).toBe(3850)
+    const r = applyPayrollRoster(g, ROSTER)
+    expect(r.employees[0].weekly_salary).toBe(2500)
+    expect(r.weekly_salary_total).toBe(2500)
   })
 })

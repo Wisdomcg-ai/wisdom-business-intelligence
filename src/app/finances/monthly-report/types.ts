@@ -52,9 +52,22 @@ export interface ReportSections {
 
 // WD.3 — a standing "refer to …" commentary bullet rendered under the
 // Budget-vs-Actual statement every month, regardless of variance triggers.
+// Printed "label | Refer to <refer_to>", first in the commentary list.
 export interface StandingCommentaryLine {
   label: string
   refer_to: string
+  /**
+   * The pack page the line points at, when refer_to is not that page's name
+   * ("summary page" → "Contractor Analysis"). Only the in-pack check reads it.
+   */
+  target?: string
+  /**
+   * The accounts the line speaks for, by name or code, when the label is not
+   * the account's own name ("Wages & Salaries" → "Employ - Wages & Salaries").
+   * A claimed account prints the standing line in place of its supplier list.
+   * The label always claims the account it names exactly.
+   */
+  accounts?: string[]
 }
 
 export interface MonthlyReportSettings {
@@ -78,6 +91,12 @@ export interface MonthlyReportSettings {
    * (Urban Road: 61400). Empty/absent = the page is not part of this pack.
    */
   contractor_account_codes?: string[] | null
+  /**
+   * Xero AccountIDs the pack counts as bank — Where Did Our Money Go and the
+   * cashflow's opening balance (see opening-bank, parseBankAccountIds).
+   * Empty/absent = every asset account in the balance sheet's Bank section.
+   */
+  bank_account_ids?: string[] | null
   wages_account_names?: string[]
   pdf_layout?: import('./types/pdf-layout').PDFLayout | null
   /** WD.3 — standing commentary bullets; null/undefined = none. */
@@ -90,6 +109,11 @@ export interface MonthlyReportSettings {
    * opted in gets.
    */
   expense_group_order?: string[] | null
+  /**
+   * The pack's mark: the WisdomBI lockup (absent / 'wisdombi') or the
+   * business's own image. See lib/monthly-report/pack-logo-setting.
+   */
+  pack_logo?: import('@/lib/monthly-report/pack-logo-setting').PackLogoSetting | null
   created_at?: string
   updated_at?: string
 }
@@ -429,6 +453,13 @@ export interface FullYearReport {
    */
   approved_budget_label?: string | null
   /**
+   * The months ('YYYY-MM') the resolved approved budget has rows for, or null
+   * when there is no approved budget. A month outside it is not a budget of 0 —
+   * the version simply does not reach it — and the Full Year page must not
+   * print it as one (approvedBudgetGaps). Optional: older snapshots lack it.
+   */
+  approved_months_covered?: string[] | null
+  /**
    * Did an active forecast exist for this fiscal year at all?
    *
    * False is not "the forecast is zero" — it is "there is no forecast", and the
@@ -498,6 +529,9 @@ export type CommentaryTriggerReason =
   | 'expense_favourable_significant'
   | 'bs_movement_dollar'
   | 'bs_movement_percent'
+  // Triggered nothing, but moved, in a section whose commentary lists every
+  // account that did (see commentary-placement coverage).
+  | 'account_activity'
 
 export interface VarianceCommentaryEntry {
   vendor_summary: VendorSummary[]  // Grouped by vendor, sorted by amount desc
@@ -514,6 +548,13 @@ export interface VarianceCommentaryEntry {
    * stale, and prose that is never overwritten cannot be lost.
    */
   draft_note?: string
+  /**
+   * The two halves of draft_note, stored apart so a placement can print the
+   * supplier list without the ratio clause. Absent on commentary drafted before
+   * they existed; such an entry prints draft_note whole.
+   */
+  draft_facts?: string
+  draft_clause?: string | null
   /**
    * Coach-only. A document that could not be converted out of its currency, or
    * a vendor list that sums past its own account. When this is non-empty the
@@ -534,10 +575,25 @@ export interface VarianceCommentary {
 export interface SubscriptionVendorLine {
   vendor_name: string
   vendor_key: string
+  /** The gross document amounts (GST included where charged), as every page has always quoted them. */
   prior_month_actual: number
   actual: number
   budget: number
   variance: number
+  /**
+   * The same vendor in the P&L's money — net of GST, in the organisation's
+   * currency — for a placement that opts in (subscription-page `basis`).
+   * Variance is still against `budget`, the gross vendor budget. Absent on the
+   * stored history (the harness) and on responses from before it existed.
+   */
+  statement?: { prior_month_actual: number; actual: number; variance: number; months?: Record<string, number> }
+  /**
+   * The vendor month by month, gross, over the window the caller asked for
+   * (`months` on the route; the Contractors Payment Summary's three) — a month
+   * with nothing posted is 0. Absent when no window was asked for: the page has
+   * always been two months, and those are prior_month_actual and actual.
+   */
+  months?: Record<string, number>
   /**
    * Number of current-month bank-transaction lines that contributed to `actual`.
    * Zero means the vendor surfaced solely from `subscription_budgets` backfill
@@ -559,6 +615,60 @@ export interface SubscriptionAccountGroup {
   total_actual: number
   total_budget: number
   total_variance: number
+  /**
+   * Where total_budget came from: the approved budget (budget-store clients),
+   * the forecast line, or — neither having one — the sum of the vendor budgets.
+   * 'none' is a budget-store client with no version in force: total_budget is
+   * 0 and total_budget_absent says why. Absent on responses cached before it
+   * existed.
+   */
+  total_budget_source?: 'approved_budget' | 'forecast' | 'vendor_sum' | 'none'
+  /** Why there is no budget, when total_budget_source is 'none' ("no approved budget version is locked for FY2027"). */
+  total_budget_absent?: string
+  /**
+   * A budget-store client only: the TOTAL budget this page printed before the
+   * store — the forecast line, else the vendor budgets — with its variance
+   * against total_actual. The standard layout prints it unless its placement
+   * asks for the approved budget (subscription-page `total_budget`), so moving
+   * a client onto the store does not move this page unasked.
+   */
+  pre_budget_store_total?: { budget: number; variance: number; source: 'forecast' | 'vendor_sum' }
+  /** Lines left out of every vendor's `statement` figure because they could not be stated in the organisation's currency (the gross figures include them). */
+  unconverted?: SubscriptionUnconvertedLine[]
+  /** The account over the window the caller asked for. Absent when none was. */
+  window?: SubscriptionAccountWindow
+}
+
+/**
+ * One account month by month, for a page that prints more than this month and
+ * last (the Contractors Payment Summary).
+ */
+export interface SubscriptionAccountWindow {
+  /** Oldest first, ending at the report month. */
+  months: string[]
+  /** The ledger's figure for the account (xero_pl_lines), or the vendor rows added up when the ledger has no row for it — see actual_source. */
+  actual: Record<string, number>
+  actual_source: 'ledger' | 'vendor_sum'
+  /**
+   * The account's budget for each month, on the yardstick total_budget uses —
+   * the approved budget for a budget-store client, the forecast otherwise.
+   * Null is "no budget for this month", never $0: June 2026 is FY2026, and
+   * Urban Road has no approved budget for FY2026. budget_absent says why.
+   */
+  budget: Record<string, number | null>
+  budget_absent?: Record<string, string>
+}
+
+export interface SubscriptionUnconvertedLine {
+  vendor_name: string
+  /** Signed, in the document's own currency. */
+  amount: number
+  source_currency: string | null
+  /** True for the report month, false for the month before. */
+  is_current: boolean
+  /** Set only for a month further back than the month before (a window month): is_current is false and does not name it. */
+  month?: string
+  reason: string
 }
 
 export interface SubscriptionLeakageLine {
@@ -584,6 +694,26 @@ export interface SubscriptionDetailData {
   report_month: string
   /** Optional: absent on cached/legacy responses. */
   leakage?: SubscriptionLeakageSummary
+  /**
+   * Whether every connected org was read, whole, for both months. False when
+   * there is no Xero connection, an org's token was unavailable, or a fetch
+   * came back short — then an empty `accounts` is NOT "nothing was spent", and
+   * incomplete_reason says what was not read. Absent on responses from before
+   * it existed, and from a payload file: unknown, not complete.
+   */
+  complete?: boolean
+  incomplete_reason?: string
+  /**
+   * Present when no vendor row could be given a `statement` figure in ONE
+   * currency: the business's orgs keep their books in different currencies
+   * (or several orgs and one records none — null in `currencies`). Each org's
+   * lines are in its own currency and the rows add orgs together, so the gross
+   * figures mix currencies too. A page asking for net states this instead of
+   * printing vendor figures.
+   */
+  statement_unavailable?: { reason: 'mixed_currencies'; currencies: (string | null)[] }
+  /** A budget-store client only: grand_total.budget as it was before the store (see pre_budget_store_total). */
+  pre_budget_store_grand_budget?: number
 }
 
 // ============================================
@@ -725,6 +855,13 @@ export interface BalanceSheetRow {
   prior: number | null     // Prior period actuals
   variance: number | null  // current - prior
   variance_pct: number | null  // null = N/A (prior is 0)
+  /**
+   * Headings and totals only. 0 is a class (Asset, Total Liability, Net
+   * Assets, Equity); 1 is a group inside one (Bank, Total Current Assets).
+   * The page styles the two apart. Absent on rows built before it existed —
+   * readers treat absent as 0.
+   */
+  depth?: 0 | 1
 }
 
 export type BalanceSheetCompare = 'yoy' | 'mom'

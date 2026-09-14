@@ -51,14 +51,20 @@ const sum = (lines: readonly ReportLine[], pick: (l: ReportLine) => number): num
  * a subtotal ends up disagreeing with its own two columns. Prior year stays
  * null unless at least one line has one, so a group with no history shows a
  * dash rather than a zero it did not earn.
+ *
+ * The variance takes the SECTION's polarity, the same test the generate route
+ * applies to every line. It used to be expense polarity (budget − actual)
+ * whatever the section, so a grouped income section printed its shortfall as a
+ * favourable figure on the group row: Precision's "Trading Income" read 66,826
+ * two rows above a Total Income of (66,826), over accounts that were all short.
  */
-function subtotalOf(name: string, lines: readonly ReportLine[]): ReportLine {
+function subtotalOf(name: string, lines: readonly ReportLine[], isRevenue: boolean): ReportLine {
   const actual = sum(lines, l => l.actual)
   const budget = sum(lines, l => l.budget)
   const ytdActual = sum(lines, l => l.ytd_actual)
   const ytdBudget = sum(lines, l => l.ytd_budget)
-  const { amount: varAmt, percent: varPct } = calcVariance(actual, budget, false)
-  const { amount: ytdVarAmt, percent: ytdVarPct } = calcVariance(ytdActual, ytdBudget, false)
+  const { amount: varAmt, percent: varPct } = calcVariance(actual, budget, isRevenue)
+  const { amount: ytdVarAmt, percent: ytdVarPct } = calcVariance(ytdActual, ytdBudget, isRevenue)
   const anyPriorYear = lines.some(l => l.prior_year !== null && l.prior_year !== undefined)
 
   return {
@@ -157,17 +163,44 @@ export function partitionByGroup<T extends { group?: string | null }>(
 }
 
 /**
- * @param lines the section's lines, in the order the statement would print them
- * @param order the coach's heading order; see partitionByGroup
+ * @param lines    the section's lines, in the order the statement would print them
+ * @param order    the coach's heading order; see partitionByGroup
+ * @param category the section's category, which sets the subtotal's variance
+ *                 sign — required, because a default is how income groups got
+ *                 expense polarity (see subtotalOf)
  */
 export function groupExpenseLines(
   lines: readonly ReportLine[],
   order: readonly string[] | null | undefined,
+  category: string,
 ): ExpenseGroup[] {
+  const isRevenue = category === 'Revenue' || category === 'Other Income'
   return partitionByGroup(lines, order).map(g => ({
     ...g,
-    subtotal: g.name ? subtotalOf(g.name, g.lines) : null,
+    subtotal: g.name ? subtotalOf(g.name, g.lines, isRevenue) : null,
   }))
+}
+
+/**
+ * The groups as the pack prints them under a heading already labelled
+ * `sectionLabel`: a section whose ONLY group carries the heading's own name is
+ * handed back ungrouped.
+ *
+ * Envisage maps all five income accounts to the group "Income", and the pack
+ * calls the Revenue section "Income" — so its pages read "Income / Income",
+ * with a group subtotal equal to Total Income a few rows down. That row says
+ * nothing the heading and the total do not. With other groups beside it the
+ * row is kept: its subtotal is then a figure no other row prints, and a reader
+ * needs the name to find it. Case and spacing are ignored, as a coach typing
+ * "income" means the same thing.
+ */
+export function withoutHeadingEcho<G extends { name: string | null; subtotal: unknown }>(
+  groups: G[],
+  sectionLabel: string,
+): G[] {
+  const only = groups.length === 1 ? groups[0] : null
+  if (!only?.name || only.name.trim().toLowerCase() !== sectionLabel.trim().toLowerCase()) return groups
+  return [{ ...only, name: null, subtotal: null }]
 }
 
 /** True when this section should render headings at all. */

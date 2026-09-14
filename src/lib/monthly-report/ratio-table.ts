@@ -27,6 +27,20 @@
  *     (see the method-proof test).
  *   - The latest month prints as it stands. Figures are live from the ledger,
  *     not frozen at report time.
+ *
+ * How a block is SET OUT is configuration too, because the reference sheet and
+ * our first version disagree and only one client has asked for the sheet. The
+ * defaults are the first version; a placement opts into the sheet:
+ *
+ *   - amounts_order 'denominator_first' puts Total Income above Freight, the
+ *     way the sheet reads ("of this income, this much went on freight").
+ *   - average_blocks turns each trailing average into its own block — a
+ *     heading, the averaged amounts, then the average % under the ratio's own
+ *     label — instead of one '6-month avg %' row.
+ *   - block_headings false drops the capitalised heading over each block; the
+ *     label then names only the % row, as it does on the sheet.
+ *   - table_style 'grid' is the sheet's cell grid. Only the renderer reads it;
+ *     it is validated here so a typo is refused with the rest of the config.
  */
 import { z } from 'zod'
 import {
@@ -61,10 +75,17 @@ const operandSchema = z.union([
   }),
 ])
 
+export const AMOUNTS_ORDERS = ['numerator_first', 'denominator_first'] as const
+export const TABLE_STYLES = ['pack', 'grid'] as const
+
 const configSchema = z.strictObject({
   months_shown: z.number().int().min(1).max(6).default(3),
   trailing_averages: trailingSchema.default([6, 3]),
   show_amounts: z.boolean().default(true),
+  amounts_order: z.enum(AMOUNTS_ORDERS).default('numerator_first'),
+  average_blocks: z.boolean().default(false),
+  block_headings: z.boolean().default(true),
+  table_style: z.enum(TABLE_STYLES).default('pack'),
   ratios: z
     .array(
       z.strictObject({
@@ -128,11 +149,16 @@ export function requiredWindow(configs: readonly RatioAnalysisConfig[]): { month
 export type RatioCell = { kind: 'value'; value: number } | { kind: 'empty'; reason: string }
 
 export interface RatioRow {
-  kind: 'numerator' | 'denominator' | 'ratio' | 'average'
+  /**
+   * 'heading' opens an average block ("Average for the last 6 months.") and
+   * carries no cells. 'average_numerator' / 'average_denominator' are that
+   * block's averaged dollars. Those three exist only with average_blocks.
+   */
+  kind: 'numerator' | 'denominator' | 'ratio' | 'average' | 'heading' | 'average_numerator' | 'average_denominator'
   label: string
-  /** Months in the average's window; only on 'average' rows. */
+  /** Months in the average's window; on every row that belongs to one. */
   window?: number
-  /** One per column, newest first. */
+  /** One per column, newest first. Empty on a 'heading' row. */
   cells: RatioCell[]
 }
 
@@ -272,10 +298,22 @@ function ratioCell(ratio: RatioDefinition, actuals: AccountActuals, month: strin
 export const AVERAGE_NEEDS_EVERY_MONTH =
   'an average is shown only when every month in its window has a ratio'
 
+/** The same rule for an averaged dollar row: five months' freight over six is not an average. */
+export const AVERAGE_AMOUNT_NEEDS_EVERY_MONTH =
+  'an averaged amount is shown only when every month in its window has one'
+
 export interface RatioTableOptions {
   months_shown: number
   trailing_averages: number[]
   show_amounts: boolean
+  /** Optional, so a caller that predates the sheet layout keeps its output. */
+  amounts_order?: RatioAnalysisConfig['amounts_order']
+  average_blocks?: boolean
+}
+
+/** The months a column's average covers, oldest first — INCLUDING the column's own. */
+function windowMonths(column: string, window: number): string[] {
+  return Array.from({ length: window }, (_, i) => shiftMonth(column, -(window - 1) + i))
 }
 
 export function buildRatioTable(
@@ -297,33 +335,64 @@ export function buildRatioTable(
     return hit
   }
 
+  const numLabel = operandLabel(ratio.numerator, actuals)
+  const denLabel = operandLabel(ratio.denominator, actuals)
+  const denominatorFirst = opts.amounts_order === 'denominator_first'
+
   const rows: RatioRow[] = []
   if (opts.show_amounts) {
-    rows.push({ kind: 'numerator', label: operandLabel(ratio.numerator, actuals), cells: months.map((m) => at(m).num) })
-    rows.push({ kind: 'denominator', label: operandLabel(ratio.denominator, actuals), cells: months.map((m) => at(m).den) })
+    const num: RatioRow = { kind: 'numerator', label: numLabel, cells: months.map((m) => at(m).num) }
+    const den: RatioRow = { kind: 'denominator', label: denLabel, cells: months.map((m) => at(m).den) }
+    rows.push(...(denominatorFirst ? [den, num] : [num, den]))
   }
   rows.push({ kind: 'ratio', label: ratio.label, cells: months.map((m) => at(m).ratio) })
 
   for (const window of trailing) {
-    rows.push({
-      kind: 'average',
-      label: `${window}-month avg %`,
-      window,
-      cells: months.map((column): RatioCell => {
-        // The window INCLUDES the column's own month: August's six-month
-        // average is March to August.
-        const span = Array.from({ length: window }, (_, i) => shiftMonth(column, -(window - 1) + i))
-        const missing = span.filter((m) => at(m).ratio.kind === 'empty')
-        if (missing.length > 0) {
-          return {
-            kind: 'empty',
-            reason: `the ${window}-month average needs a ratio for every month from ${monthLabel(span[0])} to ${monthLabel(column)}`,
-          }
+    const average = (column: string): RatioCell => {
+      // August's six-month average is March to August.
+      const span = windowMonths(column, window)
+      const missing = span.filter((m) => at(m).ratio.kind === 'empty')
+      if (missing.length > 0) {
+        return {
+          kind: 'empty',
+          reason: `the ${window}-month average needs a ratio for every month from ${monthLabel(span[0])} to ${monthLabel(column)}`,
         }
-        const sum = span.reduce((t, m) => t + (at(m).ratio as { value: number }).value, 0)
-        return { kind: 'value', value: sum / window }
-      }),
-    })
+      }
+      const sum = span.reduce((t, m) => t + (at(m).ratio as { value: number }).value, 0)
+      return { kind: 'value', value: sum / window }
+    }
+
+    if (!opts.average_blocks) {
+      rows.push({ kind: 'average', label: `${window}-month avg %`, window, cells: months.map(average) })
+      continue
+    }
+
+    // The block the reference sheet prints. Its dollars are plain means of each
+    // month's amount, so they do NOT divide into the average % beneath them
+    // (the mean of the ratios) — the note under the table says so. Each needs
+    // every month of its own window, independently of the ratio: a month with
+    // income but no freight posted still has an income to average.
+    const amountAverage = (side: 'num' | 'den', label: string) => (column: string): RatioCell => {
+      const span = windowMonths(column, window)
+      if (span.some((m) => at(m)[side].kind === 'empty')) {
+        return {
+          kind: 'empty',
+          reason: `the ${window}-month average of ${label} needs an amount for every month from ${monthLabel(span[0])} to ${monthLabel(column)}`,
+        }
+      }
+      const sum = span.reduce((t, m) => t + (at(m)[side] as { value: number }).value, 0)
+      return { kind: 'value', value: sum / window }
+    }
+    rows.push({ kind: 'heading', label: `Average for the last ${window} months.`, window, cells: [] })
+    if (opts.show_amounts) {
+      const num: RatioRow = { kind: 'average_numerator', label: `Average ${numLabel}`, window, cells: months.map(amountAverage('num', numLabel)) }
+      const den: RatioRow = { kind: 'average_denominator', label: `Average ${denLabel}`, window, cells: months.map(amountAverage('den', denLabel)) }
+      rows.push(...(denominatorFirst ? [den, num] : [num, den]))
+    }
+    // Under its window's heading the % row needs no "6-month" of its own. It is
+    // named as its dollar rows are — "Average % of Freight to Customer" — so it
+    // cannot be mistaken for the month's own ratio at the top of the table.
+    rows.push({ kind: 'average', label: `Average ${ratio.label}`, window, cells: months.map(average) })
   }
 
   // The reasons printed under the block. For an average, the note names what
@@ -333,21 +402,27 @@ export function buildRatioTable(
   const reasons: string[] = []
   const note = (r: string) => { if (!reasons.includes(r)) reasons.push(r) }
   let averageShort = false
+  let amountAverageShort = false
+  // Which of a month's three figures an averaged row is built from.
+  const averagedFrom = { average: 'ratio', average_numerator: 'num', average_denominator: 'den' } as const
   for (const row of rows) {
     row.cells.forEach((cell, i) => {
       if (cell.kind !== 'empty') return
-      if (row.kind !== 'average' || !row.window) {
+      const side = row.window ? averagedFrom[row.kind as keyof typeof averagedFrom] : undefined
+      if (!side || !row.window) {
         note(cell.reason)
         return
       }
-      averageShort = true
+      if (side === 'ratio') averageShort = true
+      else amountAverageShort = true
       for (let k = row.window - 1; k >= 0; k--) {
-        const inner = at(shiftMonth(months[i], -k)).ratio
+        const inner = at(shiftMonth(months[i], -k))[side]
         if (inner.kind === 'empty') note(inner.reason)
       }
     })
   }
   if (averageShort) note(AVERAGE_NEEDS_EVERY_MONTH)
+  if (amountAverageShort) note(AVERAGE_AMOUNT_NEEDS_EVERY_MONTH)
 
   return { label: ratio.label, months, rows, averages: trailing, reasons }
 }

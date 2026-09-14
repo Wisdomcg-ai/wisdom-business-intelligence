@@ -41,6 +41,13 @@ export interface DraftNote {
   /** Everything after the pipe. Empty string when there is nothing to say. */
   body: string
   /**
+   * The body's two halves: the supplier list, and the ratio clause that follows
+   * it (null when the body carries none). A pack can print the list without the
+   * clause — Calxa's Urban Road pack keeps it on two accounts of fifteen.
+   */
+  facts: string
+  clause: string | null
+  /**
    * Things the coach must see and the client must not: an unconvertible
    * document, or a vendor list that sums past its own account. Rendered beside
    * the draft in the editor, never inside the pack.
@@ -74,6 +81,7 @@ export function buildDraftNote(input: {
   vendors: readonly DraftVendor[]
   accountActual: number
   clause: RatioClause | null
+  /** A positive whole number of suppliers, or Infinity for every one. */
   topN?: number
 }): DraftNote {
   const { accountName, vendors, accountActual, clause } = input
@@ -91,9 +99,14 @@ export function buildDraftNote(input: {
   const rest = charges.slice(topN)
   const parts: string[] = named.map(v => `${v.vendor} (${money(v.amount)})`)
 
-  if (rest.length > 0) {
+  // A remainder of one is named. "+1 other ($263)" takes the room "Couriers
+  // Please ($263)" would and tells the reader less; the cap exists to stop a
+  // wall of names, and one more name is not a wall.
+  if (rest.length === 1) {
+    parts.push(`${rest[0].vendor} (${money(rest[0].amount)})`)
+  } else if (rest.length > 1) {
     const restTotal = rest.reduce((s, v) => s + v.amount, 0)
-    parts.push(`+${rest.length} ${rest.length === 1 ? 'other' : 'others'} (${money(restTotal)})`)
+    parts.push(`+${rest.length} others (${money(restTotal)})`)
   }
 
   // But credits are capped at the same N, in their own remainder. This loop
@@ -116,11 +129,14 @@ export function buildDraftNote(input: {
   for (const c of namedCredits) {
     parts.push(`less ${c.vendor} credit (${money(c.amount)})`)
   }
-  if (restCredits.length > 0) {
+  // The same for credits, except the "Others" remainder, which is never a name.
+  if (restCredits.length === 1 && restCredits[0].vendor !== 'Others') {
+    parts.push(`less ${restCredits[0].vendor} credit (${money(restCredits[0].amount)})`)
+  } else if (restCredits.length > 0) {
     const restTotal = restCredits.reduce((s, v) => s + v.amount, 0)
     const label = restCredits.some(c => c.vendor === 'Others')
       ? 'other credits'
-      : `${restCredits.length} other ${restCredits.length === 1 ? 'credit' : 'credits'}`
+      : `${restCredits.length} other credits`
     parts.push(`less ${label} (${money(restTotal)})`)
   }
 
@@ -153,11 +169,11 @@ export function buildDraftNote(input: {
   // journal rather than a bill there are no suppliers to name, and the honest
   // output is nothing at all — leaving the coach a blank line to write on,
   // which is what the reference pack's author does by hand.
-  const body = parts.length > 0
-    ? (clause ? `${parts.join(', ')} - ${clause.text}` : parts.join(', '))
-    : ''
+  const facts = parts.join(', ')
+  const printedClause = parts.length > 0 && clause ? clause.text : null
+  const body = printedClause ? `${facts} - ${printedClause}` : facts
 
-  return { account: accountName, body, warnings }
+  return { account: accountName, body, facts, clause: printedClause, warnings }
 }
 
 /** The whole line, for a surface that wants one string. Bolding is the caller's. */

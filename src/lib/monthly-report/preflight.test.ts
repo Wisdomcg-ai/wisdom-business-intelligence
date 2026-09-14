@@ -119,10 +119,36 @@ describe('WF.2 — the load-bearing checks', () => {
       comparable, continuity_residual: residual, reason: 'x',
       period_month: '2026-07', prior_month: '2026-06',
       bank: { start: 0, end: 0, delta: 0 }, sources: [], uses: [],
+      summary: null, earnings_movement: 0, unlisted_movement: 0,
     })
     expect(byKey({ report: baseReport(), moneyFlow: mf(0) }).get('cash_continuity').status).toBe('pass')
     expect(byKey({ report: baseReport(), moneyFlow: mf(12.5) }).get('cash_continuity').status).toBe('fail')
     expect(byKey({ report: baseReport(), moneyFlow: mf(0, false) }).get('cash_continuity').status).toBe('skip')
+  })
+
+  it('cash continuity warns, as the page does, when the P&L surplus is not the balance sheet\'s earnings', () => {
+    // The balance sheet's own identity holds to the cent (residual 0), but the
+    // page's last line is built from the P&L surplus. A posting straight to
+    // retained earnings leaves the two $1,200 apart, and the page prints a note
+    // saying it misses the bank — preflight must not call that an exact pass.
+    const flow: any = {
+      comparable: true, continuity_residual: 0, period_month: '2026-08', prior_month: '2026-07',
+      bank: { start: 100000, end: 105000, delta: 5000 },
+      sources: [{ label: 'Trade Creditors', opening: 0, closing: 2000, amount: 2000 }],
+      uses: [{ label: 'Trade Debtors', opening: 0, closing: 1000, amount: 1000 }],
+      earnings_movement: 4000, unlisted_movement: 0,
+      summary: { income: 20000, cost_of_sales: 0, expense: 14800, other_income: 0, other_expense: 0, surplus: 5200 },
+      bank_accounts: [], unmatched_bank_account_ids: [], non_asset_bank_accounts: [],
+    }
+    const r = byKey({ report: baseReport(), moneyFlow: flow }).get('cash_continuity')
+    expect(r.status).toBe('warn')
+    expect(r.detail).toBe(
+      'Surplus + Came From - Spent is 6,200, which misses the bank movement of 5,000 by 1,200: ' +
+        "the month's profit on the income statement and on the balance sheet differ by that much.",
+    )
+    // Under a dollar apart the page prints no note, and preflight still passes.
+    const close = { ...flow, summary: { ...flow.summary, surplus: 4000.4 } }
+    expect(byKey({ report: baseReport(), moneyFlow: close }).get('cash_continuity').status).toBe('pass')
   })
 
   it('commentary coverage: bare triggered accounts are named', () => {
@@ -134,6 +160,48 @@ describe('WF.2 — the load-bearing checks', () => {
     const r = get('commentary')
     expect(r.status).toBe('warn')
     expect(r.detail).toContain('Insurance')
+  })
+
+  it('commentary coverage: an account a page lists because it moved, with nothing to print, is named with its amount', () => {
+    // Calxa's COGS page lists every account that moved. Rugs was never drafted
+    // and has no note, so the page leaves it off — the coach must hear that.
+    const report = baseReport({
+      sections: [
+        ...baseReport().sections,
+        {
+          category: 'Cost of Sales',
+          lines: [{ account_name: 'Rugs', actual: 326.48 } as any, { account_name: 'Art Supplies', actual: 116.92 } as any],
+          subtotal: { account_name: 'Total Cost of Sales', actual: 443.4 } as any,
+        },
+      ],
+    })
+    const r = byKey({
+      report,
+      triggeredAccounts: [],
+      activityAccounts: ['Rugs', 'Art Supplies'],
+      commentary: { 'Art Supplies': { draft_note: 'Ebay ($80), Amazon ($37)' } },
+    }).get('commentary')
+    expect(r.status).toBe('warn')
+    expect(r.detail).toContain('Rugs moved $326 and has no commentary')
+    expect(r.detail).not.toContain('Art Supplies')
+
+    const covered = byKey({
+      report,
+      triggeredAccounts: [],
+      activityAccounts: ['Rugs', 'Art Supplies'],
+      commentary: { Rugs: { coach_note: 'Sample rug.' }, 'Art Supplies': { draft_note: 'Ebay ($80), Amazon ($37)' } },
+    }).get('commentary')
+    expect(covered.status).toBe('pass')
+  })
+
+  it('commentary coverage: a commentary setting the pack could not read is named', () => {
+    const r = byKey({
+      report: baseReport(),
+      triggeredAccounts: [],
+      commentarySettingsProblems: ['w-cogs placement "separate-page": expected one of inline, separate_page, none'],
+    }).get('commentary')
+    expect(r.status).toBe('warn')
+    expect(r.detail).toContain('separate-page')
   })
 })
 
