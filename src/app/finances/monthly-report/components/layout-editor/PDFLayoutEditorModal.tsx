@@ -41,6 +41,7 @@ import PageCanvas from './PageCanvas'
 import WidgetPaletteSidebar from './WidgetPaletteSidebar'
 import WidgetPreview from './WidgetPreview'
 import RatioSettingsPanel from './RatioSettingsPanel'
+import InsertSettingsPanel from './InsertSettingsPanel'
 
 // ── Reducer ───────────────────────────────────────────────────────
 
@@ -358,7 +359,7 @@ interface PDFLayoutEditorModalProps {
 
 /** Widget types whose placements have a settings panel. */
 function hasSettingsPanel(type: WidgetType): boolean {
-  return type === 'ratio_analysis'
+  return type === 'ratio_analysis' || type === 'uploaded_insert'
 }
 
 /**
@@ -835,6 +836,24 @@ export default function PDFLayoutEditorModal({
           key={settingsTarget.widget.id}
           widget={settingsTarget.widget}
           businessId={businessId}
+          onCancel={closeSettings}
+          onApply={({ config, titleOverride }) => {
+            dispatch({
+              type: 'UPDATE_WIDGET',
+              pageId: settingsTarget.pageId,
+              widgetId: settingsTarget.widget.id,
+              config,
+              titleOverride,
+            })
+            closeSettings()
+          }}
+        />
+      )}
+
+      {settingsTarget?.widget.type === 'uploaded_insert' && (
+        <InsertSettingsPanel
+          key={settingsTarget.widget.id}
+          widget={settingsTarget.widget}
           onCancel={closeSettings}
           onApply={({ config, titleOverride }) => {
             dispatch({
