@@ -103,6 +103,8 @@ import {
   type RGB,
 } from './pack-style'
 import { moneyFlowRows, parseMoneyFlowConfig } from '@/lib/monthly-report/money-flow-rows'
+import { coverReconciliationLine, summaryMargins, type CoverReconciliationLine } from '@/lib/monthly-report/placement-options'
+import type { PackReconciliation } from '@/lib/monthly-report/pack-reconciliation'
 import { executiveSummaryRows, marginRow, sectionDetailRows, type SummaryFigures } from './statement-rows'
 import {
   hasForecastBudget,
@@ -211,6 +213,12 @@ interface PDFOptions {
   /** WF.4 — true when this month's budget was back-filled from actuals: the
    *  cover must say so, because a ~0% variance is an echo, not performance. */
   budgetBackfilled?: boolean
+  /**
+   * The CFO board's captured Xero badge, counted for the report month (see
+   * pack-reconciliation). Read only when a cover placement asks for it
+   * (reconciliation_line 'xero_badge'); every other cover ignores it.
+   */
+  packReconciliation?: PackReconciliation | null
   sections?: ReportSections
   pdfLayout?: import('../types/pdf-layout').PDFLayout | null
 }
@@ -300,6 +308,38 @@ export function draftCoverLine(report: Pick<GeneratedReport, 'is_draft' | 'unrec
       : `There are still ${n} unreconciled transactions when this report is generated.`
   }
   return report.is_draft ? 'Draft — figures may change' : null
+}
+
+/**
+ * The lines a cover prints under "Prepared on", for its placement's
+ * reconciliation_line (placement-options).
+ *
+ * 'standard' is draftCoverLine, unchanged. 'xero_badge' is Calxa's Distinct
+ * Directions sentence — "Please note that no items remain unreconciled as of
+ * this report", or how many do — counted from the CFO board's captured badge
+ * (pack-reconciliation), which outranks the report's own count: Generate
+ * writes that 0 without counting anything. So the clean sentence is printed
+ * only on a capture that says so. A clean draft still says it is a draft, on
+ * the line below; one with items outstanding has its reason already stated.
+ * Without a counted capture the cover prints the standard line, as before.
+ */
+export function coverReconciliationLines(
+  report: Pick<GeneratedReport, 'is_draft' | 'unreconciled_count'>,
+  line: CoverReconciliationLine,
+  badge: PackReconciliation | null | undefined,
+): string[] {
+  if (line === 'xero_badge' && badge?.status === 'counted') {
+    const n = badge.count
+    if (n > 0) {
+      return [n === 1
+        ? 'Please note that 1 item remains unreconciled as of this report'
+        : `Please note that ${n.toLocaleString('en-AU')} items remain unreconciled as of this report`]
+    }
+    const clean = 'Please note that no items remain unreconciled as of this report'
+    return report.is_draft ? [clean, 'Draft — figures may change'] : [clean]
+  }
+  const standard = draftCoverLine(report)
+  return standard ? [standard] : []
 }
 
 export function decideTintColor(
@@ -632,7 +672,7 @@ export class MonthlyReportPDFService {
   // A draft says so once, in one plain line under the date, as Calxa does
   // (draftCoverLine) — not a red PROVISIONAL, a DRAFT watermark and a footer on
   // every page, which Matt took out of the pack on 14 Sep 2026.
-  private addCoverPage(): void {
+  private addCoverPage(config?: Record<string, unknown>): void {
     const { report } = this
     const centerX = this.pageWidth / 2
     this.coverPage = this.doc.getNumberOfPages()
@@ -692,8 +732,10 @@ export class MonthlyReportPDFService {
     // for sending); the export date for a draft, or when that could not be read.
     this.doc.text(`Prepared on ${formatPackPreparedOn(this.options.preparedOn)}`, this.margin, down(245))
 
-    const draftLine = draftCoverLine(report)
-    if (draftLine) this.doc.text(draftLine, this.margin, down(245) + 5.5)
+    // A draft's line, or the reconciliation sentence the placement asks for —
+    // see coverReconciliationLines.
+    const lines = coverReconciliationLines(report, coverReconciliationLine(config), this.options.packReconciliation)
+    lines.forEach((line, i) => this.doc.text(line, this.margin, down(245) + 5.5 * (i + 1)))
 
     const statusY = down(180)
 
@@ -782,9 +824,10 @@ export class MonthlyReportPDFService {
     return { x: pageWidth - this.margin - w, y: 9, w, h: (LOGO_CORNER_SIZE.h / LOGO_CORNER_SIZE.w) * w }
   }
 
-  renderCoverPage(): void {
+  /** config.reconciliation_line — see coverReconciliationLines. */
+  renderCoverPage(_box?: WidgetBoundingBox, widget?: import('../types/pdf-layout').LayoutWidget): void {
     // Layout path — the widget's page already exists; draw directly.
-    this.addCoverPage()
+    this.addCoverPage(widget?.config)
   }
 
   // =====================================================================
@@ -995,7 +1038,7 @@ export class MonthlyReportPDFService {
     }
   }
 
-  /** config.last_line, config.summary_codes — see parseMoneyFlowConfig. */
+  /** config.last_line, config.summary_codes, config.bank_rows — see parseMoneyFlowConfig. */
   renderMoneyFlow(box: WidgetBoundingBox, widget?: import('../types/pdf-layout').LayoutWidget): void {
     this.renderWithSkipPage(() => this.addMoneyFlowPage(widget?.config), box)
   }
@@ -1396,7 +1439,7 @@ export class MonthlyReportPDFService {
   // a box of its own. No grid, no filled profit rows, bold only where a total
   // is; the budget columns shaded down the page. See statement-rows for the
   // rows and pack-style for the measurements.
-  private addExecutiveSummary(): void {
+  private addExecutiveSummary(config?: Record<string, unknown>): void {
     const { report } = this
     const settings = report.settings
 
@@ -1456,10 +1499,16 @@ export class MonthlyReportPDFService {
     // ── Additional Information ──
     // Rows of the same table, so each margin sits under the column it
     // describes. The separate 80mm table it used to be could not promise that.
+    //
+    // config.margins is the placement's: both (Urban Road's Calxa page), the
+    // net profit margin only (IICT's), or none (Distinct Directions' page ends
+    // at Net Profit — a 99.9% gross margin says little for a services business).
+    const margins = summaryMargins(config)
     const income = rows.find((r) => r.kind === 'total' && r.label === 'Total Income')
     const grossProfit = rows.find((r) => r.kind === 'profit' && r.key === 'gp')
     const netProfit = rows.find((r) => r.kind === 'profit' && r.key === 'np')
-    if (income?.kind === 'total' && grossProfit?.kind === 'profit' && netProfit?.kind === 'profit') {
+    const hasMarginRows = margins === 'net_only' || (margins === 'both' && grossProfit?.kind === 'profit')
+    if (hasMarginRows && income?.kind === 'total' && netProfit?.kind === 'profit') {
       const marginCells = (profit: SummaryFigures): string[] => {
         const m = marginRow(profit, income.figures)
         // A margin of a budget is a budget figure: no budget, no margin.
@@ -1473,8 +1522,10 @@ export class MonthlyReportPDFService {
       }
       body.push(['Additional Information', ...blanks()])
       kinds.push('info-heading')
-      body.push(['Gross Profit Margin', ...marginCells(grossProfit.figures)])
-      kinds.push('info')
+      if (margins === 'both' && grossProfit?.kind === 'profit') {
+        body.push(['Gross Profit Margin', ...marginCells(grossProfit.figures)])
+        kinds.push('info')
+      }
       body.push(['Net Profit Margin', ...marginCells(netProfit.figures)])
       kinds.push('info-last')
     }
@@ -4286,11 +4337,12 @@ export class MonthlyReportPDFService {
     this.margin = savedMargin
   }
 
-  renderExecutiveSummary(box: WidgetBoundingBox): void {
+  /** config.margins — see addExecutiveSummary. */
+  renderExecutiveSummary(box: WidgetBoundingBox, widget?: import('../types/pdf-layout').LayoutWidget): void {
     // Executive summary is always page 1, no addPage call
     this.margin = box.x
     this.yPosition = box.y
-    this.addExecutiveSummary()
+    this.addExecutiveSummary(widget?.config)
   }
 
   renderBudgetVsActual(box: WidgetBoundingBox, widget?: import('../types/pdf-layout').LayoutWidget): void {
