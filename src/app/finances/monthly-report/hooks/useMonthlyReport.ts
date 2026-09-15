@@ -33,6 +33,7 @@ import type {
   MonthlyReportSettings,
 } from '../types'
 import { mapTypeToCategory, buildSubtotal, calcVariance, getNextMonth, deriveProfitRows } from '@/lib/monthly-report/shared'
+import { isSilentLine } from '@/lib/monthly-report/empty-lines'
 import {
   serializeReportSections,
   deserializeReportSections,
@@ -97,6 +98,8 @@ export function adaptConsolidatedToGeneratedReport(
     account_type: string
     account_name: string
     monthly_values: Record<string, number>
+    /** The account's expense group, when the route found one (consolidated-groups). */
+    group?: string
   }> = consolidated?.consolidated?.lines ?? []
 
   const budgetLines: Array<{
@@ -156,6 +159,9 @@ export function adaptConsolidatedToGeneratedReport(
     const line: ReportLine = {
       account_name: l.account_name,
       xero_account_name: isBudgetOnly ? null : l.account_name,
+      // The heading the statement pages print it under (IICT-26, DRG-21). Only
+      // when there is one, so a business with no groups adapts as it did.
+      ...(typeof l.group === 'string' && l.group.trim() ? { group: l.group } : {}),
       is_budget_only: isBudgetOnly,
       actual,
       budget,
@@ -186,7 +192,12 @@ export function adaptConsolidatedToGeneratedReport(
     subtotal.ytd_variance_percent = subtotal.ytd_budget !== 0
       ? (subtotal.ytd_variance_amount / Math.abs(subtotal.ytd_budget)) * 100 : 0
     return { category, lines, subtotal }
-  }).filter((s) => s.lines.length > 0)
+  // A section with nothing in any column is not a section of this report. The
+  // engine's account universe is every account an org has ever posted to, so
+  // an account last used in 2024 made a section of zeros: IICT's summary
+  // printed "Other Income / Total Other Income 0 0 0", which Calxa does not
+  // (IICT-13, DRG-07). The single-entity route is unchanged.
+  }).filter((s) => s.lines.length > 0 && !s.lines.every((l) => isSilentLine(l)))
 
   // Summary + profit rows — WA.1: same canonical derivation as the
   // single-entity route (Gross Profit is trading only; Other Income/Expenses

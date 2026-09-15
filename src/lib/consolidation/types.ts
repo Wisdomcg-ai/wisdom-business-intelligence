@@ -138,6 +138,12 @@ export interface ConsolidatedLine {
   account_type: string
   account_name: string
   monthly_values: Record<string, number>
+  /**
+   * The expense group the account is mapped to (account_mappings.report_subcategory),
+   * set by the consolidated route on actual lines only — see consolidated-groups.
+   * Absent: no group.
+   */
+  group?: string
 }
 
 // Full consolidated API response shape.

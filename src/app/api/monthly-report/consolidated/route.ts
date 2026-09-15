@@ -54,6 +54,7 @@ import { reportedFxMonths } from '@/lib/monthly-report/consolidated-fx'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import { loadReportSettings } from '@/lib/monthly-report/report-settings-load'
 import { resolveApprovedBudgetForTenants } from '@/lib/budgets/consolidated-budget'
+import { loadAccountGroups, withConsolidatedGroups } from '@/lib/monthly-report/consolidated-groups'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 
@@ -204,7 +205,7 @@ async function postHandler(request: Request) {
     const onBudgetStore = (settings as { budget_source?: string } | null)?.budget_source === 'budget_version'
 
     stage = 'engine'
-    const report = await buildConsolidation(supabase, {
+    const engineReport = await buildConsolidation(supabase, {
       businessId: ids.businessId,
       reportMonth: report_month,
       fiscalYear: fiscal_year,
@@ -242,6 +243,19 @@ async function postHandler(request: Request) {
           }
         : {}),
     })
+
+    // --- EXPENSE GROUPS ---
+    // Each consolidated line under the group its account is mapped to, the
+    // one reading the single-entity pages use (consolidated-groups). The
+    // lines carried none, so every consolidated statement page printed one
+    // flat run where Calxa prints IICT's and Dragon's expenses under their
+    // headings, each with a subtotal (IICT-26, DRG-21). A failed read fails the
+    // request, as the generate route's does. A report with no lines has
+    // nothing to group and reads nothing.
+    stage = 'load_mappings'
+    const report = engineReport.consolidated.lines.length > 0
+      ? withConsolidatedGroups(engineReport, await loadAccountGroups(supabase, ids))
+      : engineReport
 
     // PRES-07 — this route never computed read-path quality, so the monthly
     // report's DataIntegrityBanner had nothing to render for a consolidation
