@@ -16,9 +16,9 @@
  * data or (worse) wrong data from the parent's own xero_pl_lines (which is
  * a thin umbrella record, not the consolidated numbers).
  *
- * Budget is `0` on all lines in 34.0 — consolidated budgets are a follow-up
- * (requires combined forecast model, out of scope for this iteration).
- * BudgetVsActualTable already handles `has_budget: false` gracefully.
+ * The consolidated route serves the business's settings row beside the
+ * report, and the adapted report carries it — the same row the single-entity
+ * route puts on its report.
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react'
@@ -82,6 +82,15 @@ export function adaptConsolidatedToGeneratedReport(
   reportMonth: string,
   fiscalYear: number,
   businessId: string,
+  context: {
+    /**
+     * The business's settings row, as POST /api/monthly-report/consolidated
+     * serves it beside the report. Every page that prints the report reads its
+     * columns from here — Budget vs Actual on screen, and the summary, detail
+     * and YTD pages of the PDF.
+     */
+    settings: MonthlyReportSettings
+  },
   draft: { isDraft: boolean; unreconciledCount: number } = { isDraft: true, unreconciledCount: 0 },
 ): GeneratedReport {
   const consolidatedLines: Array<{
@@ -159,6 +168,9 @@ export function adaptConsolidatedToGeneratedReport(
       unspent_budget: hasBudget ? budgetAnnualTotal - ytdActual : 0,
       budget_next_month: budgetMonths[nextMonth] ?? 0,
       budget_annual_total: budgetAnnualTotal,
+      // The engine consolidates the fiscal year's months only. With the
+      // prior-year column switched on, every row prints the dash that says the
+      // figure is not there — never a $0 that says it was nothing.
       prior_year: null,
     }
     byCategory.get(category)!.push(line)
@@ -200,40 +212,6 @@ export function adaptConsolidatedToGeneratedReport(
   const operatingProfitRow = derived.operating_profit_row
   const netProfitRow = derived.net_profit_row
 
-  // Minimal settings stub — the page keeps the real settings state and
-  // passes them to BudgetVsActualDashboard; this field exists on GeneratedReport
-  // but BudgetVsActualTable reads `settings` from props, not `report.settings`.
-  const settings: MonthlyReportSettings = {
-    business_id: businessId,
-    sections: {
-      revenue_detail: true,
-      cogs_detail: true,
-      opex_detail: true,
-      payroll_detail: false,
-      subscription_detail: false,
-      balance_sheet: false,
-      cashflow: false,
-      trend_charts: false,
-      chart_cash_runway: false,
-      chart_cumulative_net_cash: false,
-      chart_working_capital_gap: false,
-      chart_revenue_vs_expenses: false,
-      chart_revenue_breakdown: false,
-      chart_variance_heatmap: false,
-      chart_budget_burn_rate: false,
-      chart_break_even: false,
-      chart_team_cost_pct: false,
-      chart_cost_per_employee: false,
-      chart_subscription_creep: false,
-    },
-    show_prior_year: false,
-    show_ytd: true,
-    show_unspent_budget: false,
-    show_budget_next_month: false,
-    show_budget_annual_total: false,
-    budget_forecast_id: null,
-  }
-
   const missingRates = consolidated?.fx_context?.missing_rates
   const consolidationFx = Array.isArray(missingRates)
     ? {
@@ -247,7 +225,10 @@ export function adaptConsolidatedToGeneratedReport(
     business_id: businessId,
     report_month: reportMonth,
     fiscal_year: fiscalYear,
-    settings,
+    // The business's own settings, not a stub. A stub here switched off the
+    // Unspent, Next Month and Annual columns (and the prior year) on every page
+    // of every consolidated pack, whatever the coach had set (IICT-12, DRG-05).
+    settings: context.settings,
     sections,
     summary,
     gross_profit_row: grossProfitRow,
@@ -403,6 +384,13 @@ export function useMonthlyReport(businessId: string, options?: UseMonthlyReportO
         }
 
         if (isGroup) {
+          // The route serves the business's settings row beside the report.
+          // Without it there is no telling which columns this pack prints, and
+          // the stub that used to stand in for it hid three of them.
+          if (!data.settings) {
+            setError('The report settings could not be loaded. Try generating again.')
+            return null
+          }
           // Adapt ConsolidatedReport → GeneratedReport so the Actual-vs-Budget
           // tab renders using the same template system (MLTE-05).
           const adapted = adaptConsolidatedToGeneratedReport(
@@ -410,6 +398,7 @@ export function useMonthlyReport(businessId: string, options?: UseMonthlyReportO
             reportMonth,
             fiscalYear,
             businessId,
+            { settings: data.settings },
             // The same state the single-entity route stamps from force_draft
             // — and a missing answer is a draft, never a clean final.
             { isDraft: forceDraft !== false, unreconciledCount: unreconciledCount ?? 0 },

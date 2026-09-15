@@ -14,6 +14,7 @@ import React from 'react'
 import { useMonthlyReport, adaptConsolidatedToGeneratedReport } from '../useMonthlyReport'
 import { draftCoverLine } from '../../services/monthly-report-pdf-service'
 import { runPreflight } from '@/lib/monthly-report/preflight'
+import { DEFAULT_SECTIONS } from '../../types'
 
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
@@ -32,6 +33,18 @@ vi.mock('@/lib/supabase/client', () => ({
 
 const IICT = 'fbc6dffd-677d-47ec-8277-7157982938e7'
 
+/** The settings row the consolidated route serves beside the report (P3). */
+const SETTINGS = {
+  business_id: IICT,
+  sections: { ...DEFAULT_SECTIONS },
+  show_prior_year: false,
+  show_ytd: true,
+  show_unspent_budget: true,
+  show_budget_next_month: true,
+  show_budget_annual_total: true,
+  budget_forecast_id: null,
+}
+
 const CONSOLIDATED = {
   consolidated: {
     lines: [{ account_type: 'revenue', account_name: 'Membership income', monthly_values: { '2026-07': 409_984, '2026-08': 324_881 } }],
@@ -42,7 +55,7 @@ const CONSOLIDATED = {
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (String(url).includes('/api/monthly-report/consolidated')) {
-      return { ok: true, json: async () => ({ report: CONSOLIDATED }) } as unknown as Response
+      return { ok: true, json: async () => ({ report: CONSOLIDATED, settings: SETTINGS }) } as unknown as Response
     }
     throw new Error(`unexpected fetch: ${url}`)
   }))
@@ -104,13 +117,13 @@ describe('the consolidated Generate keeps the gate’s answer', () => {
 
 describe('adaptConsolidatedToGeneratedReport — draft state', () => {
   it('defaults to a draft when the caller says nothing', () => {
-    const r = adaptConsolidatedToGeneratedReport(CONSOLIDATED, '2026-08', 2027, IICT)
+    const r = adaptConsolidatedToGeneratedReport(CONSOLIDATED, '2026-08', 2027, IICT, { settings: SETTINGS })
     expect(r.is_draft).toBe(true)
     expect(r.unreconciled_count).toBe(0)
   })
 
   it('carries what it is given', () => {
-    const r = adaptConsolidatedToGeneratedReport(CONSOLIDATED, '2026-08', 2027, IICT, { isDraft: false, unreconciledCount: 0 })
+    const r = adaptConsolidatedToGeneratedReport(CONSOLIDATED, '2026-08', 2027, IICT, { settings: SETTINGS }, { isDraft: false, unreconciledCount: 0 })
     expect(r.is_draft).toBe(false)
   })
 })

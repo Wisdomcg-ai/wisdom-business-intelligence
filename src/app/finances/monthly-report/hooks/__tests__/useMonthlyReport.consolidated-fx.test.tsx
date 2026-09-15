@@ -16,6 +16,7 @@ import { render, act } from '@testing-library/react'
 import React from 'react'
 import { useMonthlyReport, adaptConsolidatedToGeneratedReport } from '../useMonthlyReport'
 import { runPreflight, exportRefusals } from '@/lib/monthly-report/preflight'
+import { DEFAULT_SECTIONS } from '../../types'
 
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
@@ -33,6 +34,18 @@ vi.mock('@/lib/supabase/client', () => ({
 
 const IICT = 'fbc6dffd-677d-47ec-8277-7157982938e7'
 
+/** The settings row the consolidated route serves beside the report (P3). */
+const SETTINGS = {
+  business_id: IICT,
+  sections: { ...DEFAULT_SECTIONS },
+  show_prior_year: false,
+  show_ytd: true,
+  show_unspent_budget: true,
+  show_budget_next_month: true,
+  show_budget_annual_total: true,
+  budget_forecast_id: null,
+}
+
 const consolidated = (missing: string[] | null) => ({
   consolidated: {
     lines: [{ account_type: 'revenue', account_name: 'Membership income', monthly_values: { '2026-07': 409_984, '2026-08': 1_660_961 } }],
@@ -45,7 +58,7 @@ const consolidated = (missing: string[] | null) => ({
 
 describe('adaptConsolidatedToGeneratedReport — exchange rates', () => {
   it('records the months the consolidation found no rate for', () => {
-    const r = adaptConsolidatedToGeneratedReport(consolidated(['2026-07', '2026-08']), '2026-08', 2027, IICT)
+    const r = adaptConsolidatedToGeneratedReport(consolidated(['2026-07', '2026-08']), '2026-08', 2027, IICT, { settings: SETTINGS })
     expect(r.consolidation_fx).toEqual({
       missing_rates: [
         { currency_pair: 'HKD/AUD', period: '2026-07' },
@@ -57,13 +70,13 @@ describe('adaptConsolidatedToGeneratedReport — exchange rates', () => {
   })
 
   it('records a clean list as clean', () => {
-    const r = adaptConsolidatedToGeneratedReport(consolidated([]), '2026-08', 2027, IICT)
+    const r = adaptConsolidatedToGeneratedReport(consolidated([]), '2026-08', 2027, IICT, { settings: SETTINGS })
     expect(r.consolidation_fx).toEqual({ missing_rates: [] })
     expect(exportRefusals(runPreflight({ report: r, consolidated: null }))).toEqual([])
   })
 
   it('a response with no fx_context records nothing, rather than a clean list it never saw', () => {
-    const r = adaptConsolidatedToGeneratedReport(consolidated(null), '2026-08', 2027, IICT)
+    const r = adaptConsolidatedToGeneratedReport(consolidated(null), '2026-08', 2027, IICT, { settings: SETTINGS })
     expect(r.consolidation_fx).toBeUndefined()
   })
 })
@@ -74,7 +87,7 @@ describe('Generate hands the page the consolidated report it adapted', () => {
     body = consolidated(['2026-08'])
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (String(url).includes('/api/monthly-report/consolidated')) {
-        return { ok: true, json: async () => ({ report: body }) } as unknown as Response
+        return { ok: true, json: async () => ({ report: body, settings: SETTINGS }) } as unknown as Response
       }
       throw new Error(`unexpected fetch: ${url}`)
     }))
