@@ -31,7 +31,6 @@
 import * as Sentry from '@sentry/nextjs'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
-import { aggregateXeroPlRows } from './aggregate-xero-pl-rows'
 // Phase 67-03 — FX engine wiring for multi-currency consolidated businesses.
 import { needsFxConsolidation } from '@/lib/utils/needs-fx-consolidation'
 import { buildConsolidation } from '@/lib/consolidation/engine'
@@ -40,6 +39,8 @@ import {
   generateFiscalMonthKeys,
   DEFAULT_YEAR_START_MONTH,
 } from '@/lib/utils/fiscal-year-utils'
+// DRG-40 — long → wide grouping, per org then merged on type and name.
+import { aggregateXeroPlRows } from './aggregate-xero-pl-rows'
 
 /**
  * Phase 44.1 D-44.1-08 — soft-fail invariant gate.
