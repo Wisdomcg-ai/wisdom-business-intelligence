@@ -197,6 +197,80 @@ export function priorMonthKeyOf(reportMonth: string): string {
   return `${priorYear}-${String(priorMonth).padStart(2, '0')}`
 }
 
+/** One row of xero_pl_lines_wide_compat, as the account totals read it. */
+export interface SubscriptionPlRow {
+  tenant_id: string | null
+  account_id?: string | null
+  account_code?: string | null
+  account_type?: string | null
+  section?: string | null
+  account_name: string
+  monthly_values: Record<string, number> | null
+}
+
+/**
+ * The page's account totals — this month, last month and the window — from
+ * the P&L mirror, keyed by the configured account code.
+ */
+export function sumSubscriptionPlActuals(
+  plLines: readonly SubscriptionPlRow[],
+  opts: {
+    accountCodes: readonly string[]
+    accountNames: ReadonlyMap<string, string>
+    reportMonth: string
+    priorMonth: string
+    windowMonths: readonly string[]
+  },
+): { actuals: Map<string, number>; priorActuals: Map<string, number>; windowActuals: Map<string, Record<string, number>> } {
+  const { accountCodes, accountNames, reportMonth, priorMonth, windowMonths } = opts
+  const actuals = new Map<string, number>()
+  const priorActuals = new Map<string, number>()
+  const windowActuals = new Map<string, Record<string, number>>()
+  // The view is one row per LEDGER row: org × account_id × code × section.
+  // A business with two orgs on the account (Dragon Roofing: 485
+  // Subscriptions in both) has a row per org, and an org carries a row per
+  // superseded account_id too — Dragon + Easy Hail have 62 stale mirror rows,
+  // same name, nothing in 2026. Kept per org with `set`, whichever row came
+  // back last won, so the total depended on read order (DRG-34): Easy Hail's
+  // stale 0 read after its live 1,786 dropped August to 4,729.08.
+  //
+  // So each org's rows are SUMMED — a superseded row adds only the months it
+  // holds — then made absolute per org and added across orgs. The key leaves
+  // out business_id only, so a row read once per id-space is counted once.
+  // Orgs in different currencies are summed as the vendor rows are; the
+  // response's statement_unavailable is what says so.
+  const perTenant = new Map<string, Map<string, Map<string, Record<string, number>>>>()
+  for (const pl of plLines) {
+    const code = accountCodes.find(c => accountNames.get(c) === pl.account_name)
+    if (!code) continue
+    const byTenant = perTenant.get(code) ?? new Map<string, Map<string, Record<string, number>>>()
+    const tenant = pl.tenant_id ?? ''
+    const ledgerRows = byTenant.get(tenant) ?? new Map<string, Record<string, number>>()
+    const ledgerKey = [pl.account_id, pl.account_code, pl.account_type, pl.section].map(v => v ?? '').join('|')
+    ledgerRows.set(ledgerKey, pl.monthly_values || {})
+    byTenant.set(tenant, ledgerRows)
+    perTenant.set(code, byTenant)
+  }
+  for (const [code, byTenant] of perTenant) {
+    let actual = 0
+    let prior = 0
+    const window: Record<string, number> = {}
+    for (const ledgerRows of byTenant.values()) {
+      const month = (m: string) => Math.abs([...ledgerRows.values()].reduce((sum, values) => sum + (values[m] || 0), 0))
+      actual += month(reportMonth)
+      prior += month(priorMonth)
+      for (const m of windowMonths) window[m] = (window[m] ?? 0) + month(m)
+    }
+    actuals.set(code, Math.round(actual * 100) / 100)
+    priorActuals.set(code, Math.round(prior * 100) / 100)
+    if (windowMonths.length > 0) {
+      for (const m of windowMonths) window[m] = Math.round(window[m] * 100) / 100
+      windowActuals.set(code, window)
+    }
+  }
+  return { actuals, priorActuals, windowActuals }
+}
+
 export interface SubscriptionAssembleInput {
   business_id: string
   report_month: string
@@ -350,44 +424,20 @@ export async function assembleSubscriptionDetail(
       const plIds = await resolveBusinessProfileIds(supabase, business_id)
       const { data: plLines } = await supabase
         .from('xero_pl_lines_wide_compat')
-        .select('tenant_id, account_name, monthly_values')
+        .select('tenant_id, account_id, account_code, account_type, section, account_name, monthly_values')
         .in('business_id', plIds.all)
         .in('account_name', accountNames)
 
-      // The view is one row per ORG per account. A business with two orgs on
-      // the account (Dragon Roofing: 485 Subscriptions in both) has two rows,
-      // and `set` kept whichever came back last — one org's figure under
-      // vendor rows that add both orgs' documents together. Summed per org,
-      // one row per tenant, so a row repeated across id-spaces is not counted
-      // twice. Orgs in different currencies are summed as the vendor rows are;
-      // the response's statement_unavailable is what says so.
-      const perTenant = new Map<string, Map<string, { actual: number; prior: number; window: Record<string, number> }>>()
-      for (const pl of (plLines || [])) {
-        const values = pl.monthly_values || {}
-        const code = account_codes.find(c => crawl.accountNames.get(c) === pl.account_name)
-        if (!code) continue
-        const byTenant = perTenant.get(code) ?? new Map<string, { actual: number; prior: number; window: Record<string, number> }>()
-        const window: Record<string, number> = {}
-        for (const m of windowMonths) window[m] = Math.abs(values[m] || 0)
-        byTenant.set(pl.tenant_id ?? '', { actual: Math.abs(values[report_month] || 0), prior: Math.abs(values[priorMonthKey] || 0), window })
-        perTenant.set(code, byTenant)
-      }
-      for (const [code, byTenant] of perTenant) {
-        let actual = 0
-        let prior = 0
-        const window: Record<string, number> = {}
-        for (const t of byTenant.values()) {
-          actual += t.actual
-          prior += t.prior
-          for (const m of windowMonths) window[m] = (window[m] ?? 0) + t.window[m]
-        }
-        plActuals.set(code, Math.round(actual * 100) / 100)
-        plPriorActuals.set(code, Math.round(prior * 100) / 100)
-        if (windowMonths.length > 0) {
-          for (const m of windowMonths) window[m] = Math.round(window[m] * 100) / 100
-          plWindowActuals.set(code, window)
-        }
-      }
+      const totals = sumSubscriptionPlActuals(plLines || [], {
+        accountCodes: account_codes,
+        accountNames: crawl.accountNames,
+        reportMonth: report_month,
+        priorMonth: priorMonthKey,
+        windowMonths,
+      })
+      for (const [code, v] of totals.actuals) plActuals.set(code, v)
+      for (const [code, v] of totals.priorActuals) plPriorActuals.set(code, v)
+      for (const [code, v] of totals.windowActuals) plWindowActuals.set(code, v)
     }
   } catch (err) {
     Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch P&L actuals" } } as any)

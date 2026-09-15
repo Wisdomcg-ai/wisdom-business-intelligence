@@ -325,6 +325,7 @@ export default function MonthlyReportPage() {
     isLoading: consolidatedLoading,
     error: consolidatedError,
     generateConsolidated,
+    reportFor: consolidatedReportFor,
     clear: clearConsolidated,
   } = useConsolidatedReport(businessId)
 
@@ -1022,6 +1023,10 @@ export default function MonthlyReportPage() {
     // treats as actual is scoped to the report month — so a month change
     // invalidates it just as a fiscal-year change does.
     clearFullYear()
+    // The consolidated P&L and balance sheet are one month's (DRG-16). Left
+    // cached, the export printed a month viewed earlier under this month's title.
+    clearConsolidated()
+    clearConsolidatedBS()
     // Restore persisted commentary from snapshot if one exists
     const snapshot = await loadSnapshot(month)
     if (snapshot?.commentary) {
@@ -1384,13 +1389,14 @@ export default function MonthlyReportPage() {
     }
 
     // WD.6 — per-entity consolidated report for consolidation parents. Reuses
-    // the tab's cache; the generator returns the report directly so the PDF
-    // never depends on the coach having opened the tab (the D-07 class).
+    // the tab's cache when it holds THIS month (DRG-16); the generator returns
+    // the report directly so the PDF never depends on the coach having opened
+    // the tab (the D-07 class).
     let consolidated: import('./utils/consolidated-rows').ConsolidatedReportVM | undefined
     if (isConsolidationGroup && userRole !== 'client') {
       try {
         consolidated =
-          (consolidatedReport as any) ||
+          (consolidatedReportFor(selectedMonth, fiscalYear) as any) ||
           ((await generateConsolidated(selectedMonth, fiscalYear)) as any) ||
           undefined
       } catch (err) {
@@ -2017,11 +2023,16 @@ export default function MonthlyReportPage() {
           <div className="mb-6 text-center">
             <button
               onClick={() => handleGenerateReport()}
-              disabled={reportLoading}
+              // DRG-52: which route a report is generated on depends on
+              // whether this business consolidates several Xero orgs, and that
+              // is not known until the connection count comes back.
+              disabled={reportLoading || isConsolidationGroup === null}
               className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium text-white bg-brand-orange hover:bg-brand-orange-600 rounded-lg transition-colors disabled:opacity-50"
             >
               {reportLoading ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
+              ) : isConsolidationGroup === null ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Checking Xero organisations...</>
               ) : (
                 <><BarChart3 className="w-4 h-4" /> Generate Report</>
               )}

@@ -21,7 +21,7 @@
  * BudgetVsActualTable already handles `has_budget: false` gracefully.
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type {
   GeneratedReport,
@@ -238,6 +238,22 @@ export function adaptConsolidatedToGeneratedReport(
   }
 }
 
+/**
+ * Whether the business has 2+ active, consolidation-included Xero
+ * connections. A failed count reads as single-entity, as it always has.
+ */
+function detectConsolidationGroup(businessId: string): Promise<boolean> {
+  const supabase = createClient()
+  return Promise.resolve(
+    supabase
+      .from('xero_connections')
+      .select('id', { count: 'exact', head: true })
+      .eq('business_id', businessId)
+      .eq('is_active', true)
+      .eq('include_in_consolidation', true),
+  ).then(({ count }) => (count ?? 0) >= 2, () => false)
+}
+
 export function useMonthlyReport(businessId: string) {
   const [report, setReport] = useState<GeneratedReport | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -257,25 +273,24 @@ export function useMonthlyReport(businessId: string) {
 
   // MLTE-05: detect consolidation mode = business has 2+ active,
   // consolidation-included xero_connections. Mirrors useConsolidatedReport.
+  //
+  // The answer is kept as a PROMISE as well as state, for generateReport
+  // (DRG-52): state is null until the count comes back, and choosing the route
+  // on `=== true` sent a Generate clicked in that window to the single-entity
+  // route — one org's figures under a two-org group's name.
+  const detection = useRef<{ businessId: string; answer: Promise<boolean> } | null>(null)
   useEffect(() => {
+    setIsConsolidationGroup(null)
     if (!businessId) {
-      setIsConsolidationGroup(null)
+      detection.current = null
       return
     }
     let cancelled = false
-    const supabase = createClient()
-    supabase
-      .from('xero_connections')
-      .select('id', { count: 'exact', head: true })
-      .eq('business_id', businessId)
-      .eq('is_active', true)
-      .eq('include_in_consolidation', true)
-      .then(({ count }) => {
-        if (!cancelled) setIsConsolidationGroup((count ?? 0) >= 2)
-      })
-      .then(undefined, () => {
-        if (!cancelled) setIsConsolidationGroup(false)
-      })
+    const answer = detectConsolidationGroup(businessId)
+    detection.current = { businessId, answer }
+    answer.then((isGroup) => {
+      if (!cancelled) setIsConsolidationGroup(isGroup)
+    })
     return () => {
       cancelled = true
     }
@@ -291,7 +306,15 @@ export function useMonthlyReport(businessId: string) {
         // MLTE-05 branching: route to consolidated API when the resolved
         // businessId is a consolidation parent. Adapter maps the response
         // into GeneratedReport so the existing UI renders unchanged.
-        const isGroup = isConsolidationGroup === true
+        //
+        // Never on an unresolved detection (DRG-52): wait for the count. The
+        // page disables its Generate button until then, but Continue as
+        // draft, Report History and a settings change generate through here too.
+        const isGroup =
+          isConsolidationGroup ??
+          (await (detection.current?.businessId === businessId
+            ? detection.current.answer
+            : detectConsolidationGroup(businessId)))
         const endpoint = isGroup
           ? '/api/monthly-report/consolidated'
           : '/api/monthly-report/generate'

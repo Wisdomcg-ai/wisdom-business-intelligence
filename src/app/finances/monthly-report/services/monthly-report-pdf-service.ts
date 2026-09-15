@@ -120,6 +120,7 @@ import {
   fullYearMonthLabel,
   fullYearPeriodLabel,
   fullYearBasisNote,
+  forwardSeriesBasisNote,
 } from '../utils/full-year-basis'
 import { closingRowsBreak, keepWithNextStarts, lastPageWidowBreak, tablePageStarts } from '../utils/full-year-page-break'
 import type { BalanceSheetCompare, BalanceSheetData } from '../types'
@@ -1660,7 +1661,7 @@ export class MonthlyReportPDFService {
       // printing a full row of zeros — sectionDetailRows leaves them out, and
       // puts the group's figures on its heading row the way the reference pack
       // does. A client that has grouped nothing gets the flat list it had.
-      for (const row of sectionDetailRows(section, settings.expense_group_order)) {
+      for (const row of sectionDetailRows(section, settings.expense_group_order, { priorYear: !!settings.show_prior_year })) {
         if (row.kind === 'section') {
           push([row.label, ...Array.from({ length: cols.figureCount }, () => '')], 'section')
         } else if (row.kind === 'line') {
@@ -1871,7 +1872,8 @@ export class MonthlyReportPDFService {
       }])
       currentBodyIdx++
 
-      for (const line of withoutSilentLines(section.lines)) {
+      // No prior-year column on this page, so last year's figure earns no row.
+      for (const line of withoutSilentLines(section.lines, { priorYear: false })) {
         const row: any[] = [
           line.is_budget_only ? `${line.account_name} (budget only)` : line.account_name,
           this.budgetCell(line.ytd_budget),
@@ -3456,7 +3458,7 @@ export class MonthlyReportPDFService {
     this.doc.text('Monthly revenue and total expenses with profit gap', this.margin, this.yPosition)
     this.yPosition += 10
 
-    const rveAbsentNote = forwardSeriesAbsentNote(fy)
+    const rveAbsentNote = forwardSeriesBasisNote(fy)
     if (rveAbsentNote) {
       this.drawNote(rveAbsentNote, undefined, { fontSize: 9, color: [146, 96, 20] })
       this.yPosition += 1.5
