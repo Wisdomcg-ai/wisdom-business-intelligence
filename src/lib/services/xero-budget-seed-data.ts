@@ -8,43 +8,33 @@
  * class. tenant_id is unique per org and present on both tables.
  */
 import type { CatalogAccount, AccountActuals } from './xero-budget-seed-service'
+import { readAllRows } from '@/lib/supabase/read-all-rows'
 
 type SupabaseLike = { from: (table: string) => any }
 
 /**
+ * Every row the read matches, or a thrown error — never part of them.
+ *
  * PostgREST caps a single response at the project's max-rows setting (1000 by
- * default, configurable lower). A chart of accounts or a P&L mirror can exceed
- * a low cap, and an unordered, capped read drops rows arbitrarily — the first
- * Urban Road seed lost 3 of 298 catalogued accounts that way. Read in ordered
- * pages until a short page comes back.
+ * default, configurable lower), and a capped read drops rows without an error —
+ * the first Urban Road seed lost 3 of 298 catalogued accounts that way. These
+ * reads used to page ordered by account_code, which is not unique (rows tied on
+ * a code could land on two pages or none), and stopped on a short page, which a
+ * lower cap also produces. readAllRows pages by id to an empty page.
  */
-const PAGE_SIZE = 1000
-
-async function readAllPages<T>(
-  build: () => any,
-  orderColumn: string,
-  label: string,
-): Promise<T[]> {
-  const rows: T[] = []
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await build().order(orderColumn, { ascending: true }).range(from, from + PAGE_SIZE - 1)
-    if (error) throw new Error(`${label} read failed: ${error.message}`)
-    const page: T[] = Array.isArray(data) ? data : []
-    rows.push(...page)
-    if (page.length < PAGE_SIZE) break
-  }
-  return rows
+async function readEveryRow<T>(label: string, build: () => any): Promise<T[]> {
+  const read = await readAllRows<T>(label, build)
+  if (!read.ok) throw read.error
+  return read.rows
 }
 
 /** Chart of accounts as last synced (xero_accounts). */
 export async function loadAccountsCatalog(supabase: SupabaseLike, tenantId: string): Promise<CatalogAccount[]> {
-  const data = await readAllPages<any>(
-    () => supabase
+  const data = await readEveryRow<any>('xero_accounts', () =>
+    supabase
       .from('xero_accounts')
-      .select('xero_account_id, account_code, account_name, xero_type, xero_status')
+      .select('id, xero_account_id, account_code, account_name, xero_type, xero_status')
       .eq('tenant_id', tenantId),
-    'account_code',
-    'xero_accounts',
   )
   return data.map((r: any) => ({
     accountId: String(r.xero_account_id),
@@ -56,38 +46,51 @@ export async function loadAccountsCatalog(supabase: SupabaseLike, tenantId: stri
 }
 
 /**
- * Synced P&L actuals by account code (xero_pl_lines_wide_compat, accruals
- * basis). Rows for the same code but different section/name are merged.
+ * Synced P&L actuals by account code, monthly — accruals basis and not
+ * soft-deleted, the rows xero_pl_lines_wide_compat is built from.
+ *
+ * Read from the table, not the view: the view is a GROUP BY with no key to page
+ * by. The view emitted one row per (account, section, name, …) with a month
+ * map; this sums the same rows per code and month instead, which is the same
+ * figure — the natural key (business, tenant, account_id, period_month, basis)
+ * allows one row per account per month, so no month of the view was ever a
+ * choice between rows.
+ *
+ * Rows for one code with different names (an account renamed in Xero) take the
+ * name and type of the code's latest month, so the answer does not depend on
+ * which row a page happened to return first.
  */
 export async function loadAccountActuals(supabase: SupabaseLike, tenantId: string): Promise<AccountActuals[]> {
-  const data = await readAllPages<any>(
-    () => supabase
-      .from('xero_pl_lines_wide_compat')
-      .select('account_code, account_name, account_type, monthly_values')
-      .eq('tenant_id', tenantId),
-    'account_code',
-    'xero_pl_lines_wide_compat',
+  const data = await readEveryRow<any>('xero_pl_lines', () =>
+    supabase
+      .from('xero_pl_lines')
+      .select('id, account_code, account_name, account_type, period_month, amount')
+      .eq('tenant_id', tenantId)
+      .eq('basis', 'accruals')
+      .is('deleted_at', null),
   )
-  const byCode = new Map<string, AccountActuals>()
+  const byCode = new Map<string, { actuals: AccountActuals; namedFrom: string }>()
   for (const r of data) {
     const code = r.account_code == null ? null : String(r.account_code)
     if (!code) continue
-    const monthly: Record<string, number> = {}
-    for (const [k, v] of Object.entries((r.monthly_values ?? {}) as Record<string, unknown>)) {
-      const n = typeof v === 'number' ? v : Number(v)
-      if (Number.isFinite(n)) monthly[k] = n
+    const month = String(r.period_month ?? '').slice(0, 7)
+    let entry = byCode.get(code)
+    if (!entry) {
+      entry = {
+        actuals: { accountCode: code, accountName: '', accountType: null, monthly: {} },
+        namedFrom: '',
+      }
+      byCode.set(code, entry)
     }
-    const existing = byCode.get(code)
-    if (existing) {
-      for (const [k, v] of Object.entries(monthly)) existing.monthly[k] = (existing.monthly[k] ?? 0) + v
-    } else {
-      byCode.set(code, {
-        accountCode: code,
-        accountName: String(r.account_name ?? ''),
-        accountType: r.account_type == null ? null : String(r.account_type),
-        monthly,
-      })
+    if (month > entry.namedFrom) {
+      entry.namedFrom = month
+      entry.actuals.accountName = String(r.account_name ?? '')
+      entry.actuals.accountType = r.account_type == null ? null : String(r.account_type)
+    }
+    const amount = typeof r.amount === 'number' ? r.amount : Number(r.amount)
+    if (month && Number.isFinite(amount)) {
+      entry.actuals.monthly[month] = (entry.actuals.monthly[month] ?? 0) + amount
     }
   }
-  return Array.from(byCode.values())
+  return Array.from(byCode.values(), (e) => e.actuals)
 }
