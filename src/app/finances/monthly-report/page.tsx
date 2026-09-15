@@ -56,6 +56,7 @@ import { useSubscriptionDetail } from './hooks/useSubscriptionDetail'
 import { rollUpContractors, contractorLoadReason } from '@/lib/monthly-report/contractor-rollup'
 import { contractorCodesByTenant, contractorWindowForLayout } from '@/lib/monthly-report/contractor-page'
 import { payrollWindowForLayout } from '@/lib/monthly-report/payroll-grid-config'
+import { externalMetricWindowForLayout } from '@/lib/monthly-report/external-metric-config'
 import { packPdfFilename } from '@/lib/monthly-report/pack-filename'
 import { parseRatioAnalysisConfig, requiredWindow } from '@/lib/monthly-report/ratio-table'
 import { buildPackCashflowForecast, packCashflowBasisFor, packCashflowPlLines } from '@/lib/monthly-report/pack-cashflow'
@@ -1382,13 +1383,17 @@ export default function MonthlyReportPage() {
     let extMetrics: import('./types').ExternalMetricSeriesData[] | undefined
     if (businessId) {
       try {
+        // How many months of values the pack needs: the longest trend any
+        // placement prints, and one — this month — when none is placed (P10).
+        const extWidgets = (settings?.pdf_layout?.pages ?? []).flatMap((p) => p.widgets ?? [])
+        const extMonths = externalMetricWindowForLayout(extWidgets, selectedMonth)
         const res = await fetch(
-          `/api/monthly-report/external-metrics?business_id=${encodeURIComponent(businessId)}&period_month=${encodeURIComponent(selectedMonth)}`
+          `/api/monthly-report/external-metrics?business_id=${encodeURIComponent(businessId)}&period_month=${encodeURIComponent(selectedMonth)}&months=${extMonths}`
         )
         if (res.ok) {
           const data = await res.json()
           extMetrics = (data.series || []).filter(
-            (s: import('./types').ExternalMetricSeriesData) => (s.values || []).length > 0
+            (s: import('./types').ExternalMetricSeriesData) => (s.values || []).length > 0 || (s.history || []).length > 0
           )
         } else {
           Sentry.captureMessage(

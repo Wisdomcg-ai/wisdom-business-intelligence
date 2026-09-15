@@ -74,7 +74,14 @@ import { groupFullYearLines } from '@/lib/monthly-report/full-year-groups'
 import type { ContractorRollup } from '@/lib/monthly-report/contractor-rollup'
 import { buildContractorSheetModel, longMonthLabel, parseContractorPageConfig, sheetMonthHeading, type ContractorPageConfig, type SheetCell } from '@/lib/monthly-report/contractor-page'
 import { applyPayrollRoster, runTotal, type PayrollGrid, type RosteredPayroll } from '@/lib/monthly-report/payroll-grid'
-import { parsePayrollGridConfig, type PayrollGridConfig } from '@/lib/monthly-report/payroll-grid-config'
+import { parsePayrollGridConfig, isP10Default, type PayrollGridConfig } from '@/lib/monthly-report/payroll-grid-config'
+import { buildPayrollReport, type PayFill, type PayrollReport, type PayrollReportTotals } from '@/lib/monthly-report/payroll-report'
+import {
+  isDefaultExternalMetricConfig,
+  parseExternalMetricConfig,
+  type ExternalMetricConfig,
+} from '@/lib/monthly-report/external-metric-config'
+import { buildExternalMetricTable, type ExternalMetricTable } from '@/lib/monthly-report/external-metric-table'
 import {
   parseRatioAnalysisConfig,
   buildRatioTable,
@@ -427,6 +434,9 @@ const OP_BLUE: [number, number, number] = [244, 244, 246]
  */
 const PAYROLL_UNDER_FILL: RGB = [222, 241, 231]
 const PAYROLL_OVER_FILL: RGB = [251, 226, 226]
+/** A pay beside no roster salary (pay_fills): Calxa's amber, as pale as the other two. */
+const PAYROLL_NO_BUDGET_FILL: RGB = [253, 236, 200]
+const PAY_FILLS: Record<PayFill, RGB> = { under: PAYROLL_UNDER_FILL, over: PAYROLL_OVER_FILL, no_budget: PAYROLL_NO_BUDGET_FILL }
 
 /**
  * The one tone the cash pages have that no other page does, sampled off Urban
@@ -2671,10 +2681,13 @@ export class MonthlyReportPDFService {
   // =====================================================================
   // External Metrics (PORTRAIT — WE.1b, the entered non-Xero inserts)
   // =====================================================================
-  private addExternalMetricPage(series: import('../types').ExternalMetricSeriesData): void {
+  private addExternalMetricPage(series: import('../types').ExternalMetricSeriesData, warning?: string): void {
     this.addPage('portrait')
 
     this.drawPageTitle(`${series.display_name} — ${this.formatMonth(this.report.report_month)}`)
+    // A placement whose settings could not be read prints them as a sentence
+    // over the page the series has always printed, never as a broken page.
+    if (warning) this.drawWarningCard(warning)
 
     // Only measures that actually carry values render as columns; a measure
     // gets a Budget + Variance pair only when budget values exist for it.
@@ -2762,26 +2775,147 @@ export class MonthlyReportPDFService {
       },
     })
 
-    // EXT-TIES footnote — three-state: silent when not comparable.
+    this.drawExternalTie(series)
+  }
+
+  /** EXT-TIES footnote — three-state: silent when not comparable. */
+  private drawExternalTie(series: import('../types').ExternalMetricSeriesData): void {
     const tie = series.tie
-    if (tie?.comparable) {
-      const y = (this.doc as any).lastAutoTable?.finalY ?? this.yPosition
-      this.doc.setFontSize(8)
-      this.doc.setFont('helvetica', 'normal')
-      if (tie.within_tolerance) {
-        this.doc.setTextColor(22, 101, 52) // green-800
-        this.doc.text(
-          `Ties to "${tie.account_name}" in Xero (${this.fmtCurrency(tie.account_actual)}).`,
-          this.margin, y + 6,
-        )
-      } else {
-        this.doc.setTextColor(146, 64, 14) // amber-800
-        this.doc.text(
-          `Entered total ${this.fmtCurrency(tie.series_total)} vs "${tie.account_name}" ${this.fmtCurrency(tie.account_actual)} in Xero — difference ${this.fmtCurrency(Math.abs(tie.delta))}.`,
-          this.margin, y + 6,
-        )
+    if (!tie?.comparable) return
+    const y = (this.doc as any).lastAutoTable?.finalY ?? this.yPosition
+    this.doc.setFontSize(8)
+    this.doc.setFont('helvetica', 'normal')
+    if (tie.within_tolerance) {
+      this.doc.setTextColor(22, 101, 52) // green-800
+      this.doc.text(
+        `Ties to "${tie.account_name}" in Xero (${this.fmtCurrency(tie.account_actual)}).`,
+        this.margin, y + 6,
+      )
+    } else {
+      this.doc.setTextColor(146, 64, 14) // amber-800
+      this.doc.text(
+        `Entered total ${this.fmtCurrency(tie.series_total)} vs "${tie.account_name}" ${this.fmtCurrency(tie.account_actual)} in Xero — difference ${this.fmtCurrency(Math.abs(tie.delta))}.`,
+        this.margin, y + 6,
+      )
+    }
+    this.doc.setTextColor(0, 0, 0)
+  }
+
+  /**
+   * The external-data page as the client's own insert sets it out (P10): a
+   * trend of N months with the newest on the left, or the month against
+   * budget — in both, the rows the placement declares, its subtotals, its
+   * derived measures and its notes (external-metric-table).
+   *
+   * Calxa's IICT p3 is the trend: two blocks, members over dollars, the same
+   * rows down the side, and the Avg. Membership Rate under the dollars alone.
+   * p4 is the month: Actual, Budget and Var per measure, where only the
+   * subtotals carry a budget.
+   */
+  private addExternalMetricConfiguredPage(
+    series: import('../types').ExternalMetricSeriesData,
+    config: ExternalMetricConfig,
+    widget?: import('../types/pdf-layout').LayoutWidget,
+  ): void {
+    const built = buildExternalMetricTable(series as never, config, this.report.report_month)
+    const heading = (widget?.titleOverride ?? '').trim() || series.display_name
+    const months = built.ok ? built.table.months : []
+    const period = config.layout === 'trend' && months.length > 0
+      ? `${packMonthYear(months[months.length - 1])} - ${packMonthYear(months[0])}`
+      : this.formatMonth(this.report.report_month)
+
+    this.addPage('portrait')
+    this.drawPageTitle(`${heading} — ${period}`)
+    if (!built.ok) {
+      this.drawReasonCard(`This page could not be built: ${built.reason}.`)
+      return
+    }
+
+    const table = built.table
+    const fmtBy = (format: string | undefined, value: number | null): string => {
+      if (value === null) return '—'
+      if (format === 'currency') return this.fmtCurrency(value)
+      if (format === 'percent') return `${value.toFixed(1)}%`
+      return value.toLocaleString('en-AU', { maximumFractionDigits: 1 })
+    }
+    const emphasis = (kind: string) => kind === 'subtotal' || kind === 'total'
+
+    if (config.layout === 'trend') {
+      // One block per measure, the rows down the side and the months across —
+      // newest first, the way a reader of these sheets reads them.
+      for (const measure of table.measures) {
+        const rows = table.rows.filter((r) => r.kind !== 'line' || r.under === measure.key)
+        if (rows.length === 0) continue
+        // A block needs its heading, its rows and room to be read: starting one
+        // in the last few centimetres splits it from its own figures.
+        if (this.yPosition > this.pageHeight - 50) {
+          this.addPage('portrait')
+          this.drawPageTitle(`${heading} (continued) — ${period}`)
+        }
+        autoTable(this.doc, {
+          startY: this.yPosition,
+          head: [[measure.label, ...table.months.map((m) => this.formatShortMonth(m))]],
+          body: rows.map((r) => [r.label, ...table.months.map((m) => fmtBy(measure.format, r.cells[measure.key]?.[m]?.actual ?? null))]),
+          ...packTableStyles(8),
+          columnStyles: { 0: { cellWidth: 52, halign: 'left' } },
+          margin: { top: 10, left: this.margin, right: this.margin },
+          didParseCell: (data) => {
+            if (data.section !== 'body') return
+            if (data.column.index > 0) data.cell.styles.halign = 'right'
+            if (emphasis(rows[data.row.index].kind)) {
+              data.cell.styles.fontStyle = 'bold'
+              data.cell.styles.fillColor = [...GROUP_SHADE] as RGB
+            }
+            paintNegatives(data as never)
+          },
+        })
+        this.yPosition = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 5
       }
-      this.doc.setTextColor(0, 0, 0)
+    } else {
+      const month = table.months[0]
+      const headers = [
+        table.dimension_label,
+        ...table.measures.flatMap((m) => (table.has_budget[m.key] ? [`${m.label} Actual`, `${m.label} Budget`, 'Var'] : [m.label])),
+      ]
+      const body = table.rows.map((r) => [
+        r.label,
+        ...table.measures.flatMap((m) => {
+          const cell = r.under && r.under !== m.key ? undefined : r.cells[m.key]?.[month]
+          const actual = cell?.actual ?? null
+          const budget = cell?.budget ?? null
+          if (!table.has_budget[m.key]) return [fmtBy(m.format, actual)]
+          // A variance prints only where both sides were entered — never a
+          // figure measured against a budget nobody set.
+          return [
+            fmtBy(m.format, actual),
+            fmtBy(m.format, budget),
+            actual !== null && budget !== null ? fmtBy(m.format, actual - budget) : '—',
+          ]
+        }),
+      ])
+      autoTable(this.doc, {
+        startY: this.yPosition,
+        head: [headers],
+        body,
+        ...packTableStyles(8),
+        columnStyles: { 0: { cellWidth: 52, halign: 'left' } },
+        margin: { top: 10, left: this.margin, right: this.margin },
+        didParseCell: (data) => {
+          if (data.section !== 'body') return
+          if (data.column.index > 0) data.cell.styles.halign = 'right'
+          if (emphasis(table.rows[data.row.index].kind)) {
+            data.cell.styles.fontStyle = 'bold'
+            data.cell.styles.fillColor = [...GROUP_SHADE] as RGB
+          }
+          paintNegatives(data as never)
+        },
+      })
+      this.yPosition = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 5
+    }
+
+    this.drawExternalTie(series)
+    for (const note of [...table.notes, ...config.notes.map((n) => `• ${n}`)]) {
+      this.yPosition = this.drawNote(note, undefined, { fontSize: 7.5, color: [120, 120, 120] }) + 1.5
     }
   }
 
@@ -4491,7 +4625,9 @@ export class MonthlyReportPDFService {
         // or run dates.
         return this.hasPayrollGridRows() || !!this.options.payrollGridReason
       case 'external_metric':
-        return (this.options.externalMetrics ?? []).some(s => s.values.length > 0)
+        // A trend placement is served by history alone: a series can be behind
+        // a month and still have the eight the page prints.
+        return (this.options.externalMetrics ?? []).some(s => s.values.length > 0 || (s.history?.length ?? 0) > 0)
       case 'memo':
         return (this.options.memo ?? '').trim() !== ''
       case 'consolidated_pl':
@@ -5011,10 +5147,13 @@ export class MonthlyReportPDFService {
       return
     }
     const rostered = applyPayrollRoster(grid, parsed.config.roster)
+    // The budget basis, the roster budget and the notes (P10). With none of
+    // them set, its months are the grid's own.
+    const report = buildPayrollReport(grid, parsed.config)
     // Only a config that read cleanly can ask for the Calxa page: one that
     // failed comes back as the defaults, so it prints this page, with its reason.
     if (parsed.config.layout === 'calxa') {
-      this.addPayrollReportPage(grid, rostered, parsed.config)
+      this.addPayrollReportPage(grid, rostered, parsed.config, report)
       return
     }
 
@@ -5064,14 +5203,14 @@ export class MonthlyReportPDFService {
     body.push([
       bold('Budget'), bold(''), bold(''),
       ...grid.run_dates.map(() => bold('')),
-      ...grid.months.map((m) => bold(m.budget === null ? '—' : this.fmtCurrency(m.budget))),
+      ...report.months.map((m) => bold(m.budget === null ? '—' : this.fmtCurrency(m.budget))),
     ])
     body.push([
       { content: 'Difference', styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
       { content: '', styles: { fillColor: GP_BLUE } },
       { content: '', styles: { fillColor: GP_BLUE } },
       ...grid.run_dates.map(() => ({ content: '', styles: { fillColor: GP_BLUE } })),
-      ...grid.months.map((m) => ({
+      ...report.months.map((m) => ({
         content: m.difference === null ? '—' : this.fmtVariance(m.difference),
         styles: { fontStyle: 'bold', fillColor: GP_BLUE },
       })),
@@ -5099,6 +5238,28 @@ export class MonthlyReportPDFService {
       { fontSize: 7.5, color: [120, 120, 120] },
     )
     this.drawNotOnRosterNote(rostered)
+    this.drawPayrollNotes(report, parsed.config)
+  }
+
+  /**
+   * The payroll page's sentences (payroll-report) and then the coach's notes as
+   * bullets, kept together on a fresh sheet when the table has left no room.
+   */
+  private drawPayrollNotes(report: PayrollReport, config: PayrollGridConfig): void {
+    const lines = [...report.notes, ...config.notes.map((n) => `• ${n}`)]
+    if (lines.length === 0) return
+    const needed = lines.reduce((t, n) => t + this.noteHeight(n) + 1.5, 0)
+    if (this.yPosition + needed > this.pageHeight - 14) {
+      const before = this.doc.getNumberOfPages()
+      this.addPage('landscape')
+      if (this.doc.getNumberOfPages() > before) {
+        this.openedPages.delete(this.doc.getNumberOfPages())
+        this.yPosition = CONTINUATION_TEXT_TOP
+      }
+    }
+    for (const line of lines) {
+      this.yPosition = this.drawNote(line, undefined, { fontSize: 7.5, color: [120, 120, 120] }) + 1.5
+    }
   }
 
   /**
@@ -5115,8 +5276,15 @@ export class MonthlyReportPDFService {
    * Every figure is the grid's. The roster adds the two standing columns and
    * the order, nothing else: a Total is what the payslips paid, whatever the
    * roster says a salary should be.
+   *
+   * P10 (payroll-report) adds, each only when the placement asks: the roster's
+   * areas, headed and totalled before the total of all areas (DD p12-13); Month
+   * actual, Month budget and Variance beside every row; each pay shaded against
+   * its pay period's salary; a fortnightly salary column; the roster budget
+   * basis; and the notes. A placement that asks for none of it is drawn exactly
+   * as before (pdf-insert-widgets-golden).
    */
-  private addPayrollReportPage(grid: PayrollGrid, rostered: RosteredPayroll, config: PayrollGridConfig): void {
+  private addPayrollReportPage(grid: PayrollGrid, rostered: RosteredPayroll, config: PayrollGridConfig, report: PayrollReport): void {
     this.addPage('landscape')
     // "Last 2 Months" in August, the way Calxa heads it. A one-month window
     // (July, on a year-to-date window) names its month instead — "Last 1
@@ -5126,6 +5294,7 @@ export class MonthlyReportPDFService {
       : `Last ${grid.months.length} Months`
     this.drawPageTitle(`Payroll Report — ${period}`)
 
+    const p10 = !isP10Default(config)
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     // Calxa's own date forms: "6-Jul" over a run, "5-Mar-2020" for a start.
     const runLabel = (iso: string) => `${Number(iso.slice(8, 10))}-${MONTHS[Number(iso.slice(5, 7)) - 1]}`
@@ -5136,19 +5305,25 @@ export class MonthlyReportPDFService {
     // at all keeps one dashed column: its Budget and Difference still have to
     // print somewhere, and a budgeted month nobody was paid in is a finding,
     // not a gap to close up.
-    const groups = grid.months.map((m) => ({ month: m, dates: m.run_dates.length > 0 ? m.run_dates : [null] }))
+    const groups = grid.months.map((m, i) => ({ month: m, figures: report.months[i], dates: m.run_dates.length > 0 ? m.run_dates : [null] }))
     const runCols: (string | null)[] = groups.flatMap((g) => g.dates)
-    const LEAD = 4
+    const units = config.standard_units_column
+    // Employee, Start Date, [Standard Units], the salary column.
+    const LEAD = units ? 4 : 3
+    const SALARY = LEAD - 1
+    const tail = config.employee_month_columns
+    const monthWord = grid.months.length === 1 ? 'Month' : packMonthYear(report.report_month)
+    const salaryHeading = config.salary_period === 'fortnight' ? 'Fortnightly Salary (Budget)' : 'Weekly Salary (Budget)'
 
     const head: any[] = [
       [
-        ...['Employee', 'Start Date', 'Standard Units', 'Weekly Salary (Budget)'].map((label, i) => ({
+        ...['Employee', 'Start Date', ...(units ? ['Standard Units'] : []), salaryHeading].map((label, i) => ({
           content: label,
           rowSpan: 2,
           styles: {
             halign: i === 0 ? ('left' as const) : ('center' as const),
             valign: 'bottom' as const,
-            ...(i === 3 ? { fillColor: [...BUDGET_SHADE_STRONG] as RGB } : {}),
+            ...(i === SALARY ? { fillColor: [...BUDGET_SHADE_STRONG] as RGB } : {}),
           },
         })),
         ...periodBandRow(
@@ -5158,18 +5333,57 @@ export class MonthlyReportPDFService {
             tone: i % 2 === 0 ? 'light' : 'dark',
           })),
         ),
+        ...(tail
+          ? [`${monthWord} actual`, `${monthWord} budget`, 'Variance'].map((label) => ({
+              content: label,
+              rowSpan: 2,
+              styles: { halign: 'center' as const, valign: 'bottom' as const },
+            }))
+          : []),
       ],
       runCols.map((d) => ({ content: d ? runLabel(d) : 'No runs', styles: { halign: 'center' as const } })),
     ]
 
-    const body: any[] = rostered.employees.map((e) => [
-      e.name,
-      startLabel(e.start_date),
-      unitsText(e.standard_units),
-      e.weekly_salary === null ? '—' : this.fmtCurrency(e.weekly_salary),
-      ...runCols.map((d) => (d === null || e.cells[d] === null || e.cells[d] === undefined ? '—' : this.fmtCurrency(e.cells[d] as number))),
-    ])
-    const employeeRows = body.length
+    const money = (n: number | null) => (n === null ? '—' : this.fmtCurrency(n))
+    const variance = (n: number | null) => (n === null ? '—' : this.fmtVariance(n))
+    const tailCells = (t: { month_actual: number; month_budget: number | null; month_variance: number | null }) =>
+      tail ? [this.fmtCurrency(t.month_actual), money(t.month_budget), variance(t.month_variance)] : []
+
+    // What each body row is, for the styling below — autoTable cannot see it.
+    type RowKind = 'employee' | 'area' | 'area_total' | 'total'
+    const kinds: RowKind[] = []
+    const rowFills: (Record<string, PayFill | null> | null)[] = []
+    const body: any[] = []
+    const push = (kind: RowKind, row: any[], fills: Record<string, PayFill | null> | null = null) => {
+      kinds.push(kind)
+      rowFills.push(fills)
+      body.push(row)
+    }
+    const columnCount = LEAD + runCols.length + (tail ? 3 : 0)
+    const totalsRow = (label: string, t: PayrollReportTotals) => [
+      { content: label, colSpan: LEAD - 1 },
+      money(t.period_salary),
+      ...runCols.map((d) => (d === null ? '—' : this.fmtCurrency(t.runs[d] ?? 0))),
+      ...tailCells(t),
+    ]
+
+    for (const group of report.groups) {
+      if (report.has_areas) {
+        push('area', [{ content: group.area ?? 'Not in an area', colSpan: columnCount }])
+      }
+      for (const e of group.employees) {
+        push('employee', [
+          e.name,
+          startLabel(e.start_date),
+          ...(units ? [unitsText(e.standard_units)] : []),
+          money(e.period_salary),
+          ...runCols.map((d) => (d === null || e.cells[d] === null || e.cells[d] === undefined ? '—' : this.fmtCurrency(e.cells[d] as number))),
+          ...tailCells(e),
+        ], config.pay_fills ? e.fills : null)
+      }
+      if (report.has_areas) push('area_total', totalsRow(`Total — ${group.area ?? 'Not in an area'}`, group.totals))
+    }
+    const firstTotal = body.length
 
     const merged = (content: string, colSpan: number, extra: Record<string, unknown> = {}) =>
       ({ content, colSpan, styles: { halign: 'center' as const, ...extra } })
@@ -5177,26 +5391,28 @@ export class MonthlyReportPDFService {
     // Total: each run's total, then each month's beneath its runs. The Weekly
     // Salary (Budget) total stands beside both and the Budget row, as Calxa's
     // does — it is the week the budget was built from.
-    body.push([
-      { content: 'Total', colSpan: 3, rowSpan: 2, styles: { valign: 'middle' as const } },
+    push('total', [
+      { content: report.has_areas ? 'Total — All Areas' : 'Total', colSpan: LEAD - 1, rowSpan: 2, styles: { valign: 'middle' as const } },
       {
-        content: rostered.weekly_salary_total === null ? '—' : this.fmtCurrency(rostered.weekly_salary_total),
+        content: money(report.totals.period_salary),
         rowSpan: 3,
         styles: { valign: 'middle' as const, halign: 'right' as const },
       },
       ...runCols.map((d) => (d === null ? '—' : this.fmtCurrency(runTotal(grid, d)))),
+      // The report month's columns stand beside all four total rows.
+      ...tailCells(report.totals).map((content) => ({ content, rowSpan: 4, styles: { valign: 'middle' as const, halign: 'right' as const } })),
     ])
-    body.push(groups.map((g) => merged(this.fmtCurrency(g.month.total), g.dates.length)))
-    body.push([
-      { content: 'Budget', colSpan: 3 },
-      ...groups.map((g) => merged(g.month.budget === null ? '—' : this.fmtCurrency(g.month.budget), g.dates.length)),
+    push('total', groups.map((g) => merged(this.fmtCurrency(g.month.total), g.dates.length)))
+    push('total', [
+      { content: 'Budget', colSpan: LEAD - 1 },
+      ...groups.map((g) => merged(money(g.figures.budget), g.dates.length)),
     ])
     const fills = config.difference_fills
-    body.push([
-      { content: 'Difference', colSpan: 3 },
+    push('total', [
+      { content: 'Difference', colSpan: LEAD - 1 },
       '',
       ...groups.map((g) => {
-        const diff = g.month.difference
+        const diff = g.figures.difference
         return merged(
           diff === null ? '—' : this.fmtVariance(diff),
           g.dates.length,
@@ -5206,8 +5422,10 @@ export class MonthlyReportPDFService {
     ])
 
     // Nine runs set at 9pt, the size the reference prints at. A quarter's
-    // thirteen drop to 7pt so "10,504" still fits its column on one line.
-    const fontSize = runCols.length <= 10 ? 9 : 7
+    // thirteen drop to 7pt so "10,504" still fits its column on one line, and
+    // a team of thirty runs at 8pt so an area is not split from its total.
+    const fontSize = runCols.length <= 10 ? (p10 && body.length > 30 ? 8 : 9) : 7
+    const lastRun = LEAD + runCols.length
     autoTable(this.doc, {
       startY: this.yPosition,
       head,
@@ -5216,25 +5434,44 @@ export class MonthlyReportPDFService {
       columnStyles: {
         0: { cellWidth: 40, halign: 'left' },
         1: { cellWidth: 22, halign: 'center' },
-        2: { cellWidth: 17, halign: 'center' },
-        3: { cellWidth: 21, halign: 'right' },
+        ...(units
+          ? { 2: { cellWidth: 17, halign: 'center' as const }, 3: { cellWidth: 21, halign: 'right' as const } }
+          : { 2: { cellWidth: 21, halign: 'right' as const } }),
       },
-      margin: { left: this.margin, right: this.margin },
+      // A table that runs onto a second sheet starts below the corner mark and
+      // keeps each row whole. Only a P10 page can be that long.
+      margin: p10 ? { top: 10, left: this.margin, right: this.margin, bottom: 16 } : { left: this.margin, right: this.margin },
+      ...(p10 ? { rowPageBreak: 'avoid' as const } : {}),
       didParseCell: (data) => {
         if (data.section !== 'body') return
         const col = data.column.index
         const row = data.row.index
-        const inTotals = row >= employeeRows
+        const kind = kinds[row]
+        const inTotals = row >= firstTotal
         const ownFill = (data.cell.raw as { styles?: { fillColor?: unknown } } | null)?.styles?.fillColor
+        if (kind === 'area') {
+          data.cell.styles.fontStyle = 'bold'
+          data.cell.styles.halign = 'left'
+          data.cell.styles.fillColor = [...GROUP_SHADE] as RGB
+          return
+        }
         // Figures right, as every table in the pack sets them — except the
         // month cells merged across their runs, which centre under them.
-        if (col >= LEAD && (!inTotals || row === employeeRows)) data.cell.styles.halign = 'right'
-        if (col === 3) data.cell.styles.fillColor = [...(inTotals ? BUDGET_SHADE_STRONG : BUDGET_SHADE)] as RGB
+        if (col >= LEAD && (!inTotals || row === firstTotal)) data.cell.styles.halign = 'right'
+        if (col === SALARY) data.cell.styles.fillColor = [...(inTotals || kind === 'area_total' ? BUDGET_SHADE_STRONG : BUDGET_SHADE)] as RGB
+        if (kind === 'employee' && col >= LEAD && col < lastRun) {
+          const fill = rowFills[row]?.[runCols[col - LEAD] ?? '']
+          if (fill) data.cell.styles.fillColor = [...PAY_FILLS[fill]] as RGB
+        }
+        if (kind === 'area_total') {
+          data.cell.styles.fontStyle = 'bold'
+          if (col !== SALARY) data.cell.styles.fillColor = [...OP_BLUE] as RGB
+        }
         if (inTotals) {
           data.cell.styles.fontStyle = 'bold'
-          if (col !== 3 && !ownFill) data.cell.styles.fillColor = [...GROUP_SHADE] as RGB
+          if (col !== SALARY && !ownFill) data.cell.styles.fillColor = [...GROUP_SHADE] as RGB
           // The rule over the block, the one a statement's total carries.
-          if (row === employeeRows) {
+          if (row === firstTotal) {
             data.cell.styles.lineWidth = { top: 0.35, right: 0, bottom: 0, left: 0 }
             data.cell.styles.lineColor = [...TOTAL_RULE] as RGB
           }
@@ -5244,14 +5481,17 @@ export class MonthlyReportPDFService {
     })
 
     this.yPosition = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 6
-    if (rostered.employees.some((e) => e.standard_units === null || e.weekly_salary === null)) {
+    if (rostered.employees.some((e) => (units && e.standard_units === null) || e.weekly_salary === null)) {
       this.drawNote(
-        'A dash under Standard Units or Weekly Salary (Budget) is a figure not yet entered on this page\'s roster.',
+        units
+          ? `A dash under Standard Units or ${salaryHeading} is a figure not yet entered on this page's roster.`
+          : `A dash under ${salaryHeading} is a figure not yet entered on this page's roster.`,
         undefined,
         { fontSize: 7.5, color: [120, 120, 120] },
       )
     }
     this.drawNotOnRosterNote(rostered)
+    this.drawPayrollNotes(report, config)
   }
 
   /**
@@ -5490,8 +5730,19 @@ export class MonthlyReportPDFService {
     // WE.1b — default: every active series with values for the month, one page
     // each. config.series_key narrows a placement to a single series so a
     // layout can give each insert its own positioned page.
-    const seriesKey = typeof widget?.config?.series_key === 'string' ? widget.config.series_key : undefined
-    const all = (this.options.externalMetrics ?? []).filter(s => s.values.length > 0)
+    //
+    // P10 — the placement can also say how the page is set out: a trend, a row
+    // order, subtotals, derived measures, notes (external-metric-config). A
+    // config that does not parse prints its reason over the default page, and
+    // still narrows to its series: a page that silently printed every series
+    // would be a different pack.
+    const parsed = parseExternalMetricConfig(widget?.config)
+    const seriesKey = parsed.ok
+      ? parsed.config.series_key
+      : typeof widget?.config?.series_key === 'string' ? widget.config.series_key : undefined
+    const trend = parsed.ok && parsed.config.layout === 'trend'
+    const all = (this.options.externalMetrics ?? []).filter(
+      (s) => s.values.length > 0 || (trend && (s.history?.length ?? 0) > 0))
     const list = seriesKey ? all.filter(s => s.series_key === seriesKey) : all
     if (list.length === 0) {
       // hasDataForWidget passed on SOME series, but the config narrowed to one
@@ -5500,7 +5751,15 @@ export class MonthlyReportPDFService {
       return
     }
     this.renderWithSkipPage(() => {
-      for (const series of list) this.addExternalMetricPage(series)
+      for (const series of list) {
+        if (!parsed.ok) {
+          this.addExternalMetricPage(series, `This page's settings could not be read (${parsed.reason}), so it prints its default layout.`)
+        } else if (isDefaultExternalMetricConfig(parsed.config)) {
+          this.addExternalMetricPage(series)
+        } else {
+          this.addExternalMetricConfiguredPage(series, parsed.config, widget)
+        }
+      }
     }, box)
   }
 

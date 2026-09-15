@@ -57,7 +57,9 @@ export async function loadPayrollGrid(supabase: Client, input: PayrollGridLoadIn
 
   const { data: payslips, error: payslipError } = await supabase
     .from('xero_payslip_lines')
-    .select('employee_id, employee_name, payment_date, wages, super_amount')
+    // The pay calendar and period are the roster budget's week count (P10): a
+    // fortnightly run is two weeks of salary.
+    .select('employee_id, employee_name, payment_date, wages, super_amount, calendar_type, period_start, period_end')
     .in('tenant_id', tenantIds)
     .gte('payment_date', from)
     .lt('payment_date', to)
@@ -79,10 +81,32 @@ export async function loadPayrollGrid(supabase: Client, input: PayrollGridLoadIn
     return { data: null, reason: 'no payslips synced for this period' }
   }
 
-  const { data: employees } = await supabase
+  const { data: employeeRows, error: employeeError } = await supabase
     .from('xero_employees')
-    .select('employee_id, start_date')
+    .select('employee_id, first_name, last_name, start_date, termination_date')
     .in('tenant_id', tenantIds)
+  // The start dates were always optional on this page (a dash), but a roster
+  // budget counts weeks from them: an unread record would budget a starter for
+  // the whole month. Flagged on the grid, which then refuses the roster budget.
+  if (employeeError) {
+    Sentry.captureMessage('[PayrollGrid] employee read failed', {
+      level: 'warning',
+      tags: { invariant: 'payroll-grid-employees-read' },
+      extra: { business_id, report_month, message: employeeError.message },
+    } as never)
+  }
+  const employees: EmployeeRow[] = ((employeeRows ?? []) as {
+    employee_id: string | null
+    first_name?: string | null
+    last_name?: string | null
+    start_date: string | null
+    termination_date?: string | null
+  }[]).map((e) => ({
+    employee_id: e.employee_id,
+    start_date: e.start_date ?? null,
+    termination_date: e.termination_date ?? null,
+    name: [e.first_name, e.last_name].map((part) => (part ?? '').trim()).filter(Boolean).join(' ') || null,
+  }))
 
   // ── The month's wages budget, from the same yardstick the statement uses ──
   const budgets: Record<string, number> = {}
@@ -139,9 +163,10 @@ export async function loadPayrollGrid(supabase: Client, input: PayrollGridLoadIn
 
   const grid = buildPayrollGrid(
     payslips as PayslipRow[],
-    (employees ?? []) as EmployeeRow[],
+    employees,
     window,
     budgets,
+    { recordsUnreadable: !!employeeError },
   )
   return { data: grid }
 }

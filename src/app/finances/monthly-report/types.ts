@@ -830,6 +830,12 @@ export interface ExternalMetricSeriesData {
   reconciles_to_account_name?: string | null
   reconcile_measure_key?: string | null
   values: { dimension_value: string; measure_key: string; scenario: 'actual' | 'budget'; value: number }[]
+  /**
+   * The trend window's values, month by month — loaded only when a placement
+   * asks for a trend (P10, external-metric-config). Absent otherwise, and on
+   * responses from before it existed.
+   */
+  history?: { period_month: string; dimension_value: string; measure_key: string; scenario: 'actual' | 'budget'; value: number }[]
   tie?: {
     series_total: number
     account_actual: number
