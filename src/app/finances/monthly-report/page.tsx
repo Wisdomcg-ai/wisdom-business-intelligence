@@ -29,6 +29,7 @@ import WagesAnalysisTab from './components/WagesAnalysisTab'
 import ChartsTab from './components/ChartsTab'
 import CashflowTab from './components/CashflowTab'
 import ExternalDataTab from './components/ExternalDataTab'
+import UploadedPagesPanel from './components/UploadedPagesPanel'
 import MemoModal from './components/MemoModal'
 import PreflightPanel from './components/PreflightPanel'
 import { runPreflight, type PreflightResult } from '@/lib/monthly-report/preflight'
@@ -74,7 +75,9 @@ import ConsolidatedBSTab from './components/ConsolidatedBSTab'
 import ConsolidatedCashflowTab from './components/ConsolidatedCashflowTab'
 import FXRateMissingBanner from './components/FXRateMissingBanner'
 import { loadSettings, getCurrentFiscalYear, getDefaultReportMonth, getFiscalYearForMonth, defaultMonthForFiscalYear } from './services/monthly-report-service'
-import { MonthlyReportPDFService } from './services/monthly-report-pdf-service'
+import { buildPackPdf, preparePackInserts } from './services/pack-pdf'
+import { fetchPackInsertSources, savePdfBytes } from './services/pack-inserts-fetch'
+import type { PackInsertSources } from '@/lib/monthly-report/pack-inserts'
 import type { CashflowForecastData } from '@/app/finances/forecast/types'
 import { usePDFLayout } from './hooks/usePDFLayout'
 import { loadPackEntityName } from '@/lib/monthly-report/pack-entity-name'
@@ -1147,6 +1150,7 @@ export default function MonthlyReportPage() {
     entityName?: string | null
     preparedOn?: import('@/lib/monthly-report/pack-prepared-on').PackPreparedOn | null
     packLogo?: import('@/lib/monthly-report/pack-logo-setting').PackLogoSetting | null
+    insertSources?: PackInsertSources
   }> => {
     let fyReport = fullYearReport
     if (!fyReport && businessId) {
@@ -1472,6 +1476,14 @@ export default function MonthlyReportPage() {
     const entityName = businessId ? await loadPackEntityName(createClient(), businessId) : null
     const preparedOn = businessId ? await loadPackPreparedOn(createClient(), businessId, selectedMonth, monthSnapshot) : null
 
+    // Uploaded pages: the newest file for each placement the layout has, for
+    // the REPORT's month — a card saying "August hasn't been uploaded" under
+    // an August pack must be about August, wherever the month picker is. No
+    // placement, no request.
+    const insertSources = businessId
+      ? await fetchPackInsertSources(businessId, report?.report_month ?? selectedMonth, settings?.pdf_layout ?? null)
+      : undefined
+
     return {
       fullYearReport: fyReport || undefined,
       subscriptionDetail: subDetail || undefined,
@@ -1505,6 +1517,7 @@ export default function MonthlyReportPage() {
       preparedOn,
       // The mark is a setting, read off the settings this export already holds.
       packLogo: settings?.pack_logo ?? null,
+      insertSources,
     }
   }
 
@@ -1529,9 +1542,10 @@ export default function MonthlyReportPage() {
       sections?: import('./types').ReportSections
       pdfLayout?: import('./types/pdf-layout').PDFLayout | null
     }
+    inserts: import('./services/pack-pdf').PreparedPackInserts
   } | null> => {
     if (!report) return null
-    const eager = await loadPdfSections()
+    const { insertSources, ...eager } = await loadPdfSections()
     return {
       report,
       options: {
@@ -1541,6 +1555,8 @@ export default function MonthlyReportPage() {
         sections: settings?.sections,
         pdfLayout: settings?.pdf_layout ?? null,
       },
+      // Opened here, once: the pre-flight row below and the attachment read the same files.
+      inserts: await preparePackInserts(settings?.pdf_layout ?? null, insertSources),
     }
   }
 
@@ -1608,6 +1624,7 @@ export default function MonthlyReportPage() {
         triggeredAccounts: [...t.expense_lines, ...t.revenue_lines, ...t.favourable_expense_lines].map(l => l.account_name),
         activityAccounts: t.activity_lines.map(l => l.account_name),
         commentarySettingsProblems: commentaryPlacementProblems(settings?.pdf_layout).map(describeCommentaryPlacementProblem),
+        uploadedInserts: pdfInput.inserts.placements,
       })
       fetch('/api/monthly-report/preflight', {
         method: 'POST',
@@ -1749,7 +1766,9 @@ export default function MonthlyReportPage() {
       // (Phase C introduced it; this handler still carried a pre-Phase-C copy,
       // which is exactly the D-07 drift the shared loader exists to prevent —
       // it would have silently omitted the external-data pages here).
-      const eager = await loadPdfSections()
+      const { insertSources, ...eager } = await loadPdfSections()
+      // The uploaded pages, opened once for the pre-flight row and the pack.
+      const inserts = await preparePackInserts(settings?.pdf_layout ?? null, insertSources)
 
       // WF.1 — pre-flight over exactly the data going into this PDF. The
       // panel informs, never blocks; the run is persisted either way so the
@@ -1784,6 +1803,7 @@ export default function MonthlyReportPage() {
           }
         })(),
         commentarySettingsProblems: commentaryPlacementProblems(settings?.pdf_layout).map(describeCommentaryPlacementProblem),
+        uploadedInserts: inserts.placements,
       })
       fetch('/api/monthly-report/preflight', {
         method: 'POST',
@@ -1797,18 +1817,21 @@ export default function MonthlyReportPage() {
         return
       }
 
-      const pdf = new MonthlyReportPDFService(report, {
+      // The one pack builder — Approve & Send and the preview harness call it too.
+      const pack = await buildPackPdf(report, {
         commentary,
         ...eager,
         businessName: activeBusiness?.name ?? undefined,
         sections: settings?.sections,
         pdfLayout: settings?.pdf_layout ?? null,
-      })
-      const doc = pdf.generate()
+      }, inserts)
       const monthLabel = new Date(report.report_month + '-01')
         .toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })
         .replace(' ', '-')
-      doc.save(`Monthly-Report-${monthLabel}.pdf`)
+      // A pack jsPDF wrote alone is saved exactly as it always was; one with
+      // uploaded pages merged in is the merged file.
+      if (pack.merged) savePdfBytes(pack.bytes, `Monthly-Report-${monthLabel}.pdf`)
+      else pack.doc.save(`Monthly-Report-${monthLabel}.pdf`)
       markPdfExported(report.report_month)
       toast.success('PDF exported')
     } catch (err) {
@@ -2240,11 +2263,20 @@ export default function MonthlyReportPage() {
         )}
 
         {activeTab === 'external-data' && businessId && (
-          <ExternalDataTab
-            businessId={businessId}
-            periodMonth={selectedMonth}
-            canManage={userRole !== 'client'}
-          />
+          <>
+            {/* Renders nothing unless the saved layout places an uploaded page. */}
+            <UploadedPagesPanel
+              businessId={businessId}
+              reportMonth={selectedMonth}
+              layout={settings?.pdf_layout ?? null}
+              canManage={userRole !== 'client'}
+            />
+            <ExternalDataTab
+              businessId={businessId}
+              periodMonth={selectedMonth}
+              canManage={userRole !== 'client'}
+            />
+          </>
         )}
 
         {activeTab === 'mapping' && (

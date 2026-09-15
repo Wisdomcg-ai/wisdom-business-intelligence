@@ -302,3 +302,29 @@ describe('reconciliation check — a failed check can never pass as clean (FLEET
     expect(row.detail).toContain('not visible')
   })
 })
+
+describe('uploaded pages — a row only for a pack that places one', () => {
+  it('no placement: still eighteen rows, none about uploads', () => {
+    const { results } = byKey({ report: baseReport(), uploadedInserts: [] })
+    expect(results).toHaveLength(18)
+    expect(results.find((r) => r.key === 'uploaded_pages')).toBeUndefined()
+  })
+
+  it('a month with the Lumary page not uploaded warns, naming it', () => {
+    const { results, get } = byKey({
+      report: baseReport({ report_month: '2026-08' }),
+      uploadedInserts: [{ widgetId: 'lumary', label: 'Lumary Income Analysis', state: { status: 'missing' } }],
+    })
+    expect(results).toHaveLength(19)
+    expect(get('uploaded_pages')).toMatchObject({ label: 'Uploaded pages', status: 'warn' })
+    expect(get('uploaded_pages').detail).toContain('Lumary Income Analysis has not been uploaded for August 2026')
+  })
+
+  it('every file ready passes', () => {
+    const { get } = byKey({
+      report: baseReport({ report_month: '2026-08' }),
+      uploadedInserts: [{ widgetId: 'lumary', label: 'Lumary Income Analysis', state: { status: 'ready', pageCount: 1, filename: 'l.pdf' } }],
+    })
+    expect(get('uploaded_pages').status).toBe('pass')
+  })
+})

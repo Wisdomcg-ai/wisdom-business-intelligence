@@ -7,39 +7,30 @@
 //   - arrayBufferToBase64 uses browser-native btoa + Uint8Array
 //   - fetch() talks to the Next.js route which handles auth, role gate, Resend
 //
-// Re-uses the existing MonthlyReportPDFService — no new PDF engine (D-07).
-import { MonthlyReportPDFService } from './monthly-report-pdf-service'
-import type {
-  GeneratedReport,
-  VarianceCommentary,
-  FullYearReport,
-  SubscriptionDetailData,
-  WagesDetailData,
-  ReportSections,
-} from '../types'
-import type { CashflowForecastData } from '@/app/finances/forecast/types'
-import type { PDFLayout } from '../types/pdf-layout'
-import type { BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
+// Re-uses the existing MonthlyReportPDFService — no new PDF engine (D-07) —
+// through buildPackPdf, the one builder Export PDF and the preview harness
+// also call, so the attachment is the file Export saves, uploaded pages and all.
+import { buildPackPdf, type PackPdfOptions, type PreparedPackInserts } from './pack-pdf'
+import type { PackInsertSources } from '@/lib/monthly-report/pack-inserts'
+import type { GeneratedReport } from '../types'
 import { printedBalanceSheets } from '@/lib/monthly-report/balance-sheet-freeze'
 
 export interface PdfInput {
   report: GeneratedReport
-  options: {
-    commentary?: VarianceCommentary
-    fullYearReport?: FullYearReport
-    subscriptionDetail?: SubscriptionDetailData
-    wagesDetail?: WagesDetailData
-    cashflowForecast?: CashflowForecastData
-    sections?: ReportSections
-    pdfLayout?: PDFLayout | null
-    balanceSheets?: BalanceSheetPdfSources
-  }
+  /** Everything the pack prints from — the service's own options (see pack-pdf). */
+  options: PackPdfOptions
+  /**
+   * The layout's uploaded pages for the month (services/pack-pdf) — opened
+   * already, or the files to open. Absent: a placed uploaded page prints that
+   * the uploads were not loaded.
+   */
+  inserts?: PreparedPackInserts | PackInsertSources | null
 }
 
 // Browser-safe ArrayBuffer → base64. Chunked to avoid stack overflow on large PDFs
 // (String.fromCharCode.apply has argument-count limits on some engines).
-function arrayBufferToBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf)
+function arrayBufferToBase64(buf: ArrayBuffer | Uint8Array): string {
+  const bytes = ArrayBuffer.isView(buf) ? buf : new Uint8Array(buf)
   let binary = ''
   const CHUNK = 0x8000
   for (let i = 0; i < bytes.length; i += CHUNK) {
@@ -64,11 +55,33 @@ function buildPdfFilename(business_name: string, period_month: string): string {
   return `${slug}-${yyyymm}-report.pdf`
 }
 
-async function generatePdfBase64(pdf_input: PdfInput): Promise<string> {
-  const pdfService = new MonthlyReportPDFService(pdf_input.report, pdf_input.options)
-  const doc = pdfService.generate()
-  const arrayBuffer = doc.output('arraybuffer') as ArrayBuffer
-  return arrayBufferToBase64(arrayBuffer)
+/**
+ * The send posts the pack base64 through a Vercel function, whose request body
+ * is capped at 4.5 MB — over it the platform answers with a page the status bar
+ * cannot read. Only a pack with an uploaded page gets near it, so only that
+ * pack is checked, and the coach is told which fix is theirs to make.
+ */
+const SENDABLE_PDF_BASE64_CHARS = 4_000_000
+
+async function generatePdfBase64(pdf_input: PdfInput): Promise<{ pdf_base64: string; refusal: ReportStatusApiResult | null }> {
+  const pack = await buildPackPdf(pdf_input.report, pdf_input.options, pdf_input.inserts)
+  const pdf_base64 = arrayBufferToBase64(pack.bytes)
+  if (pack.merged && pdf_base64.length > SENDABLE_PDF_BASE64_CHARS) {
+    const mb = (pack.bytes.length / (1024 * 1024)).toFixed(1)
+    return {
+      pdf_base64,
+      refusal: {
+        ok: false,
+        httpStatus: 413,
+        body: {
+          success: false,
+          errorCode: 'pdf_too_large',
+          error: `the pack with its uploaded pages is ${mb} MB, too large to email. Upload a smaller PDF for ${pack.inserts.filter((i) => i.state.status === 'ready').map((i) => i.label).join(', ')} and send again.`,
+        },
+      },
+    }
+  }
+  return { pdf_base64, refusal: null }
 }
 
 export interface ApproveAndSendParams {
@@ -134,7 +147,8 @@ export async function revertToDraft(
 export async function approveAndSend(
   params: ApproveAndSendParams,
 ): Promise<ReportStatusApiResult> {
-  const pdf_base64 = await generatePdfBase64(params.pdf_input)
+  const { pdf_base64, refusal } = await generatePdfBase64(params.pdf_input)
+  if (refusal) return refusal
   const pdf_filename = buildPdfFilename(params.business_name, params.period_month)
   return postAction({
     action: 'approve_and_send',
@@ -161,7 +175,8 @@ export async function approveAndSend(
 export async function resendReport(
   params: ResendReportParams,
 ): Promise<ReportStatusApiResult> {
-  const pdf_base64 = await generatePdfBase64(params.pdf_input)
+  const { pdf_base64, refusal } = await generatePdfBase64(params.pdf_input)
+  if (refusal) return refusal
   const pdf_filename = buildPdfFilename(params.business_name, params.period_month)
   return postAction({
     action: 'resend',
