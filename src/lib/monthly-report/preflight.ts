@@ -35,6 +35,7 @@ import { netProfitFromBuckets } from '@/lib/finance/net-profit'
 import { SUPERANNUATION } from '@/app/finances/forecast/constants'
 import { standingLineClaims } from '@/app/finances/monthly-report/services/commentary-placement'
 import { describeMissingRates, missingRatesForReport } from '@/lib/monthly-report/consolidated-fx'
+import { insertPreflightRow, type InsertPlacement, type PackInsertState } from '@/lib/monthly-report/pack-inserts'
 
 export type PreflightStatus = 'pass' | 'warn' | 'fail' | 'skip'
 
@@ -117,6 +118,19 @@ export interface PreflightInputs {
   /** The budget forecast's actual_end_month ('YYYY-MM') — months at or before
    *  it carry a budget BACK-FILLED from actuals, not a plan (WF.4). */
   budgetActualEndMonth?: string | null
+  /**
+   * The layout's uploaded pages and what each will print this month
+   * (services/pack-pdf preparePackInserts). Empty or absent: the pack places
+   * none, and there is no row.
+   */
+  uploadedInserts?: readonly (InsertPlacement & { state: PackInsertState })[] | null
+  /**
+   * The built pack's size in bytes when uploaded pages were merged into it
+   * (services/pack-pdf buildPackPdf, `merged`). Over what Approve & Send can
+   * email, the uploaded-pages row warns with the cut to make. Absent: not
+   * measured.
+   */
+  uploadedPackBytes?: number | null
 }
 
 const r2 = (v: number) => Math.round(v * 100) / 100
@@ -519,6 +533,15 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
         push('cash_model_ties', 'Cashflow ties to the bank', 'pass', `Every actual month adds to the bank movement to the cent, and ${reportCol?.monthLabel ?? 'the report month'} matches Where Did Our Money Go.`)
       }
     }
+  }
+
+  // 19. Uploaded pages — each placement's file for the month is there and
+  // usable, and the pack they make can still be emailed. Only for a pack that
+  // places one: a row about a page the pack does not have would be new on
+  // every other client's panel.
+  {
+    const row = insertPreflightRow(inputs.uploadedInserts, report.report_month, inputs.uploadedPackBytes)
+    if (row) push(row.key, row.label, row.status, row.detail)
   }
 
   return results

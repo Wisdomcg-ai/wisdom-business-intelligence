@@ -446,3 +446,40 @@ describe('a refused v1 cashflow is a warning, not the v2 failure', () => {
     expect(byKey({ report: baseReport(), cashflowReason: 'x' }).get('cash_model_ties').status).toBe('fail')
   })
 })
+
+describe('uploaded pages — a row only for a pack that places one', () => {
+  it('no placement: still eighteen rows, none about uploads', () => {
+    const { results } = byKey({ report: baseReport(), uploadedInserts: [] })
+    expect(results).toHaveLength(18)
+    expect(results.find((r) => r.key === 'uploaded_pages')).toBeUndefined()
+  })
+
+  it('a month with the Lumary page not uploaded warns, naming it', () => {
+    const { results, get } = byKey({
+      report: baseReport({ report_month: '2026-08' }),
+      uploadedInserts: [{ widgetId: 'lumary', label: 'Lumary Income Analysis', state: { status: 'missing' } }],
+    })
+    expect(results).toHaveLength(19)
+    expect(get('uploaded_pages')).toMatchObject({ label: 'Uploaded pages', status: 'warn' })
+    expect(get('uploaded_pages').detail).toContain('Lumary Income Analysis has not been uploaded for August 2026')
+  })
+
+  it('every file ready passes', () => {
+    const { get } = byKey({
+      report: baseReport({ report_month: '2026-08' }),
+      uploadedInserts: [{ widgetId: 'lumary', label: 'Lumary Income Analysis', state: { status: 'ready', pageCount: 1, filename: 'l.pdf', sizeBytes: 300_000 } }],
+      uploadedPackBytes: 1_000_000,
+    })
+    expect(get('uploaded_pages').status).toBe('pass')
+  })
+
+  it('every file ready, but the built pack is more than an email carries: warn — Approve & Send would refuse it', () => {
+    const { get } = byKey({
+      report: baseReport({ report_month: '2026-08' }),
+      uploadedInserts: [{ widgetId: 'lumary', label: 'Lumary Income Analysis', state: { status: 'ready', pageCount: 1, filename: 'l.pdf', sizeBytes: 1_900_000 } }],
+      uploadedPackBytes: 4_000_000,
+    })
+    expect(get('uploaded_pages').status).toBe('warn')
+    expect(get('uploaded_pages').detail).toContain('too large to email: Lumary Income Analysis (1.8 MB) has to be at least')
+  })
+})

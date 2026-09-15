@@ -43,6 +43,7 @@ import WidgetPreview from './WidgetPreview'
 import RatioSettingsPanel from './RatioSettingsPanel'
 import PlacementOptionsPanel from './PlacementOptionsPanel'
 import { hasPlacementOptions, type PlacementOptionsType } from '@/lib/monthly-report/placement-options'
+import InsertSettingsPanel from './InsertSettingsPanel'
 
 // ── Reducer ───────────────────────────────────────────────────────
 
@@ -359,11 +360,12 @@ interface PDFLayoutEditorModalProps {
 }
 
 /**
- * Widget types whose placements have a settings panel: the ratio page's, and
- * the presentation options of the cover, summary and money-flow pages.
+ * Widget types whose placements have a settings panel: the ratio page's, an
+ * uploaded page's name, and the presentation options of the cover, summary
+ * and money-flow pages.
  */
 function hasSettingsPanel(type: WidgetType): boolean {
-  return type === 'ratio_analysis' || hasPlacementOptions(type)
+  return type === 'ratio_analysis' || type === 'uploaded_insert' || hasPlacementOptions(type)
 }
 
 /**
@@ -869,6 +871,24 @@ export default function PDFLayoutEditorModal({
               config,
               // The title is not this panel's; the one stored rides through.
               titleOverride: settingsTarget.widget.titleOverride,
+            })
+            closeSettings()
+          }}
+        />
+      )}
+
+      {settingsTarget?.widget.type === 'uploaded_insert' && (
+        <InsertSettingsPanel
+          key={settingsTarget.widget.id}
+          widget={settingsTarget.widget}
+          onCancel={closeSettings}
+          onApply={({ config, titleOverride }) => {
+            dispatch({
+              type: 'UPDATE_WIDGET',
+              pageId: settingsTarget.pageId,
+              widgetId: settingsTarget.widget.id,
+              config,
+              titleOverride,
             })
             closeSettings()
           }}

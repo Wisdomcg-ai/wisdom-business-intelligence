@@ -30,6 +30,9 @@
  *   money flow           money-flow-load
  *   cover reconciliation pack-reconciliation (the CFO board's captured badge),
  *                        when a cover placement asks for it
+ *   uploaded pages       pack-inserts-load (the month's newest upload per placement), each
+ *                        file read from Storage with a GET — and merged by services/pack-pdf,
+ *                        the builder Export PDF and Approve & Send call
  *
  * What it cannot mirror. Three pages are built from a LIVE Xero call in the
  * app, and taking a Xero token can refresh and rotate it — a write that races
@@ -55,6 +58,9 @@
  *   commentary.json            the commentary map (POST /api/monthly-report/commentary's
  *                              `commentary`), in place of the snapshot's — how a
  *                              commentary rule is looked at before a Regenerate
+ *   insert-<widget id>.pdf     the file for that Uploaded Page placement, in place of
+ *                              the month's upload — how a page is looked at before
+ *                              anyone uploads it
  *
  * Nor can it mirror what the export inherits from how the page got to the
  * Export button. A headless run has no history, so it takes the clean path:
@@ -173,6 +179,7 @@ function sourceKeyFor(type: string, config: unknown): string {
     case 'memo': return 'memo'
     case 'money_flow': return 'moneyFlow'
     case 'consolidated_pl': return 'consolidated'
+    case 'uploaded_insert': return 'inserts'
     case 'balance_sheet': {
       const compare = (config as { compare?: string } | undefined)?.compare === 'mom' ? 'mom' : 'yoy'
       return `balanceSheet:${compare}`
@@ -541,6 +548,45 @@ async function main() {
     note('moneyFlow', 'live-built', `money-flow-load (stored balance-sheet mirror + P&L), bank ${bankAccountIds ? `= ${bankAccountIds.length} chosen account(s)` : "= section 'Bank'"}`)
   }
 
+  // Uploaded pages. The read-only client refuses Storage outright, so a file is
+  // read with a plain GET on the Storage API — the global fetch here, which
+  // lets nothing else leave.
+  let insertSources: import('@/lib/monthly-report/pack-inserts').PackInsertSources | undefined
+  {
+    const { insertPlacements, REPORT_INSERTS_BUCKET } = await import('@/lib/monthly-report/pack-inserts')
+    const placements = insertPlacements(pdfLayout as never)
+    if (placements.length === 0) {
+      note('inserts', 'skipped', 'the layout places no uploaded page — the app loads nothing')
+    } else {
+      const { loadPackInsertRecords, insertSourcesFromRecords } = await import('@/lib/monthly-report/pack-inserts-load')
+      const records = await loadPackInsertRecords(admin, bizId, reportMonth)
+      const key = getSupabaseSecretKey()
+      insertSources = await insertSourcesFromRecords(pdfLayout as never, records, async (record) => {
+        const objectPath = record.storage_path.split('/').map(encodeURIComponent).join('/')
+        const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/authenticated/${REPORT_INSERTS_BUCKET}/${objectPath}`, {
+          headers: { apikey: key, Authorization: `Bearer ${key}` },
+        })
+        if (!res.ok) throw new Error(`storage GET ${res.status}`)
+        return new Uint8Array(await res.arrayBuffer())
+      })
+      const described: string[] = []
+      let fromPayload = false
+      for (const placement of placements) {
+        const file = payloadDir ? path.join(payloadDir, `insert-${placement.widgetId}.pdf`) : null
+        if (file && fs.existsSync(file)) {
+          insertSources[placement.widgetId] = { status: 'file', bytes: new Uint8Array(fs.readFileSync(file)), filename: path.basename(file) }
+          described.push(`${placement.label}: ${file}`)
+          fromPayload = true
+          continue
+        }
+        const src = insertSources[placement.widgetId]
+        described.push(`${placement.label}: ${src.status === 'file' ? `upload ${src.filename}` : src.status === 'missing' ? 'nothing uploaded — the page prints a notice' : `could not check — ${src.reason}`}`)
+      }
+      note('inserts', fromPayload ? 'payload' : records.status === 'ok' ? 'persisted' : 'skipped',
+        `pack-inserts-load${records.status === 'unavailable' ? ` (${records.reason})` : ''} — ${described.join('; ')}`)
+    }
+  }
+
   // Consolidated — a coach/admin view for consolidation parents.
   {
     const { count } = await admin
@@ -609,7 +655,7 @@ async function main() {
   eager.budgetBackfilled = !!eager.budgetActualEndMonth && String(snap.report_month) <= String(eager.budgetActualEndMonth)
 
   // ── Render, recording which widget each page came from ──
-  const { MonthlyReportPDFService } = await import('@/app/finances/monthly-report/services/monthly-report-pdf-service')
+  const { buildPackPdf } = await import('@/app/finances/monthly-report/services/pack-pdf')
   const { loadPackEntityName } = await import('@/lib/monthly-report/pack-entity-name')
   const commentaryPayload = readPayload('commentary.json') as Record<string, unknown> | undefined
   if (commentaryPayload) {
@@ -631,7 +677,11 @@ async function main() {
   console.log(`  cover reconciliation: ${!packReconciliation ? "the report's own line (no cover asks for the Xero badge)"
     : packReconciliation.status === 'counted' ? `${packReconciliation.count} item(s) from the Xero badge captured ${packReconciliation.captured_at}`
     : `the report's own line — ${packReconciliation.reason}`}`)
-  const svc = new MonthlyReportPDFService(report as never, {
+  type Placed = { type: string; config?: unknown }
+  const starts: { page: number; type: string; key: string; placeholder: boolean }[] = []
+  // The export's own builder: jsPDF, then any uploaded pages merged in. Page
+  // numbers are unchanged by the merge, so the map below reads off jsPDF's pass.
+  const pack = await buildPackPdf(report as never, {
     commentary: commentaryForPack,
     ...eager,
     businessName: biz?.name ?? undefined,
@@ -641,21 +691,32 @@ async function main() {
     packReconciliation,
     sections: settings.sections,
     pdfLayout,
-  } as never)
-
-  type Placed = { type: string; config?: unknown }
+  } as never, insertSources, {
+    beforeGenerate: (service) => {
+      // A merge that fails draws the pack a second time; map that pass.
+      starts.length = 0
+      const svcAny = service as any
+      const originalRender = svcAny.renderWidget.bind(service)
+      svcAny.renderWidget = (widget: Placed, box: unknown) => {
+        const page = svcAny.doc.getNumberOfPages()
+        starts.push({ page, type: widget.type, key: sourceKeyFor(widget.type, widget.config), placeholder: !svcAny.hasDataForWidget(widget.type) })
+        return originalRender(widget, box)
+      }
+    },
+  })
+  const svc = pack.service
   const svcAny = svc as any
-  const starts: { page: number; type: string; key: string; placeholder: boolean }[] = []
-  const originalRender = svcAny.renderWidget.bind(svc)
-  svcAny.renderWidget = (widget: Placed, box: unknown) => {
-    const page = svcAny.doc.getNumberOfPages()
-    starts.push({ page, type: widget.type, key: sourceKeyFor(widget.type, widget.config), placeholder: !svcAny.hasDataForWidget(widget.type) })
-    return originalRender(widget, box)
+  fs.writeFileSync(out, Buffer.from(pack.bytes))
+  const pageCount = pack.doc.getNumberOfPages()
+  for (const placed of pack.inserts) {
+    if (placed.state.status !== 'ready') warnings.push(`uploaded page "${placed.label}": ${placed.state.status === 'missing' ? 'nothing uploaded for this month — the pack prints a notice in its place' : `can't be added — ${placed.state.reason}`}`)
   }
-
-  const doc = svcAny.generate()
-  fs.writeFileSync(out, Buffer.from(doc.output('arraybuffer')))
-  const pageCount = doc.getNumberOfPages()
+  {
+    // The check Approve & Send refuses on, over the same file.
+    const { packTooLargeToEmailReason } = await import('@/lib/monthly-report/pack-inserts')
+    const tooLarge = pack.merged ? packTooLargeToEmailReason(pack.bytes.length, pack.inserts) : null
+    if (tooLarge) warnings.push(`uploaded pages: ${tooLarge} — Approve & Send would refuse it`)
+  }
 
   // What the pack printed in place of a commentary setting it could not read,
   // the accounts a commentary block left off for want of any text, and the
@@ -702,7 +763,8 @@ async function main() {
         // A widget whose data was not loaded but which the service still
         // draws (hasDataForWidget has no case for it) prints an empty page —
         // exactly what the app's export prints when that load fails.
-        if (!s.placeholder && src?.status === 'skipped' && !s.key.startsWith('balanceSheet') && onPage.length > 0) {
+        // (Nor an uploaded page: with no file it prints its own notice.)
+        if (!s.placeholder && src?.status === 'skipped' && !s.key.startsWith('balanceSheet') && s.key !== 'inserts' && onPage.length > 0) {
           tag += ' [DRAWN WITHOUT DATA — blank, as the app prints it when this load fails]'
         }
         return `${s.type}${onPage.length === 0 ? ' (continued)' : ''} — ${tag}`

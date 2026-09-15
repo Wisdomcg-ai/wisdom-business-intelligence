@@ -22,7 +22,7 @@ interface PlacedWidgetProps {
   onDelete: () => void
   onResize: (deltaCol: number, deltaRow: number) => void
   onMoveToPage: (toPageId: string) => void
-  /** Present only for widget types with a settings panel (Ratio Analysis, and the pages with presentation options). */
+  /** Present only for widget types with a settings panel (Ratio Analysis, Uploaded Page, and the pages with presentation options). */
   onOpenSettings?: () => void
 }
 
@@ -72,6 +72,9 @@ export default function PlacedWidget({
 
   const bgClass = getWidgetBgClass(widget.type)
   const ratios = ratioCount(widget.config)
+  // Two uploaded pages look identical on the canvas but for their names.
+  const isInsert = widget.type === 'uploaded_insert'
+  const insertName = widget.titleOverride?.trim()
 
   const style: React.CSSProperties = {
     gridColumn: `${widget.col + 1} / span ${widget.colSpan}`,
@@ -169,15 +172,17 @@ export default function PlacedWidget({
       {/* Widget preview content */}
       <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden">
         <WidgetPreview type={widget.type} />
-        {onOpenSettings && widget.type === 'ratio_analysis' && (
+        {onOpenSettings && (widget.type === 'ratio_analysis' || isInsert) && (
           // The preview is only an icon and a label, so two ratio pages — or a
-          // set-up one and an empty one — looked identical on the canvas. The
-          // line above the button says which this is.
+          // set-up one and an empty one, or two uploaded pages — looked
+          // identical on the canvas. The line above the button says which this is.
           <div className="flex flex-col items-center gap-1 mt-1 px-2 max-w-full">
             <span className="text-[10px] text-gray-500 truncate max-w-full">
-              {ratios > 0
-                ? `${widget.titleOverride?.trim() || 'Ratio Analysis'} · ${ratios} ratio${ratios === 1 ? '' : 's'}`
-                : 'Not set up yet'}
+              {isInsert
+                ? insertName || 'Not named yet'
+                : ratios > 0
+                  ? `${widget.titleOverride?.trim() || 'Ratio Analysis'} · ${ratios} ratio${ratios === 1 ? '' : 's'}`
+                  : 'Not set up yet'}
             </span>
             <button
               type="button"
@@ -188,7 +193,7 @@ export default function PlacedWidget({
               className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md bg-white border border-gray-300 text-gray-700 hover:border-brand-orange hover:text-brand-orange transition-colors"
             >
               <Settings2 className="w-3 h-3" />
-              {ratios > 0 ? 'Edit ratios' : 'Set up ratios'}
+              {isInsert ? (insertName ? 'Rename' : 'Name this page') : ratios > 0 ? 'Edit ratios' : 'Set up ratios'}
             </button>
           </div>
         )}

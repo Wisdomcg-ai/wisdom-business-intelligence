@@ -178,6 +178,19 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     // placed widget with no data for the month renders a placeholder page,
     // same as every other data-gated widget.
   },
+  uploaded_insert: {
+    type: 'uploaded_insert',
+    label: 'Uploaded Page (PDF)',
+    category: 'tables',
+    fullRow: true,
+    // One placement per insert: Dragon has two, IICT two.
+    repeatable: true,
+    icon: 'FileUp',
+    // A whole sheet — the uploaded file's pages replace it — so it fills the grid.
+    defaultColSpan: 3, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 3, maxRowSpan: 3,
+    // No dataDependency: the file is per month, uploaded on the External Data tab.
+  },
 
   // ─── P&L Charts ─────────────────────────────────────────────────
   // WD.1 — the Calxa Actual/Budget/Last-Year analysis charts, one per section.

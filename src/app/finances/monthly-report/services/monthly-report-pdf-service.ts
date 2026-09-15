@@ -137,6 +137,13 @@ import {
   subscriptionDetailOnTotalBudget,
   varianceFill,
 } from '@/lib/monthly-report/subscription-page'
+import {
+  insertCardMessage,
+  insertLabel,
+  INSERTS_NOT_LOADED_REASON,
+  type PackInsertState,
+} from '@/lib/monthly-report/pack-inserts'
+import type { InsertPlaceholder } from '@/lib/monthly-report/pack-insert-pdf'
 
 interface PDFOptions {
   commentary?: VarianceCommentary
@@ -223,6 +230,13 @@ interface PDFOptions {
   packReconciliation?: PackReconciliation | null
   sections?: ReportSections
   pdfLayout?: import('../types/pdf-layout').PDFLayout | null
+  /**
+   * Each uploaded-page placement's upload for the month, by LayoutWidget.id
+   * (see lib/monthly-report/pack-inserts). A ready upload gets placeholder
+   * sheets that services/pack-pdf fills; anything else prints its card.
+   * Absent altogether: every placement says the uploads were not loaded.
+   */
+  inserts?: Record<string, PackInsertState>
 }
 
 /**
@@ -470,6 +484,19 @@ export class MonthlyReportPDFService {
    * them: the card is content the coach placed, the mark is chrome.
    */
   private cornerClaimedPages = new Set<number>()
+  /**
+   * The sheets drawn for each ready uploaded page, which services/pack-pdf
+   * swaps for the upload's own pages once jsPDF has finished. Filled by
+   * generate(); page numbers are final, since nothing is inserted before a
+   * page after it is drawn.
+   */
+  readonly insertPlaceholders: InsertPlaceholder[] = []
+  /**
+   * Where the widget being rendered sits among its layout page's widgets —
+   * an uploaded page's sheets are replaced whole, so it needs to know whether
+   * to start and finish on a sheet of its own. Null outside generateFromLayout.
+   */
+  private layoutSlot: { index: number; count: number } | null = null
 
   constructor(report: GeneratedReport, options?: PDFOptions) {
     // Start portrait — first page is executive summary
@@ -514,6 +541,10 @@ export class MonthlyReportPDFService {
           this.openedPages = new Set([1])
           this.coverPage = null
           this.cashflowReasonPrinted = false
+          // The legacy order places no uploaded page; a placeholder recorded
+          // before the throw points into the discarded doc.
+          this.insertPlaceholders.length = 0
+          this.layoutSlot = null
           this.doc = new jsPDF('portrait', 'mm', 'a4')
           this.pageWidth = A4_SHORT
           this.pageHeight = A4_LONG
@@ -4122,7 +4153,7 @@ export class MonthlyReportPDFService {
       this.yPosition = this.contentTop()
 
       // Render each widget on this page
-      for (const widget of page.widgets) {
+      for (const [index, widget] of page.widgets.entries()) {
         // Re-assert page dimensions before each widget (in case a previous render changed them)
         if (page.orientation === 'landscape') {
           this.pageWidth = A4_LONG
@@ -4133,9 +4164,11 @@ export class MonthlyReportPDFService {
         }
 
         const box = this.clearOfCornerMark(widget, calculateBoundingBox(widget, page.orientation))
+        this.layoutSlot = { index, count: page.widgets.length }
         this.renderWidget(widget, box)
       }
     }
+    this.layoutSlot = null
 
     this.addAllFooters()
     return this.doc
@@ -4268,6 +4301,11 @@ export class MonthlyReportPDFService {
         // comparison period, or whether the sheet failed to balance. The
         // renderer names the reason on the page instead. Returning false here
         // would silently swallow all three.
+        return true
+      case 'uploaded_insert':
+        // Always, and explicit: the page is the upload, or a card saying the
+        // month's file is not there (or cannot be used). A pack that quietly
+        // drops the Lumary page is a page short that nobody notices.
         return true
       default:
         return true
@@ -5237,6 +5275,56 @@ export class MonthlyReportPDFService {
     this.renderWithSkipPage(() => {
       for (const series of list) this.addExternalMetricPage(series)
     }, box)
+  }
+
+  /**
+   * An uploaded page — a PDF the coach uploaded for the month against this
+   * placement (lib/monthly-report/pack-inserts).
+   *
+   * jsPDF cannot draw another PDF's pages, so a ready upload gets one sheet per
+   * page of the file, recorded in insertPlaceholders, and services/pack-pdf
+   * swaps them for the file's pages after this pass. The footers on every other
+   * page are right because the count already includes them. Each sheet still
+   * says what belongs on it, so a copy that somehow skipped the merge reads as
+   * unfinished rather than as a blank page in a client's pack.
+   *
+   * With no usable file the placement prints one sheet: its title and a card
+   * saying the month's file was not uploaded, or could not be added. Why it
+   * could not is the coach's (pre-flight), not the client's page's.
+   *
+   * The upload replaces whole sheets, so it never shares one: a widget placed
+   * above it on the same layout page keeps its sheet, and one below it is set
+   * on a fresh sheet.
+   */
+  renderUploadedInsert(_box: WidgetBoundingBox, widget?: import('../types/pdf-layout').LayoutWidget): void {
+    if (!widget) return
+    const label = insertLabel(widget)
+    const state: PackInsertState = this.options.inserts?.[widget.id] ?? { status: 'unavailable', reason: INSERTS_NOT_LOADED_REASON }
+    const orientation = this.pageWidth > this.pageHeight ? 'landscape' : 'portrait'
+    const slot = this.layoutSlot
+    const title = `${label} — ${packMonthYear(this.report.report_month)}`
+
+    if (slot && slot.index > 0) this.addPage(orientation)
+    this.margin = 15
+    this.yPosition = this.contentTop()
+
+    if (state.status === 'ready') {
+      const firstPage = this.doc.getNumberOfPages()
+      for (let i = 0; i < state.pageCount; i++) {
+        if (i > 0) this.addPage(orientation)
+        this.drawPageTitle(title)
+        this.drawReasonCard(
+          `Page ${i + 1} of ${state.pageCount} of the uploaded file ${state.filename} goes here. ` +
+            'If you can read this, the file was not merged into this copy — export the pack again.',
+        )
+      }
+      this.insertPlaceholders.push({ widgetId: widget.id, firstPage, pageCount: state.pageCount })
+    } else {
+      this.drawPageTitle(title)
+      this.drawReasonCard(insertCardMessage(label, this.report.report_month, state))
+    }
+
+    if (slot && slot.index < slot.count - 1) this.addPage(orientation)
   }
 
   renderCashflowForecastTable(box: WidgetBoundingBox): void {
