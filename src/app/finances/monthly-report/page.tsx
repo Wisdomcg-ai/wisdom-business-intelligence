@@ -46,6 +46,7 @@ import { useSubscriptionDetail } from './hooks/useSubscriptionDetail'
 import { rollUpContractors, contractorLoadReason } from '@/lib/monthly-report/contractor-rollup'
 import { contractorWindowForLayout } from '@/lib/monthly-report/contractor-page'
 import { payrollWindowForLayout } from '@/lib/monthly-report/payroll-grid-config'
+import { packPdfFilename } from '@/lib/monthly-report/pack-filename'
 import { parseRatioAnalysisConfig, requiredWindow } from '@/lib/monthly-report/ratio-table'
 import { buildPackCashflowForecast, packCashflowBasisFor, packCashflowPlLines } from '@/lib/monthly-report/pack-cashflow'
 import type { OpeningBank } from '@/lib/monthly-report/opening-bank'
@@ -1805,10 +1806,7 @@ export default function MonthlyReportPage() {
         pdfLayout: settings?.pdf_layout ?? null,
       })
       const doc = pdf.generate()
-      const monthLabel = new Date(report.report_month + '-01')
-        .toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })
-        .replace(' ', '-')
-      doc.save(`Monthly-Report-${monthLabel}.pdf`)
+      doc.save(packPdfFilename(activeBusiness?.name, report.report_month))
       markPdfExported(report.report_month)
       toast.success('PDF exported')
     } catch (err) {

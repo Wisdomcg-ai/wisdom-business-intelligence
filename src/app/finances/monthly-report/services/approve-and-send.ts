@@ -21,6 +21,7 @@ import type { CashflowForecastData } from '@/app/finances/forecast/types'
 import type { PDFLayout } from '../types/pdf-layout'
 import type { BalanceSheetPdfSources } from '../utils/balance-sheet-pdf'
 import { printedBalanceSheets } from '@/lib/monthly-report/balance-sheet-freeze'
+import { packPdfFilename } from '@/lib/monthly-report/pack-filename'
 
 export interface PdfInput {
   report: GeneratedReport
@@ -49,19 +50,6 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
     )
   }
   return btoa(binary)
-}
-
-function sluggify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-}
-
-function buildPdfFilename(business_name: string, period_month: string): string {
-  const yyyymm = period_month.slice(0, 7)
-  const slug = sluggify(business_name || 'report') || 'report'
-  return `${slug}-${yyyymm}-report.pdf`
 }
 
 async function generatePdfBase64(pdf_input: PdfInput): Promise<string> {
@@ -135,7 +123,7 @@ export async function approveAndSend(
   params: ApproveAndSendParams,
 ): Promise<ReportStatusApiResult> {
   const pdf_base64 = await generatePdfBase64(params.pdf_input)
-  const pdf_filename = buildPdfFilename(params.business_name, params.period_month)
+  const pdf_filename = packPdfFilename(params.business_name, params.period_month)
   return postAction({
     action: 'approve_and_send',
     business_id: params.business_id,
@@ -162,7 +150,7 @@ export async function resendReport(
   params: ResendReportParams,
 ): Promise<ReportStatusApiResult> {
   const pdf_base64 = await generatePdfBase64(params.pdf_input)
-  const pdf_filename = buildPdfFilename(params.business_name, params.period_month)
+  const pdf_filename = packPdfFilename(params.business_name, params.period_month)
   return postAction({
     action: 'resend',
     business_id: params.business_id,
