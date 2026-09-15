@@ -23,12 +23,13 @@
  * `lastSync` is the charts' "Last synced" line: the Xero data clock from
  * `businessDataClock` (src/lib/xero/connection-status.ts) over every org behind
  * the figures — the business's counted orgs and every tenant whose mirror rows
- * Step 3 drew, including an org disconnected since — each on its own tenant's
- * clock, and the STALEST one. It used to be `financial_metrics.updated_at`, a
- * column that table has never had: the query errored, the error was ignored, and
- * the line never rendered. financial_metrics was never the charts' source
- * either — they read the xero_pl_lines mirror. A lookup that fails is `unknown`,
- * which the charts show as "couldn't check", never as a date.
+ * Step 3 drew, including an org disconnected since — each on its own clock,
+ * never later than its drawn rows were last written, and the STALEST one. It
+ * used to be `financial_metrics.updated_at`, a column that table has never had:
+ * the query errored, the error was ignored, and the line never rendered.
+ * financial_metrics was never the charts' source either — they read the
+ * xero_pl_lines mirror. A lookup that fails is `unknown`, which the charts show
+ * as "couldn't check", never as a date.
  *
  * A failed forecast or Xero read is a 500, which the charts show as "couldn't
  * load" — never a 200 that has quietly dropped the plan or passed the forecast's
@@ -51,6 +52,7 @@ import {
   type XeroBusinessDataClock,
   type XeroConnectionStatusRow,
   type XeroSyncClock,
+  type XeroTenantShown,
 } from '@/lib/xero/connection-status'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -162,7 +164,7 @@ async function readClockInputs(
 async function lastSyncFor(
   inputs: ClockInputs,
   ids: ResolvedBusinessProfileIds,
-  tenantsShown: (string | null)[],
+  tenantsShown: XeroTenantShown[],
 ): Promise<XeroBusinessDataClock> {
   if (!inputs.ok) return { status: 'unknown' }
   if (inputs.rows.length === 0) {
@@ -334,7 +336,7 @@ async function getHandler(request: Request) {
     // historical FYs that weren't the forecast's primary year).
     const { data: xeroLines, error: xeroError } = await supabase
       .from('xero_pl_lines_wide_compat')
-      .select('tenant_id, account_name, account_type, monthly_values')
+      .select('tenant_id, account_name, account_type, monthly_values, updated_at')
       .in('business_id', ids.all)
 
     if (xeroError) {
@@ -345,9 +347,10 @@ async function getHandler(request: Request) {
       return NextResponse.json({ error: 'Failed to fetch Xero actuals' }, { status: 500 })
     }
 
-    // Every org whose figures the charts draw, for "Last synced". Disconnecting an
-    // org keeps its mirror rows, so this can include orgs with no connection row.
-    const tenantsShown = new Set<string | null>()
+    // Every drawn line's org and when that line was last written, for "Last
+    // synced". Disconnecting an org keeps its mirror rows, so this can include
+    // orgs with no connection row.
+    const tenantsShown: XeroTenantShown[] = []
 
     if (xeroLines && xeroLines.length > 0) {
       // Reset actual buckets — Xero is source of truth for actuals when present.
@@ -364,6 +367,7 @@ async function getHandler(request: Request) {
         const isRev = XERO_REVENUE_TYPES.has(accountType)
         const isCogs = !isRev && XERO_COGS_TYPES.has(accountType)
 
+        let drawn = false
         for (const monthKey of monthKeys) {
           const value = monthlyValues[monthKey]
           if (!value) continue
@@ -372,12 +376,13 @@ async function getHandler(request: Request) {
           if (isRev) agg.revenueActual += value
           else if (isCogs) agg.cogsActual += value
           else agg.opexActual += value
-          tenantsShown.add(line.tenant_id ?? null)
+          drawn = true
         }
+        if (drawn) tenantsShown.push({ tenantId: line.tenant_id ?? null, lastWrittenAt: line.updated_at ?? null })
       }
     }
 
-    const lastSync = await lastSyncFor(await clockInputsRead, ids, [...tenantsShown])
+    const lastSync = await lastSyncFor(await clockInputsRead, ids, tenantsShown)
 
     // ── Step 4: Project aggregates into chart row format ──
     const months = monthKeys.map((monthKey, idx) => {

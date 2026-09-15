@@ -144,8 +144,11 @@ function connection(over: Row & { id: string; tenant_id: string; tenant_name: st
   }
 }
 
-/** Revenue rows in the P&L mirror, one per tenant, in the requested year unless a month is given. */
-function mirror(...lines: Array<{ tenant_id: string | null; revenue: number; month?: string }>): Row[] {
+/**
+ * Revenue rows in the P&L mirror, one per tenant, in the requested year unless a
+ * month is given, written just now unless `written` says when.
+ */
+function mirror(...lines: Array<{ tenant_id: string | null; revenue: number; month?: string; written?: string }>): Row[] {
   return lines.map((line, i) => ({
     business_id: PROFILE_ID,
     tenant_id: line.tenant_id,
@@ -153,6 +156,7 @@ function mirror(...lines: Array<{ tenant_id: string | null; revenue: number; mon
     account_name: `Sales ${i}`,
     account_type: 'revenue',
     monthly_values: { [line.month ?? FIRST_MONTH]: line.revenue },
+    updated_at: line.written ?? hoursAgo(0),
   }))
 }
 
@@ -245,37 +249,56 @@ describe('dashboard-actuals lastSync — the stalest clock behind the figures', 
     expect(json.data.months[0]).toMatchObject({ revenueActual: 900, revenueForecast: 1000 })
   })
 
-  it("figures still drawn from an org whose connection is gone are dated by that org's last sync — the IICT case", async () => {
+  it('figures still drawn from an org whose connection is gone are dated by when they were written — the IICT case', async () => {
     // Two orgs reconnected and synced an hour ago. IICT Group Pty Ltd has no
     // connection row any more, but its rows are still in the mirror and in the
-    // charts, last synced 130h ago. The line must not print the fresh date.
+    // charts, written 1,500h (62 days) ago — past the sync lookup's window, so
+    // sync_jobs no longer knows it. The line must not print the fresh date, nor
+    // give up on a date the rows themselves carry.
     db.tables.xero_connections = [
       connection({ id: 'conn-aust', tenant_id: 'tenant-aust', tenant_name: 'IICT (Aust) Pty Ltd', last_synced_at: hoursAgo(1) }),
       connection({ id: 'conn-limited', tenant_id: 'tenant-limited', tenant_name: 'IICT Group Limited', last_synced_at: hoursAgo(1) }),
     ]
     db.tables.xero_pl_lines_wide_compat = mirror(
-      { tenant_id: 'tenant-aust', revenue: 100 },
-      { tenant_id: 'tenant-limited', revenue: 200 },
-      { tenant_id: 'tenant-pty', revenue: 400 },
+      { tenant_id: 'tenant-aust', revenue: 100, written: hoursAgo(1) },
+      { tenant_id: 'tenant-limited', revenue: 200, written: hoursAgo(1) },
+      { tenant_id: 'tenant-pty', revenue: 400, written: hoursAgo(1500) },
     )
-    vi.mocked(getLastSyncByTenant).mockResolvedValue(
-      syncClock({ 'tenant-aust': hoursAgo(1), 'tenant-limited': hoursAgo(1), 'tenant-pty': hoursAgo(130) }),
-    )
+    vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({ 'tenant-aust': hoursAgo(1), 'tenant-limited': hoursAgo(1) }))
 
     const { json } = await getCharts()
 
     expect(json.data.months[0]).toMatchObject({ revenueActual: 700 })
     expect(json.data.lastSync).toEqual({
       status: 'synced',
-      lastSyncAt: hoursAgo(130),
+      lastSyncAt: hoursAgo(1500),
       orgs: [
-        { tenantName: null, lastSyncAt: hoursAgo(130) },
+        { tenantName: null, lastSyncAt: hoursAgo(1500) },
         { tenantName: 'IICT (Aust) Pty Ltd', lastSyncAt: hoursAgo(1) },
         { tenantName: 'IICT Group Limited', lastSyncAt: hoursAgo(1) },
       ],
     })
-    // The mirror read asked for the tenant of every row.
+    // The mirror read asked for each row's tenant and write time.
     expect(readsOf('xero_pl_lines_wide_compat')[0].columns).toContain('tenant_id')
+    expect(readsOf('xero_pl_lines_wide_compat')[0].columns).toContain('updated_at')
+  })
+
+  it('a connection stamped fresh without new figures reads the figures’ last write, not the stamp', async () => {
+    // A writer stamped last_synced_at six minutes ago without writing a row; the
+    // figures on the page were written 30h ago.
+    db.tables.xero_connections = [
+      connection({ id: 'conn-a', tenant_id: 'tenant-a', tenant_name: 'A Pty Ltd', last_synced_at: hoursAgo(0.1) }),
+    ]
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-a', revenue: 100, written: hoursAgo(30) })
+    vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({ 'tenant-a': hoursAgo(30) }))
+
+    const { json } = await getCharts()
+
+    expect(json.data.lastSync).toEqual({
+      status: 'synced',
+      lastSyncAt: hoursAgo(30),
+      orgs: [{ tenantName: 'A Pty Ltd', lastSyncAt: hoursAgo(30) }],
+    })
   })
 
   it('an org whose rows are all outside the requested year is not in these charts, so it does not date them', async () => {
@@ -300,7 +323,7 @@ describe('dashboard-actuals lastSync — the stalest clock behind the figures', 
 
   it('a business with no connection left, whose charts still draw Xero figures, gets a date — not none', async () => {
     db.tables.xero_connections = []
-    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-gone', revenue: 500 })
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-gone', revenue: 500, written: hoursAgo(20) })
     vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({ 'tenant-gone': hoursAgo(20) }))
 
     const { json } = await getCharts()
