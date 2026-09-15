@@ -49,6 +49,7 @@ import { withQuerySchema } from '@/lib/api/with-schema';
 import {
   classifyBusinessConnections,
   DATA_STALE_MS,
+  OWNER_DATA_STALE_MS,
   type XeroConnectionStatus,
   type XeroConnectionStatusRow,
 } from '@/lib/xero/connection-status';
@@ -75,9 +76,6 @@ const GetQuerySchema = z
     audience: z.enum(['coach', 'owner']).optional(),
   })
   .passthrough();
-
-/** Owner-facing surfaces tolerate one extra missed day before warning. */
-const OWNER_DATA_STALE_MS = 72 * 60 * 60 * 1000;
 
 // Service-role client to bypass RLS — endpoint enforces RBAC in code.
 const supabaseAdmin = createClient(

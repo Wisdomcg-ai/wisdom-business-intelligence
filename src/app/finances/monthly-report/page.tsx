@@ -414,6 +414,7 @@ export default function MonthlyReportPage() {
 
   const {
     xeroConnection,
+    xeroStatus,
     isExpired: xeroExpired,
     checkFailed: xeroCheckFailed,
     isLoading: xeroLoading,
@@ -1988,7 +1989,7 @@ export default function MonthlyReportPage() {
 
         {/* Xero Connection Banner */}
         <XeroConnectionBanner
-          xeroConnection={xeroConnection}
+          status={xeroStatus}
           isExpired={xeroExpired}
           checkFailed={xeroCheckFailed}
           isLoading={xeroLoading}
