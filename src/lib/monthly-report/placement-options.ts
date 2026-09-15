@@ -80,7 +80,7 @@ export const PLACEMENT_OPTIONS: Record<PlacementOptionsType, PlacementOptionSet>
             value: 'xero_badge',
             label: 'Counted from the Xero badge (CFO board)',
             short: 'Reconciliation from the Xero badge',
-            help: '“Please note that no items remain unreconciled as of this report”, or how many do: the lines dated in or before the report month in the latest recon round. Without a fresh capture of every Xero organisation, taken after the month ended, the report’s own line prints instead.',
+            help: '“Please note that no items remain unreconciled as of this report”, or how many do: the lines dated in or before the report month in the latest recon round — as of when the report was finalised or approved, so every copy says the same. Without a fresh capture of every Xero organisation, taken after the month ended, with every line dated by the round’s date pass, the report’s own line prints instead.',
           },
         ],
       },

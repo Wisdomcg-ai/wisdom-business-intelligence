@@ -624,10 +624,10 @@ async function main() {
   const preparedOn = await loadPackPreparedOn(admin, bizId, reportMonth, { status: snap.status, generated_at: snap.generated_at })
   console.log(`  prepared on:          ${preparedOn ? `${preparedOn.at} (${preparedOn.basis})` : 'export date (not finalised or approved)'}`)
   console.log(`  pack logo:            ${(settings.pack_logo as { kind?: string } | null | undefined)?.kind ?? 'wisdombi (no setting)'}`)
-  // The cover's badge count, read only when a cover placement asks for it — as the export does.
+  // The cover's badge count, read only when a cover placement asks for it, as of the cover's date — as the export does.
   const { layoutWantsBadgeReconciliation, loadPackReconciliation } = await import('@/lib/monthly-report/pack-reconciliation')
   const packReconciliation = layoutWantsBadgeReconciliation((pdfLayout?.pages ?? []).flatMap((p) => p.widgets ?? []))
-    ? await loadPackReconciliation(admin, bizId, String(snap.report_month))
+    ? await loadPackReconciliation(admin, bizId, String(snap.report_month), preparedOn)
     : undefined
   console.log(`  cover reconciliation: ${!packReconciliation ? "the report's own line (no cover asks for the Xero badge)"
     : packReconciliation.status === 'counted' ? `${packReconciliation.count} item(s) from the Xero badge captured ${packReconciliation.captured_at}`

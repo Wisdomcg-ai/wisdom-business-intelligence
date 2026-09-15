@@ -17,11 +17,24 @@
  *     so a clean-looking total is a floor, not a count;
  *   - a fresh capture (the board's STALE_CAPTURE_DAYS);
  *   - taken after the report month ended in Sydney — a capture on the 31st
- *     cannot vouch for lines dated that evening.
- * The count is the board's: lines dated in or before the report month, plus
- * lines on an account with no month split (they could be the month's), less
- * recon_ignored_accounts. Anything short of that is `uncounted`, with the
+ *     cannot vouch for lines dated that evening;
+ *   - every line dated. The board counts an account with no month split (and a
+ *     badge total with no breakdown) as "could be any period, including this
+ *     one" — the xero-dashboard-capture skill never posts months, and the recon
+ *     round posts each badge before its date pass. That is a worst case the
+ *     board flags with a "?", not a number to print as fact.
+ * The count is the board's blocking lines: dated in or before the report month,
+ * less recon_ignored_accounts. Anything short of that is `uncounted`, with the
  * reason, and the cover prints what it printed before (coverReconciliationLines).
+ *
+ * As of when. The cover pairs the sentence with its "Prepared on" date
+ * (pack-prepared-on), and a settled pack keeps that date on every copy. So the
+ * count is judged at the same moment: for a finalised or approved report, the
+ * latest capture taken at or before it was settled, aged against that moment;
+ * for a draft, the latest capture as of the export. Captures are append-only
+ * and stamped by the server, so a settled pack prints the same sentence on the
+ * day and a year later — a round captured after it was settled is the next
+ * version's to count (re-finalising moves the settled moment).
  *
  * Reads only. The captures and monthly_report_settings key on businesses.id;
  * xero_connections.business_id holds either id-space, so the id goes through
@@ -34,6 +47,7 @@ import {
   type CaptureRow,
   type ReportReadiness,
 } from '@/lib/cfo/dashboard-capture'
+import type { PackPreparedOn } from './pack-prepared-on'
 import { coverReconciliationLine } from './placement-options'
 
 type Client = { from: (table: string) => any }
@@ -66,25 +80,54 @@ function sydneyMonth(iso: string): string | null {
 const monthName = (month: string) =>
   new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-AU', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
-/** The board's verdict for the month, read as a count the cover may print — or why not. */
-export function packReconciliationFromReadiness(readiness: ReportReadiness, reportMonth: string): PackReconciliation {
+/**
+ * The board's verdict for the month, read as a count the cover may print — or
+ * why not. `settled` is the report's settled moment when the readiness was
+ * judged at it (see the header), so the reason says so.
+ */
+export function packReconciliationFromReadiness(
+  readiness: ReportReadiness,
+  reportMonth: string,
+  settled: PackPreparedOn | null = null,
+): PackReconciliation {
   if (readiness.state === 'never' || !readiness.captured_at) {
-    return { status: 'uncounted', reason: "the recon round has not captured this business's Xero badges" }
+    return {
+      status: 'uncounted',
+      reason: settled
+        ? `the recon round had not captured this business's Xero badges when this report was ${settled.basis}`
+        : "the recon round has not captured this business's Xero badges",
+    }
   }
   if (readiness.state === 'stale') {
-    return { status: 'uncounted', reason: `the latest Xero badge capture is ${readiness.capture_age_days ?? 'too many'} days old` }
+    const days = readiness.capture_age_days ?? 'too many'
+    return {
+      status: 'uncounted',
+      reason: settled
+        ? `the latest Xero badge capture was ${days} days old when this report was ${settled.basis}`
+        : `the latest Xero badge capture is ${days} days old`,
+    }
   }
   // 'blocked' outranks 'partial' on the board, so ask about coverage directly.
   if (readiness.state === 'partial' || readiness.uncaptured_tenants > 0) {
-    return { status: 'uncounted', reason: 'not every Xero organisation of this business has a badge capture' }
+    return {
+      status: 'uncounted',
+      reason: `not every Xero organisation of this business ${settled ? `had a badge capture when this report was ${settled.basis}` : 'has a badge capture'}`,
+    }
   }
   const capturedIn = sydneyMonth(readiness.captured_at)
   if (!capturedIn || capturedIn <= reportMonth) {
     return { status: 'uncounted', reason: `the latest Xero badge capture was taken before ${monthName(reportMonth)} ended` }
   }
+  if (readiness.possibly_blocking > 0) {
+    const n = readiness.possibly_blocking
+    return {
+      status: 'uncounted',
+      reason: `${n} ${n === 1 ? 'item' : 'items'} in the latest Xero badge capture ${n === 1 ? 'has' : 'have'} no month split, so how many belong to ${monthName(reportMonth)} or earlier is unknown`,
+    }
+  }
   return {
     status: 'counted',
-    count: readiness.blocking + readiness.possibly_blocking,
+    count: readiness.blocking,
     captured_at: readiness.captured_at,
   }
 }
@@ -117,12 +160,22 @@ const readFailure = (what: string): PackReconciliation => ({
   readFailed: true,
 })
 
+/**
+ * `preparedOn` is the cover's own date source (loadPackPreparedOn), which the
+ * caller has already read: a settled report counts as of that moment, a draft
+ * (null) as of `now`. It is required so no export can leave it out.
+ */
 export async function loadPackReconciliation(
   supabase: Client,
   businessId: string,
   reportMonth: string,
+  preparedOn: PackPreparedOn | null,
   now: Date = new Date(),
 ): Promise<PackReconciliation> {
+  const settledAt = preparedOn ? new Date(preparedOn.at) : null
+  if (settledAt && !Number.isFinite(settledAt.getTime())) {
+    return { status: 'uncounted', reason: 'the moment this report was settled could not be read' }
+  }
   try {
     const ids = await resolveBusinessProfileIds(supabase, businessId)
 
@@ -144,18 +197,19 @@ export async function loadPackReconciliation(
       return { status: 'uncounted', reason: 'this business has no active Xero organisation to match a badge capture to' }
     }
 
-    // The latest capture of each organisation, one row each. Captures are
+    // The latest capture of each organisation, one row each — for a settled
+    // report, the latest taken by the moment it was settled. Captures are
     // append-only, so a capped read across the business would return whichever
     // organisation was captured most often, not the latest of every one.
     const rows: CaptureRow[] = []
     for (const tenant of tenants) {
-      const { data, error } = await supabase
+      let query = supabase
         .from('reconciliation_dashboard_captures')
         .select('business_id, tenant_id, captured_at, total_count, accounts, method, notes')
         .eq('business_id', ids.businessId)
         .eq('tenant_id', tenant)
-        .order('captured_at', { ascending: false })
-        .limit(1)
+      if (settledAt) query = query.lte('captured_at', settledAt.toISOString())
+      const { data, error } = await query.order('captured_at', { ascending: false }).limit(1)
       if (error) return readFailure('Xero badge captures')
       rows.push(...((data ?? []) as CaptureRow[]))
     }
@@ -163,8 +217,9 @@ export async function loadPackReconciliation(
     const ignored = Array.isArray(settings?.recon_ignored_accounts)
       ? (settings.recon_ignored_accounts as unknown[]).filter((n): n is string => typeof n === 'string')
       : []
-    const readiness = deriveReadiness(summariseDashboardCaptures(rows, tenants), ignored, reportMonth, now.toISOString())
-    return packReconciliationFromReadiness(readiness, reportMonth)
+    const asOf = settledAt ?? now
+    const readiness = deriveReadiness(summariseDashboardCaptures(rows, tenants), ignored, reportMonth, asOf.toISOString())
+    return packReconciliationFromReadiness(readiness, reportMonth, preparedOn)
   } catch {
     return readFailure('Xero badge captures')
   }

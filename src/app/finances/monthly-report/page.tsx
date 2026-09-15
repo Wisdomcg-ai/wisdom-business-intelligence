@@ -1476,13 +1476,14 @@ export default function MonthlyReportPage() {
 
     // The cover's reconciliation sentence, counted from the CFO board's
     // captured Xero badge — read only when a cover placement asks for it
-    // (reconciliation_line 'xero_badge'), for the REPORT's month. Anything
-    // short of a count prints the report's own line; a read that failed is
-    // also reported, never swallowed.
+    // (reconciliation_line 'xero_badge'), for the REPORT's month, as of the
+    // same moment as the "Prepared on" date beside it: a settled pack prints
+    // the same sentence on every copy. Anything short of a count prints the
+    // report's own line; a read that failed is also reported, never swallowed.
     let packReconciliation: PackReconciliation | undefined
     const layoutWidgets = (settings?.pdf_layout?.pages ?? []).flatMap((p) => p.widgets ?? [])
     if (businessId && report?.report_month && layoutWantsBadgeReconciliation(layoutWidgets)) {
-      packReconciliation = await loadPackReconciliation(createClient(), businessId, report.report_month)
+      packReconciliation = await loadPackReconciliation(createClient(), businessId, report.report_month, preparedOn)
       if (packReconciliation.status === 'uncounted' && packReconciliation.readFailed) {
         Sentry.captureMessage(`[PDF] pack reconciliation load failed (${packReconciliation.reason}) — the cover prints the report's own line`, {
           level: 'warning',
