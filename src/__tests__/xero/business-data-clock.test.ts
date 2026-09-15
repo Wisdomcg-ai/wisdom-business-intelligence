@@ -290,6 +290,16 @@ describe('businessDataClock — figures from an org that no longer counts', () =
     })
   })
 
+  it("a retired org's own stamp older than its figures' write is its clock — the last sync it recorded", () => {
+    const rows = [
+      row({ id: 'live', tenant_name: 'Live Org', last_synced_at: hoursAgo(1) }),
+      row({ id: 'wound-up', tenant_name: 'Wound Up Pty Ltd', is_active: false, include_in_consolidation: false, last_synced_at: hoursAgo(24 * 60) }),
+    ]
+    expect(
+      businessDataClock(rows, jobs({}), [drew('tenant-live', hoursAgo(1)), drew('tenant-wound-up', hoursAgo(24 * 40))]),
+    ).toMatchObject({ status: 'synced', lastSyncAt: hoursAgo(24 * 60) })
+  })
+
   it('an org renamed across its leftover rows reads its newest row’s name, whatever the row order', () => {
     const retired = { is_active: false, include_in_consolidation: false, tenant_id: 'tenant-x' }
     const live = row({ id: 'live', tenant_name: 'Live Org', last_synced_at: hoursAgo(1) })
