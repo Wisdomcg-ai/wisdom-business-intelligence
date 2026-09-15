@@ -8,6 +8,9 @@
  * five days. The forecast pages also rendered a failed status check as "Not
  * connected to Xero", and the cashflow tab told a business it could not check to
  * go and connect Xero.
+ *
+ * The banner and panel take the business status as their ONLY source of
+ * "connected" — there is no connection-row fallback left to turn green.
  */
 
 import { describe, it, expect, vi } from 'vitest'
@@ -47,8 +50,8 @@ const orgView = (over: Partial<XeroStatusOrg>): XeroStatusOrg => ({
   tenant_id: 't',
   tenant_name: 'Org',
   status: 'connected',
-  last_sync_at: new Date().toISOString(),
-  last_refresh_at: new Date().toISOString(),
+  last_sync_at: '2026-09-15T04:01:03.185Z',
+  last_refresh_at: '2026-09-15T04:00:24.145Z',
   ...over,
 })
 
@@ -63,6 +66,7 @@ const iict = (): XeroStatusResponse => ({
     orgView({ connection_id: '09cad39a', tenant_name: 'IICT Group Limited' }),
   ],
   retired_orgs: [],
+  can_manage: true,
   connected: true,
   expired: false,
   needsReconnect: false,
@@ -85,9 +89,21 @@ const easyHailDead = (): XeroStatusResponse => ({
   orgs: [orgView({ tenant_name: 'EASY HAIL CLAIM PTY LTD', status: 'dead' }), orgView({ tenant_name: 'Dragon Roofing Pty Ltd' })],
 })
 
+/** Headline unknown; a sibling stopped refreshing behind it. */
+const unknownOverAuthStale = (): XeroStatusResponse => ({
+  ...iict(),
+  status: 'unknown',
+  status_scope: 'Blank Pty Ltd',
+  more_orgs_needing_attention: 1,
+  needsReconnect: true,
+  orgs: [orgView({ tenant_name: 'Blank Pty Ltd', status: 'unknown' }), orgView({ tenant_name: 'Stale Pty Ltd', status: 'auth_stale' })],
+})
+
+const none = (): XeroStatusResponse => ({ ...iict(), status: 'none', status_scope: null, orgs: [], connected: false, connection: null })
+
 describe('monthly-report banner — the whole business, not one org', () => {
   const base = {
-    xeroConnection: null,
+    status: null,
     isExpired: false,
     isLoading: false,
     isSyncing: false,
@@ -97,7 +113,7 @@ describe('monthly-report banner — the whole business, not one org', () => {
   }
 
   it('THE REGRESSION TEST: IICT names the stale org and never reads "Connected to Xero: IICT Group Limited"', () => {
-    render(<XeroConnectionBanner {...base} xeroConnection={iict().connection} status={iict()} />)
+    render(<XeroConnectionBanner {...base} status={iict()} />)
     expect(screen.getByText('IICT Group Pty Ltd: Xero numbers have not updated recently')).toBeTruthy()
     expect(screen.queryByText(/Connected to Xero/)).toBeNull()
     // The org's data may come back with a sync, so the action stays.
@@ -109,26 +125,55 @@ describe('monthly-report banner — the whole business, not one org', () => {
     expect(screen.getByText('Connected to Xero: Dragon Roofing Pty Ltd, EASY HAIL CLAIM PTY LTD')).toBeTruthy()
   })
 
-  it('one disconnected org asks for a reconnect, naming it — not "Connect Xero" as if there were no Xero', () => {
+  it('one disconnected org asks for a reconnect, naming it — and the live org can still be synced', () => {
     render(<XeroConnectionBanner {...base} status={easyHailDead()} />)
     expect(screen.getByText('EASY HAIL CLAIM PTY LTD: Xero disconnected')).toBeTruthy()
     expect(screen.getByText('Reconnect Xero')).toBeTruthy()
+    expect(screen.getByText('Sync P&L Data')).toBeTruthy()
     expect(screen.queryByText(/^Connect Xero$/)).toBeNull()
     expect(screen.queryByText(/Not connected to Xero/)).toBeNull()
   })
 
-  it('an unknown status is never green and never "not connected"', () => {
-    render(<XeroConnectionBanner {...base} status={{ ...iict(), status: 'unknown' }} />)
+  it('every org disconnected: reconnect, and no sync that has nothing to reach', () => {
+    render(<XeroConnectionBanner {...base} status={{ ...easyHailDead(), connected: false, orgs: easyHailDead().orgs.map((o) => ({ ...o, status: 'dead' as const })) }} />)
+    expect(screen.getByText('Reconnect Xero')).toBeTruthy()
+    expect(screen.queryByText('Sync P&L Data')).toBeNull()
+  })
+
+  it('an unknown status is never green and never "not connected" — and an org that stopped refreshing behind it still gets Reconnect', () => {
+    render(<XeroConnectionBanner {...base} status={unknownOverAuthStale()} />)
     expect(screen.getByText(/Couldn't check the Xero connection just now/)).toBeTruthy()
     expect(screen.queryByText(/Connected to Xero/)).toBeNull()
     expect(screen.queryByText(/Not connected to Xero/)).toBeNull()
     expect(screen.queryByText(/^Connect Xero$/)).toBeNull()
+    expect(screen.getByText('Reconnect Xero')).toBeTruthy()
   })
 
-  it('genuinely no Xero still says so, with the Connect action', () => {
-    render(<XeroConnectionBanner {...base} status={{ ...iict(), status: 'none', status_scope: null, orgs: [], connected: false, connection: null }} />)
+  it('a team member sees the state but no action they would be refused', () => {
+    render(<XeroConnectionBanner {...base} status={{ ...easyHailDead(), can_manage: false }} />)
+    expect(screen.getByText('EASY HAIL CLAIM PTY LTD: Xero disconnected')).toBeTruthy()
+    expect(screen.getByText('Ask the business owner or your coach to reconnect Xero.')).toBeTruthy()
+    expect(screen.queryByText('Reconnect Xero')).toBeNull()
+    expect(screen.queryByText('Sync P&L Data')).toBeNull()
+  })
+
+  it('genuinely no Xero still says so, with the Connect action — for someone who may connect', () => {
+    render(<XeroConnectionBanner {...base} status={none()} />)
     expect(screen.getByText('Not connected to Xero')).toBeTruthy()
     expect(screen.getByText('Connect Xero')).toBeTruthy()
+  })
+
+  it('no status at all is "couldn’t check" — there is no connection-row fallback left to turn green', () => {
+    render(<XeroConnectionBanner {...base} status={null} />)
+    expect(screen.getByText(/Couldn't check the Xero connection just now/)).toBeTruthy()
+    expect(screen.queryByText(/Connected to Xero/)).toBeNull()
+    expect(screen.getByText('Manage')).toBeTruthy()
+  })
+
+  it('a failed re-check outranks a status kept from earlier — it is not shown green', () => {
+    render(<XeroConnectionBanner {...base} status={dragon()} checkFailed />)
+    expect(screen.getByText(/Couldn't check the Xero connection just now/)).toBeTruthy()
+    expect(screen.queryByText(/Connected to Xero/)).toBeNull()
   })
 
   it('a sync Xero just refused still shows the expired state over an older status', () => {
@@ -139,7 +184,7 @@ describe('monthly-report banner — the whole business, not one org', () => {
 
 describe('forecast panel — the same answer, and a failed check is not "not connected"', () => {
   const base = {
-    xeroConnection: null,
+    status: null,
     isSaving: false,
     onConnect: noop,
     onDisconnect: noop,
@@ -155,17 +200,38 @@ describe('forecast panel — the same answer, and a failed check is not "not con
     expect(screen.queryByText(/^Connect Xero$/)).toBeNull()
   })
 
+  it('a failed re-check outranks a status kept from earlier — it is not shown green', () => {
+    render(<XeroConnectionPanel {...base} status={dragon()} checkFailed />)
+    expect(screen.getByText(/Couldn't check the Xero connection just now/)).toBeTruthy()
+    expect(screen.queryByText(/Connected to Xero/)).toBeNull()
+  })
+
+  it('no status at all is "couldn’t check" too', () => {
+    render(<XeroConnectionPanel {...base} />)
+    expect(screen.getByText(/Couldn't check the Xero connection just now/)).toBeTruthy()
+  })
+
   it('IICT names the stale org and keeps the sync action', () => {
-    render(<XeroConnectionPanel {...base} xeroConnection={iict().connection} status={iict()} />)
+    render(<XeroConnectionPanel {...base} status={iict()} />)
     expect(screen.getByText('IICT Group Pty Ltd: Xero numbers have not updated recently')).toBeTruthy()
     expect(screen.queryByText(/Connected to Xero/)).toBeNull()
     expect(screen.getByText('Sync from Xero')).toBeTruthy()
   })
 
-  it('a disconnected org gets the reconnect panel, named', () => {
+  it('a disconnected org gets the reconnect panel, named — with Manage and the sync for the live org', () => {
     render(<XeroConnectionPanel {...base} status={easyHailDead()} />)
     expect(screen.getByText('EASY HAIL CLAIM PTY LTD: Xero disconnected')).toBeTruthy()
     expect(screen.getByText('Reconnect Xero')).toBeTruthy()
+    expect(screen.getByText('Manage')).toBeTruthy()
+    expect(screen.getByText('Sync from Xero')).toBeTruthy()
+  })
+
+  it('a team member is not offered Reconnect or Connect', () => {
+    render(<XeroConnectionPanel {...base} status={{ ...easyHailDead(), can_manage: false }} />)
+    expect(screen.queryByText('Reconnect Xero')).toBeNull()
+    render(<XeroConnectionPanel {...base} status={{ ...none(), can_manage: false }} />)
+    expect(screen.queryByText(/^Connect Xero$/)).toBeNull()
+    expect(screen.getAllByText('Not connected to Xero').length).toBeGreaterThan(0)
   })
 
   it('a connected multi-org business names every org', () => {

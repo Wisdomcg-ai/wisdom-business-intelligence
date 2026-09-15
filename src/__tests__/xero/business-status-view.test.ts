@@ -31,6 +31,7 @@ const status = (over: Partial<XeroStatusResponse>): XeroStatusResponse => ({
   last_sync_at: '2026-09-15T04:00:00.000Z',
   orgs: [orgView({})],
   retired_orgs: [],
+  can_manage: true,
   connected: true,
   expired: false,
   needsReconnect: false,
@@ -74,10 +75,13 @@ describe('parseXeroStatusResponse — an answer, or not', () => {
   })
 
   it('fills the optional lists and counts rather than trusting them', () => {
-    const { retired_orgs: _r, more_orgs_needing_attention: _m, ...bare } = iict()
+    const { retired_orgs: _r, more_orgs_needing_attention: _m, can_manage: _c, ...bare } = iict()
     const parsed = parseXeroStatusResponse(bare)
     expect(parsed?.retired_orgs).toEqual([])
     expect(parsed?.more_orgs_needing_attention).toBe(0)
+    // Only an explicit false hides actions — the routes behind them enforce access anyway.
+    expect(parsed?.can_manage).toBe(true)
+    expect(parseXeroStatusResponse({ ...iict(), can_manage: false })?.can_manage).toBe(false)
   })
 })
 
@@ -139,6 +143,7 @@ describe('describeXeroStatus — the same words as the pill and the board', () =
       title: 'IICT Group Pty Ltd: Xero numbers have not updated recently',
       detail: 'Last synced: <2026-09-10>',
       canSync: true,
+      needsReconnect: false,
     })
   })
 
@@ -180,6 +185,26 @@ describe('describeXeroStatus — the same words as the pill and the board', () =
     expect(copy.detail).toMatch(/not a confirmation/)
   })
 
+  it('a reconnect is asked for when ANY org needs one — even behind a worse "couldn’t check" headline', () => {
+    const copy = describeXeroStatus(
+      status({
+        status: 'unknown',
+        status_scope: 'Blank Pty Ltd',
+        more_orgs_needing_attention: 1,
+        orgs: [orgView({ tenant_name: 'Blank Pty Ltd', status: 'unknown' }), orgView({ tenant_name: 'Stale Pty Ltd', status: 'auth_stale' })],
+      }),
+      fmt,
+    )
+    expect(copy.tone).toBe('unknown')
+    expect(copy.needsReconnect).toBe(true)
+  })
+
+  it('a team member is not told to reconnect what they cannot', () => {
+    const dead = status({ status: 'dead', status_scope: 'EASY HAIL CLAIM PTY LTD', orgs: [orgView({ status: 'dead' }), orgView({})] })
+    expect(describeXeroStatus(dead, fmt).detail).toBe('Reconnect Xero to sync the latest figures.')
+    expect(describeXeroStatus({ ...dead, can_manage: false }, fmt).detail).toBe('Ask the business owner or your coach to reconnect Xero.')
+  })
+
   it('pending and auth_stale', () => {
     expect(describeXeroStatus(status({ status: 'pending_first_sync', last_sync_at: null }), fmt)).toMatchObject({
       tone: 'pending',
@@ -194,6 +219,7 @@ describe('describeXeroStatus — the same words as the pill and the board', () =
       title: 'Not connected to Xero',
       detail: null,
       canSync: false,
+      needsReconnect: false,
     })
     expect(
       describeXeroStatus(status({ status: 'dead', orgs: [orgView({ status: 'dead' }), orgView({ status: 'dead' })] }), fmt).canSync,

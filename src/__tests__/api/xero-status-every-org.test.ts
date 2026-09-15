@@ -9,22 +9,28 @@
  * org was invisible, and a failed read came back as "not connected".
  *
  * These cases go through the exported GET (withQuerySchema wrapper included):
- *   auth & access           401 / 400 / 404 / 403, team member and super admin admitted
- *   every org               IICT worst-org headline, row order irrelevant, every live token refreshed
- *   dead orgs               orphan dead org → dead; superseded by a reconnect → not; all dead → not connected
- *   a refusal mid-check     the re-read row speaks, not the pre-refresh one
+ *   auth & access           401 / 400 / 404 / 403; who may look vs who may act (can_manage)
+ *   every org               IICT worst-org headline, row order irrelevant, every live token refreshed one at a time
+ *   dead orgs               orphan dead org → dead; superseded → not; all dead → not connected; retired set aside
+ *   a refusal mid-check     the re-read row speaks; a terminal refusal the row does not record still reads dead
  *   could-not-check         failed reads are 500s; a failed sync lookup is unknown, never green
- *   the data clock          per tenant, filtered to the business's tenants
- *   audience                owner/team member get 72h, a coach 48h
+ *   the data clock          per tenant, from the shared lookup
+ *   audience                owner/team member 72h; coach or super admin 48h, even on a business they own
+ *
+ * The sync clock is mocked at its module (getLastSyncByTenant) so these cases do
+ * not depend on how that lookup reads sync_jobs.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
-const mockGetUser = vi.fn()
-const mockRouteHandlerFrom = vi.fn()
-const mockAdminFrom = vi.fn()
-const mockGetValidAccessToken = vi.fn()
+const { mockGetUser, mockRouteHandlerFrom, mockAdminFrom, mockGetValidAccessToken, mockGetLastSyncByTenant } = vi.hoisted(() => ({
+  mockGetUser: vi.fn(),
+  mockRouteHandlerFrom: vi.fn(),
+  mockAdminFrom: vi.fn(),
+  mockGetValidAccessToken: vi.fn(),
+  mockGetLastSyncByTenant: vi.fn(),
+}))
 
 vi.mock('@/lib/supabase/server', () => ({
   createRouteHandlerClient: vi.fn(async () => ({
@@ -37,6 +43,10 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(() => ({ from: mockAdminFrom })),
 }))
 
+vi.mock('@/lib/health-checks', () => ({
+  getLastSyncByTenant: mockGetLastSyncByTenant,
+}))
+
 // Only the refresh is faked; checkConnectionHealth stays real.
 vi.mock('@/lib/xero/token-manager', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/xero/token-manager')>()
@@ -46,7 +56,9 @@ vi.mock('@/lib/xero/token-manager', async (importOriginal) => {
 const MIN = 60 * 1000
 const HOUR = 60 * MIN
 const DAY = 24 * HOUR
-const iso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString()
+/** One instant for every fixture, so tie-breaks between orgs never hinge on a millisecond. */
+const NOW = Date.now()
+const iso = (offsetMs: number) => new Date(NOW + offsetMs).toISOString()
 
 interface Row {
   id: string
@@ -103,31 +115,41 @@ interface World {
   connectionsError?: { message: string }
   rereadError?: { message: string }
   syncJobs?: { tenant_id: string; finished_at: string }[]
-  syncJobsError?: { message: string }
-  role?: string
+  syncJobsFailed?: boolean
+  /** Role per user id. */
+  roles?: Record<string, string>
 }
 
 let xeroReads = 0
-let syncJobsReads = 0
-let syncTenantFilters: string[][] = []
 
 function configure(user: { id: string } | null, w: World) {
   xeroReads = 0
-  syncJobsReads = 0
-  syncTenantFilters = []
   mockGetUser.mockResolvedValue({ data: { user }, error: null })
 
   mockRouteHandlerFrom.mockImplementation((table: string) => {
     if (table === 'system_roles') {
-      return {
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({ data: w.role ? { role: w.role } : null, error: null }),
-          }),
-        }),
+      let userId = ''
+      const chain: any = {
+        select: () => chain,
+        eq: (_col: string, v: string) => {
+          userId = v
+          return chain
+        },
+        maybeSingle: async () => ({ data: w.roles?.[userId] ? { role: w.roles[userId] } : null, error: null }),
       }
+      return chain
     }
     throw new Error(`route client: unconfigured table "${table}"`)
+  })
+
+  mockGetLastSyncByTenant.mockImplementation(async () => {
+    if (w.syncJobsFailed) return { ok: false, byTenant: new Map() }
+    const byTenant = new Map<string, number>()
+    for (const job of w.syncJobs ?? []) {
+      const t = Date.parse(job.finished_at)
+      if ((byTenant.get(job.tenant_id) ?? 0) < t) byTenant.set(job.tenant_id, t)
+    }
+    return { ok: true, byTenant }
   })
 
   mockAdminFrom.mockImplementation((table: string) => {
@@ -191,28 +213,6 @@ function configure(user: { id: string } | null, w: World) {
       }
       return chain
     }
-    if (table === 'sync_jobs') {
-      syncJobsReads++
-      let tenants: string[] | null = null
-      const chain: any = {
-        select: () => chain,
-        in: (col: string, v: string[]) => {
-          if (col === 'tenant_id') {
-            tenants = v
-            syncTenantFilters.push(v)
-          }
-          return chain
-        },
-        gte: () => chain,
-        then: (resolve: any, reject: any) =>
-          Promise.resolve(
-            w.syncJobsError
-              ? { data: null, error: w.syncJobsError }
-              : { data: (w.syncJobs ?? []).filter((j) => !tenants || tenants.includes(j.tenant_id)), error: null },
-          ).then(resolve, reject),
-      }
-      return chain
-    }
     throw new Error(`admin client: unconfigured table "${table}"`)
   })
 }
@@ -235,6 +235,7 @@ beforeEach(() => {
   mockRouteHandlerFrom.mockReset()
   mockAdminFrom.mockReset()
   mockGetValidAccessToken.mockReset()
+  mockGetLastSyncByTenant.mockReset()
   mockGetValidAccessToken.mockResolvedValue({ success: true, accessToken: 'fresh' })
 })
 
@@ -271,16 +272,26 @@ describe('GET /api/Xero/status — auth and access', () => {
     expect(mockGetValidAccessToken).not.toHaveBeenCalled()
   })
 
-  it('an active team member is admitted — the xero_connections RLS policy already lets them read these rows', async () => {
+  it('an active team member may look — RLS already lets them read these rows — but may not act', async () => {
     configure({ id: 'user-team' }, { memberUserIds: ['user-team'], connections: iictRows() })
     const { res, body } = await getStatus()
     expect(res.status).toBe(200)
     expect(body.status).toBe('data_stale')
+    // /api/Xero/auth, sync-xero and disconnect all refuse a team member.
+    expect(body.can_manage).toBe(false)
   })
 
-  it('a super admin is admitted', async () => {
-    configure({ id: 'user-admin' }, { role: 'super_admin', connections: iictRows() })
-    expect((await getStatus()).res.status).toBe(200)
+  it('the owner, the assigned coach and a super admin may act', async () => {
+    configure({ id: OWNER }, { connections: iictRows() })
+    expect((await getStatus()).body.can_manage).toBe(true)
+
+    configure({ id: COACH }, { connections: iictRows() })
+    expect((await getStatus()).body.can_manage).toBe(true)
+
+    configure({ id: 'user-admin' }, { roles: { 'user-admin': 'super_admin' }, connections: iictRows() })
+    const admin = await getStatus()
+    expect(admin.res.status).toBe(200)
+    expect(admin.body.can_manage).toBe(true)
   })
 })
 
@@ -294,10 +305,10 @@ describe('GET /api/Xero/status — a business is every one of its orgs', () => {
     expect(body.status_scope).toBe('IICT Group Pty Ltd')
     expect(body.more_orgs_needing_attention).toBe(0)
     // The headline org's own clock — five days old, not a sibling's "today".
-    expect(Date.now() - Date.parse(body.last_sync_at)).toBeGreaterThan(4 * DAY)
+    expect(body.last_sync_at).toBe(iso(-5 * DAY))
     expect(body.orgs.map((o: { tenant_name: string }) => o.tenant_name)).toEqual([
       'IICT Group Pty Ltd',
-      // healthy orgs follow, oldest sync first — both synced at the same moment here, so by name
+      // healthy orgs follow; their clocks are equal, so by name
       'IICT (Aust) Pty Ltd',
       'IICT Group Limited',
     ])
@@ -314,14 +325,25 @@ describe('GET /api/Xero/status — a business is every one of its orgs', () => {
     expect(body.connection.id).toBe('4bd37c02')
   })
 
-  it('refreshes the token of EVERY live org — the keepalive used to keep only one alive', async () => {
+  it('refreshes the token of EVERY live org — and one at a time, because one Xero sign-in gives sibling orgs the same refresh token', async () => {
+    let inFlight = 0
+    let maxInFlight = 0
+    mockGetValidAccessToken.mockImplementation(async () => {
+      inFlight++
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      inFlight--
+      return { success: true, accessToken: 'fresh' }
+    })
     configure({ id: OWNER }, { connections: iictRows() })
     await getStatus()
-    expect(mockGetValidAccessToken.mock.calls.map(([arg]) => arg).sort((a, b) => a.id.localeCompare(b.id))).toEqual([
+
+    expect(mockGetValidAccessToken.mock.calls.map(([arg]) => arg)).toEqual([
       { id: '09cad39a' },
       { id: '4bd37c02' },
       { id: 'f9c98d7f' },
     ])
+    expect(maxInFlight).toBe(1)
   })
 
   it('the answer does not depend on the order the rows arrive in', async () => {
@@ -336,7 +358,7 @@ describe('GET /api/Xero/status — a business is every one of its orgs', () => {
     }
   })
 
-  it('Dragon Roofing — two healthy orgs read connected, business-wide, with both named and the older sync as the clock', async () => {
+  it('Dragon Roofing — two healthy orgs read connected, business-wide, with the older sync as the clock', async () => {
     const dragon = 'biz-dragon'
     const rows = [
       org({ id: '9eb65be5', business_id: dragon, tenant_id: 't-dragon', tenant_name: 'Dragon Roofing Pty Ltd', last_synced_at: iso(-3 * HOUR) }),
@@ -375,7 +397,7 @@ describe('GET /api/Xero/status — a business is every one of its orgs', () => {
       retired_orgs: [],
     })
     expect(mockGetValidAccessToken).not.toHaveBeenCalled()
-    expect(syncJobsReads).toBe(0)
+    expect(mockGetLastSyncByTenant).not.toHaveBeenCalled()
   })
 })
 
@@ -395,6 +417,24 @@ describe('GET /api/Xero/status — dead orgs', () => {
     expect(body.connected).toBe(true)
     // A dead row is not refreshed here — that is what reactivate is for.
     expect(mockGetValidAccessToken.mock.calls.map(([arg]) => arg.id)).not.toContain('f9c98d7f')
+  })
+
+  it('an org that stopped refreshing still asks for a reconnect when a worse "couldn’t check" org takes the headline', async () => {
+    const rows = [
+      // A blank tenant id cannot be keyed to its data clock: unknown.
+      org({ id: 'blank', tenant_id: '', tenant_name: 'Blank Pty Ltd' }),
+      // Last granted a token 13h ago, and this refresh fails transiently.
+      org({ id: 'stale-auth', tenant_id: 't-stale', tenant_name: 'Stale Pty Ltd', expires_at: iso(-13 * HOUR + 30 * MIN) }),
+    ]
+    mockGetValidAccessToken.mockImplementation(async ({ id }: { id: string }) =>
+      id === 'stale-auth' ? { success: false, error: 'network_error', message: 'Failed to reach Xero' } : { success: true, accessToken: 'fresh' },
+    )
+    configure({ id: COACH }, { connections: rows })
+    const { body } = await getStatus()
+
+    expect(body.status).toBe('unknown')
+    expect(body.expired).toBe(false)
+    expect(body.needsReconnect).toBe(true)
   })
 
   it('a dead row superseded by a reconnect of the SAME org under the other id form does not read dead', async () => {
@@ -453,6 +493,33 @@ describe('GET /api/Xero/status — dead orgs', () => {
     expect(body.error).toBe('token_expired_permanently')
     expect(body.message).toBe('IICT Group Pty Ltd: Refresh token has expired')
   })
+
+  it('a refresh that succeeds moves the token clock — the re-read row is classified, not the stale one read before it', async () => {
+    // Last granted a token 13h ago: auth_stale on the first read. The refresh
+    // succeeds and stamps a fresh expires_at, which only the re-read can see.
+    const before = [org({ id: 'solo', tenant_id: 't-solo', tenant_name: 'Solo Pty Ltd', expires_at: iso(-13 * HOUR + 30 * MIN) })]
+    const after = [{ ...before[0], expires_at: iso(30 * MIN) }]
+    configure({ id: COACH }, { connections: before, rereadConnections: after })
+    const { body } = await getStatus()
+
+    expect(body.status).toBe('connected')
+    expect(body.needsReconnect).toBe(false)
+  })
+
+  it('a terminal refusal the row does NOT record (an undecryptable token) still reads disconnected, not green', async () => {
+    mockGetValidAccessToken.mockImplementation(async ({ id }: { id: string }) =>
+      id === '09cad39a'
+        ? { success: false, error: 'database_error', message: 'Failed to decrypt tokens', shouldDeactivate: true }
+        : { success: true, accessToken: 'fresh' },
+    )
+    // The token manager does not switch the row off on a decrypt failure.
+    configure({ id: COACH }, { connections: iictRows() })
+    const { body } = await getStatus()
+
+    expect(body.status).toBe('dead')
+    expect(body.status_scope).toBe('IICT Group Limited')
+    expect(body.needsReconnect).toBe(true)
+  })
 })
 
 describe('GET /api/Xero/status — a check that could not finish is never an answer', () => {
@@ -471,9 +538,9 @@ describe('GET /api/Xero/status — a check that could not finish is never an ans
     expect(res.status).toBe(500)
   })
 
-  it('a failed sync_jobs lookup is unknown for every live org — never green', async () => {
+  it('a failed sync lookup is unknown for every live org — never green', async () => {
     const rows = iictRows().map((r) => ({ ...r, last_synced_at: iso(-1 * HOUR) }))
-    configure({ id: OWNER }, { connections: rows, syncJobsError: { message: 'timeout' } })
+    configure({ id: OWNER }, { connections: rows, syncJobsFailed: true })
     const { res, body } = await getStatus()
     expect(res.status).toBe(200)
     expect(body.status).toBe('unknown')
@@ -482,7 +549,7 @@ describe('GET /api/Xero/status — a check that could not finish is never an ans
 })
 
 describe('GET /api/Xero/status — the data clock', () => {
-  it('each org folds in ITS tenant’s sync_jobs clock, and the lookup is filtered to this business’s tenants', async () => {
+  it('each org folds in ITS tenant’s sync_jobs clock, from the shared 60-day lookup', async () => {
     // IICT Group Pty Ltd's column is stale, but its tenant finished a sync an hour ago.
     configure(
       { id: COACH },
@@ -497,14 +564,14 @@ describe('GET /api/Xero/status — the data clock', () => {
     const { body } = await getStatus()
 
     expect(body.status).toBe('connected')
-    expect(syncTenantFilters).toHaveLength(1)
-    expect([...syncTenantFilters[0]].sort()).toEqual(['t-aust', 't-limited', 't-pty'])
+    expect(mockGetLastSyncByTenant).toHaveBeenCalledTimes(1)
+    expect(mockGetLastSyncByTenant.mock.calls[0][1]).toBe(60)
     // The legacy `connection.last_synced_at` is the folded clock, not the raw column.
     const pty = body.orgs.find((o: { tenant_name: string }) => o.tenant_name === 'IICT Group Pty Ltd')
-    expect(Date.now() - Date.parse(pty.last_sync_at)).toBeLessThan(2 * HOUR)
+    expect(pty.last_sync_at).toBe(iso(-1 * HOUR))
   })
 
-  it('the owner and team members get the owner’s 72h threshold; the coach gets 48h', async () => {
+  it('the owner and team members get the owner’s 72h threshold; the coach and a super admin get 48h', async () => {
     const rows = [org({ id: 'solo', tenant_id: 't-solo', tenant_name: 'Solo Pty Ltd', last_synced_at: iso(-60 * HOUR) })]
 
     configure({ id: OWNER }, { connections: rows })
@@ -516,7 +583,19 @@ describe('GET /api/Xero/status — the data clock', () => {
     configure({ id: COACH }, { connections: rows })
     expect((await getStatus()).body.status).toBe('data_stale')
 
-    configure({ id: 'user-admin' }, { role: 'super_admin', connections: rows })
+    configure({ id: 'user-admin' }, { roles: { 'user-admin': 'super_admin' }, connections: rows })
     expect((await getStatus()).body.status).toBe('data_stale')
+  })
+
+  it('a super admin who also owns (or belongs to) the business sees the coach threshold, as the /cfo board does', async () => {
+    const rows = [org({ id: 'solo', tenant_id: 't-solo', tenant_name: 'Solo Pty Ltd', last_synced_at: iso(-60 * HOUR) })]
+
+    configure({ id: OWNER }, { roles: { [OWNER]: 'super_admin' }, connections: rows })
+    expect((await getStatus()).body.status).toBe('data_stale')
+
+    configure({ id: 'user-admin' }, { roles: { 'user-admin': 'super_admin' }, memberUserIds: ['user-admin'], connections: rows })
+    const admin = (await getStatus()).body
+    expect(admin.status).toBe('data_stale')
+    expect(admin.can_manage).toBe(true)
   })
 })

@@ -55,12 +55,19 @@ const iict = (over: Partial<XeroStatusResponse> = {}): XeroStatusResponse => ({
     orgView({ connection_id: '09cad39a', tenant_name: 'IICT Group Limited' }),
   ],
   retired_orgs: [],
+  can_manage: true,
   connected: true,
   expired: false,
   needsReconnect: false,
   connection: null,
   ...over,
 })
+
+/** The "Connected" figure in the summary row at the top of the page. */
+async function connectedCount() {
+  const label = await screen.findByText('Connected', { selector: 'p.text-sm' })
+  return label.previousElementSibling?.textContent
+}
 
 function stubStatus(response: { status: number; body: unknown }) {
   vi.stubGlobal(
@@ -166,6 +173,48 @@ describe('/integrations — Xero, every org', () => {
     const card = await xeroCard()
     expect(card.getByText('Old Entity Pty Ltd')).toBeTruthy()
     expect(card.getByText('Switched off')).toBeTruthy()
+  })
+
+  it('the summary does not count a Xero that needs attention, or could not be checked, as green Connected', async () => {
+    stubStatus({ status: 200, body: iict() })
+    const { unmount } = render(<IntegrationsPage />)
+    await xeroCard()
+    expect(await connectedCount()).toBe('0')
+    unmount()
+
+    stubStatus({ status: 200, body: iict({ status: 'unknown', status_scope: null }) })
+    const second = render(<IntegrationsPage />)
+    const card = await xeroCard()
+    expect(card.getByText("Couldn't check")).toBeTruthy()
+    expect(await connectedCount()).toBe('0')
+    second.unmount()
+
+    stubStatus({ status: 200, body: iict({ status: 'connected', status_scope: null }) })
+    render(<IntegrationsPage />)
+    await xeroCard()
+    expect(await connectedCount()).toBe('1')
+  })
+
+  it('a team member sees every org and its state, but no button the Xero routes would refuse', async () => {
+    stubStatus({
+      status: 200,
+      body: iict({
+        status: 'dead',
+        status_scope: 'IICT (Aust) Pty Ltd',
+        can_manage: false,
+        needsReconnect: true,
+        orgs: [orgView({ tenant_name: 'IICT (Aust) Pty Ltd', status: 'dead' }), orgView({ tenant_name: 'IICT Group Limited' })],
+      }),
+    })
+    render(<IntegrationsPage />)
+    const card = await xeroCard()
+
+    expect(card.getByText('IICT (Aust) Pty Ltd')).toBeTruthy()
+    expect(card.getByText('Disconnected — reconnect')).toBeTruthy()
+    for (const label of ['Reconnect Xero', 'Sync Now', 'Add Another Organisation', 'Disconnect All', 'Connect Xero']) {
+      expect(card.queryByText(label)).toBeNull()
+    }
+    expect(card.getByText(/Only the business owner or coach can change the Xero connection/)).toBeTruthy()
   })
 
   it('a failed check says so and offers nothing that assumes an answer — no Connect, no Disconnect All', async () => {

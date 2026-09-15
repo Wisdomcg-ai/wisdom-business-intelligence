@@ -5,29 +5,21 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { describeXeroStatus, type XeroStatusResponse } from '@/lib/xero/business-status-view'
 
-interface XeroConnectionData {
-  id: string | null
-  tenant_name: string | null
-  is_active: boolean
-  last_synced_at: string | null
-  expires_at: string | null
-}
-
 interface XeroConnectionBannerProps {
-  xeroConnection: XeroConnectionData | null
   /**
-   * The whole business, every org (/api/Xero/status). When present it decides
-   * what the banner says. It used to name ONE org — for IICT Group, "Connected to
-   * Xero: IICT Group Limited · Last synced today" while IICT Group Pty Ltd had
-   * not synced in five days. A business is as healthy as its worst org.
+   * The whole business, every org (/api/Xero/status) — the ONLY thing that can
+   * make this banner say "connected". It used to name one org from a connection
+   * row: for IICT Group, "Connected to Xero: IICT Group Limited · Last synced
+   * today" while IICT Group Pty Ltd had not synced in five days. A business is as
+   * healthy as its worst org. Null means there is no answer: the banner says it
+   * could not check.
    */
-  status?: XeroStatusResponse | null
+  status: XeroStatusResponse | null
   isExpired: boolean
   /**
    * PRES-09 — the connection status could not be determined (the status route
    * errored, returned non-2xx, or the request never completed). Distinct from
-   * "not connected", which is a positive claim we have no evidence for. Takes
-   * precedence over the disconnected state.
+   * "not connected", which is a positive claim we have no evidence for.
    */
   checkFailed?: boolean
   isLoading: boolean
@@ -38,7 +30,6 @@ interface XeroConnectionBannerProps {
 }
 
 export default function XeroConnectionBanner({
-  xeroConnection,
   status,
   isExpired,
   checkFailed = false,
@@ -46,7 +37,6 @@ export default function XeroConnectionBanner({
   isSyncing,
   onConnect,
   onSync,
-  onManage,
 }: XeroConnectionBannerProps) {
   const pathname = usePathname()
   const integrationsHref = pathname.includes('/coach/clients/')
@@ -95,43 +85,6 @@ export default function XeroConnectionBanner({
     </button>
   )
 
-  const connected = (title: string, detail: string | null) => (
-    <div className="mb-4 px-4 py-3 bg-white rounded-lg border border-gray-200">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-3 h-3 bg-green-500 rounded-full flex-shrink-0"></div>
-          <div>
-            <p className="text-sm font-medium text-gray-900">{title}</p>
-            {detail && <p className="text-xs text-gray-500">{detail}</p>}
-          </div>
-        </div>
-        <div className="flex items-center space-x-2">
-          {manageLink}
-          {syncButton}
-        </div>
-      </div>
-    </div>
-  )
-
-  const disconnected = (
-    <div className="mb-4 px-4 py-3 bg-gray-50 rounded-lg border border-gray-200">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-3 h-3 bg-gray-400 rounded-full flex-shrink-0"></div>
-          <p className="text-sm text-gray-600">Not connected to Xero</p>
-        </div>
-        <button
-          type="button"
-          onClick={onConnect}
-          className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors"
-        >
-          <LinkIcon className="w-4 h-4" />
-          <span>Connect Xero</span>
-        </button>
-      </div>
-    </div>
-  )
-
   if (isLoading) {
     return (
       <div className="mb-4 px-4 py-3 bg-gray-50 rounded-lg border border-gray-200">
@@ -147,7 +100,7 @@ export default function XeroConnectionBanner({
   if (isExpired) {
     return (
       <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center space-x-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
             <div>
@@ -161,90 +114,103 @@ export default function XeroConnectionBanner({
     )
   }
 
-  if (status) {
-    const copy = describeXeroStatus(status)
-
-    if (copy.tone === 'none') return disconnected
-
-    if (copy.tone === 'ok' || copy.tone === 'pending') return connected(copy.title, copy.detail)
-
-    // An org is disconnected or stopped refreshing: a person must reconnect.
-    // Any other org keeps syncing, so the figures below are still partly live.
-    if (copy.tone === 'reconnect') {
-      return (
-        <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-amber-900">{copy.title}</p>
-                {copy.detail && <p className="text-xs text-amber-700">{copy.detail}</p>}
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              {manageLink}
-              {reconnectButton}
-            </div>
-          </div>
-        </div>
-      )
-    }
-
-    // Old numbers, or a check that could not finish. Neither is a green tick,
-    // and neither hides the Sync button while an org can still sync.
+  // PRES-09 — no answer is never "not connected". A failed status check used to
+  // render "Not connected to Xero" with a Connect button, sitting directly above
+  // a fully populated P&L rendered from Xero data already in the database. For a
+  // user who is "not a numbers person" that contradiction is unresolvable: is the
+  // report real or not?
+  if (!status || checkFailed) {
     return (
       <div className="mb-4 px-4 py-3 bg-amber-50 rounded-lg border border-amber-200">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center space-x-3">
-            {copy.tone === 'attention' ? (
-              <Clock className="w-5 h-5 text-amber-600 flex-shrink-0" />
-            ) : (
-              <div className="w-3 h-3 bg-amber-400 rounded-full flex-shrink-0"></div>
-            )}
+            <div className="w-3 h-3 bg-amber-400 rounded-full flex-shrink-0"></div>
+            <p className="text-sm text-amber-800">
+              Couldn&apos;t check the Xero connection just now — the figures below are
+              from the last successful sync.
+            </p>
+          </div>
+          {manageLink}
+        </div>
+      </div>
+    )
+  }
+
+  const copy = describeXeroStatus(status)
+  const canManage = status.can_manage
+  // Sync reaches every live org, so a disconnected sibling does not take it away.
+  const sync = canManage && copy.canSync ? syncButton : null
+  const reconnect = canManage && copy.needsReconnect ? reconnectButton : null
+
+  if (copy.tone === 'none') {
+    return (
+      <div className="mb-4 px-4 py-3 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center space-x-3">
+            <div className="w-3 h-3 bg-gray-400 rounded-full flex-shrink-0"></div>
+            <p className="text-sm text-gray-600">Not connected to Xero</p>
+          </div>
+          {canManage && (
+            <button
+              type="button"
+              onClick={onConnect}
+              className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white bg-brand-orange rounded-lg hover:bg-brand-orange-600 transition-colors"
+            >
+              <LinkIcon className="w-4 h-4" />
+              <span>Connect Xero</span>
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (copy.tone === 'ok' || copy.tone === 'pending') {
+    return (
+      <div className="mb-4 px-4 py-3 bg-white rounded-lg border border-gray-200">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center space-x-3">
+            <div
+              className={`w-3 h-3 rounded-full flex-shrink-0 ${copy.tone === 'pending' ? 'bg-blue-500' : 'bg-green-500'}`}
+            ></div>
             <div>
-              <p className="text-sm font-medium text-amber-900">{copy.title}</p>
-              {copy.detail && <p className="text-xs text-amber-700">{copy.detail}</p>}
+              <p className="text-sm font-medium text-gray-900">{copy.title}</p>
+              {copy.detail && <p className="text-xs text-gray-500">{copy.detail}</p>}
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             {manageLink}
-            {copy.canSync && syncButton}
+            {sync}
           </div>
         </div>
       </div>
     )
   }
 
-  // Connected state (a reader that has no business status)
-  if (xeroConnection) {
-    return connected(
-      `Connected to Xero: ${xeroConnection.tenant_name ?? ''}`,
-      xeroConnection.last_synced_at
-        ? `Last synced: ${new Date(xeroConnection.last_synced_at).toLocaleString()}`
-        : null,
-    )
-  }
-
-  // PRES-09 — checked before the disconnected state. A failed status check used
-  // to render "Not connected to Xero" with a Connect button, sitting directly
-  // above a fully populated P&L rendered from Xero data already in the database.
-  // For a user who is "not a numbers person" that contradiction is unresolvable:
-  // is the report real or not? It also hid the "Sync P&L Data" button, removing
-  // the one action that might have helped.
-  if (checkFailed) {
-    return (
-      <div className="mb-4 px-4 py-3 bg-amber-50 rounded-lg border border-amber-200">
+  // Disconnected, stopped refreshing, old numbers, or a check that could not
+  // finish. None of them is a green tick; each keeps whatever action still helps.
+  return (
+    <div className="mb-4 px-4 py-3 bg-amber-50 rounded-lg border border-amber-200">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center space-x-3">
-          <div className="w-3 h-3 bg-amber-400 rounded-full flex-shrink-0"></div>
-          <p className="text-sm text-amber-800">
-            Couldn&apos;t check the Xero connection just now — the figures below are
-            from the last successful sync.
-          </p>
+          {copy.tone === 'reconnect' ? (
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          ) : copy.tone === 'attention' ? (
+            <Clock className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          ) : (
+            <div className="w-3 h-3 bg-amber-400 rounded-full flex-shrink-0"></div>
+          )}
+          <div>
+            <p className="text-sm font-medium text-amber-900">{copy.title}</p>
+            {copy.detail && <p className="text-xs text-amber-700">{copy.detail}</p>}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {manageLink}
+          {sync}
+          {reconnect}
         </div>
       </div>
-    )
-  }
-
-  // Disconnected state
-  return disconnected
+    </div>
+  )
 }

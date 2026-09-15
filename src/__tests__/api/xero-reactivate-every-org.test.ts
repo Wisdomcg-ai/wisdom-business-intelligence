@@ -82,6 +82,11 @@ interface World {
   readError?: { message: string }
   profiles?: { id: string; business_id: string }[]
   failUpdateFor?: string[]
+  /** Rows a concurrent disconnect removed before the flip. */
+  removedBeforeFlip?: string[]
+  /** Live rows of OTHER businesses. */
+  elsewhere?: { tenant_id: string; business_id: string }[]
+  elsewhereError?: { message: string }
   tokenResults?: Record<string, unknown>
   business?: { id: string; owner_id: string; assigned_coach_id: string | null } | null
 }
@@ -157,7 +162,15 @@ function configure(user: { id: string } | null, w: World) {
           let result: unknown
           if (mode === 'update') {
             updates.push({ id: eqVal, payload })
-            result = { error: (w.failUpdateFor ?? []).includes(eqVal) ? { message: 'write failed' } : null }
+            const failed = (w.failUpdateFor ?? []).includes(eqVal)
+            const removed = (w.removedBeforeFlip ?? []).includes(eqVal)
+            result = failed
+              ? { data: null, error: { message: 'write failed' } }
+              : { data: removed ? [] : [{ id: eqVal }], error: null }
+          } else if (inCol === 'tenant_id') {
+            result = w.elsewhereError
+              ? { data: null, error: w.elsewhereError }
+              : { data: (w.elsewhere ?? []).filter((r) => inVals.includes(r.tenant_id)), error: null }
           } else if (inCol === 'business_id') {
             result = w.readError
               ? { data: null, error: w.readError }
@@ -264,13 +277,64 @@ describe('POST /api/Xero/reactivate — every org that needs it', () => {
     expect(body.orgs.find((o: { connection_id: string }) => o.connection_id === '4bd37c02').result).toBe('retired')
   })
 
-  it('when EVERY org is retired they count after all — the same rule as the status classifier', async () => {
+  it('every org retired: nothing is switched back on, and the answer is not "already active"', async () => {
+    // The status classifier counts retired orgs when every org is retired, so the
+    // business does not go quiet. That is a display rule; a write must not undo a
+    // person's decision on the consolidation page.
     const rows = iictWithTwoDead().map((r) => ({ ...r, is_active: false, include_in_consolidation: false }))
     configure({ id: OWNER }, { rows })
-    const { res } = await reactivate()
+    const { res, body } = await reactivate()
+
+    expect(res.status).toBe(409)
+    expect(body).toMatchObject({ success: false, error: 'nothing_to_reactivate', was_inactive: false })
+    expect(body.message).toMatch(/consolidation page/)
+    expect(mockGetValidAccessToken).not.toHaveBeenCalled()
+    expect(updates).toEqual([])
+  })
+
+  it('an org whose Xero tenant is live under ANOTHER business is left alone — one Xero org must not feed two businesses', async () => {
+    // Wisdom BI holds dead April rows for IICT Group's orgs, live under IICT Group.
+    const wisdom = 'biz-wisdom'
+    configure(
+      { id: OWNER },
+      {
+        business: { id: wisdom, owner_id: OWNER, assigned_coach_id: null },
+        rows: [
+          row({ id: 'april-pty', business_id: wisdom, tenant_id: 't-pty', tenant_name: 'IICT Group Pty Ltd', is_active: false }),
+          row({ id: 'april-own', business_id: wisdom, tenant_id: 't-own', tenant_name: 'Wisdom Own Pty Ltd', is_active: false }),
+        ],
+        elsewhere: [{ tenant_id: 't-pty', business_id: IICT }],
+      },
+    )
+    const { res, body } = await reactivate(wisdom)
 
     expect(res.status).toBe(200)
-    expect(tokenCallIds().sort()).toEqual(['09cad39a', '4bd37c02', 'f9c98d7f'])
+    expect(tokenCallIds()).toEqual(['april-own'])
+    expect(body.orgs.find((o: { connection_id: string }) => o.connection_id === 'april-pty').result).toBe('live_elsewhere')
+  })
+
+  it('every org live elsewhere: 409, nothing refreshed — no burst of "connection deactivated" alerts from dead April tokens', async () => {
+    const wisdom = 'biz-wisdom'
+    configure(
+      { id: OWNER },
+      {
+        business: { id: wisdom, owner_id: OWNER, assigned_coach_id: null },
+        rows: [row({ id: 'april-pty', business_id: wisdom, tenant_id: 't-pty', tenant_name: 'IICT Group Pty Ltd', is_active: false })],
+        elsewhere: [{ tenant_id: 't-pty', business_id: IICT }],
+      },
+    )
+    const { res, body } = await reactivate(wisdom)
+
+    expect(res.status).toBe(409)
+    expect(body.error).toBe('nothing_to_reactivate')
+    expect(mockGetValidAccessToken).not.toHaveBeenCalled()
+  })
+
+  it('a failed read of other businesses’ live rows is a 500 — never a blind revive', async () => {
+    configure({ id: OWNER }, { rows: iictWithTwoDead(), elsewhereError: { message: 'timeout' } })
+    const { res } = await reactivate()
+    expect(res.status).toBe(500)
+    expect(mockGetValidAccessToken).not.toHaveBeenCalled()
   })
 
   it('two dead rows for one org: only the one Xero last granted a token to is revived', async () => {
@@ -358,6 +422,15 @@ describe('POST /api/Xero/reactivate — failures', () => {
     expect(body.error).toBe('save_failed')
     const tagged = mockCaptureException.mock.calls.find(([, ctx]) => ctx?.tags?.invariant === 'xero_reactivate_flip_failed')
     expect(tagged).toBeTruthy()
+  })
+
+  it('a row removed by a concurrent disconnect is not reported as reactivated', async () => {
+    configure({ id: OWNER }, { rows: [row({ id: 'solo', is_active: false })], removedBeforeFlip: ['solo'] })
+    const { res, body } = await reactivate()
+
+    expect(res.status).toBe(500)
+    expect(body.error).toBe('save_failed')
+    expect(body.orgs[0]).toMatchObject({ result: 'save_failed' })
   })
 
   it('401 unauthenticated and 403 for a stranger — nothing refreshed', async () => {

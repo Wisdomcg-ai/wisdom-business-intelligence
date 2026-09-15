@@ -48,10 +48,17 @@ export interface XeroStatusResponse {
   orgs: XeroStatusOrg[]
   /** Orgs switched off and excluded from consolidation on purpose. They set nothing. */
   retired_orgs: XeroStatusOrg[]
+  /**
+   * The caller may connect, reconnect, sync and disconnect (owner, assigned coach,
+   * super admin). A team member may look but those routes refuse them, so their
+   * buttons are not shown.
+   */
+  can_manage: boolean
   /** Legacy: at least one org is live, so Xero actions (sync, keepalive) can run. Says nothing about health. */
   connected: boolean
-  /** Legacy: an org is disconnected or has stopped refreshing — someone needs to reconnect. */
+  /** Legacy: the headline org is disconnected or has stopped refreshing. */
   expired: boolean
+  /** Some org — not only the headline — is disconnected or has stopped refreshing. */
   needsReconnect: boolean
   connection: XeroStatusConnection | null
   health?: { isHealthy: boolean; expiresInMinutes: number | null; warnings: string[] }
@@ -88,6 +95,8 @@ export function parseXeroStatusResponse(body: unknown): XeroStatusResponse | nul
     ...(b as XeroStatusResponse),
     retired_orgs: isOrgList(b.retired_orgs) ? b.retired_orgs : [],
     more_orgs_needing_attention: typeof b.more_orgs_needing_attention === 'number' ? b.more_orgs_needing_attention : 0,
+    // Only an explicit false hides actions; the routes behind them enforce access regardless.
+    can_manage: b.can_manage !== false,
   }
 }
 
@@ -131,6 +140,8 @@ export interface XeroStatusCopy {
   detail: string | null
   /** A live org exists, so a sync can run for it. */
   canSync: boolean
+  /** Some org needs a reconnect — also when the headline is a worse "couldn't check". */
+  needsReconnect: boolean
 }
 
 const MAX_NAMED_ORGS = 3
@@ -156,15 +167,19 @@ export function describeXeroStatus(
   const moreNote = more > 0 ? ` (+${more} more org${more === 1 ? ' needs' : 's need'} attention)` : ''
   const scoped = (text: string) => `${s.status_scope ? `${s.status_scope}: ` : ''}${text}${moreNote}`
   const canSync = s.orgs.some((o) => o.status !== 'dead')
+  const needsReconnect = s.orgs.some((o) => o.status === 'dead' || o.status === 'auth_stale')
   const names = xeroOrgNames(s.orgs)
   const connectedTitle = names ? `Connected to Xero: ${names}` : 'Connected to Xero'
   const lastSynced = s.last_sync_at ? `Last synced: ${formatDate(s.last_sync_at)}` : null
+  // A team member cannot reconnect, so do not tell them to.
+  const reconnectAsk = (instruction: string) =>
+    s.can_manage === false ? 'Ask the business owner or your coach to reconnect Xero.' : instruction
 
   switch (s.status) {
     case 'none':
-      return { tone: 'none', title: 'Not connected to Xero', detail: null, canSync: false }
+      return { tone: 'none', title: 'Not connected to Xero', detail: null, canSync: false, needsReconnect: false }
     case 'connected':
-      return { tone: 'ok', title: connectedTitle, detail: lastSynced, canSync }
+      return { tone: 'ok', title: connectedTitle, detail: lastSynced, canSync, needsReconnect }
     case 'pending_first_sync':
       return {
         tone: 'pending',
@@ -173,6 +188,7 @@ export function describeXeroStatus(
           ? `${s.status_scope}: first sync pending — it runs within a few hours.`
           : 'First sync pending — it runs within a few hours.',
         canSync,
+        needsReconnect,
       }
     case 'data_stale':
       return {
@@ -180,20 +196,23 @@ export function describeXeroStatus(
         title: scoped('Xero numbers have not updated recently'),
         detail: lastSynced ?? 'Never synced',
         canSync,
+        needsReconnect,
       }
     case 'auth_stale':
       return {
         tone: 'reconnect',
         title: scoped('Xero has stopped refreshing'),
-        detail: 'Xero has not granted access in over 12 hours. Reconnect to keep the figures updating.',
+        detail: reconnectAsk('Xero has not granted access in over 12 hours. Reconnect to keep the figures updating.'),
         canSync,
+        needsReconnect,
       }
     case 'dead':
       return {
         tone: 'reconnect',
         title: scoped('Xero disconnected'),
-        detail: 'Reconnect Xero to sync the latest figures.',
+        detail: reconnectAsk('Reconnect Xero to sync the latest figures.'),
         canSync,
+        needsReconnect,
       }
     case 'unknown':
     default:
@@ -202,6 +221,7 @@ export function describeXeroStatus(
         title: scoped("Couldn't check the Xero connection just now"),
         detail: 'This is not a confirmation that it works.',
         canSync,
+        needsReconnect,
       }
   }
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
@@ -11,7 +11,7 @@ import type { FinancialForecast, PLLine } from '@/app/finances/forecast/types'
 import { fetchXeroBusinessStatus, type XeroStatusConnection } from '@/lib/xero/business-status-view'
 import CashflowForecastTab from '@/app/finances/forecast/components/CashflowForecastTab'
 import { getForecastFiscalYear } from '@/app/finances/forecast/utils/fiscal-year'
-import { useXeroKeepalive } from '@/hooks/useXeroKeepalive'
+import { useXeroKeepalive, type XeroConnectionStatus as XeroKeepaliveStatus } from '@/hooks/useXeroKeepalive'
 import { DataIntegrityBanner } from '@/components/data-integrity/DataIntegrityBanner'
 import type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read-service'
 
@@ -36,8 +36,13 @@ export default function CashflowForecastPage() {
   const [qualityCheckFailed, setQualityCheckFailed] = useState(true)
   const [perTenantQuality, setPerTenantQuality] = useState<PerTenantQuality[]>([])
 
-  // Keep Xero tokens fresh
-  useXeroKeepalive(businessId || null, !!xeroConnection)
+  // Keep Xero tokens fresh, and keep Sync Balances in step with what each check finds.
+  const handleKeepaliveCheck = useCallback((check: XeroKeepaliveStatus) => {
+    if (!check.response) return
+    setXeroCheckFailed(false)
+    setXeroConnection(check.response.connected ? check.response.connection : null)
+  }, [])
+  useXeroKeepalive(businessId || null, !!xeroConnection, { onStatusChange: handleKeepaliveCheck })
 
   useEffect(() => {
     setMounted(true)

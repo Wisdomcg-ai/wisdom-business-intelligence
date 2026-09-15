@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { toast } from 'sonner';
-import { fetchXeroBusinessStatus } from '@/lib/xero/business-status-view';
+import { fetchXeroBusinessStatus, type XeroStatusResponse } from '@/lib/xero/business-status-view';
 
 export interface XeroConnectionStatus {
   /** The business has at least one live Xero org. */
@@ -21,6 +21,12 @@ export interface XeroConnectionStatus {
   };
   error?: string;
   lastChecked: Date;
+  /**
+   * The full status answer this check received, so a page can re-render from it —
+   * otherwise a toast could say "reconnect" above a panel still showing the
+   * answer from page load.
+   */
+  response?: XeroStatusResponse;
 }
 
 interface UseXeroKeepaliveOptions {
@@ -39,6 +45,14 @@ export function useXeroKeepalive(
   const abortControllerRef = useRef<AbortController | null>(null);
   const [status, setStatus] = useState<XeroConnectionStatus | null>(null);
   const failureCountRef = useRef(0);
+
+  // A different business is a fresh start: its first check must not be compared
+  // with the last business's state (a stray "expired" or "restored" toast).
+  useEffect(() => {
+    lastStatusRef.current = null;
+    failureCountRef.current = 0;
+    setStatus(null);
+  }, [businessId]);
 
   const refreshTokens = useCallback(async () => {
     if (!businessId) return;
@@ -93,7 +107,8 @@ export function useXeroKeepalive(
       scope: data.status_scope,
       health: data.health,
       error: data.error || data.message,
-      lastChecked: new Date()
+      lastChecked: new Date(),
+      response: data
     };
 
     const prevStatus = lastStatusRef.current;

@@ -19,8 +19,12 @@ interface Integration {
   name: string
   description: string
   icon: string
-  /** 'unknown' — we could not check. Counted as neither connected nor available. */
-  status: 'connected' | 'disconnected' | 'unknown'
+  /**
+   * 'attention' — connected, but an org needs attention; 'unknown' — we could not
+   * check. Both are counted as neither connected nor available: the summary must
+   * not show a green "Connected" the card itself does not.
+   */
+  status: 'connected' | 'disconnected' | 'attention' | 'unknown'
   lastSync?: string
   accountName?: string
 }
@@ -175,11 +179,17 @@ export default function IntegrationsPage() {
   }
 
   const xeroCopy = xeroStatus ? describeXeroStatus(xeroStatus) : null
-  const xeroIntegrationStatus: Integration['status'] = xeroCheckFailed
-    ? 'unknown'
-    : xeroStatus && xeroStatus.orgs.length > 0 && xeroStatus.connected
-      ? 'connected'
-      : 'disconnected'
+  const xeroIntegrationStatus: Integration['status'] =
+    xeroCheckFailed || xeroCopy?.tone === 'unknown'
+      ? 'unknown'
+      : !xeroStatus || xeroStatus.orgs.length === 0 || !xeroStatus.connected
+        ? 'disconnected'
+        : xeroCopy?.tone === 'ok' || xeroCopy?.tone === 'pending'
+          ? 'connected'
+          : 'attention'
+  // Connecting, reconnecting, syncing and disconnecting admit only the owner, the
+  // assigned coach and a super admin; a team member may look but not act.
+  const xeroCanManage = xeroStatus?.can_manage === true
 
   const integrations: Integration[] = [
     {
@@ -383,9 +393,13 @@ export default function IntegrationsPage() {
                       <RefreshCw className="w-4 h-4" />
                       Try again
                     </button>
+                  ) : !xeroCanManage ? (
+                    <p className="text-xs text-gray-500">
+                      Only the business owner or coach can change the Xero connection.
+                    </p>
                   ) : xeroHasOrgs ? (
                     <>
-                      {xeroCopy?.tone === 'reconnect' && (
+                      {xeroCopy?.needsReconnect && (
                         <button
                           onClick={handleConnectXero}
                           className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-orange text-white text-sm font-medium rounded-lg hover:bg-brand-orange-600 transition-colors"
@@ -404,7 +418,7 @@ export default function IntegrationsPage() {
                           {syncing ? 'Syncing...' : 'Sync Now'}
                         </button>
                       )}
-                      {xeroCopy?.tone !== 'reconnect' && (
+                      {!xeroCopy?.needsReconnect && (
                         <button
                           onClick={handleConnectXero}
                           className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white border border-brand-orange hover:bg-orange-50 text-brand-orange text-sm font-medium rounded-lg transition-colors"

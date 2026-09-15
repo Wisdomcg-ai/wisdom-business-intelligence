@@ -51,7 +51,7 @@ import ForecastEmptyState from './components/ForecastEmptyState'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useXeroSync } from './hooks/useXeroSync'
 import { useVersionManager } from './hooks/useVersionManager'
-import { useXeroKeepalive } from '@/hooks/useXeroKeepalive'
+import { useXeroKeepalive, type XeroConnectionStatus as XeroKeepaliveStatus } from '@/hooks/useXeroKeepalive'
 import { isPlanningSeasonActive, getAvailableFiscalYears, getCurrentFiscalYear, getFiscalYearLabel } from './utils/fiscal-year'
 import { getMonthsUntilYearEnd } from '@/lib/utils/fiscal-year-utils'
 import { FYSelectorTabs } from './components/FYSelectorTabs'
@@ -169,8 +169,15 @@ function FinancialForecastPageInner() {
     businessId
   })
 
-  // Keep Xero tokens fresh while user is on this page
-  useXeroKeepalive(businessId || null, !!xeroConnection)
+  // Keep Xero tokens fresh while user is on this page — and re-render the panel
+  // from what each check finds, so a toast never contradicts it.
+  const handleKeepaliveCheck = useCallback((check: XeroKeepaliveStatus) => {
+    if (!check.response) return
+    setXeroStatus(check.response)
+    setXeroCheckFailed(false)
+    setXeroConnection(check.response.connected ? check.response.connection : null)
+  }, [])
+  useXeroKeepalive(businessId || null, !!xeroConnection, { onStatusChange: handleKeepaliveCheck })
 
   // Save active tab to localStorage whenever it changes (Phase 58: v2 key)
   useEffect(() => {
@@ -960,7 +967,6 @@ function FinancialForecastPageInner() {
         {/* Xero Status Bar */}
         <div className="mb-3 sm:mb-4 px-1">
           <XeroConnectionPanel
-            xeroConnection={xeroConnection}
             status={xeroStatus}
             checkFailed={xeroCheckFailed}
             isSaving={isSaving || isSyncing}

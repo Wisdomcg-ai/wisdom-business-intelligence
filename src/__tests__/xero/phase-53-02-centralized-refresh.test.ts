@@ -112,8 +112,10 @@ function buildAdminFromForReactivate(opts: {
         order: () => chain,
         // Every chain in reactivate is awaited directly.
         then: (resolve: any) => {
-          if (isUpdate) return resolve({ error: null });
+          if (isUpdate) return resolve({ data: [{ id: opts.connectionRow.id }], error: null });
           if (inColumn === 'business_id') return resolve({ data: [opts.connectionRow], error: null });
+          // No other business holds this tenant live.
+          if (inColumn === 'tenant_id') return resolve({ data: [], error: null });
           return resolve({ data: [opts.refreshedRow], error: null });
         },
       };

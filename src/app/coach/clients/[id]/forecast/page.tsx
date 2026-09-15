@@ -604,7 +604,6 @@ export default function CoachForecastPage() {
             {/* Xero Connection Status */}
             <div className="border-t pt-4">
               <XeroConnectionPanel
-                xeroConnection={xeroConnection}
                 status={xeroStatus}
                 checkFailed={xeroCheckFailed}
                 isSaving={isSaving || isSyncing}

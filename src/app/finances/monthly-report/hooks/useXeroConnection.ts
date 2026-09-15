@@ -58,6 +58,7 @@ export function useXeroConnection(businessId: string) {
         console.error('[useXeroConnection] Status fetch error:', err)
         setCheckFailed(true)
         setXeroStatus(null)
+        setXeroConnection(null)
         setError('Failed to check Xero connection')
       } finally {
         setIsLoading(false)

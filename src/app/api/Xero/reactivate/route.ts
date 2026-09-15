@@ -38,6 +38,7 @@ interface ConnectionRow {
 type OrgResult =
   | 'already_active'
   | 'retired'
+  | 'live_elsewhere'
   | 'reactivated'
   | 'token_expired'
   | 'refresh_failed'
@@ -98,17 +99,22 @@ function rowToRevive(orgRows: ConnectionRow[]): ConnectionRow {
  * and sync bumps updated_at, so for a multi-org business it revived whichever org
  * was written last, and when that row happened to be live it answered "already
  * active" while a sibling org stayed switched off. Now every org of the business
- * (both id forms, grouped by Xero tenant) that has NO live row is revived:
+ * (both id forms, grouped by Xero tenant) that has NO live row is revived, except:
  *   - a dead row whose org already has a live row was superseded by a reconnect,
  *     and reviving it would give that org two live rows — it is left alone;
  *   - an org retired on purpose (every row switched off AND excluded from
- *     consolidation) is not switched back on, unless every org is retired — the
- *     same rule `classifyBusinessConnections` uses to leave it out of the status.
+ *     consolidation) is never switched back on. The status classifier counts
+ *     retired orgs when EVERY org is retired, so a business does not go quiet —
+ *     that is a display rule, and a write must not undo a person's decision;
+ *   - an org whose Xero tenant is live under ANOTHER business is left alone:
+ *     reviving it would feed one Xero org into two businesses (Wisdom BI holds
+ *     dead April rows for IICT Group's orgs, which are live under IICT Group).
  * `orgs` reports each org's outcome. `success` means every org that needed it
  * was revived; if any was not, the status is the worst failure's (401 when Xero
  * refused a token, else 500) and `was_inactive` says whether any org was revived.
- * A failed read of xero_connections is a 500 — it used to be a 404 telling the
- * user to connect Xero.
+ * If nothing is live and nothing may be revived, the answer is a 409, not
+ * "already active". A failed read of xero_connections is a 500 — it used to be a
+ * 404 telling the user to connect Xero.
  */
 async function postHandler(request: Request) {
   try {
@@ -180,8 +186,37 @@ async function postHandler(request: Request) {
     }
 
     const orgs = groupConnectionsByOrg(rows);
-    const everyOrgRetired = orgs.every(isRetiredOrg);
     const multiOrg = orgs.length > 1;
+
+    // The tenants we might revive, checked against every OTHER business.
+    const candidateTenants = [
+      ...new Set(
+        orgs
+          .filter((orgRows) => !orgRows.some((r) => r.is_active === true) && !isRetiredOrg(orgRows))
+          .flatMap((orgRows) => orgRows.map((r) => r.tenant_id?.trim()))
+          .filter((t): t is string => !!t),
+      ),
+    ];
+    const liveElsewhere = new Set<string>();
+    if (candidateTenants.length > 0) {
+      const { data: liveRows, error: liveError } = await supabaseAdmin
+        .from('xero_connections')
+        .select('tenant_id, business_id')
+        .in('tenant_id', candidateTenants)
+        .eq('is_active', true);
+      if (liveError) {
+        Sentry.captureException(liveError, { tags: { route: 'Xero/reactivate' }, extra: { context: '[Xero Reactivate] live-elsewhere read failed' } } as any);
+        return NextResponse.json({
+          success: false,
+          error: 'internal_error',
+          message: 'Could not check whether these Xero organisations are connected elsewhere'
+        }, { status: 500 });
+      }
+      for (const r of (liveRows ?? []) as { tenant_id: string | null; business_id: string | null }[]) {
+        const tenant = r.tenant_id?.trim();
+        if (tenant && r.business_id && !ids.all.includes(r.business_id)) liveElsewhere.add(tenant);
+      }
+    }
     const named = (outcome: OrgOutcome, message: string) =>
       multiOrg && outcome.tenant_name ? `${outcome.tenant_name}: ${message}` : message;
 
@@ -194,8 +229,13 @@ async function postHandler(request: Request) {
       }
       const row = rowToRevive(orgRows);
       const base = { connection_id: row.id, tenant_name: row.tenant_name };
-      if (!everyOrgRetired && isRetiredOrg(orgRows)) {
+      if (isRetiredOrg(orgRows)) {
         outcomes.push({ ...base, result: 'retired' });
+        continue;
+      }
+      const tenant = row.tenant_id?.trim();
+      if (tenant && liveElsewhere.has(tenant)) {
+        outcomes.push({ ...base, result: 'live_elsewhere' });
         continue;
       }
 
@@ -233,20 +273,27 @@ async function postHandler(request: Request) {
       // 53-02: refresh succeeded. token-manager already saved the fresh
       // access_token / refresh_token / expires_at. We only need to flip the
       // activation flag. Single targeted UPDATE — do NOT re-write tokens here.
-      const { error: updateError } = await supabaseAdmin
+      // .select() so a row removed meanwhile (a concurrent disconnect) is not
+      // reported as reactivated: an update that matches nothing is not an error.
+      const { data: flipped, error: updateError } = await supabaseAdmin
         .from('xero_connections')
         .update({
           is_active: true,
           updated_at: new Date().toISOString()
         })
-        .eq('id', row.id);
+        .eq('id', row.id)
+        .select('id');
 
-      if (updateError) {
-        Sentry.captureException(updateError, {
+      if (updateError || !flipped || flipped.length === 0) {
+        Sentry.captureException(updateError ?? new Error('is_active flip matched no row'), {
           tags: { route: 'Xero/reactivate', invariant: 'xero_reactivate_flip_failed', connection_id: row.id },
           extra: { context: '[Xero Reactivate] Failed to flip is_active' },
         } as any);
-        outcomes.push({ ...base, result: 'save_failed', message: 'Token refreshed but failed to flip is_active=true' });
+        outcomes.push({
+          ...base,
+          result: 'save_failed',
+          message: updateError ? 'Token refreshed but failed to flip is_active=true' : 'The connection was removed before it could be switched back on',
+        });
         continue;
       }
 
@@ -260,6 +307,19 @@ async function postHandler(request: Request) {
     const failed = outcomes.filter(
       (o) => o.result === 'token_expired' || o.result === 'refresh_failed' || o.result === 'save_failed',
     );
+
+    // Nothing live and nothing that may be revived: not "already active".
+    if (reactivated.length === 0 && failed.length === 0 && !outcomes.some((o) => o.result === 'already_active')) {
+      return NextResponse.json({
+        success: false,
+        error: 'nothing_to_reactivate',
+        message: outcomes.some((o) => o.result === 'retired')
+          ? 'These Xero organisations were switched off on the consolidation page. Switch one back on there, or reconnect Xero from the Integrations page.'
+          : 'These Xero organisations are connected to another business. Reconnect Xero from the Integrations page.',
+        was_inactive: false,
+        orgs: outcomes
+      }, { status: 409 });
+    }
 
     // If already active, just return success
     if (reactivated.length === 0 && failed.length === 0) {

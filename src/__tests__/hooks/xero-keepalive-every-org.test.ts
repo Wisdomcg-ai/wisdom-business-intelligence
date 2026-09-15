@@ -32,6 +32,7 @@ const healthy = (): XeroStatusResponse => ({
     { connection_id: 'b', tenant_id: 't-b', tenant_name: 'IICT (Aust) Pty Ltd', status: 'connected', last_sync_at: null, last_refresh_at: null },
   ],
   retired_orgs: [],
+  can_manage: true,
   connected: true,
   expired: false,
   needsReconnect: false,
@@ -87,6 +88,35 @@ describe('useXeroKeepalive — one org of several', () => {
     expect(toastError.mock.calls[0][0]).toBe('IICT (Aust) Pty Ltd: Xero connection expired. Please reconnect from Integrations.')
     expect(toastWarning).not.toHaveBeenCalled()
     expect(result.current.status).toMatchObject({ connected: true, needsReconnect: true, scope: 'IICT (Aust) Pty Ltd' })
+  })
+
+  it('hands the page the full answer, so a toast never sits above a panel still showing the load-time state', async () => {
+    const onStatusChange = vi.fn()
+    stubResponses({ status: 200, body: oneOrgDead() })
+    const { result } = renderHook(() => useXeroKeepalive('biz-iict', false, { onStatusChange }))
+    await act(() => result.current.checkNow())
+
+    expect(onStatusChange).toHaveBeenCalledTimes(1)
+    expect(onStatusChange.mock.calls[0][0].response).toMatchObject({ status: 'dead', status_scope: 'IICT (Aust) Pty Ltd' })
+  })
+
+  it('a failed check hands the page nothing — the last real answer stands', async () => {
+    const onStatusChange = vi.fn()
+    stubResponses({ status: 500, body: {} })
+    const { result } = renderHook(() => useXeroKeepalive('biz-iict', false, { onStatusChange }))
+    await act(() => result.current.checkNow())
+    expect(onStatusChange).not.toHaveBeenCalled()
+  })
+
+  it('switching business starts afresh — the new business is not compared with the old one', async () => {
+    stubResponses({ status: 200, body: oneOrgDead() }, { status: 200, body: healthy() })
+    const { result, rerender } = renderHook(({ id }) => useXeroKeepalive(id, false), { initialProps: { id: 'biz-a' } })
+    await act(() => result.current.checkNow())
+
+    rerender({ id: 'biz-b' })
+    await act(() => result.current.checkNow())
+    // biz-a needed a reconnect; biz-b is healthy. That is not a "restored".
+    expect(toastSuccess).not.toHaveBeenCalled()
   })
 
   it('a reconnect already needed on the first check does not toast — the page banner already says it', async () => {
