@@ -56,6 +56,17 @@ interface BoardClient {
     /** The org the status is about when only part of a multi-org business has
      *  it ("IICT Group Pty Ltd", "2 of 3 orgs"); null when business-wide. */
     status_scope?: string | null
+    /** Other orgs needing attention in a lesser state than `status`. */
+    more_orgs_needing_attention?: number
+    /** Every Xero org, worst first; retired ones (switched off and excluded
+     *  from consolidation) last and never flagged. */
+    orgs?: {
+      tenant_name: string | null
+      status: string
+      needs_attention: boolean
+      retired: boolean
+      last_sync_at: string | null
+    }[]
   }
   recon: {
     state: ReconState
@@ -193,10 +204,13 @@ const CONNECTION_LABELS: Record<string, string> = {
 
 /** The connection state in words, naming the org when only one part of a
  *  multi-org business is in it — "No fresh data" alone would hide that the
- *  other orgs are fine, and which one to chase. */
+ *  other orgs are fine, and which one to chase — and counting any other org
+ *  that also needs attention, so the worst one never hides the next. */
 function connectionLabel(connection: BoardClient['connection'], fallback = 'Data problem'): string {
   const label = CONNECTION_LABELS[connection.status] ?? fallback
-  return connection.status_scope ? `${connection.status_scope}: ${label}` : label
+  const scoped = connection.status_scope ? `${connection.status_scope}: ${label}` : label
+  const more = connection.more_orgs_needing_attention ?? 0
+  return more > 0 ? `${scoped} (+${more} more org${more === 1 ? ' needs' : 's need'} attention)` : scoped
 }
 
 /** Left-edge stripe on each table row — the urgency colour without sections. */
@@ -960,6 +974,8 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
           ))}
         </ul>
 
+        <XeroOrgList client={client} />
+
         <SettingsEditor client={client} onSaved={onChanged} />
       </div>
 
@@ -1009,6 +1025,46 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
         </button>
         {actionError && <span className="text-xs font-medium text-red-600">{actionError}</span>}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Every Xero org of a multi-org business with its own state — the row names
+ * only the worst. A disconnected org carries the way out: reconnect it, or, if
+ * the entity is wound up, retire it (a disconnected org is already switched
+ * off; excluding it from consolidation as well is what retires it) so it stops
+ * holding the business red.
+ */
+function XeroOrgList({ client }: { client: BoardClient }) {
+  const orgs = client.connection.orgs ?? []
+  if (orgs.length < 2) return null
+  const hasDeadOrg = orgs.some(o => o.status === 'dead' && !o.retired)
+  return (
+    <div className="mt-4">
+      <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Xero orgs</h4>
+      <ul className="space-y-0.5 text-xs">
+        {orgs.map((org, i) => (
+          <li
+            key={`${org.tenant_name ?? 'org'}-${i}`}
+            className={org.needs_attention ? 'font-semibold text-red-700' : 'text-gray-500'}
+          >
+            {org.tenant_name ?? 'Unnamed org'} —{' '}
+            {org.retired ? 'retired' : CONNECTION_LABELS[org.status] ?? 'Data problem'}
+            {!org.retired && org.last_sync_at ? ` · last sync ${relTime(org.last_sync_at)}` : ''}
+          </li>
+        ))}
+      </ul>
+      {hasDeadOrg && (
+        <p className="mt-1.5 text-[11px] text-gray-400">
+          Reconnect a disconnected org. If that entity has been wound up, untick its Include in consolidation box
+          in the{' '}
+          <Link href={`/admin/consolidation/${client.business_id}`} className="underline hover:text-gray-600">
+            consolidation settings
+          </Link>{' '}
+          to retire it.
+        </p>
+      )}
     </div>
   )
 }

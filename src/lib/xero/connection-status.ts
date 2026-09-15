@@ -112,6 +112,11 @@ export interface XeroConnectionStatusRow {
   tenant_id: string | null;
   /** Display only: names the org behind a business-level status. */
   tenant_name?: string | null;
+  /**
+   * Admin consolidation setting. Together with is_active=false it marks an org
+   * retired on purpose; absent or null never does.
+   */
+  include_in_consolidation?: boolean | null;
   is_active: boolean | null;
   last_synced_at: string | null;
   updated_at: string | null;
@@ -155,7 +160,12 @@ export function dataClockFor(
   syncClock: XeroSyncClock,
 ): XeroDataClock {
   const fromColumn = parseMs(row.last_synced_at) ?? 0;
-  const fromJobs = row.tenant_id ? syncClock.byTenant.get(row.tenant_id) ?? 0 : 0;
+  // Exact key first (sync_jobs carries the row's own tenant_id), then trimmed —
+  // the same normalisation the business grouping uses.
+  const jobsMs = row.tenant_id
+    ? syncClock.byTenant.get(row.tenant_id) ?? syncClock.byTenant.get(row.tenant_id.trim())
+    : undefined;
+  const fromJobs = jobsMs !== undefined && Number.isFinite(jobsMs) ? jobsMs : 0;
   const freshest = Math.max(fromColumn, fromJobs);
   return { lastSyncMs: freshest > 0 ? freshest : null, lookupOk: syncClock.ok };
 }
@@ -251,10 +261,15 @@ export interface XeroOrgClassification extends XeroConnectionClassification {
   tenantName: string | null;
 }
 
-/** A business classified from all of its orgs. The headline fields are the worst org's. */
+/**
+ * A business classified from all of its orgs. The headline fields are the worst
+ * org's — for display, `statusScope` says whether naming that org is meaningful.
+ */
 export interface XeroBusinessConnectionClassification extends XeroOrgClassification {
   /** Every org that counted, worst first. A dead row superseded by a live row for the same org is not here. */
   orgs: XeroOrgClassification[];
+  /** Orgs retired on purpose (switched off and excluded from consolidation), worst first. They set nothing. */
+  retiredOrgs: XeroOrgClassification[];
   /** How many of `orgs` share the headline status. */
   worstOrgCount: number;
   /**
@@ -264,6 +279,12 @@ export interface XeroBusinessConnectionClassification extends XeroOrgClassificat
    * business-wide — naming one org then would suggest the others are fine.
    */
   statusScope: string | null;
+  /**
+   * Orgs that ALSO need attention, in a lesser state than the headline — the
+   * "(+1 more)". Without it a disconnected org would hide a sibling whose token
+   * stopped refreshing until the first was fixed.
+   */
+  moreOrgsNeedingAttention: number;
 }
 
 /**
@@ -336,12 +357,19 @@ function classifyOrgRow(
  *
  * Rows group by Xero org (tenant_id). A dead row speaks for its org only when no
  * live row does, so a reconnect that landed under the other business-id form
- * does not keep reading as disconnected. A dead row with NO live row for its org
- * does count, and makes the business dead: that org has stopped syncing, so the
- * business's numbers are a fraction of it. `is_active=false` records no reason,
- * though — the admin consolidation page's per-org "Active" box writes the same
- * flag the token manager writes when Xero refuses — so an org switched off on
- * purpose reads dead here too. (Raised with Matt 15 Sep 2026.)
+ * does not keep reading as disconnected. A dead org with NO live row counts, and
+ * makes the business dead: that org has stopped syncing, so the business's
+ * numbers are a fraction of it.
+ *
+ * The one exception is an org RETIRED on purpose: every row switched off AND
+ * excluded from consolidation, which only a person can set (the admin
+ * consolidation page's two per-org boxes). `is_active=false` alone records no
+ * reason — the token manager writes it when Xero refuses — and nothing in the
+ * app can delete one org of several, so without this a wound-up entity would
+ * hold its business red for good. The token manager never touches
+ * include_in_consolidation, so a refused org still reads dead; and if every org
+ * is retired they count after all, rather than a business going quiet.
+ * (Decided 15 Sep 2026 and raised with Matt.)
  *
  * The result does not depend on row order, which is the property the
  * single-representative reduction lacked.
@@ -362,7 +390,8 @@ export function classifyBusinessConnections(
     else rowsByOrg.set(key, [row]);
   }
 
-  const orgs: XeroOrgClassification[] = [];
+  const counted: XeroOrgClassification[] = [];
+  const retired: XeroOrgClassification[] = [];
   for (const orgRows of rowsByOrg.values()) {
     const live = orgRows.filter((r) => r.is_active === true);
     const classified = (live.length > 0 ? live : orgRows).map((r) =>
@@ -370,9 +399,13 @@ export function classifyBusinessConnections(
     );
     // Two live rows for one org (one per id form) are two live claims about it.
     classified.sort(worstFirst);
-    orgs.push(classified[0]);
+    const isRetired = live.length === 0 && orgRows.every((r) => r.include_in_consolidation === false);
+    (isRetired ? retired : counted).push(classified[0]);
   }
+  const orgs = counted.length > 0 ? counted : retired;
+  const retiredOrgs = counted.length > 0 ? retired : [];
   orgs.sort(worstFirst);
+  retiredOrgs.sort(worstFirst);
 
   const worst = orgs[0];
   if (!worst) {
@@ -381,8 +414,10 @@ export function classifyBusinessConnections(
       tenantId: null,
       tenantName: null,
       orgs: [],
+      retiredOrgs: [],
       worstOrgCount: 0,
       statusScope: null,
+      moreOrgsNeedingAttention: 0,
     };
   }
 
@@ -392,5 +427,6 @@ export function classifyBusinessConnections(
     statusScope =
       worstOrgCount === 1 && worst.tenantName ? worst.tenantName : `${worstOrgCount} of ${orgs.length} orgs`;
   }
-  return { ...worst, orgs, worstOrgCount, statusScope };
+  const moreOrgsNeedingAttention = orgs.filter((o) => o.status !== worst.status && needsAttention(o.status)).length;
+  return { ...worst, orgs, retiredOrgs, worstOrgCount, statusScope, moreOrgsNeedingAttention };
 }

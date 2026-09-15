@@ -154,11 +154,30 @@ describe('Phase 53-05 — XeroHealthPill column in ClientOverviewTable', () => {
       />,
     );
     const pill = within(getRowForBusiness('IICT Group')).getByLabelText(/xero/i);
-    expect(pill.getAttribute('aria-label')).toBe(
-      'IICT Group Pty Ltd: Xero connected but the numbers have not updated recently',
+    expect(pill.getAttribute('aria-label')).toBe('IICT Group Pty Ltd: Xero numbers have not updated recently');
+    expect(pill.getAttribute('title')).toBe('IICT Group Pty Ltd: The numbers from Xero have not updated recently.');
+    // That org's token refreshes while Xero refuses its data — never tell the
+    // coach its connection is fine.
+    expect(pill.getAttribute('title')).not.toMatch(/fine/i);
+  });
+
+  it('Test 2e — the worst org does not hide another that also needs attention', () => {
+    render(
+      <ClientOverviewTable
+        clients={[
+          makeClient({
+            id: 'biz-dragon',
+            businessName: 'Dragon Roofing',
+            xeroConnectionHealth: 'dead',
+            xeroConnectionScope: 'EASY HAIL CLAIM PTY LTD',
+            xeroMoreOrgsNeedingAttention: 1,
+          }),
+        ]}
+      />,
     );
-    expect(pill.getAttribute('title')).toBe(
-      'IICT Group Pty Ltd: Xero connection is fine, but the numbers have not updated recently.',
+    const pill = within(getRowForBusiness('Dragon Roofing')).getByLabelText(/xero/i);
+    expect(pill.getAttribute('aria-label')).toBe(
+      'EASY HAIL CLAIM PTY LTD: Xero disconnected — click to reconnect (+1 more org needs attention)',
     );
   });
 

@@ -339,7 +339,7 @@ export default function CoachDashboardPage() {
         // Non-fatal: console.warn on failure, dashboard still renders.
         // No Sentry capture — this is a UI nicety, not a system invariant.
         (async () => {
-          type XeroHealth = { status: ClientMetrics['xeroConnectionHealth']; scope: string | null }
+          type XeroHealth = { status: ClientMetrics['xeroConnectionHealth']; scope: string | null; more: number }
           const empty = new Map<string, XeroHealth>()
           if (businessIds.length === 0) return empty
           try {
@@ -357,8 +357,13 @@ export default function CoachDashboardPage() {
               business_id: string
               status: ClientMetrics['xeroConnectionHealth']
               status_scope?: string | null
+              more_orgs_needing_attention?: number
             }>) {
-              map.set(r.business_id, { status: r.status, scope: r.status_scope ?? null })
+              map.set(r.business_id, {
+                status: r.status,
+                scope: r.status_scope ?? null,
+                more: r.more_orgs_needing_attention ?? 0,
+              })
             }
             return map
           } catch (err) {
@@ -482,6 +487,7 @@ export default function CoachDashboardPage() {
           // the grey "never connected" pill for a business that may be broken.
           xeroConnectionHealth: xeroHealthMap.get(b.id)?.status ?? 'unknown',
           xeroConnectionScope: xeroHealthMap.get(b.id)?.scope ?? null,
+          xeroMoreOrgsNeedingAttention: xeroHealthMap.get(b.id)?.more ?? 0,
         }
       })
 

@@ -239,6 +239,16 @@ describe('dataClockFor — one row, its own tenant', () => {
       .toBe(NOW - 60_000)
   })
 
+  it('a garbage sync_jobs value does not erase a real column clock', () => {
+    expect(dataClockFor(row({ last_synced_at: at(-60_000) }), syncClock({ t1: Number.NaN })).lastSyncMs)
+      .toBe(NOW - 60_000)
+  })
+
+  it('finds the tenant’s clock whether the key is padded or not — the grouping trims too', () => {
+    expect(dataClockFor(row({ tenant_id: 't1 ', last_synced_at: null }), syncClock({ t1: NOW - 60_000 })).lastSyncMs)
+      .toBe(NOW - 60_000)
+  })
+
   it('carries a failed lookup through as lookupOk=false', () => {
     expect(dataClockFor(row(), syncClock({}, false)).lookupOk).toBe(false)
   })
@@ -466,6 +476,124 @@ describe('classifyBusinessConnections — a business is as healthy as its worst 
     it('identical orgs still pick the same headline every time', () => {
       const c = expectOrderIndependent([org('t-b', { tenant_name: 'Same' }), org('t-a', { tenant_name: 'Same' }), org('t-c', { tenant_name: 'Same' })])
       expect(c.tenantId).toBe('t-a')
+    })
+  })
+
+  describe('moreOrgsNeedingAttention — the worst org never hides the next', () => {
+    it('a disconnected org does not hide a sibling whose token stopped refreshing', () => {
+      const c = expectOrderIndependent([
+        org('t-dead', { is_active: false }),
+        org('t-auth', { expires_at: tokenGrantedAgo(13 * HOUR) }),
+        org('t-ok'),
+      ])
+      expect(c).toMatchObject({ status: 'dead', statusScope: 't-dead Pty Ltd', moreOrgsNeedingAttention: 1 })
+      expect(c.orgs.map((o) => o.status)).toEqual(['dead', 'auth_stale', 'connected'])
+    })
+
+    it('orgs sharing the headline are in the scope, not the "more"', () => {
+      const c = classifyBusinessConnections(
+        [org('t1', { is_active: false }), org('t2', { is_active: false }), org('t3', { last_synced_at: at(-3 * DAY) }), org('t4')],
+        syncClock(),
+        NOW,
+      )
+      expect(c).toMatchObject({ status: 'dead', statusScope: '2 of 4 orgs', moreOrgsNeedingAttention: 1 })
+    })
+
+    it('states that need nobody are not counted', () => {
+      const pending = org('t-new', { last_synced_at: null, created_at: at(-2 * HOUR) })
+      expect(classifyBusinessConnections([org('t-ok'), pending], syncClock(), NOW).moreOrgsNeedingAttention).toBe(0)
+      expect(classifyBusinessConnections([org('t-stale', { last_synced_at: at(-3 * DAY) }), pending], syncClock(), NOW))
+        .toMatchObject({ status: 'data_stale', moreOrgsNeedingAttention: 0 })
+    })
+
+    it('a failed lookup behind a dead org counts every unchecked org', () => {
+      const c = classifyBusinessConnections([org('t1'), org('t2'), org('t3', { is_active: false })], syncClock({}, false), NOW)
+      expect(c).toMatchObject({ status: 'dead', moreOrgsNeedingAttention: 2 })
+    })
+  })
+
+  describe('retired orgs — switched off AND excluded from consolidation', () => {
+    // Nothing in the app deletes one org of several, and is_active=false alone
+    // is also what the token manager writes when Xero refuses. The pair below
+    // can only be set by a person on the consolidation page.
+    const retiredOrg = (tenant: string, over: Partial<XeroConnectionStatusRow> = {}) =>
+      org(tenant, { is_active: false, include_in_consolidation: false, ...over })
+
+    it('a wound-up entity no longer holds its business red, and is listed apart', () => {
+      const c = expectOrderIndependent([org('t-live'), retiredOrg('t-gone')])
+      expect(c).toMatchObject({ status: 'connected', statusScope: null, moreOrgsNeedingAttention: 0 })
+      expect(c.orgs.map((o) => o.tenantId)).toEqual(['t-live'])
+      expect(c.retiredOrgs.map((o) => o.tenantId)).toEqual(['t-gone'])
+    })
+
+    it('switched off but still included is a refusal, not a retirement — and so is an unset flag', () => {
+      for (const include_in_consolidation of [true, null, undefined]) {
+        const c = classifyBusinessConnections([org('t-live'), retiredOrg('t-off', { include_in_consolidation })], syncClock(), NOW)
+        expect(c.status).toBe('dead')
+        expect(c.retiredOrgs).toEqual([])
+      }
+    })
+
+    it('an org is retired only when every one of its rows says so', () => {
+      const c = classifyBusinessConnections(
+        [org('t-live'), retiredOrg('t-off', { id: 'a' }), retiredOrg('t-off', { id: 'b', include_in_consolidation: true })],
+        syncClock(),
+        NOW,
+      )
+      expect(c).toMatchObject({ status: 'dead', statusScope: 't-off Pty Ltd' })
+    })
+
+    it('a live org is judged on its state whatever its consolidation flag', () => {
+      const c = classifyBusinessConnections(
+        [org('t-ok'), org('t-excluded', { include_in_consolidation: false, expires_at: tokenGrantedAgo(13 * HOUR) })],
+        syncClock(),
+        NOW,
+      )
+      expect(c).toMatchObject({ status: 'auth_stale', statusScope: 't-excluded Pty Ltd', retiredOrgs: [] })
+    })
+
+    it('retiring every org does not make a business quiet — they count after all', () => {
+      const c = expectOrderIndependent([retiredOrg('t1'), retiredOrg('t2')])
+      expect(c).toMatchObject({ status: 'dead', retiredOrgs: [] })
+      expect(c.orgs).toHaveLength(2)
+    })
+  })
+
+  describe('tie-breaks that decide the headline', () => {
+    it('an is_active=null row is not live, so it cannot drag down an org that has a live row', () => {
+      expect(classifyBusinessConnections([org('t1'), org('t1', { id: 'null-active', is_active: null })], syncClock(), NOW).status)
+        .toBe('connected')
+    })
+
+    it('auth_stale orgs lead by the oldest TOKEN grant, not the oldest data', () => {
+      const c = expectOrderIndependent([
+        org('t-old-token', { expires_at: tokenGrantedAgo(20 * HOUR), last_synced_at: at(-HOUR) }),
+        org('t-old-data', { expires_at: tokenGrantedAgo(13 * HOUR), last_synced_at: at(-5 * HOUR) }),
+      ])
+      expect(c).toMatchObject({ status: 'auth_stale', tenantId: 't-old-token' })
+    })
+
+    it('never synced is older than any sync', () => {
+      const c = expectOrderIndependent([
+        org('t-synced', { last_synced_at: at(-3 * DAY) }),
+        org('t-never', { last_synced_at: null }),
+      ])
+      expect(c).toMatchObject({ status: 'data_stale', tenantId: 't-never', lastSyncAt: null })
+    })
+
+    it('rows with blank tenant ids never group, so a live blank row cannot excuse a dead one', () => {
+      const c = classifyBusinessConnections(
+        [org('x', { id: 'blank-live', tenant_id: ' ' }), org('x', { id: 'blank-dead', tenant_id: '', is_active: false })],
+        syncClock(),
+        NOW,
+      )
+      expect(c).toMatchObject({ status: 'dead', connectionId: 'blank-dead' })
+      expect(c.orgs).toHaveLength(2)
+    })
+
+    it('with clocks tied, the org name decides before the tenant id', () => {
+      const c = expectOrderIndependent([org('t-a', { tenant_name: 'Zed Co' }), org('t-b', { tenant_name: 'Acme Co' })])
+      expect(c.tenantName).toBe('Acme Co')
     })
   })
 })

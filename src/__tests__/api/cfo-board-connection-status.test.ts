@@ -54,6 +54,7 @@ interface Conn {
   business_id: string
   tenant_id: string
   tenant_name: string
+  include_in_consolidation?: boolean
   is_active: boolean
   last_synced_at: string | null
   updated_at: string
@@ -73,6 +74,7 @@ const conn = (over: Partial<Conn> & Pick<Conn, 'id' | 'tenant_id' | 'tenant_name
 
 function setFleet(opts: {
   businesses?: { id: string; name: string }[]
+  profiles?: { id: string; business_id: string }[]
   connections: Conn[]
   syncJobs?: { tenant_id: string; finished_at: string }[]
   syncJobsError?: { message: string }
@@ -83,7 +85,7 @@ function setFleet(opts: {
       data: (opts.businesses ?? [{ id: 'biz-iict', name: 'IICT Group' }]).map(b => ({ ...b, assigned_coach_id: null })),
       error: null,
     },
-    business_profiles: { data: [], error: null },
+    business_profiles: { data: opts.profiles ?? [], error: null },
     xero_connections: { data: opts.connections, error: null },
     monthly_report_settings: { data: [], error: null },
     cfo_report_status: { data: [], error: null },
@@ -173,5 +175,53 @@ describe('GET /api/cfo/board — a multi-org business is as healthy as its worst
   it('a failed sync_jobs lookup is "Health unknown" for the whole business, never green', async () => {
     setFleet({ connections: [aust, pty, hk], syncJobsError: { message: 'statement timeout' } })
     expect(await boardConnection()).toMatchObject({ status: 'unknown', needs_attention: true, status_scope: null })
+  })
+
+  it('a row filed under the business_profiles id is still one of the business’s orgs', async () => {
+    setFleet({
+      profiles: [{ id: 'prof-iict', business_id: 'biz-iict' }],
+      connections: [aust, { ...pty, business_id: 'prof-iict' }, hk],
+    })
+    expect(await boardConnection()).toMatchObject({ status: 'data_stale', status_scope: 'IICT Group Pty Ltd', tenant_count: 3 })
+  })
+
+  it('surfaces a dead org the board exists to show — and lists every org with its own state', async () => {
+    // Easy Hail refused by Xero while Dragon Roofing's token stopped refreshing:
+    // the row names the worst and counts the other, the panel lists all three.
+    setFleet({
+      businesses: [{ id: 'biz-dragon', name: 'Dragon Roofing' }],
+      connections: [
+        conn({ id: 'c-ok', business_id: 'biz-dragon', tenant_id: 't-ok', tenant_name: 'Dragon Holdings' }),
+        conn({ id: 'c-auth', business_id: 'biz-dragon', tenant_id: 't-auth', tenant_name: 'Dragon Roofing Pty Ltd', expires_at: ago(13 * HOUR) }),
+        conn({ id: 'c-dead', business_id: 'biz-dragon', tenant_id: 't-dead', tenant_name: 'EASY HAIL CLAIM PTY LTD', is_active: false }),
+      ],
+    })
+    const connection = await boardConnection('Dragon Roofing')
+    expect(connection).toMatchObject({
+      status: 'dead',
+      needs_attention: true,
+      status_scope: 'EASY HAIL CLAIM PTY LTD',
+      more_orgs_needing_attention: 1,
+      tenant_count: 2,
+    })
+    expect(connection.orgs.map((o: { tenant_name: string; status: string; needs_attention: boolean; retired: boolean }) =>
+      [o.tenant_name, o.status, o.needs_attention, o.retired])).toEqual([
+      ['EASY HAIL CLAIM PTY LTD', 'dead', true, false],
+      ['Dragon Roofing Pty Ltd', 'auth_stale', true, false],
+      ['Dragon Holdings', 'connected', false, false],
+    ])
+  })
+
+  it('an org retired on purpose is listed as retired and no longer holds the row red', async () => {
+    setFleet({
+      businesses: [{ id: 'biz-dragon', name: 'Dragon Roofing' }],
+      connections: [
+        conn({ id: 'c-ok', business_id: 'biz-dragon', tenant_id: 't-ok', tenant_name: 'Dragon Roofing Pty Ltd' }),
+        conn({ id: 'c-gone', business_id: 'biz-dragon', tenant_id: 't-gone', tenant_name: 'Wound Up Pty Ltd', is_active: false, include_in_consolidation: false }),
+      ],
+    })
+    const connection = await boardConnection('Dragon Roofing')
+    expect(connection).toMatchObject({ status: 'connected', needs_attention: false, status_scope: null })
+    expect(connection.orgs.at(-1)).toMatchObject({ tenant_name: 'Wound Up Pty Ltd', retired: true, needs_attention: false })
   })
 })

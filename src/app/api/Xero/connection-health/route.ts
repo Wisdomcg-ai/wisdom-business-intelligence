@@ -94,10 +94,12 @@ export interface ConnectionHealthResult {
   last_sync_at: string | null;
   expires_at: string | null;
   connection_id: string | null;
-  /** The org that set `status`: the worst of the business's orgs. */
+  /** The headline org — the worst one, whose clocks the fields above report. Display `status_scope`, not this. */
   tenant_name: string | null;
   /** "IICT Group Pty Ltd" or "2 of 3 orgs" when only part of a multi-org business has the status; null when business-wide. */
   status_scope: string | null;
+  /** Other orgs needing attention in a lesser state than `status` — so one broken org never hides another. */
+  more_orgs_needing_attention: number;
 }
 
 const MAX_BUSINESS_IDS = 200;
@@ -193,7 +195,7 @@ async function getHandler(request: NextRequest) {
   // once let the last-written org stand in for the whole business.
   const { data: connections, error: connectionsError } = await supabaseAdmin
     .from('xero_connections')
-    .select('id, business_id, tenant_id, tenant_name, is_active, last_synced_at, updated_at, expires_at, created_at')
+    .select('id, business_id, tenant_id, tenant_name, include_in_consolidation, is_active, last_synced_at, updated_at, expires_at, created_at')
     .in('business_id', allIdForms)
     .order('created_at', { ascending: false })
     .order('id', { ascending: true });
@@ -238,6 +240,7 @@ async function getHandler(request: NextRequest) {
       connection_id: c.connectionId,
       tenant_name: c.tenantName,
       status_scope: c.statusScope,
+      more_orgs_needing_attention: c.moreOrgsNeedingAttention,
     };
   });
 

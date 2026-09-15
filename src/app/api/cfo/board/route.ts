@@ -21,6 +21,7 @@ import {
   classifyBusinessConnections,
   needsAttention,
   type XeroConnectionStatusRow,
+  type XeroOrgClassification,
 } from '@/lib/xero/connection-status'
 import { getLastSyncByTenant } from '@/lib/health-checks'
 import {
@@ -100,7 +101,7 @@ async function getHandler(request: Request) {
     // for the whole business.
     const { data: connections, error: connError } = await supabase
       .from('xero_connections')
-      .select('id, business_id, tenant_id, tenant_name, is_active, last_synced_at, updated_at, expires_at, created_at')
+      .select('id, business_id, tenant_id, tenant_name, include_in_consolidation, is_active, last_synced_at, updated_at, expires_at, created_at')
       .in('business_id', allIdForms)
       .order('created_at', { ascending: false })
       .order('id', { ascending: true })
@@ -282,6 +283,8 @@ async function getHandler(request: Request) {
               tenant_count: activeTenants.length,
               tenant_names: [],
               status_scope: null,
+              more_orgs_needing_attention: 0,
+              orgs: [],
             }
           : {
               status: classification.status,
@@ -294,6 +297,13 @@ async function getHandler(request: Request) {
               // The org the status is about when only part of a multi-org
               // business has it ("IICT Group Pty Ltd"); null when business-wide.
               status_scope: classification.statusScope,
+              // Other orgs needing attention in a lesser state, so one broken
+              // org never hides another; the expanded row lists every org.
+              more_orgs_needing_attention: classification.moreOrgsNeedingAttention,
+              orgs: [
+                ...classification.orgs.map(o => orgForBoard(o, false)),
+                ...classification.retiredOrgs.map(o => orgForBoard(o, true)),
+              ],
             },
         recon,
         dashboard_capture,
@@ -342,6 +352,17 @@ async function getHandler(request: Request) {
       extra: { context: '[CFO Board] request failed' },
     } as any)
     return NextResponse.json({ error: 'Failed to load board' }, { status: 500 })
+  }
+}
+
+/** One org's line in the expanded row. A retired org is listed but never flagged. */
+function orgForBoard(org: XeroOrgClassification, retired: boolean) {
+  return {
+    tenant_name: org.tenantName,
+    status: org.status,
+    needs_attention: !retired && needsAttention(org.status),
+    retired,
+    last_sync_at: org.lastSyncAt,
   }
 }
 

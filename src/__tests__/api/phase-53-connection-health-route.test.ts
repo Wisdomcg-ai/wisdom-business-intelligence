@@ -25,7 +25,10 @@
  *   Multi-org businesses (15 Sep 2026 — worst org wins, whatever the row order):
  *     13. One of three orgs stale reads data_stale and names that org
  *     14. A dead org with no live row makes the business dead
+ *         14b. ...without hiding a sibling that also needs attention
+ *         14c. ...unless it was retired on purpose (off AND excluded from consolidation)
  *     15. A failed xero_connections read is a 500, never a fleet of 'none'
+ *     16. A failed sync_jobs lookup is unknown, never green
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -78,6 +81,7 @@ interface FakeConnection {
   business_id: string;
   tenant_id?: string;
   tenant_name?: string | null;
+  include_in_consolidation?: boolean | null;
   is_active: boolean;
   last_synced_at: string | null;
   updated_at: string | null;
@@ -93,6 +97,7 @@ function configureAdmin(opts: {
   profiles?: FakeProfile[];
   connections?: FakeConnection[];
   connectionsError?: { message: string };
+  syncJobsError?: { message: string };
 }) {
   const businesses = opts.businesses ?? [];
   const profiles = opts.profiles ?? [];
@@ -185,7 +190,9 @@ function configureAdmin(opts: {
           in: () => ({
             gte: () => ({
               then: (resolve: any) =>
-                Promise.resolve({ data: [], error: null }).then(resolve),
+                Promise.resolve(
+                  opts.syncJobsError ? { data: null, error: opts.syncJobsError } : { data: [], error: null },
+                ).then(resolve),
             }),
           }),
         }),
@@ -452,6 +459,7 @@ describe('GET /api/Xero/connection-health — status thresholds (12h verified, I
       connection_id: null,
       tenant_name: null,
       status_scope: null,
+      more_orgs_needing_attention: 0,
     });
   });
 });
@@ -484,6 +492,11 @@ describe('GET /api/Xero/connection-health — dual-ID resolution + active-prefer
     expect(body.results[0].connection_id).toBe('conn-legacy');
   });
 
+  // POLICY CHANGE, 15 Sep 2026. This fixture used to give the dead and live rows
+  // DIFFERENT orgs and expect 'connected' — any live row anywhere excused a
+  // dead one. That is how a refused org hid inside a multi-org business, so the
+  // different-org shape now reads dead (Test 14). Supersession is per org:
+  // only a live row for the SAME tenant sets a dead row aside.
   it('Test 12 — a live row supersedes a dead row for the same Xero org, however recently the dead one was stamped', async () => {
     const deadRecent: FakeConnection = {
       // Old dead row with the most recent updated_at (would win on order alone)
@@ -579,6 +592,7 @@ describe('GET /api/Xero/connection-health — multi-org businesses', () => {
       tenant_name: 'IICT Group Pty Ltd',
       status_scope: 'IICT Group Pty Ltd',
       connection_id: 'conn-pty',
+      more_orgs_needing_attention: 0,
     });
     const orders = [
       [iictRows[1], iictRows[0], iictRows[2]],
@@ -599,6 +613,43 @@ describe('GET /api/Xero/connection-health — multi-org businesses', () => {
       'biz-dragon',
     );
     expect(result).toMatchObject({ status: 'dead', status_scope: 'EASY HAIL CLAIM PTY LTD' });
+  });
+
+  it('Test 14b — the disconnected org does not hide a sibling that also needs attention', async () => {
+    const result = await fetchOne(
+      [
+        { ...iictRows[0], business_id: 'biz-x', is_active: false },
+        { ...iictRows[1], business_id: 'biz-x' }, // 106h stale
+        { ...iictRows[2], business_id: 'biz-x' },
+      ],
+      'biz-x',
+    );
+    expect(result).toMatchObject({ status: 'dead', status_scope: 'IICT (Aust) Pty Ltd', more_orgs_needing_attention: 1 });
+  });
+
+  it('Test 14c — an org retired on purpose (off AND excluded from consolidation) no longer holds the business red', async () => {
+    const result = await fetchOne(
+      [
+        { ...iictRows[0], business_id: 'biz-y' },
+        { ...iictRows[2], business_id: 'biz-y', is_active: false, include_in_consolidation: false },
+      ],
+      'biz-y',
+    );
+    expect(result).toMatchObject({ status: 'connected', status_scope: null, more_orgs_needing_attention: 0 });
+  });
+
+  it('Test 16 — a failed sync_jobs lookup is unknown for every org, never green', async () => {
+    configureAuth({ id: 'owner-1' });
+    configureAdmin({
+      businesses: [{ id: 'biz-iict', owner_id: 'owner-1', assigned_coach_id: null }],
+      profiles: [],
+      connections: iictRows,
+      syncJobsError: { message: 'statement timeout' },
+    });
+    const { GET } = await import('@/app/api/Xero/connection-health/route');
+    const res = await GET(makeReq(['biz-iict']));
+    expect(res.status).toBe(200);
+    expect((await res.json()).results[0]).toMatchObject({ status: 'unknown', status_scope: null });
   });
 
   it('Test 15 — a failed xero_connections read is a 500, not every business reading "No Xero"', async () => {
