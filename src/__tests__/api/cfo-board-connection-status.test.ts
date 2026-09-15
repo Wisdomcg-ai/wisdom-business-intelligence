@@ -41,8 +41,20 @@ vi.mock('@/lib/supabase/server', () => ({
   createRouteHandlerClient: vi.fn(async () => ({ auth: { getUser: mockGetUser } })),
 }))
 
+/** The sync clock the route reads: last_xero_sync_by_tenant over the sync_jobs fixture — each tenant's newest finish, or its error. */
+async function rpcFor(fn: string) {
+  if (fn !== 'last_xero_sync_by_tenant') throw new Error(`unexpected rpc ${fn}`)
+  const jobs = tables.sync_jobs ?? { data: [], error: null }
+  if (jobs.error) return { data: null, error: jobs.error }
+  const latest: Record<string, string> = {}
+  for (const j of (jobs.data ?? []) as { tenant_id: string; finished_at: string }[]) {
+    if (!latest[j.tenant_id] || Date.parse(j.finished_at) > Date.parse(latest[j.tenant_id])) latest[j.tenant_id] = j.finished_at
+  }
+  return { data: latest, error: null }
+}
+
 vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(() => ({ from: (table: string) => chainFor(table) })),
+  createClient: vi.fn(() => ({ from: (table: string) => chainFor(table), rpc: (fn: string) => rpcFor(fn) })),
 }))
 
 const HOUR = 60 * 60 * 1000
