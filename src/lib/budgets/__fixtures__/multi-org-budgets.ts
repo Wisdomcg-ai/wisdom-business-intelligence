@@ -398,13 +398,14 @@ export function iictState(opts: {
  * `.not()` would let an unlocked version resolve for the wrong reason.
  */
 export function memorySupabase(tables: Record<string, any[]>) {
-  type Filter = [string, unknown, 'eq' | 'in' | 'is' | 'not-is']
+  type Filter = [string, unknown, 'eq' | 'neq' | 'in' | 'is' | 'not-is']
   const build = (table: string, filters: Filter[] = [], order: { col: string; asc: boolean } | null = null): any => {
     const run = () => {
       let rows = (tables[table] ?? []).filter((r) =>
         filters.every(([col, val, op]) => {
           const cell = r[col]
           if (op === 'eq') return cell === val
+          if (op === 'neq') return cell !== val
           if (op === 'in') return Array.isArray(val) && (val as unknown[]).includes(cell)
           if (op === 'is') return val === null ? cell === null || cell === undefined : cell === val
           return val === null ? cell !== null && cell !== undefined : cell !== val
@@ -419,6 +420,7 @@ export function memorySupabase(tables: Record<string, any[]>) {
     const q: any = {
       select: () => q,
       eq: (c: string, v: unknown) => build(table, [...filters, [c, v, 'eq']], order),
+      neq: (c: string, v: unknown) => build(table, [...filters, [c, v, 'neq']], order),
       in: (c: string, v: unknown[]) => build(table, [...filters, [c, v, 'in']], order),
       is: (c: string, v: unknown) => build(table, [...filters, [c, v, 'is']], order),
       not: (c: string, _op: string, v: unknown) => build(table, [...filters, [c, v, 'not-is']], order),
