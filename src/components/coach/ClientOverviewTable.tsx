@@ -47,6 +47,11 @@ export interface ClientMetrics {
     | 'unknown'
     | 'dead'
     | 'none'
+  // The org the health is about when only part of a multi-org business has it
+  // ("IICT Group Pty Ltd", "2 of 3 orgs"); null when it is business-wide.
+  xeroConnectionScope?: string | null
+  // Other orgs needing attention in a lesser state than the health shown.
+  xeroMoreOrgsNeedingAttention?: number
 }
 
 // Sort rank for the Xero health column. Lower = surfaces first when sorted
@@ -81,18 +86,27 @@ const rankOf = (h: ClientMetrics['xeroConnectionHealth']): number => XERO_HEALTH
 function XeroHealthPill({
   businessId,
   health,
+  scope,
+  more = 0,
 }: {
   businessId: string
   health: ClientMetrics['xeroConnectionHealth']
+  scope?: string | null
+  more?: number
 }) {
+  // A multi-org business where only one org is in this state names it, so the
+  // coach knows which org to chase — and counts any other org that also needs
+  // attention, so the worst one never hides the next.
+  const moreNote = more > 0 ? ` (+${more} more org${more === 1 ? ' needs' : 's need'} attention)` : ''
+  const scoped = (text: string) => `${scope ? `${scope}: ` : ''}${text}${moreNote}`
   if (health === 'dead') {
     const href = `/api/Xero/auth?business_id=${encodeURIComponent(businessId)}&return_to=${encodeURIComponent('/coach/dashboard')}`
     return (
       <a
         href={href}
         className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition-colors"
-        aria-label="Xero disconnected — click to reconnect"
-        title="Xero connection lost. Click to reconnect."
+        aria-label={scoped('Xero disconnected — click to reconnect')}
+        title={scoped('Xero connection lost. Click to reconnect.')}
       >
         <AlertTriangle className="w-3 h-3" />
         Xero
@@ -103,8 +117,8 @@ function XeroHealthPill({
     return (
       <span
         className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-green-50 border border-green-200 text-green-700"
-        aria-label="Xero connected and data current"
-        title="Xero token healthy and the numbers are current."
+        aria-label={scoped('Xero connected and data current')}
+        title={scoped('Xero token healthy and the numbers are current.')}
       >
         <CheckCircle className="w-3 h-3" />
         Xero
@@ -120,8 +134,8 @@ function XeroHealthPill({
       <a
         href={href}
         className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition-colors"
-        aria-label="Xero not refreshing — no token granted in over 12 hours"
-        title="Xero has not granted a token in over 12 hours. Click to reconnect."
+        aria-label={scoped('Xero not refreshing — no token granted in over 12 hours')}
+        title={scoped('Xero has not granted a token in over 12 hours. Click to reconnect.')}
       >
         <AlertTriangle className="w-3 h-3" />
         Xero
@@ -129,11 +143,14 @@ function XeroHealthPill({
     )
   }
   if (health === 'data_stale') {
+    // Not "the connection is fine": a token that still refreshes can sit on
+    // top of an org whose data Xero refuses (IICT Group Pty Ltd, 403 on every
+    // sync since 10 Sep 2026). Say only what is known — the numbers are old.
     return (
       <span
         className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-yellow-50 border border-yellow-200 text-yellow-700"
-        aria-label="Xero connected but the numbers have not updated recently"
-        title="Xero connection is fine, but the numbers have not updated recently."
+        aria-label={scoped('Xero numbers have not updated recently')}
+        title={scoped('The numbers from Xero have not updated recently.')}
       >
         <Clock className="w-3 h-3" />
         Xero
@@ -144,8 +161,8 @@ function XeroHealthPill({
     return (
       <span
         className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-blue-50 border border-blue-200 text-blue-700"
-        aria-label="Xero connected, first sync has not run yet"
-        title="Connected. The first sync runs within a few hours."
+        aria-label={scoped('Xero connected, first sync has not run yet')}
+        title={scoped('Connected. The first sync runs within a few hours.')}
       >
         <Clock className="w-3 h-3" />
         Xero
@@ -156,8 +173,8 @@ function XeroHealthPill({
     return (
       <span
         className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-gray-50 border border-gray-200 text-gray-500"
-        aria-label="No Xero connection set up"
-        title="No Xero connection set up for this business."
+        aria-label={scoped('No Xero connection set up')}
+        title={scoped('No Xero connection set up for this business.')}
       >
         <Minus className="w-3 h-3" />
         No Xero
@@ -170,8 +187,8 @@ function XeroHealthPill({
   return (
     <span
       className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-gray-50 border border-gray-200 text-gray-500"
-      aria-label="Xero status unknown — we could not check this connection"
-      title="We could not check this connection. This is not a confirmation that it works."
+      aria-label={scoped('Xero status unknown — we could not check this connection')}
+      title={scoped('We could not check this connection. This is not a confirmation that it works.')}
     >
       <Minus className="w-3 h-3" />
       Xero ?
@@ -633,6 +650,8 @@ export function ClientOverviewTable({ clients, isLoading = false }: ClientOvervi
                   <XeroHealthPill
                     businessId={client.id}
                     health={client.xeroConnectionHealth}
+                    scope={client.xeroConnectionScope}
+                    more={client.xeroMoreOrgsNeedingAttention}
                   />
                 </td>
 
