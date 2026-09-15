@@ -155,6 +155,23 @@ export interface ConsolidatedReport {
      */
     budgetLines: ConsolidatedLine[]
   }
+  /**
+   * Where the budget columns came from, when the report was asked to use the
+   * approved budget (budget_source = 'budget_version'). Absent on the forecast
+   * path, whose output is unchanged. 'none' carries the reason — an
+   * organisation without a version, a missing exchange rate — for the banner.
+   */
+  budget_provenance?: {
+    source: 'budget_version' | 'none'
+    scope: 'business' | 'per_tenant' | null
+    version_id: string | null
+    version_ids: string[]
+    label: string | null
+    no_budget_reason: import('@/lib/budgets/resolve-budget').NoBudgetReason | null
+    no_budget_detail: string | null
+    budget_only_accounts: Array<{ tenant_id: string | null; account_code: string | null; account_name: string }>
+    translated: Array<{ scope: string | null; currency_pair: string }>
+  }
   fx_context: {
     rates_used: Record<string, number>
     missing_rates: { currency_pair: string; period: string }[]

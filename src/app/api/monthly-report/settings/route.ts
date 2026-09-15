@@ -209,26 +209,19 @@ async function postHandler(request: Request) {
         .limit(1)
       if (!anyVersion || anyVersion.length === 0) {
         return NextResponse.json(
-          { error: 'Import a budget from Xero before switching this client to the budget store', code: 'NO_BUDGET_VERSION' },
+          { error: 'Import a budget (from Xero or a spreadsheet) before switching this client to the budget store', code: 'NO_BUDGET_VERSION' },
           { status: 400 },
         )
       }
 
-      // One cheap check on a rare write, instead of a per-report tenant check:
-      // a multi-org business (Dragon 2 orgs, IICT 3) needs its per-tenant
-      // budgets summed, and summing HKD into AUD is not something to arrive at
-      // by accident. Kept out until that exists.
-      const { count: orgCount } = await supabase
-        .from('xero_connections')
-        .select('id', { count: 'exact', head: true })
-        .eq('business_id', business_id)
-        .eq('is_active', true)
-      if ((orgCount ?? 0) > 1) {
-        return NextResponse.json(
-          { error: 'This business has more than one Xero organisation; the budget store cannot combine their budgets yet', code: 'MULTI_ORG_BUDGET_UNSUPPORTED' },
-          { status: 400 },
-        )
-      }
+      // A business with more than one Xero organisation used to be refused
+      // here (MULTI_ORG_BUDGET_UNSUPPORTED): nothing could combine their
+      // budgets, and summing HKD into AUD is not something to arrive at by
+      // accident. lib/budgets/consolidated-budget now combines them — aligned
+      // per organisation, in one currency — and refuses PER REPORT, with the
+      // reason on the page, whatever it cannot answer (an organisation without
+      // a version in force, a month with no exchange rate). Refusing the switch
+      // as well would only stop Dragon and IICT reaching that answer (DRG-03).
     }
 
     // Merge provided sections with defaults (so partial updates work)

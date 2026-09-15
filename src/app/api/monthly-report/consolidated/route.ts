@@ -53,6 +53,7 @@ import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfile
 import { reportedFxMonths } from '@/lib/monthly-report/consolidated-fx'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import { loadReportSettings } from '@/lib/monthly-report/report-settings-load'
+import { resolveApprovedBudgetForTenants } from '@/lib/budgets/consolidated-budget'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 
@@ -191,6 +192,17 @@ async function postHandler(request: Request) {
     // the other months are never printed.
     const reportedMonths = new Set(reportedFxMonths(fyMonths, report_month))
 
+    // --- BUDGET SOURCE ---
+    // Read positively, as the single-entity route does: a business with no
+    // settings row arrives on the defaults' 'forecast'. On the budget store the
+    // engine takes the approved budget INSTEAD of the forecast — per
+    // organisation or for the group, aligned to each organisation's own
+    // accounts, in AUD or refused with the reason (lib/budgets/consolidated-
+    // budget). This route used to ignore the setting, so Dragon and IICT
+    // printed a forecast under "Budgets" whatever the coach chose (DRG-03,
+    // IICT-07).
+    const onBudgetStore = (settings as { budget_source?: string } | null)?.budget_source === 'budget_version'
+
     stage = 'engine'
     const report = await buildConsolidation(supabase, {
       businessId: ids.businessId,
@@ -213,6 +225,22 @@ async function postHandler(request: Request) {
         }
         return { translated, missing: missing.filter((m) => reportedMonths.has(m)), ratesUsed }
       },
+      ...(onBudgetStore
+        ? {
+            resolveApprovedBudget: ({ tenants, accountsByTenant, presentationCurrency: currency }) => {
+              stage = 'approved_budget'
+              return resolveApprovedBudgetForTenants(supabase as any, {
+                businessId: ids.businessId,
+                fiscalYear: fiscal_year,
+                reportMonth: report_month,
+                fyMonths,
+                tenants,
+                accountsByTenant,
+                presentationCurrency: currency,
+              })
+            },
+          }
+        : {}),
     })
 
     // PRES-07 — this route never computed read-path quality, so the monthly

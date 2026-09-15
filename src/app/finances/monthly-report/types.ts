@@ -296,6 +296,17 @@ export interface GeneratedReport {
   /** budget_versions.id when budget_source is 'budget_version'. */
   budget_version_id?: string | null
   /**
+   * Every version a consolidated report's budget was read from — one per Xero
+   * organisation for Dragon Roofing & Easy Hail. budget_version_id is the first.
+   */
+  budget_version_ids?: string[]
+  /**
+   * The specifics behind no_budget_reason, when the reason alone cannot name
+   * them: which organisation has no version, which months have no exchange
+   * rate. Emitted by the consolidated route; absent elsewhere.
+   */
+  no_budget_detail?: string | null
+  /**
    * Why there is no budget, when the client is on the budget store — emitted by
    * generate/route.ts straight off the resolver. Undefined on a snapshot frozen
    * before the field existed, and null on the forecast path (the resolver only

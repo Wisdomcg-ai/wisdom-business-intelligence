@@ -212,6 +212,23 @@ export function adaptConsolidatedToGeneratedReport(
   const operatingProfitRow = derived.operating_profit_row
   const netProfitRow = derived.net_profit_row
 
+  // Where the budget came from, when the route was asked for the approved
+  // budget. Without it the page's export guard saw a report "measured against
+  // the forecast" on a client switched to the budget store and refused every
+  // export (page.tsx handleExportPDF; DRG-03). Absent on the forecast path,
+  // which leaves these fields exactly as they were: unset.
+  const provenance = consolidated?.budget_provenance
+  const budgetProvenance = provenance && (provenance.source === 'budget_version' || provenance.source === 'none')
+    ? {
+        budget_source: provenance.source as 'budget_version' | 'none',
+        budget_version_id: provenance.version_id ?? null,
+        budget_version_ids: Array.isArray(provenance.version_ids) ? provenance.version_ids : [],
+        ...(provenance.label ? { budget_forecast_name: provenance.label as string } : {}),
+        no_budget_reason: provenance.no_budget_reason ?? null,
+        no_budget_detail: provenance.no_budget_detail ?? null,
+      }
+    : undefined
+
   const missingRates = consolidated?.fx_context?.missing_rates
   const consolidationFx = Array.isArray(missingRates)
     ? {
@@ -237,6 +254,7 @@ export function adaptConsolidatedToGeneratedReport(
     is_draft: draft.isDraft,
     unreconciled_count: Math.max(0, Math.round(draft.unreconciledCount || 0)),
     has_budget: hasBudget,
+    ...(budgetProvenance ?? {}),
     is_consolidation: true,
     ...(consolidationFx ? { consolidation_fx: consolidationFx } : {}),
   }

@@ -287,20 +287,36 @@ export function packWagesEmployeeYardstick(
 export function absentSentence(
   reason: NoBudgetReason | null | undefined,
   fiscalYear: number | string | null | undefined,
+  detail?: string | null,
 ): string {
-  return `No budget for this month — Budget and Variance columns are shown as “—” because ${noBudgetBecause(reason, fiscalYear)}.`
+  return `No budget for this month — Budget and Variance columns are shown as “—” because ${noBudgetBecause(reason, fiscalYear, detail)}.`
 }
 
 /**
  * The "because" clause of absentSentence on its own, for a page whose columns
  * are not the statement's (the Subscription page's TOTAL row).
+ *
+ * `detail` is the consolidated resolver's own clause — "Easy Hail Claim Pty Ltd
+ * has no approved FY2027 budget in force for Aug 2026", "no HKD/AUD exchange
+ * rate is stored for Jun 2027" — and wins when there is one, because the reason
+ * alone cannot say which organisation or which months.
  */
 export function noBudgetBecause(
   reason: NoBudgetReason | null | undefined,
   fiscalYear: number | string | null | undefined,
+  detail?: string | null,
 ): string {
   const fy = fiscalYear ? `FY${fiscalYear}` : 'this fiscal year'
+  if (reason && detail && detail.trim()) return detail.trim()
   switch (reason) {
+    case 'tenant_without_budget':
+      return `not every Xero organisation has an approved ${fy} budget in force`
+    case 'budget_fx_rate_missing':
+      return 'an approved budget in a foreign currency has months with no stored exchange rate'
+    case 'budget_currency_unknown':
+      return 'an approved budget does not record its currency and the organisations’ currencies differ'
+    case 'mixed_budget_scopes':
+      return 'a business-level approved budget and per-organisation budgets are in force together, so none was applied'
     case 'no_version_in_force':
       return `no approved budget version is locked for ${fy}`
     case 'version_not_yet_effective':
@@ -327,8 +343,8 @@ export function noBudgetBecause(
  * is a no-budget report here too.
  */
 export function noBudgetNote(
-  report: Pick<GeneratedReport, 'has_budget' | 'no_budget_reason' | 'fiscal_year'>,
+  report: Pick<GeneratedReport, 'has_budget' | 'no_budget_reason' | 'fiscal_year' | 'no_budget_detail'>,
 ): string | null {
   if (report.has_budget) return null
-  return absentSentence(report.no_budget_reason, report.fiscal_year)
+  return absentSentence(report.no_budget_reason, report.fiscal_year, report.no_budget_detail)
 }
