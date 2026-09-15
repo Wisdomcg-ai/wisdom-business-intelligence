@@ -13,7 +13,7 @@
  *   - Escape closes the panel only
  */
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import PDFLayoutEditorModal from '../PDFLayoutEditorModal'
 import type { LayoutWidget, PDFLayout, WidgetType } from '../../../types/pdf-layout'
@@ -155,12 +155,18 @@ describe('Where Did Our Money Go', () => {
 describe('the editor around the panel', () => {
   it('Apply with nothing changed leaves the layout unchanged and not unsaved', async () => {
     const user = userEvent.setup()
-    renderEditor(layoutWith('cover_page'))
-    await user.click(screen.getByRole('button', { name: 'Page options' }))
-    await user.click(screen.getByRole('button', { name: 'Apply' }))
-    expect(screen.queryByRole('dialog')).toBeNull()
-    // The toolbar's undo has nothing to undo.
-    expect(screen.getByTitle(/Undo/)).toBeDisabled()
+    // A stored config whose keys are not in the order Apply writes them.
+    for (const layout of [layoutWith('cover_page'), layoutWith('money_flow', { config: { bank_rows: 'moved', last_line: 'surplus' } })]) {
+      const view = renderEditor(layout)
+      await user.click(screen.getByRole('button', { name: 'Page options' }))
+      await user.click(screen.getByRole('button', { name: 'Apply' }))
+      expect(screen.queryByRole('dialog')).toBeNull()
+      // The toolbar's undo has nothing to undo, and nothing is unsaved.
+      expect(screen.getByTitle(/Undo/)).toBeDisabled()
+      expect(screen.queryByText('Unsaved changes')).toBeNull()
+      expect(view.onSave).not.toHaveBeenCalled()
+      cleanup()
+    }
   })
 
   it('Escape closes the panel, not the editor, and the placement survives a Backspace after', async () => {

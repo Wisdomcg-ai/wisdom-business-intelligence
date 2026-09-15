@@ -55,7 +55,12 @@ export default function PlacementOptionsPanel({ widget, onCancel, onApply }: Pla
   const apply = () => {
     const next = applyPlacementOptions(widget.type, widget.config, values, { dropUnrecognised })
     // Nothing changed: no history entry, and the layout is not marked unsaved.
-    if (JSON.stringify(next) === JSON.stringify(widget.config ?? {})) onCancel()
+    // Compared key by key — Apply writes the keys in its own order.
+    const stored = widget.config ?? {}
+    const unchanged =
+      Object.keys(next).length === Object.keys(stored).length &&
+      Object.entries(next).every(([key, value]) => JSON.stringify(stored[key]) === JSON.stringify(value))
+    if (unchanged) onCancel()
     else onApply(next)
   }
 
