@@ -20,6 +20,8 @@ import {
 } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
 
+import { formatDate } from '@/lib/timezone'
+
 interface SessionNote {
   id: string
   business_id: string
@@ -210,7 +212,7 @@ export default function CoachSessionsPage() {
     return groups
   }, {} as Record<string, SessionNote[]>)
 
-  const formatDate = (dateString: string) => {
+  const formatLocalDate = (dateString: string) => {
     const date = new Date(dateString + 'T00:00:00')
     const today = new Date()
     const yesterday = new Date(today)
@@ -221,7 +223,7 @@ export default function CoachSessionsPage() {
     } else if (date.toDateString() === yesterday.toDateString()) {
       return 'Yesterday'
     } else {
-      return date.toLocaleDateString('en-AU', {
+      return formatDate(date, {
         weekday: 'long',
         day: 'numeric',
         month: 'long',
@@ -381,7 +383,7 @@ export default function CoachSessionsPage() {
                 <div className="flex items-center gap-3 mb-3">
                   <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 flex-shrink-0" />
                   <h2 className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wide">
-                    {formatDate(date)}
+                    {formatLocalDate(date)}
                   </h2>
                   <div className="flex-1 h-px bg-gray-200" />
                 </div>

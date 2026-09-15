@@ -31,6 +31,8 @@ import {
 import TranscriptAnalyzer from '@/components/coach/TranscriptAnalyzer'
 import { SessionPrepForm } from '@/components/coach/SessionPrepForm'
 
+import { formatDate, formatDateTime } from '@/lib/timezone'
+
 interface SessionAction {
   id: string
   session_note_id: string | null
@@ -524,9 +526,9 @@ export default function SessionDetailPage() {
     setNewActions(updated)
   }
 
-  const formatDate = (dateString: string) => {
+  const formatLocalDate = (dateString: string) => {
     const date = new Date(dateString + 'T00:00:00')
-    return date.toLocaleDateString('en-AU', {
+    return formatDate(date, {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -536,7 +538,7 @@ export default function SessionDetailPage() {
 
   const formatShortDate = (dateString: string) => {
     const date = new Date(dateString + 'T00:00:00')
-    return date.toLocaleDateString('en-AU', {
+    return formatDate(date, {
       month: 'short',
       day: 'numeric'
     })
@@ -612,7 +614,7 @@ export default function SessionDetailPage() {
                 <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
                   <span className="flex items-center gap-1">
                     <Calendar className="w-4 h-4" />
-                    {formatDate(session.session_date)}
+                    {formatLocalDate(session.session_date)}
                   </span>
                   {session.duration_minutes && (
                     <span className="flex items-center gap-1">
@@ -1238,14 +1240,14 @@ export default function SessionDetailPage() {
                 <div className="flex justify-between">
                   <span className="text-gray-600">Created</span>
                   <span className="text-gray-900">
-                    {new Date(session.created_at).toLocaleString('en-AU')}
+                    {formatDateTime(new Date(session.created_at))}
                   </span>
                 </div>
                 {session.coach_started_at && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Coach joined</span>
                     <span className="text-gray-900">
-                      {new Date(session.coach_started_at).toLocaleString('en-AU')}
+                      {formatDateTime(new Date(session.coach_started_at))}
                     </span>
                   </div>
                 )}
@@ -1253,7 +1255,7 @@ export default function SessionDetailPage() {
                   <div className="flex justify-between">
                     <span className="text-gray-600">Client joined</span>
                     <span className="text-gray-900">
-                      {new Date(session.client_started_at).toLocaleString('en-AU')}
+                      {formatDateTime(new Date(session.client_started_at))}
                     </span>
                   </div>
                 )}
@@ -1261,14 +1263,14 @@ export default function SessionDetailPage() {
                   <div className="flex justify-between">
                     <span className="text-gray-600">Completed</span>
                     <span className="text-gray-900">
-                      {new Date(session.completed_at).toLocaleString('en-AU')}
+                      {formatDateTime(new Date(session.completed_at))}
                     </span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span className="text-gray-600">Last updated</span>
                   <span className="text-gray-900">
-                    {new Date(session.updated_at).toLocaleString('en-AU')}
+                    {formatDateTime(new Date(session.updated_at))}
                   </span>
                 </div>
               </div>

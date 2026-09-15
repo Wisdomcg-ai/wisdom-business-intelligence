@@ -16,6 +16,8 @@ import {
   X
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 export interface Template {
   id: string
   type: 'session' | 'action' | 'email' | 'intake'
@@ -69,8 +71,8 @@ export function TemplatesLibrary({
     }
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-AU', {
+  const formatLocalDate = (dateString: string) => {
+    return formatDate(new Date(dateString), {
       month: 'short',
       day: 'numeric',
       year: 'numeric'
@@ -183,7 +185,7 @@ export function TemplatesLibrary({
                         <p className="text-sm text-gray-500 mt-0.5">{template.description}</p>
                       )}
                       <p className="text-xs text-gray-400 mt-1">
-                        Created {formatDate(template.createdAt)}
+                        Created {formatLocalDate(template.createdAt)}
                       </p>
                     </div>
                   </div>

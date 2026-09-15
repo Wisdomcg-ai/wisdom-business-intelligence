@@ -11,6 +11,8 @@ import {
   Archive
 } from 'lucide-react'
 
+import { formatDate } from '@/lib/timezone'
+
 export interface Conversation {
   id: string
   businessId: string
@@ -56,7 +58,7 @@ export function ConversationList({
     return matchesSearch && matchesFilter
   })
 
-  const formatTime = (dateString: string) => {
+  const formatLocalTime = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
@@ -68,7 +70,7 @@ export function ConversationList({
     if (diffMins < 60) return `${diffMins}m`
     if (diffHours < 24) return `${diffHours}h`
     if (diffDays < 7) return `${diffDays}d`
-    return date.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })
+    return formatDate(date, { month: 'short', day: 'numeric' })
   }
 
   const unreadCount = conversations.filter(c => c.unreadCount > 0 && !c.isArchived).length
@@ -193,7 +195,7 @@ export function ConversationList({
                         )}
                       </div>
                       <span className="text-xs text-gray-500 flex-shrink-0">
-                        {formatTime(conversation.lastMessageAt)}
+                        {formatLocalTime(conversation.lastMessageAt)}
                       </span>
                     </div>
                     <p className={`text-sm truncate ${
