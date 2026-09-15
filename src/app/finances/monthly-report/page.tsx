@@ -54,7 +54,7 @@ import { useConsolidatedReport } from './hooks/useConsolidatedReport'
 import { useFullYearReport } from './hooks/useFullYearReport'
 import { useSubscriptionDetail } from './hooks/useSubscriptionDetail'
 import { rollUpContractors, contractorLoadReason } from '@/lib/monthly-report/contractor-rollup'
-import { contractorWindowForLayout } from '@/lib/monthly-report/contractor-page'
+import { contractorCodesByTenant, contractorWindowForLayout } from '@/lib/monthly-report/contractor-page'
 import { payrollWindowForLayout } from '@/lib/monthly-report/payroll-grid-config'
 import { packPdfFilename } from '@/lib/monthly-report/pack-filename'
 import { parseRatioAnalysisConfig, requiredWindow } from '@/lib/monthly-report/ratio-table'
@@ -1235,7 +1235,12 @@ export default function MonthlyReportPage() {
       // Months across the page: three for a Contractors Payment Summary
       // placement (contractor-page), and no `months` at all otherwise, so every
       // other client's request — and its two Xero months — is unchanged.
-      const contractorMonths = contractorWindowForLayout((settings?.pdf_layout?.pages ?? []).flatMap((p) => p.widgets ?? []))
+      const contractorWidgets = (settings?.pdf_layout?.pages ?? []).flatMap((p) => p.widgets ?? [])
+      const contractorMonths = contractorWindowForLayout(contractorWidgets)
+      // The codes each organisation posts them under, when they differ:
+      // Dragon's Virtual Contractors is 2300 and Easy Hail's 508 (DRG-29).
+      // Absent for every client whose organisations share their codes.
+      const codesByTenant = contractorCodesByTenant(contractorWidgets)
       try {
         const res = await fetch('/api/monthly-report/subscription-detail', {
           method: 'POST',
@@ -1244,6 +1249,7 @@ export default function MonthlyReportPage() {
             business_id: businessId,
             report_month: selectedMonth,
             account_codes: contractorCodes,
+            ...(codesByTenant ? { account_codes_by_tenant: codesByTenant } : {}),
             ...(contractorMonths > 2 ? { months: contractorMonths } : {}),
           }),
         })

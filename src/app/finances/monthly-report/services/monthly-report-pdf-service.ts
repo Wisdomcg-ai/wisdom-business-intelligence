@@ -4688,31 +4688,44 @@ export class MonthlyReportPDFService {
 
     const priorLabel = this.formatShortMonth(this.priorMonthOf(this.report.report_month))
     const monthLabel = this.formatShortMonth(this.report.report_month)
+    // Calxa's Virtual Contractors table is DRAGON | EHC | TOTAL: each
+    // organisation's own figure before the month's (DRG-29). Asked for with
+    // nothing to split by — a single-organisation business, an older
+    // response — the page prints its one Actual column and says so.
+    const entities = parsed.config.entity_columns === 'actuals' ? detail.tenants ?? [] : []
+    if (parsed.config.entity_columns === 'actuals' && entities.length === 0) {
+      this.yPosition = this.drawNote('These figures carry nothing per Xero organisation, so the page prints one column.', undefined, { fontSize: 7.5, color: [146, 64, 14] }) + 2
+    }
+    const splitCells = (by: Record<string, number> | undefined, style?: Record<string, unknown>) =>
+      entities.map((e) => (style ? { content: this.fmtCurrency(by?.[e.tenant_id] ?? 0), styles: style } : this.fmtCurrency(by?.[e.tenant_id] ?? 0)))
 
     const body: any[] = detail.contractors.map((c) => [
       c.vendor_name,
       c.category ?? '—',
       this.fmtCurrency(c.prior_month_actual),
       this.fmtCurrency(c.budget),
+      ...splitCells(c.by_tenant),
       this.fmtCurrency(c.actual),
       this.fmtVariance(c.variance),
     ])
     const gt = detail.grand_total
+    const totalStyle = { fontStyle: 'bold' as const, fillColor: GP_BLUE as number[] }
     body.push([
-      { content: 'Total', styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
+      { content: 'Total', styles: totalStyle },
       { content: '', styles: { fillColor: GP_BLUE } },
-      { content: this.fmtCurrency(gt.prior_month), styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
-      { content: this.fmtCurrency(gt.budget), styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
-      { content: this.fmtCurrency(gt.actual), styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
-      { content: this.fmtVariance(gt.variance), styles: { fontStyle: 'bold', fillColor: GP_BLUE } },
+      { content: this.fmtCurrency(gt.prior_month), styles: totalStyle },
+      { content: this.fmtCurrency(gt.budget), styles: totalStyle },
+      ...splitCells(gt.by_tenant, totalStyle),
+      { content: this.fmtCurrency(gt.actual), styles: totalStyle },
+      { content: this.fmtVariance(gt.variance), styles: totalStyle },
     ])
 
     autoTable(this.doc, {
       startY: this.yPosition,
-      head: [['Contractor', 'Department', priorLabel, 'Budget', monthLabel, 'Variance']],
+      head: [['Contractor', 'Department', priorLabel, 'Budget', ...entities.map((e) => e.name), monthLabel, 'Variance']],
       body,
-      ...packTableStyles(8),
-      columnStyles: { 0: { cellWidth: 48 }, 1: { cellWidth: 30 } },
+      ...packTableStyles(entities.length > 0 ? 7.5 : 8),
+      columnStyles: { 0: { cellWidth: entities.length > 0 ? 40 : 48 }, 1: { cellWidth: entities.length > 0 ? 24 : 30 } },
       margin: { left: this.margin, right: this.margin },
       didParseCell: (data) => {
         if (data.column.index >= 2 && data.section !== 'head') data.cell.styles.halign = 'right'
