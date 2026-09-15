@@ -21,7 +21,7 @@
  * route puts on its report.
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type {
   GeneratedReport,
@@ -78,8 +78,6 @@ export function adaptConsolidatedToGeneratedReport(
      * and YTD pages of the PDF.
      */
     settings: MonthlyReportSettings
-    /** Generate's reconciliation verdict — the single-entity route's force_draft. */
-    isDraft?: boolean
   },
 ): GeneratedReport {
   const consolidatedLines: Array<{
@@ -214,10 +212,7 @@ export function adaptConsolidatedToGeneratedReport(
     gross_profit_row: grossProfitRow,
     operating_profit_row: operatingProfitRow,
     net_profit_row: netProfitRow,
-    // As the single-entity route marks it: a draft when Generate said so, so
-    // Finalise stays locked on a month whose reconciliation did not come back
-    // clean. unreconciled_count is 0 on both routes.
-    is_draft: context.isDraft ?? false,
+    is_draft: false,
     unreconciled_count: 0,
     has_budget: hasBudget,
     is_consolidation: true,
@@ -241,34 +236,27 @@ export function useMonthlyReport(businessId: string) {
   const [qualityCheckFailed, setQualityCheckFailed] = useState(true)
   const [perTenantQuality, setPerTenantQuality] = useState<import('@/lib/services/forecast-read-service').PerTenantQuality[]>([])
 
-  // The detection below, as a promise Generate can wait on (DRG-52).
-  const detectionRef = useRef<Promise<boolean> | null>(null)
-
   // MLTE-05: detect consolidation mode = business has 2+ active,
   // consolidation-included xero_connections. Mirrors useConsolidatedReport.
   useEffect(() => {
     if (!businessId) {
-      detectionRef.current = null
       setIsConsolidationGroup(null)
       return
     }
     let cancelled = false
     const supabase = createClient()
-    const detection = Promise.resolve(
-      supabase
-        .from('xero_connections')
-        .select('id', { count: 'exact', head: true })
-        .eq('business_id', businessId)
-        .eq('is_active', true)
-        .eq('include_in_consolidation', true),
-    ).then(
-      ({ count }) => (count ?? 0) >= 2,
-      () => false,
-    )
-    detectionRef.current = detection
-    detection.then((isGroup) => {
-      if (!cancelled) setIsConsolidationGroup(isGroup)
-    })
+    supabase
+      .from('xero_connections')
+      .select('id', { count: 'exact', head: true })
+      .eq('business_id', businessId)
+      .eq('is_active', true)
+      .eq('include_in_consolidation', true)
+      .then(({ count }) => {
+        if (!cancelled) setIsConsolidationGroup((count ?? 0) >= 2)
+      })
+      .then(undefined, () => {
+        if (!cancelled) setIsConsolidationGroup(false)
+      })
     return () => {
       cancelled = true
     }
@@ -284,15 +272,7 @@ export function useMonthlyReport(businessId: string) {
         // MLTE-05 branching: route to consolidated API when the resolved
         // businessId is a consolidation parent. Adapter maps the response
         // into GeneratedReport so the existing UI renders unchanged.
-        //
-        // DRG-52: a Generate clicked before the connection count has been read
-        // waits for it. It used to take the single-entity route, which sums
-        // every org's figures as they are — IICT Group Limited's HKD added
-        // into AUD one-for-one.
-        const isGroup =
-          isConsolidationGroup !== null
-            ? isConsolidationGroup
-            : (await (detectionRef.current ?? Promise.resolve(false))) === true
+        const isGroup = isConsolidationGroup === true
         const endpoint = isGroup
           ? '/api/monthly-report/consolidated'
           : '/api/monthly-report/generate'
@@ -352,7 +332,7 @@ export function useMonthlyReport(businessId: string) {
             reportMonth,
             fiscalYear,
             businessId,
-            { settings: data.settings, isDraft: forceDraft === true },
+            { settings: data.settings },
           )
           setReport(adapted)
           return adapted

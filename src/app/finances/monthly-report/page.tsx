@@ -1026,10 +1026,8 @@ export default function MonthlyReportPage() {
     // treats as actual is scoped to the report month — so a month change
     // invalidates it just as a fiscal-year change does.
     clearFullYear()
-    // The consolidated report is the month's too, and the export reuses it for
-    // the per-entity page — kept, it prints the last month's entity figures
-    // under this month's heading (DRG-16). The cashflow is a fiscal-year view
-    // and stays.
+    // The consolidated P&L and balance sheet are one month's (DRG-16). Left
+    // cached, the export printed a month viewed earlier under this month's title.
     clearConsolidated()
     clearConsolidatedBS()
     // Restore persisted commentary from snapshot if one exists

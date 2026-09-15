@@ -4,11 +4,6 @@
  * - The report carries the business's settings row, which the consolidated
  *   route now serves beside the report — not a stub that hid the Unspent,
  *   Next Month and Annual columns (IICT-12, DRG-05).
- * - A report generated from the reconciliation gate's "continue as draft" is a
- *   draft, as the single-entity route marks it, so Finalise stays locked.
- * - A Generate clicked before the connection count is read waits for it. It
- *   used to post to the single-entity route, which adds an HKD org's figures
- *   into AUD one-for-one (DRG-52).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, act } from '@testing-library/react'
@@ -110,60 +105,6 @@ describe('useMonthlyReport — Generate on a consolidation parent', () => {
     expect(report.settings.show_unspent_budget).toBe(true)
     expect(report.settings.show_budget_next_month).toBe(true)
     expect(report.settings.show_budget_annual_total).toBe(true)
-    expect(report.is_draft).toBe(false)
-  })
-
-  it('a draft Generate produces a draft report', async () => {
-    const { api, Harness } = makeHarness()
-    render(<Harness />)
-    await act(async () => { resolveDetection(3) })
-
-    await act(async () => {
-      await api.current!.generateReport('2026-08', 2027, true)
-    })
-    expect(api.current!.report!.is_draft).toBe(true)
-  })
-
-  it('a Generate clicked before the connection count is read waits for it, then consolidates', async () => {
-    const { api, Harness } = makeHarness()
-    render(<Harness />)
-    expect(api.current!.isConsolidationGroup).toBeNull()
-
-    let pending: Promise<unknown> = Promise.resolve()
-    await act(async () => {
-      pending = api.current!.generateReport('2026-08', 2027)
-    })
-    // Nothing posted while the count is unknown.
-    expect(fetchMock).not.toHaveBeenCalled()
-
-    await act(async () => {
-      resolveDetection(3)
-      await pending
-    })
-    expect(postedTo()).toEqual(['/api/monthly-report/consolidated'])
-    expect(api.current!.report!.is_consolidation).toBe(true)
-  })
-
-  it('a single-entity business clicked early still posts to the single-entity route, as before', async () => {
-    const { api, Harness } = makeHarness()
-    render(<Harness />)
-
-    let pending: Promise<unknown> = Promise.resolve()
-    await act(async () => {
-      pending = api.current!.generateReport('2026-08', 2027, true)
-    })
-    await act(async () => {
-      resolveDetection(1)
-      await pending
-    })
-    expect(postedTo()).toEqual(['/api/monthly-report/generate'])
-    const [, init] = fetchMock.mock.calls[0]
-    expect(JSON.parse(String(init!.body))).toEqual({
-      business_id: BUSINESS_ID,
-      report_month: '2026-08',
-      fiscal_year: 2027,
-      force_draft: true,
-    })
   })
 
   it('a consolidated response without settings is an error, never a report with guessed columns', async () => {

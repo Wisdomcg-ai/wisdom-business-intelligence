@@ -221,19 +221,4 @@ describe('adaptConsolidatedToGeneratedReport — the business\'s own settings', 
     }
     expect(report.net_profit_row.prior_year).toBeNull()
   })
-
-  it('is a draft when Generate asked for one, as the single-entity route marks it', () => {
-    const draft = adaptConsolidatedToGeneratedReport(
-      makeConsolidated({}), REPORT_MONTH, 2027, 'biz-1', { settings: SETTINGS, isDraft: true },
-    )
-    expect(draft.is_draft).toBe(true)
-    const final = adaptConsolidatedToGeneratedReport(
-      makeConsolidated({}), REPORT_MONTH, 2027, 'biz-1', { settings: SETTINGS, isDraft: false },
-    )
-    expect(final.is_draft).toBe(false)
-    const unsaid = adaptConsolidatedToGeneratedReport(
-      makeConsolidated({}), REPORT_MONTH, 2027, 'biz-1', { settings: SETTINGS },
-    )
-    expect(unsaid.is_draft).toBe(false)
-  })
 })

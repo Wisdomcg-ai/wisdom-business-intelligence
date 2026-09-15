@@ -18,6 +18,12 @@
  * Figures are Calxa's August 2026 packs (IICT p2 and p6, Dragon p2). Budgets
  * come through a business-level forecast here only so the budget columns have
  * something to print; where the real budget comes from is package P5.
+ *
+ * Every test here failed before the route served the settings row and the
+ * adapter carried it, except the one under "already true before this change":
+ * the route's FX translation and the per-entity page predate it, and that page
+ * reads the consolidated report, not the adapter's settings. It is a guard on
+ * the export this change opens to IICT, not evidence for IICT-01 or IICT-12.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { adaptConsolidatedToGeneratedReport } from '@/app/finances/monthly-report/hooks/useMonthlyReport'
@@ -237,7 +243,16 @@ describe('IICT Group — a coach generates and exports the consolidated pack (3 
       '314,012', '324,881', '10,869', '616,219', '734,865', '118,646', '3,247,855', '304,636', '3,982,720',
     ])
   })
+})
 
+describe('IICT Group — already true before this change: the export translates the HKD org', () => {
+  beforeEach(() => {
+    setup(IICT, iictState())
+  })
+
+  // Passes on the code before this change too (see the header). Kept so the
+  // pack a coach can now export for IICT keeps printing IICT Group Limited
+  // translated on its per-entity page.
   it('the per-entity page prints IICT Group Limited in AUD — 292,364, not 1,628,445', async () => {
     const { json } = await generateAsCoach(IICT)
     const report = adaptConsolidatedToGeneratedReport(json.report, '2026-08', 2027, IICT, { settings: json.settings })
