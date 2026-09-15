@@ -41,6 +41,8 @@ import PageCanvas from './PageCanvas'
 import WidgetPaletteSidebar from './WidgetPaletteSidebar'
 import WidgetPreview from './WidgetPreview'
 import RatioSettingsPanel from './RatioSettingsPanel'
+import PlacementOptionsPanel from './PlacementOptionsPanel'
+import { hasPlacementOptions, type PlacementOptionsType } from '@/lib/monthly-report/placement-options'
 
 // ── Reducer ───────────────────────────────────────────────────────
 
@@ -356,9 +358,12 @@ interface PDFLayoutEditorModalProps {
   businessId?: string
 }
 
-/** Widget types whose placements have a settings panel. */
+/**
+ * Widget types whose placements have a settings panel: the ratio page's, and
+ * the presentation options of the cover, summary and money-flow pages.
+ */
 function hasSettingsPanel(type: WidgetType): boolean {
-  return type === 'ratio_analysis'
+  return type === 'ratio_analysis' || hasPlacementOptions(type)
 }
 
 /**
@@ -589,8 +594,10 @@ export default function PDFLayoutEditorModal({
       }
       dispatch({ type: 'ADD_WIDGET', pageId: selectedPage.id, widget })
       // An unconfigured ratio page prints "No ratios have been set up", so a
-      // placement is only half done until its settings are filled in.
-      if (hasSettingsPanel(widgetType)) setSettingsWidgetId(widget.id)
+      // placement is only half done until its settings are filled in. A page
+      // with presentation options is complete as dropped; they are there when
+      // wanted.
+      if (widgetType === 'ratio_analysis') setSettingsWidgetId(widget.id)
       return
     }
 
@@ -849,6 +856,25 @@ export default function PDFLayoutEditorModal({
         />
       )}
 
+      {settingsTarget && hasPlacementOptions(settingsTarget.widget.type) && (
+        <PlacementOptionsPanel
+          key={settingsTarget.widget.id}
+          widget={settingsTarget.widget as LayoutWidget & { type: PlacementOptionsType }}
+          onCancel={closeSettings}
+          onApply={(config) => {
+            dispatch({
+              type: 'UPDATE_WIDGET',
+              pageId: settingsTarget.pageId,
+              widgetId: settingsTarget.widget.id,
+              config,
+              // The title is not this panel's; the one stored rides through.
+              titleOverride: settingsTarget.widget.titleOverride,
+            })
+            closeSettings()
+          }}
+        />
+      )}
+
       {confirmingClose && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" aria-hidden="true" onClick={() => setConfirmingClose(false)} />
@@ -861,7 +887,7 @@ export default function PDFLayoutEditorModal({
           >
             <h2 id="layout-close-heading" className="text-sm font-semibold text-gray-900">Close without saving?</h2>
             <p id="layout-close-body" className="text-xs text-gray-600">
-              The changes made since the last Save Layout — including any ratio page settings you applied — will be lost.
+              The changes made since the last Save Layout — including any page settings you applied — will be lost.
             </p>
             <div className="flex justify-end gap-2">
               <button

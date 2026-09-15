@@ -79,6 +79,7 @@ import type { CashflowForecastData } from '@/app/finances/forecast/types'
 import { usePDFLayout } from './hooks/usePDFLayout'
 import { loadPackEntityName } from '@/lib/monthly-report/pack-entity-name'
 import { loadPackPreparedOn } from '@/lib/monthly-report/pack-prepared-on'
+import { layoutWantsBadgeReconciliation, loadPackReconciliation, type PackReconciliation } from '@/lib/monthly-report/pack-reconciliation'
 import {
   balanceSheetsForExport,
   freezeBalanceSheetsAtFinalise,
@@ -1147,6 +1148,7 @@ export default function MonthlyReportPage() {
     entityName?: string | null
     preparedOn?: import('@/lib/monthly-report/pack-prepared-on').PackPreparedOn | null
     packLogo?: import('@/lib/monthly-report/pack-logo-setting').PackLogoSetting | null
+    packReconciliation?: PackReconciliation
   }> => {
     let fyReport = fullYearReport
     if (!fyReport && businessId) {
@@ -1472,6 +1474,24 @@ export default function MonthlyReportPage() {
     const entityName = businessId ? await loadPackEntityName(createClient(), businessId) : null
     const preparedOn = businessId ? await loadPackPreparedOn(createClient(), businessId, selectedMonth, monthSnapshot) : null
 
+    // The cover's reconciliation sentence, counted from the CFO board's
+    // captured Xero badge — read only when a cover placement asks for it
+    // (reconciliation_line 'xero_badge'), for the REPORT's month. Anything
+    // short of a count prints the report's own line; a read that failed is
+    // also reported, never swallowed.
+    let packReconciliation: PackReconciliation | undefined
+    const layoutWidgets = (settings?.pdf_layout?.pages ?? []).flatMap((p) => p.widgets ?? [])
+    if (businessId && report?.report_month && layoutWantsBadgeReconciliation(layoutWidgets)) {
+      packReconciliation = await loadPackReconciliation(createClient(), businessId, report.report_month)
+      if (packReconciliation.status === 'uncounted' && packReconciliation.readFailed) {
+        Sentry.captureMessage(`[PDF] pack reconciliation load failed (${packReconciliation.reason}) — the cover prints the report's own line`, {
+          level: 'warning',
+          tags: { invariant: 'pdf-pack-reconciliation-load' },
+          extra: { businessId, reportMonth: report.report_month },
+        } as any)
+      }
+    }
+
     return {
       fullYearReport: fyReport || undefined,
       subscriptionDetail: subDetail || undefined,
@@ -1505,6 +1525,7 @@ export default function MonthlyReportPage() {
       preparedOn,
       // The mark is a setting, read off the settings this export already holds.
       packLogo: settings?.pack_logo ?? null,
+      packReconciliation,
     }
   }
 

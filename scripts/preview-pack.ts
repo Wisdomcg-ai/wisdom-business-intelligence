@@ -27,6 +27,8 @@
  *   external metrics     external-metrics-load
  *   memo                 the snapshot's coach_notes
  *   money flow           money-flow-load
+ *   cover reconciliation pack-reconciliation (the CFO board's captured badge),
+ *                        when a cover placement asks for it
  *
  * What it cannot mirror. Three pages are built from a LIVE Xero call in the
  * app, and taking a Xero token can refresh and rotate it — a write that races
@@ -622,6 +624,14 @@ async function main() {
   const preparedOn = await loadPackPreparedOn(admin, bizId, reportMonth, { status: snap.status, generated_at: snap.generated_at })
   console.log(`  prepared on:          ${preparedOn ? `${preparedOn.at} (${preparedOn.basis})` : 'export date (not finalised or approved)'}`)
   console.log(`  pack logo:            ${(settings.pack_logo as { kind?: string } | null | undefined)?.kind ?? 'wisdombi (no setting)'}`)
+  // The cover's badge count, read only when a cover placement asks for it — as the export does.
+  const { layoutWantsBadgeReconciliation, loadPackReconciliation } = await import('@/lib/monthly-report/pack-reconciliation')
+  const packReconciliation = layoutWantsBadgeReconciliation((pdfLayout?.pages ?? []).flatMap((p) => p.widgets ?? []))
+    ? await loadPackReconciliation(admin, bizId, String(snap.report_month))
+    : undefined
+  console.log(`  cover reconciliation: ${!packReconciliation ? "the report's own line (no cover asks for the Xero badge)"
+    : packReconciliation.status === 'counted' ? `${packReconciliation.count} item(s) from the Xero badge captured ${packReconciliation.captured_at}`
+    : `the report's own line — ${packReconciliation.reason}`}`)
   const svc = new MonthlyReportPDFService(report as never, {
     commentary: commentaryForPack,
     ...eager,
@@ -629,6 +639,7 @@ async function main() {
     entityName: await loadPackEntityName(admin, bizId),
     preparedOn,
     packLogo: settings.pack_logo ?? null,
+    packReconciliation,
     sections: settings.sections,
     pdfLayout,
   } as never)
