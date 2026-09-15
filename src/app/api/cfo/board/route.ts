@@ -18,9 +18,8 @@ import { withQuerySchema } from '@/lib/api/with-schema'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import {
-  classifyXeroConnection,
+  classifyBusinessConnections,
   needsAttention,
-  preferConnection,
   type XeroConnectionStatusRow,
 } from '@/lib/xero/connection-status'
 import { getLastSyncByTenant } from '@/lib/health-checks'
@@ -47,8 +46,6 @@ const QuerySchema = z
     month: z.string().optional(),
   })
   .passthrough()
-
-type ConnectionRow = XeroConnectionStatusRow & { tenant_name?: string | null }
 
 async function getHandler(request: Request) {
   try {
@@ -98,15 +95,19 @@ async function getHandler(request: Request) {
     const allIdForms = [...allowedIds, ...(profiles ?? []).map(p => p.id)]
 
     // ALL connection rows, dead included — the board exists to surface them.
+    // Ordered by columns no write touches: every token refresh and every sync
+    // bumps updated_at, and ordering by it let the last-written org stand in
+    // for the whole business.
     const { data: connections, error: connError } = await supabase
       .from('xero_connections')
       .select('id, business_id, tenant_id, tenant_name, is_active, last_synced_at, updated_at, expires_at, created_at')
       .in('business_id', allIdForms)
-      .order('updated_at', { ascending: false })
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
     if (connError) throw new Error(`connections query failed: ${connError.message}`)
 
-    const connsByBiz = new Map<string, ConnectionRow[]>()
-    for (const conn of (connections ?? []) as ConnectionRow[]) {
+    const connsByBiz = new Map<string, XeroConnectionStatusRow[]>()
+    for (const conn of (connections ?? []) as XeroConnectionStatusRow[]) {
       const canonical = profileIdToBizId.get(conn.business_id) ?? conn.business_id
       const list = connsByBiz.get(canonical) ?? []
       list.push(conn)
@@ -220,17 +221,11 @@ async function getHandler(request: Request) {
             new Set(conns.filter(c => c.is_active && c.tenant_id).map(c => c.tenant_id)),
           )
 
-      // Representative connection: active beats more-recently-updated dead.
-      let best: ConnectionRow | null = null
-      for (const conn of conns) best = preferConnection(best as any, conn as any)
-      const fromColumn = best?.last_synced_at ? new Date(best.last_synced_at).getTime() : 0
-      const fromJobs = best?.tenant_id ? syncClock.byTenant.get(best.tenant_id) ?? 0 : 0
-      const freshest = Math.max(fromColumn, fromJobs)
-      const classification = classifyXeroConnection(
-        best,
-        { lastSyncMs: freshest > 0 ? freshest : null, lookupOk: syncClock.ok },
-        now,
-      )
+      // Every org, each on its own data clock; the worst one is the business's
+      // status. One "representative" row meant IICT Group read connected
+      // whenever a healthy sibling had been written last, while IICT Group Pty
+      // Ltd 403'd on every sync (10 Sep 2026).
+      const classification = classifyBusinessConnections(conns, syncClock, now)
       const cycle = cycleByBiz.get(businessId) ?? null
       const stage = deriveStage(cycle)
       const dueDate = dueDateForMonth(month, settings?.report_due_day ?? null)
@@ -286,6 +281,7 @@ async function getHandler(request: Request) {
               last_sync_at: null,
               tenant_count: activeTenants.length,
               tenant_names: [],
+              status_scope: null,
             }
           : {
               status: classification.status,
@@ -295,6 +291,9 @@ async function getHandler(request: Request) {
               tenant_names: conns
                 .filter(c => c.is_active && c.tenant_name)
                 .map(c => c.tenant_name),
+              // The org the status is about when only part of a multi-org
+              // business has it ("IICT Group Pty Ltd"); null when business-wide.
+              status_scope: classification.statusScope,
             },
         recon,
         dashboard_capture,

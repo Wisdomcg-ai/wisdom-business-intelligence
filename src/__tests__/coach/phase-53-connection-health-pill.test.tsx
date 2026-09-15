@@ -138,6 +138,30 @@ describe('Phase 53-05 — XeroHealthPill column in ClientOverviewTable', () => {
     expect(pill.className).not.toMatch(/bg-green-/);
   });
 
+  it('Test 2d — a multi-org business names the org the pill is about', () => {
+    // IICT Group, 15 Sep 2026: one of three orgs stale. "Numbers have not
+    // updated" alone would send the coach looking at all three.
+    render(
+      <ClientOverviewTable
+        clients={[
+          makeClient({
+            id: 'biz-iict',
+            businessName: 'IICT Group',
+            xeroConnectionHealth: 'data_stale',
+            xeroConnectionScope: 'IICT Group Pty Ltd',
+          }),
+        ]}
+      />,
+    );
+    const pill = within(getRowForBusiness('IICT Group')).getByLabelText(/xero/i);
+    expect(pill.getAttribute('aria-label')).toBe(
+      'IICT Group Pty Ltd: Xero connected but the numbers have not updated recently',
+    );
+    expect(pill.getAttribute('title')).toBe(
+      'IICT Group Pty Ltd: Xero connection is fine, but the numbers have not updated recently.',
+    );
+  });
+
   it('Test 3 — dead status renders red pill IS an <a> linking to /api/Xero/auth', () => {
     const clients: ClientMetrics[] = [
       makeClient({

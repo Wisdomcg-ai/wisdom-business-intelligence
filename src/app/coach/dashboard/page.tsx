@@ -339,7 +339,8 @@ export default function CoachDashboardPage() {
         // Non-fatal: console.warn on failure, dashboard still renders.
         // No Sentry capture — this is a UI nicety, not a system invariant.
         (async () => {
-          const empty = new Map<string, ClientMetrics['xeroConnectionHealth']>()
+          type XeroHealth = { status: ClientMetrics['xeroConnectionHealth']; scope: string | null }
+          const empty = new Map<string, XeroHealth>()
           if (businessIds.length === 0) return empty
           try {
             const params = businessIds
@@ -351,12 +352,13 @@ export default function CoachDashboardPage() {
               return empty
             }
             const json = await res.json()
-            const map = new Map<string, ClientMetrics['xeroConnectionHealth']>()
+            const map = new Map<string, XeroHealth>()
             for (const r of (json.results ?? []) as Array<{
               business_id: string
               status: ClientMetrics['xeroConnectionHealth']
+              status_scope?: string | null
             }>) {
-              map.set(r.business_id, r.status)
+              map.set(r.business_id, { status: r.status, scope: r.status_scope ?? null })
             }
             return map
           } catch (err) {
@@ -478,7 +480,8 @@ export default function CoachDashboardPage() {
           // explicit 'none') for every id it could evaluate, so a MISSING entry
           // means the health fetch itself failed — say so instead of rendering
           // the grey "never connected" pill for a business that may be broken.
-          xeroConnectionHealth: xeroHealthMap.get(b.id) ?? 'unknown',
+          xeroConnectionHealth: xeroHealthMap.get(b.id)?.status ?? 'unknown',
+          xeroConnectionScope: xeroHealthMap.get(b.id)?.scope ?? null,
         }
       })
 

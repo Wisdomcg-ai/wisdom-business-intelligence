@@ -20,7 +20,12 @@
  *
  *   Dual-ID resolution + active-preferred:
  *     11. Connection under business_profiles.id maps to canonical businesses.id
- *     12. Active row preferred over dead row when both exist for same business
+ *     12. A live row supersedes a dead row for the SAME Xero org
+ *
+ *   Multi-org businesses (15 Sep 2026 — worst org wins, whatever the row order):
+ *     13. One of three orgs stale reads data_stale and names that org
+ *     14. A dead org with no live row makes the business dead
+ *     15. A failed xero_connections read is a 500, never a fleet of 'none'
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -71,6 +76,8 @@ interface FakeProfile {
 interface FakeConnection {
   id: string;
   business_id: string;
+  tenant_id?: string;
+  tenant_name?: string | null;
   is_active: boolean;
   last_synced_at: string | null;
   updated_at: string | null;
@@ -85,6 +92,7 @@ function configureAdmin(opts: {
   businesses?: FakeBusiness[];
   profiles?: FakeProfile[];
   connections?: FakeConnection[];
+  connectionsError?: { message: string };
 }) {
   const businesses = opts.businesses ?? [];
   const profiles = opts.profiles ?? [];
@@ -131,18 +139,24 @@ function configureAdmin(opts: {
       return chain;
     }
     if (table === 'xero_connections') {
-      return {
-        select: () => ({
-          in: (_col: string, ids: string[]) => ({
-            order: (_orderCol: string, _opts: any) => ({
-              then: (resolve: any) =>
-                Promise.resolve({
+      // Rows come back in FIXTURE order whatever .order() the route asks for:
+      // the classification must not depend on it, and tests feed the same rows
+      // in different orders to prove that.
+      let ids: string[] = [];
+      const chain: any = {
+        select: () => chain,
+        in: (_col: string, v: string[]) => {
+          ids = v;
+          return chain;
+        },
+        order: () => chain,
+        then: (resolve: any) =>
+          Promise.resolve(
+            opts.connectionsError
+              ? { data: null, error: opts.connectionsError }
+              : {
                   data: connections
                     .filter((c) => ids.includes(c.business_id))
-                    // mimic .order('updated_at', { ascending: false })
-                    .sort((a, b) =>
-                      (b.updated_at ?? '').localeCompare(a.updated_at ?? ''),
-                    )
                     // These fixtures are about STATES, not about identifiers.
                     // Default the two columns the classifier needs for keying so
                     // each case still asserts the thing it was written to assert
@@ -155,11 +169,10 @@ function configureAdmin(opts: {
                       ...c,
                     })),
                   error: null,
-                }).then(resolve),
-            }),
-          }),
-        }),
+                },
+          ).then(resolve),
       };
+      return chain;
     }
     if (table === 'sync_jobs') {
       // The data clock. These fixtures set freshness through
@@ -437,6 +450,8 @@ describe('GET /api/Xero/connection-health — status thresholds (12h verified, I
       last_sync_at: null,
       expires_at: null,
       connection_id: null,
+      tenant_name: null,
+      status_scope: null,
     });
   });
 });
@@ -469,37 +484,133 @@ describe('GET /api/Xero/connection-health — dual-ID resolution + active-prefer
     expect(body.results[0].connection_id).toBe('conn-legacy');
   });
 
-  it('Test 12 — active row preferred over dead row when both exist for the same business', async () => {
+  it('Test 12 — a live row supersedes a dead row for the same Xero org, however recently the dead one was stamped', async () => {
+    const deadRecent: FakeConnection = {
+      // Old dead row with the most recent updated_at (would win on order alone)
+      id: 'conn-dead-recent',
+      business_id: 'biz-1',
+      tenant_id: 't-shared',
+      is_active: false,
+      last_synced_at: isoFromNow(-30 * 60 * 1000),
+      updated_at: isoFromNow(-30 * 60 * 1000),
+      expires_at: isoFromNow(-2 * HOUR),
+    };
+    const active: FakeConnection = {
+      // The reconnect of the SAME org, under the other id form
+      id: 'conn-active',
+      business_id: 'prof-1',
+      tenant_id: 't-shared',
+      is_active: true,
+      last_synced_at: isoFromNow(-2 * HOUR),
+      updated_at: isoFromNow(-1 * HOUR),
+      expires_at: isoFromNow(2 * HOUR),
+    };
+    for (const connections of [[deadRecent, active], [active, deadRecent]]) {
+      configureAuth({ id: 'owner-1' });
+      configureAdmin({
+        businesses: [{ id: 'biz-1', owner_id: 'owner-1', assigned_coach_id: null }],
+        profiles: [{ id: 'prof-1', business_id: 'biz-1' }],
+        connections,
+      });
+      const { GET } = await import('@/app/api/Xero/connection-health/route');
+      const res = await GET(makeReq(['biz-1']));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.results[0].status).toBe('connected');
+      expect(body.results[0].connection_id).toBe('conn-active');
+    }
+  });
+});
+
+describe('GET /api/Xero/connection-health — multi-org businesses', () => {
+  // IICT Group, 15 Sep 2026: three orgs, one failing every sync since 10 Sep
+  // while its token refreshes. The route used to classify whichever row was
+  // written last, so this business flipped between connected and data_stale.
+  const iictRows: FakeConnection[] = [
+    {
+      id: 'conn-aust',
+      business_id: 'biz-iict',
+      tenant_id: 't-aust',
+      tenant_name: 'IICT (Aust) Pty Ltd',
+      is_active: true,
+      last_synced_at: isoFromNow(-3 * HOUR),
+      updated_at: isoFromNow(-1 * 60_000),
+      expires_at: isoFromNow(25 * 60_000),
+    },
+    {
+      id: 'conn-pty',
+      business_id: 'biz-iict',
+      tenant_id: 't-pty',
+      tenant_name: 'IICT Group Pty Ltd',
+      is_active: true,
+      last_synced_at: isoFromNow(-106 * HOUR),
+      updated_at: isoFromNow(-2 * 60_000),
+      expires_at: isoFromNow(25 * 60_000),
+    },
+    {
+      id: 'conn-hk',
+      business_id: 'biz-iict',
+      tenant_id: 't-hk',
+      tenant_name: 'IICT Group Limited',
+      is_active: true,
+      last_synced_at: isoFromNow(-3 * HOUR),
+      updated_at: isoFromNow(-3 * 60_000),
+      expires_at: isoFromNow(25 * 60_000),
+    },
+  ];
+
+  const fetchOne = async (connections: FakeConnection[], businessId = 'biz-iict') => {
+    configureAuth({ id: 'owner-1' });
+    configureAdmin({
+      businesses: [{ id: businessId, owner_id: 'owner-1', assigned_coach_id: null }],
+      profiles: [],
+      connections,
+    });
+    const { GET } = await import('@/app/api/Xero/connection-health/route');
+    const res = await GET(makeReq([businessId]));
+    expect(res.status).toBe(200);
+    return (await res.json()).results[0];
+  };
+
+  it('Test 13 — one org of three stale reads data_stale and names that org, in any row order', async () => {
+    const first = await fetchOne(iictRows);
+    expect(first).toMatchObject({
+      status: 'data_stale',
+      tenant_name: 'IICT Group Pty Ltd',
+      status_scope: 'IICT Group Pty Ltd',
+      connection_id: 'conn-pty',
+    });
+    const orders = [
+      [iictRows[1], iictRows[0], iictRows[2]],
+      [iictRows[2], iictRows[0], iictRows[1]],
+      [...iictRows].reverse(),
+    ];
+    for (const order of orders) {
+      expect(await fetchOne(order)).toEqual(first);
+    }
+  });
+
+  it('Test 14 — a dead org with no live row makes the business dead, named', async () => {
+    const result = await fetchOne(
+      [
+        { ...iictRows[0], business_id: 'biz-dragon', tenant_name: 'Dragon Roofing Pty Ltd' },
+        { ...iictRows[2], business_id: 'biz-dragon', tenant_name: 'EASY HAIL CLAIM PTY LTD', is_active: false },
+      ],
+      'biz-dragon',
+    );
+    expect(result).toMatchObject({ status: 'dead', status_scope: 'EASY HAIL CLAIM PTY LTD' });
+  });
+
+  it('Test 15 — a failed xero_connections read is a 500, not every business reading "No Xero"', async () => {
     configureAuth({ id: 'owner-1' });
     configureAdmin({
       businesses: [{ id: 'biz-1', owner_id: 'owner-1', assigned_coach_id: null }],
-      profiles: [{ id: 'prof-1', business_id: 'biz-1' }],
-      connections: [
-        // Old dead row with most recent updated_at (would win on order alone)
-        {
-          id: 'conn-dead-recent',
-          business_id: 'biz-1',
-          is_active: false,
-          last_synced_at: isoFromNow(-30 * 60 * 1000),
-          updated_at: isoFromNow(-30 * 60 * 1000),
-          expires_at: isoFromNow(-2 * HOUR),
-        },
-        // Newer active row but updated_at slightly older
-        {
-          id: 'conn-active',
-          business_id: 'prof-1',
-          is_active: true,
-          last_synced_at: isoFromNow(-2 * HOUR),
-          updated_at: isoFromNow(-1 * HOUR),
-          expires_at: isoFromNow(2 * HOUR),
-        },
-      ],
+      profiles: [],
+      connectionsError: { message: 'connection reset' },
     });
     const { GET } = await import('@/app/api/Xero/connection-health/route');
     const res = await GET(makeReq(['biz-1']));
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.results[0].status).toBe('connected');
-    expect(body.results[0].connection_id).toBe('conn-active');
+    expect(res.status).toBe(500);
+    expect((await res.json()).results).toBeUndefined();
   });
 });

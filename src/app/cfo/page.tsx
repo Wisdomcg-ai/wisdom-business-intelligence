@@ -53,6 +53,9 @@ interface BoardClient {
     last_sync_at: string | null
     tenant_count: number
     tenant_names: (string | null)[]
+    /** The org the status is about when only part of a multi-org business has
+     *  it ("IICT Group Pty Ltd", "2 of 3 orgs"); null when business-wide. */
+    status_scope?: string | null
   }
   recon: {
     state: ReconState
@@ -186,6 +189,14 @@ const CONNECTION_LABELS: Record<string, string> = {
   dead: 'Xero disconnected',
   none: 'No connection',
   unknown: 'Health unknown',
+}
+
+/** The connection state in words, naming the org when only one part of a
+ *  multi-org business is in it — "No fresh data" alone would hide that the
+ *  other orgs are fine, and which one to chase. */
+function connectionLabel(connection: BoardClient['connection'], fallback = 'Data problem'): string {
+  const label = CONNECTION_LABELS[connection.status] ?? fallback
+  return connection.status_scope ? `${connection.status_scope}: ${label}` : label
 }
 
 /** Left-edge stripe on each table row — the urgency colour without sections. */
@@ -578,7 +589,7 @@ function stageLabel(client: BoardClient): { text: string; tone: 'ok' | 'warn' | 
   if (stage === 'approved') return { text: 'Approved — awaiting send', tone: 'ok' }
   if (stage === 'ready') return { text: 'In review', tone: 'ok' }
   if (stage === 'generated') return { text: `Generated ${fmtDate(client.cycle.generated_at)} — in review`, tone: 'ok' }
-  if (connection.needs_attention) return { text: CONNECTION_LABELS[connection.status] ?? 'Data problem', tone: 'bad' }
+  if (connection.needs_attention) return { text: connectionLabel(connection), tone: 'bad' }
   if (readiness.state === 'never') return { text: 'No badge capture — run the recon round', tone: 'bad' }
   if (readiness.state === 'stale') return { text: `Capture ${readiness.capture_age_days}d old — rerun the round`, tone: 'warn' }
   if (readiness.state === 'partial') {
@@ -740,7 +751,7 @@ function ClientTableRow({ client, isExpanded, onToggle }: {
             <span className="inline-flex items-center gap-1 text-red-600 font-semibold">
               {conn.tenant_count > 1 ? ' · ' : ''}
               <AlertTriangle className="w-3 h-3" />
-              {CONNECTION_LABELS[conn.status] ?? 'Data problem'}
+              {connectionLabel(conn)}
             </span>
           )}
         </div>
@@ -826,7 +837,7 @@ function RowDetail({ client, month, onChanged }: { client: BoardClient; month: s
       stage: 'Data ready',
       done: !client.connection.needs_attention && readiness.state === 'ready',
       note:
-        client.connection.needs_attention ? (CONNECTION_LABELS[client.connection.status] ?? 'connection problem')
+        client.connection.needs_attention ? connectionLabel(client.connection, 'connection problem')
         : readiness.state === 'never' ? 'no badge capture — run the recon round'
         : readiness.state === 'stale' ? `capture ${readiness.capture_age_days}d old — rerun the round`
         : readiness.state === 'partial' ? `${readiness.uncaptured_tenants} org(s) never captured — rerun the round`

@@ -29,7 +29,12 @@
  *   legacy `business_profiles.id`. We resolve in one batched query: read
  *   business_profiles for all requested ids, expand to (canonical, profile)
  *   pairs, then a single .in('business_id', allIdForms) on xero_connections.
- *   Active row preferred over dead row when both exist for one business.
+ *
+ * Multi-org businesses:
+ *   Every org counts, each on its own data clock, and the worst one is the
+ *   business's status (`classifyBusinessConnections`). A dead row is set aside
+ *   only when a live row exists for the same Xero org. `tenant_name` and
+ *   `status_scope` say which org the status is about.
  *
  * Quotas: 200 business_ids[] cap (sanity bound). Batched queries — total ≤5
  * Supabase round-trips regardless of input size.
@@ -37,12 +42,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { withQuerySchema } from '@/lib/api/with-schema';
 import {
-  classifyXeroConnection,
-  preferConnection,
+  classifyBusinessConnections,
   DATA_STALE_MS,
   type XeroConnectionStatus,
   type XeroConnectionStatusRow,
@@ -89,6 +94,10 @@ export interface ConnectionHealthResult {
   last_sync_at: string | null;
   expires_at: string | null;
   connection_id: string | null;
+  /** The org that set `status`: the worst of the business's orgs. */
+  tenant_name: string | null;
+  /** "IICT Group Pty Ltd" or "2 of 3 orgs" when only part of a multi-org business has the status; null when business-wide. */
+  status_scope: string | null;
 }
 
 const MAX_BUSINESS_IDS = 200;
@@ -178,13 +187,23 @@ async function getHandler(request: NextRequest) {
     ...((profiles ?? []) as { id: string }[]).map((p) => p.id),
   ];
 
-  // 5. Single batched xero_connections query for all relevant id forms.
-  // Order by updated_at DESC so the most-recently-touched row wins ties.
-  const { data: connections } = await supabaseAdmin
+  // 5. Single batched xero_connections query for all relevant id forms, dead
+  // rows included. Ordered by columns no write touches — the classifier does not
+  // depend on order, and updated_at (bumped by every refresh and sync) is what
+  // once let the last-written org stand in for the whole business.
+  const { data: connections, error: connectionsError } = await supabaseAdmin
     .from('xero_connections')
-    .select('id, business_id, tenant_id, is_active, last_synced_at, updated_at, expires_at, created_at')
+    .select('id, business_id, tenant_id, tenant_name, is_active, last_synced_at, updated_at, expires_at, created_at')
     .in('business_id', allIdForms)
-    .order('updated_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: true });
+  if (connectionsError) {
+    // A failed read would otherwise bucket every business as 'none' — the grey
+    // "No Xero" pill for a business that may be connected and broken. The
+    // dashboard renders a failed fetch as 'unknown'.
+    Sentry.captureException(connectionsError, { tags: { route: 'Xero/connection-health' } } as any);
+    return NextResponse.json({ error: 'Failed to load Xero connections' }, { status: 500 });
+  }
 
   // The data clock. This route previously had NO freshness signal at all — it
   // reported whether the token pipe was open and nothing about whether the
@@ -192,40 +211,24 @@ async function getHandler(request: NextRequest) {
   // actually asking. 60 days rather than the 7-day default so a genuinely cold
   // tenant returns a real (old) timestamp instead of collapsing to "never" and
   // being misread as a brand-new connection.
-  const { ok: syncLookupOk, byTenant: lastSyncByTenant } = await getLastSyncByTenant(
-    supabaseAdmin as never,
-    60,
-  );
+  const syncClock = await getLastSyncByTenant(supabaseAdmin as never, 60);
 
-  // 6. Bucket connections by canonical business_id with active-preferred policy.
-  const byBizId = new Map<string, XeroConnectionRow | null>();
-  for (const id of allowedIds) byBizId.set(id, null);
+  // 6. Bucket EVERY row by canonical business_id — a multi-org business is all
+  // of its orgs, not one representative.
+  const rowsByBizId = new Map<string, XeroConnectionRow[]>();
+  for (const id of allowedIds) rowsByBizId.set(id, []);
   for (const conn of (connections ?? []) as XeroConnectionRow[]) {
     const canonicalId = profileIdToBizId.get(conn.business_id) ?? conn.business_id;
-    if (!byBizId.has(canonicalId)) continue; // not in allowedIds (shouldn't happen post-filter)
-    // Active-preferred over more-recently-updated dead; otherwise the
-    // order('updated_at', desc) clause has already put the winner first.
-    byBizId.set(canonicalId, preferConnection(byBizId.get(canonicalId), conn));
+    // Absent from the map = not in allowedIds (shouldn't happen post-filter).
+    rowsByBizId.get(canonicalId)?.push(conn);
   }
 
-  // 7. Compute status per requested business — ONE shared definition.
+  // 7. Compute status per requested business — ONE shared definition. Each org
+  // is judged on its own data clock (the stamped column folded with sync_jobs
+  // for its tenant) and the worst org is the business's status.
   const now = Date.now();
   const results: ConnectionHealthResult[] = allowedIds.map((business_id) => {
-    const conn = byBizId.get(business_id) ?? null;
-    // Fold the two freshness sources: the column the orchestrator now stamps,
-    // and sync_jobs joined on tenant_id. The join is on tenant_id rather than
-    // business_id on purpose — xero_connections.business_id is in the
-    // businesses.id space while sync_jobs.business_id is business_profiles.id,
-    // so a business_id join silently returns zero rows for every connection.
-    const fromColumn = conn?.last_synced_at ? new Date(conn.last_synced_at).getTime() : 0;
-    const fromJobs = conn?.tenant_id ? lastSyncByTenant.get(conn.tenant_id) ?? 0 : 0;
-    const freshest = Math.max(fromColumn, fromJobs);
-    const c = classifyXeroConnection(
-      conn,
-      { lastSyncMs: freshest > 0 ? freshest : null, lookupOk: syncLookupOk },
-      now,
-      dataStaleMs,
-    );
+    const c = classifyBusinessConnections(rowsByBizId.get(business_id) ?? [], syncClock, now, dataStaleMs);
     return {
       business_id,
       status: c.status,
@@ -233,6 +236,8 @@ async function getHandler(request: NextRequest) {
       last_sync_at: c.lastSyncAt,
       expires_at: c.expiresAt,
       connection_id: c.connectionId,
+      tenant_name: c.tenantName,
+      status_scope: c.statusScope,
     };
   });
 
