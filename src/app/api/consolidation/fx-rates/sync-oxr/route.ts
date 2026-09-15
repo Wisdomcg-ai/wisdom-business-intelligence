@@ -20,6 +20,7 @@ import { withSchema } from '@/lib/api/with-schema'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { deriveMonthlyRatePair } from '@/lib/consolidation/oxr'
+import { oxrRateRows, upsertOxrRateRows } from '@/lib/consolidation/fx-rate-sync'
 import * as Sentry from '@sentry/nextjs'
 
 export const dynamic = 'force-dynamic'
@@ -135,28 +136,11 @@ async function postHandler(request: Request) {
     )
 
     stage = 'upsert'
-    const periodAvg = `${v.year}-${String(v.month).padStart(2, '0')}-01`
-    const rows = [
-      {
-        currency_pair: v.currency_pair,
-        rate_type: 'monthly_average' as const,
-        period: periodAvg,
-        rate: derived.monthly_average,
-        source: 'oxr',
-      },
-      {
-        currency_pair: v.currency_pair,
-        rate_type: 'closing_spot' as const,
-        period: derived.closing_spot_date,
-        rate: derived.closing_spot,
-        source: 'oxr',
-      },
-    ]
-
-    const { data, error } = await adminDb
-      .from('fx_rates')
-      .upsert(rows, { onConflict: 'currency_pair,rate_type,period' })
-      .select()
+    // Same rows and upsert as the monthly FX cron (lib/consolidation/fx-rate-sync.ts).
+    // Unlike the cron, a click stores whatever month it is asked for, including
+    // the current month to date — a coach is looking at the result.
+    const rows = oxrRateRows(derived)
+    const { data, error } = await upsertOxrRateRows(adminDb, rows)
 
     if (error) {
       Sentry.captureException(error, { tags: { route: 'consolidation/fx-rates/sync-oxr' }, extra: { context: "[FX Sync OXR] upsert error" } } as any)
