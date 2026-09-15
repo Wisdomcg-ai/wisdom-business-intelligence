@@ -27,6 +27,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import * as Sentry from '@sentry/nextjs'
+import { readAllRows } from '@/lib/supabase/read-all-rows'
 
 /**
  * One budget line, in the shape generate/route.ts already consumes.
@@ -360,44 +361,43 @@ interface BudgetLineRow {
 }
 
 /**
- * Every budget line for these versions, paginated.
+ * Every budget line for these versions, however many pages that takes.
  *
  * Supabase/PostgREST caps a single SELECT at 1000 rows, and budget_lines is one
  * row per account per month — twelve rows per budgeted account. Urban Road's
- * version is 699 rows and Distinct Directions' 619, so 84 budgeted accounts is
- * where the cap starts eating the tail: no error, no short-read warning, just a
+ * version is 699 rows and Distinct Directions' 619, so 84 budgeted accounts —
+ * or the first revision read alongside the version it supersedes — is where
+ * the cap starts eating the tail: no error, no short-read warning, just a
  * budget quietly missing its last accounts and an annual total that understates
  * what the client was held to. The same cap dropped ~$5.3M of COGS on JDS in
- * the Phase 44.1 hotfix, which is why forecast-read-service pages the identical
- * way.
+ * the Phase 44.1 hotfix.
+ *
+ * readAllRows orders by id so the pages partition the rows (a row on two pages
+ * would be a budget line counted twice), asks for the rows after the last id
+ * rather than an offset, and ends only on an EMPTY page: a short page can be a
+ * Max rows cap set below 1,000, and stopping there dropped the rest.
  *
  * Never throws — a caller that has already decided to fail closed needs an
- * answer, not an exception — so a failed page comes back as `failed`.
+ * answer, not an exception — so a read that cannot finish comes back as `failed`.
  */
 async function fetchAllBudgetLines(
   supabase: SupabaseClient,
   versionIds: string[],
 ): Promise<{ rows: BudgetLineRow[]; failed: boolean }> {
-  const all: BudgetLineRow[] = []
-  const pageSize = 1000
-  let from = 0
-  while (true) {
-    const { data, error } = await supabase
+  const read = await readAllRows<BudgetLineRow>('budget_lines', () =>
+    supabase
       .from('budget_lines')
       .select('id, account_code, account_name, category, month, amount, budget_version_id')
-      .in('budget_version_id', versionIds)
-      // Ordered so the pages partition the rows instead of overlapping them:
-      // without a total order PostgREST may return the same row on two pages
-      // and a budget line would be counted twice.
-      .order('id', { ascending: true })
-      .range(from, from + pageSize - 1)
-    if (error) return { rows: [], failed: true }
-    if (!data || data.length === 0) break
-    all.push(...(data as BudgetLineRow[]))
-    if (data.length < pageSize) break
-    from += pageSize
-  }
-  return { rows: all, failed: false }
+      .in('budget_version_id', versionIds),
+  )
+  if (read.ok) return { rows: read.rows, failed: false }
+
+  Sentry.captureMessage('[Report Generate] Budget lines could not all be read — the budget is reported as unreadable', {
+    level: 'warning' as any,
+    tags: { invariant: 'budget-lines-read-incomplete' },
+    extra: { versionIds, reason: read.error.reason, rowsRead: read.error.rowsRead, detail: read.error.message },
+  } as any)
+  return { rows: [], failed: true }
 }
 
 async function resolveInForceVersion(

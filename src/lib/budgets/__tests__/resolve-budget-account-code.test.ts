@@ -19,24 +19,29 @@
  * The forecast path has no codes and must stay byte-identical; that is asserted
  * here too, because the same function serves both.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+vi.mock('@sentry/nextjs', () => ({ captureMessage: vi.fn(), captureException: vi.fn() }))
+
+import * as Sentry from '@sentry/nextjs'
 import { resolveBudget, budgetLineKey } from '../resolve-budget'
+import { FakePostgrest } from '@/__tests__/helpers/postgrest-fake'
 
 // ── Supabase ─────────────────────────────────────────────────────────────────
 /**
- * Honours `.eq()/.in()/.not()/.order()/.limit()/.maybeSingle()`, because the
- * resolution IS a sequence of filters. A harness that ignored `.not()` would
+ * Honours `.eq()/.in()/.not()/.gt()/.order()/.limit()/.maybeSingle()`, because
+ * the resolution IS a sequence of filters. A harness that ignored `.not()` would
  * let an unlocked version resolve and the assertion would pass for the wrong
  * reason.
  */
 function clientOver(tables: Record<string, any[]>) {
   // How many unordered pages this client has served. PostgREST gives no
-  // guarantee about the order of an un-ORDERed read, so two .range() calls
-  // against it need not partition the rows — see the range() comment.
+  // guarantee about the order of an un-ORDERed read, so two page requests
+  // against it need not partition the rows — see the page() comment.
   let unorderedPages = 0
   const build = (
     table: string,
-    filters: Array<[string, unknown, 'eq' | 'in' | 'not-is']> = [],
+    filters: Array<[string, unknown, 'eq' | 'in' | 'not-is' | 'gt']> = [],
     ordered: { col: string; ascending: boolean } | null = null,
   ): any => {
     const run = () => {
@@ -44,6 +49,7 @@ function clientOver(tables: Record<string, any[]>) {
         filters.every(([col, val, op]) =>
           op === 'in' ? Array.isArray(val) && val.includes(row[col])
           : op === 'not-is' ? (val === null ? row[col] != null : row[col] !== val)
+          : op === 'gt' ? String(row[col]) > String(val)
           : row[col] === val,
         ),
       )
@@ -53,39 +59,40 @@ function clientOver(tables: Record<string, any[]>) {
       }
       return out
     }
+    // PostgREST caps a page at 1000 rows and the resolver pages through
+    // budget_lines; a harness without the cap would silently return every row
+    // on page one and prove nothing about it.
+    //
+    // An UNORDERED page is deliberately unstable. Postgres may hand the same
+    // query back in a different order between two statements, so pages of an
+    // un-ORDERed read overlap and drop rather than partition — which is the
+    // whole reason the pager orders by id. A harness that partitioned a stable
+    // array either way would pass the cap cases with the ordering deleted, and
+    // the ordering half of the fix would be unpinned. Rotating by one more row
+    // per page is the cheapest faithful model of that: page two then repeats a
+    // row page one already returned and skips one nobody returned.
+    const page = (from: number, count: number) => {
+      let out = run()
+      if (!ordered && out.length > 0) {
+        const k = ++unorderedPages % out.length
+        out = [...out.slice(k), ...out.slice(0, k)]
+      }
+      return out.slice(from, from + Math.min(count, 1000))
+    }
     const self: any = {
       select: () => self,
       eq: (col: string, val: unknown) => build(table, [...filters, [col, val, 'eq']], ordered),
       in: (col: string, val: unknown[]) => build(table, [...filters, [col, val, 'in']], ordered),
       not: (col: string, _op: string, val: unknown) => build(table, [...filters, [col, val, 'not-is']], ordered),
+      gt: (col: string, val: unknown) => build(table, [...filters, [col, val, 'gt']], ordered),
       order: (col: string, opts?: { ascending?: boolean }) =>
         build(table, filters, { col, ascending: opts?.ascending ?? true }),
-      // PostgREST caps a page at 1000 rows and the resolver pages through
-      // budget_lines with .range(); a harness without it would silently return
-      // every row on page one and prove nothing about the cap.
-      //
-      // An UNORDERED range is deliberately unstable. Postgres may hand the same
-      // query back in a different order between two statements, so pages of an
-      // un-ORDERed read overlap and drop rather than partition — which is the
-      // whole reason fetchAllBudgetLines carries `.order('id')`. A harness that
-      // partitioned a stable array either way would pass the cap cases with the
-      // ordering deleted, and the ordering half of the fix would be unpinned.
-      // Rotating by one more row per page is the cheapest faithful model of
-      // that: page two then repeats a row page one already returned and skips
-      // one nobody returned.
       range: (from: number, to: number) => ({
-        then: (resolve: any) => {
-          let out = run()
-          if (!ordered && out.length > 0) {
-            const k = ++unorderedPages % out.length
-            out = [...out.slice(k), ...out.slice(0, k)]
-          }
-          return Promise.resolve({ data: out.slice(from, to + 1), error: null }).then(resolve)
-        },
+        then: (resolve: any) => Promise.resolve({ data: page(from, to - from + 1), error: null }).then(resolve),
       }),
       limit: (n: number) => ({
         maybeSingle: async () => ({ data: run().slice(0, n)[0] ?? null, error: null }),
-        then: (resolve: any) => Promise.resolve({ data: run().slice(0, n), error: null }).then(resolve),
+        then: (resolve: any) => Promise.resolve({ data: page(0, n), error: null }).then(resolve),
       }),
       single: async () => ({ data: run()[0] ?? null, error: run()[0] ? null : { message: 'not found' } }),
       maybeSingle: async () => ({ data: run()[0] ?? null, error: null }),
@@ -303,17 +310,114 @@ describe('resolveBudget — reading past the 1000-row page cap', () => {
   })
 
   it('does not double-count a row that sits on a page boundary', async () => {
-    // The pages have to partition the rows, not overlap them, and an ordered
-    // .range() is what makes that true: the harness serves an un-ORDERed range
-    // from a rotating array, so deleting `.order('id')` from
-    // fetchAllBudgetLines makes page two repeat a row from page one and skip
-    // one nobody read. A repeated row silently inflates the very account it
-    // lands on, and a skipped one shrinks another — neither raises an error.
+    // The pages have to partition the rows, not overlap them, and ordering by
+    // id is what makes that true: the harness serves an un-ORDERed page from a
+    // rotating array, so a pager without `.order('id')` gets page two repeating
+    // a row from page one and skipping one nobody read. A repeated row silently
+    // inflates the very account it lands on, and a skipped one shrinks another
+    // — neither raises an error.
     const r = await resolveFullYear(fullYearBudget(84))
     expect(r.lines).toHaveLength(84)
     for (const line of r.lines) {
       expect(Object.keys(line.forecast_months)).toHaveLength(12)
       expect(Object.values(line.forecast_months).every((v) => v === 100)).toBe(true)
     }
+  })
+
+  describe('against PostgREST as it answers: Max rows cut, pages by keyset', () => {
+    beforeEach(() => {
+      vi.mocked(Sentry.captureMessage).mockClear()
+    })
+
+    const resolveOn = (db: FakePostgrest) =>
+      resolveBudget(db as any, {
+        businessId: BIZ,
+        profileId: PROFILE,
+        fiscalYear: FY,
+        reportMonth: '2026-08',
+        months: FY_MONTHS,
+        budgetSource: 'budget_version',
+        pin: {},
+      })
+
+    const annualTotal = (lines: Array<{ forecast_months: Record<string, number> }>) =>
+      lines.reduce((sum, line) => sum + Object.values(line.forecast_months).reduce((s, v) => s + v, 0), 0)
+
+    it('a revision read with the version it supersedes: the rows past the first 1,000 are the revised months', async () => {
+      // The realistic crossing: 70 accounts is 840 rows a version, and an
+      // October revision is read together with July's version — 1,680 rows.
+      // July's rows sort first, so the rows past 1,000 are nearly all of the
+      // revision's October-to-June money.
+      const V2 = { ...VERSION, id: 'v2', effective_from: '2026-10', version_number: 2 }
+      const rows: any[] = []
+      for (const [version, amount] of [['v1', 100], ['v2', 150]] as const) {
+        for (let a = 0; a < 70; a++) {
+          for (const [i, month] of FY_MONTHS.entries()) {
+            rows.push({
+              ...bLine(`${version}-${String(a).padStart(4, '0')}-${String(i).padStart(2, '0')}`, String(40000 + a), `Account ${40000 + a}`, month, amount),
+              budget_version_id: version,
+            })
+          }
+        }
+      }
+      const db = new FakePostgrest()
+      db.table('budget_versions', [VERSION, V2])
+      db.table('budget_lines', rows)
+
+      const r = await resolveOn(db)
+      expect(r.source).toBe('budget_version')
+      expect(r.lines).toHaveLength(70)
+      // Jul–Sep on v1 at $100, Oct–Jun on v2 at $150.
+      expect(annualTotal(r.lines)).toBe(70 * (3 * 100 + 9 * 150))
+      expect(db.requestsTo('budget_lines').map((p) => p.rowsReturned)).toEqual([1000, 680, 0])
+    })
+
+    it('a Max rows cap below the page size: a short page is not the end of the budget', async () => {
+      const db = new FakePostgrest()
+      db.table('budget_versions', [VERSION])
+      db.table('budget_lines', fullYearBudget(84), { maxRows: 400 })
+
+      const r = await resolveOn(db)
+      expect(r.lines).toHaveLength(84)
+      expect(annualTotal(r.lines)).toBe(84 * 12 * 100)
+      expect(db.requestsTo('budget_lines').map((p) => p.rowsReturned)).toEqual([400, 400, 208, 0])
+    })
+
+    it('exactly 1,000 rows: the full page is followed by the empty page that ends the read', async () => {
+      // 83 accounts × 12 = 996, plus four months of an 84th account.
+      const rows = [
+        ...fullYearBudget(83),
+        ...FY_MONTHS.slice(0, 4).map((month, i) => bLine(`l-0083-${i}`, '40083', 'Account 40083', month, 100)),
+      ]
+      expect(rows).toHaveLength(1000)
+      const db = new FakePostgrest()
+      db.table('budget_versions', [VERSION])
+      db.table('budget_lines', rows)
+
+      const r = await resolveOn(db)
+      expect(r.lines).toHaveLength(84)
+      expect(r.lines.find((l) => l.account_code === '40083')?.forecast_months).toEqual({
+        '2026-07': 100, '2026-08': 100, '2026-09': 100, '2026-10': 100,
+      })
+      expect(db.requestsTo('budget_lines').map((p) => p.rowsReturned)).toEqual([1000, 0])
+    })
+
+    it('a failed later page is "the approved budget could not be read", never a shorter budget', async () => {
+      const db = new FakePostgrest()
+      db.table('budget_versions', [VERSION])
+      db.table('budget_lines', fullYearBudget(84), { failOnRequest: [1] })
+
+      const r = await resolveOn(db)
+      expect(r.source).toBe('none')
+      expect(r.noBudgetReason).toBe('budget_read_failed')
+      expect(r.lines).toEqual([])
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        expect.stringContaining('Budget lines could not all be read'),
+        expect.objectContaining({
+          tags: { invariant: 'budget-lines-read-incomplete' },
+          extra: expect.objectContaining({ reason: 'query_error', rowsRead: 1000 }),
+        }),
+      )
+    })
   })
 })
