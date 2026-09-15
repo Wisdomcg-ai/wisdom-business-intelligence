@@ -28,7 +28,7 @@ const preparedOn = { at: '2026-09-11T20:14:47.289Z', basis: 'finalised' as const
 const months = (aug: number, jul = 0) => ({ '2026-07': jul, '2026-08': aug })
 
 /** Two AUD orgs with per-tenant budgets, a dormant row and an elimination. */
-export function goldenConsolidated(): ConsolidatedReportVM {
+function goldenConsolidated(): ConsolidatedReportVM {
   const universe: Array<[string, string, number, number]> = [
     ['revenue', 'Sales - Insurance', 673_764.84, 0],
     ['revenue', 'Sales - Management Services', 0, 151_658.84],

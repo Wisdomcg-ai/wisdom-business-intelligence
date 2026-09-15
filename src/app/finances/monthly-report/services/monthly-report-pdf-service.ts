@@ -48,6 +48,12 @@ import {
   type CommentaryPlacement,
 } from './commentary-placement'
 import { buildConsolidatedRows } from '../utils/consolidated-rows'
+import {
+  buildConsolidatedPLPageModel,
+  parseConsolidatedPLConfig,
+  type ConsolidatedPLConfig,
+  type ConsolidatedPLFigures,
+} from '@/lib/monthly-report/consolidated-pl-page'
 import { describeMissingRates, missingRatesForReport } from '@/lib/monthly-report/consolidated-fx'
 import { packPrintsCashflowPages } from '@/lib/monthly-report/pack-cashflow-gate'
 import { transformCashRunwayData } from '../components/charts/CashRunwayChart'
@@ -1089,7 +1095,15 @@ export class MonthlyReportPDFService {
   // =====================================================================
   // Mirrors the web ConsolidatedPLTab exactly — both read
   // buildConsolidatedRows, so the PDF can never drift from the tab.
-  private addConsolidatedPLPage(): void {
+  //
+  // A placement's config (consolidated-pl-page) can set the page out as
+  // Calxa's P&L Comparison instead; with none, this is the page it always was.
+  private addConsolidatedPLPage(widget?: import('../types/pdf-layout').LayoutWidget): void {
+    const parsed = parseConsolidatedPLConfig(widget?.config)
+    if (parsed.config.layout === 'calxa') {
+      this.addConsolidatedComparisonPage(parsed.config, widget?.titleOverride)
+      return
+    }
     const vm = this.options.consolidated!
     this.addPage('landscape')
 
@@ -1100,21 +1114,15 @@ export class MonthlyReportPDFService {
       this.margin, this.yPosition,
     )
     this.yPosition += 8
+    // A typo in the placement's settings must not cost the client the page,
+    // nor quietly print a different one: the standard page, and why.
+    if (!parsed.ok) {
+      this.yPosition = this.drawNote(`This page's settings could not be read (${parsed.reason}), so it is shown in the standard layout.`, undefined, { fontSize: 7.5, color: [146, 64, 14] }) + 2
+    }
 
     const tenants = vm.byTenant
-    // An entity in another currency with no rate for a month this page reads
-    // is still in that currency: its figures would sit in AUD columns and add
-    // into the AUD total one-for-one. Refuse the page and name the months,
-    // rather than print the figures under a footnote claiming they were
-    // translated (IICT-05). Export is refused on the same test (pre-flight).
     const translated = tenants.filter(t => t.functional_currency && t.functional_currency !== vm.business.presentation_currency)
-    const missingRates = translated.length > 0 ? missingRatesForReport(vm.fx_context?.missing_rates, this.report.report_month) : []
-    if (missingRates.length > 0) {
-      this.drawReasonCard(
-        `This page is not printed: ${describeMissingRates(missingRates)}, so ${translated.map(t => t.display_name).join(' and ')} cannot be shown in ${vm.business.presentation_currency}.`,
-      )
-      return
-    }
+    if (this.refuseUntranslatedEntities(vm)) return
 
     const { rows, isSingleMode } = buildConsolidatedRows(vm, this.report.report_month)
     const hasElims = rows.some(r => r.elim !== 0)
@@ -1184,8 +1192,179 @@ export class MonthlyReportPDFService {
     }
   }
 
-  renderConsolidatedPL(box: WidgetBoundingBox): void {
-    this.renderWithSkipPage(this.addConsolidatedPLPage, box)
+  /**
+   * An entity in another currency with no rate for a month this page reads
+   * is still in that currency: its figures would sit in AUD columns and add
+   * into the AUD total one-for-one. Refuse the page and name the months,
+   * rather than print the figures under a footnote claiming they were
+   * translated (IICT-05). Export is refused on the same test (pre-flight).
+   * True when the page was refused.
+   */
+  private refuseUntranslatedEntities(vm: import('../utils/consolidated-rows').ConsolidatedReportVM): boolean {
+    const translated = vm.byTenant.filter(t => t.functional_currency && t.functional_currency !== vm.business.presentation_currency)
+    const missingRates = translated.length > 0 ? missingRatesForReport(vm.fx_context?.missing_rates, this.report.report_month) : []
+    if (missingRates.length === 0) return false
+    this.drawReasonCard(
+      `This page is not printed: ${describeMissingRates(missingRates)}, so ${translated.map(t => t.display_name).join(' and ')} cannot be shown in ${vm.business.presentation_currency}.`,
+    )
+    return true
+  }
+
+  /**
+   * Calxa's P&L Comparison (Dragon p7 and p14, IICT p7 and p11) in the pack's
+   * statement type: each organisation's figures, then the group's under the
+   * pack's own name, down a statement — headings, groups carrying their
+   * subtotals, a total per section, and on the whole P&L Gross Profit, its
+   * margin and Net Profit per organisation (IICT-23, DRG-09, DRG-14, DRG-17).
+   * The rows and every figure on them come from buildConsolidatedPLPageModel;
+   * this method only sets them out.
+   */
+  private addConsolidatedComparisonPage(config: ConsolidatedPLConfig, titleOverride?: string): void {
+    const vm = this.options.consolidated!
+    this.addPage('landscape')
+    const subject = (titleOverride ?? '').trim() || 'P&L Comparison'
+    // "AUG 2026" under the title, as Calxa sets it — no "MONTH:".
+    this.drawPageTitle(`${subject} — ${this.formatMonth(this.report.report_month)}`, { monthPrefix: false })
+    if (this.refuseUntranslatedEntities(vm)) return
+
+    const model = buildConsolidatedPLPageModel(vm, this.report.report_month, config, {
+      groupOrder: this.report.settings.expense_group_order,
+      groupName: this.packEntityName(),
+    })
+
+    // Columns: the label, then per organisation Actual [Budget, Variance],
+    // [Elim], then the group's Actual [Budget, Variance, Var %].
+    const perTenant = model.tenantBudget ? 3 : 1
+    const perGroup = model.groupBudget ? 4 : 1
+    const head1: any[] = [{ content: '', rowSpan: 2 }]
+    const head2: any[] = []
+    const actualsWord = model.groupBudget ? 'Actual' : 'Actuals'
+    for (const name of model.tenantNames) {
+      head1.push({ content: name, colSpan: perTenant, styles: { halign: 'center' } })
+      head2.push(actualsWord)
+      if (model.tenantBudget) head2.push('Budget', 'Variance')
+    }
+    if (model.elim) head1.push({ content: 'Elim', rowSpan: 2, styles: { valign: 'bottom', halign: 'right' } })
+    head1.push({ content: model.groupName, colSpan: perGroup, styles: { halign: 'center' } })
+    head2.push(actualsWord)
+    if (model.groupBudget) head2.push('Budget', 'Variance', 'Var %')
+    const figureCount = model.tenantNames.length * perTenant + (model.elim ? 1 : 0) + perGroup
+
+    const budgetCols = new Set<number>()
+    {
+      let col = 1
+      for (let t = 0; t < model.tenantNames.length; t++) {
+        if (model.tenantBudget) budgetCols.add(col + 1)
+        col += perTenant
+      }
+      if (model.elim) col += 1
+      if (model.groupBudget) budgetCols.add(col + 1)
+    }
+
+    const dash = '—'
+    const cellsOf = (f: ConsolidatedPLFigures, budgetShown: boolean, pct: boolean): string[] => {
+      const out = [this.fmtCurrency(f.actual)]
+      if (!budgetShown) return out
+      out.push(f.budget === null ? dash : this.fmtCurrency(f.budget), f.variance === null ? dash : this.fmtVariance(f.variance))
+      if (pct) out.push(f.variancePct === null ? dash : this.fmtPct(f.variancePct))
+      return out
+    }
+
+    const kinds = model.rows.map((r) => r.kind)
+    const indents = model.rows.map((r) => r.indent)
+    const body = model.rows.map((r) => {
+      if (r.kind === 'section') return [r.label, ...Array.from({ length: figureCount }, () => '')]
+      if (r.kind === 'margin' && r.margins) {
+        const cells: string[] = [r.label]
+        r.margins.tenants.forEach((m) => {
+          cells.push(m.actual)
+          if (model.tenantBudget) cells.push(m.budget, '')
+        })
+        if (model.elim) cells.push('')
+        cells.push(r.margins.group.actual)
+        if (model.groupBudget) cells.push(r.margins.group.budget, '', '')
+        return cells
+      }
+      const cells: string[] = [r.label]
+      r.tenants.forEach((f) => cells.push(...cellsOf(f, model.tenantBudget, false)))
+      if (model.elim) cells.push(this.fmtCurrency(r.elim))
+      if (r.group) cells.push(...cellsOf(r.group, model.groupBudget, true))
+      return cells
+    })
+
+    const tableWidth = this.pageWidth - this.margin * 2
+    const labelWidth = Math.min(70, Math.max(50, tableWidth - figureCount * 24))
+    const figureWidth = (tableWidth - labelWidth) / Math.max(1, figureCount)
+    const figureTexts = body.flatMap((row) => row.slice(1))
+    const fontSize = this.fitFigureFontSize(figureTexts, figureWidth - 1.7, 10, 6)
+    const columnStyles: Record<number, Record<string, unknown>> = {
+      0: { cellWidth: labelWidth, halign: 'left', overflow: 'ellipsize' },
+    }
+    for (let i = 1; i <= figureCount; i++) columnStyles[i] = { cellWidth: figureWidth, halign: 'right', overflow: 'visible' }
+
+    autoTable(this.doc, {
+      startY: this.yPosition,
+      head: [head1, head2],
+      body,
+      ...statementTableStyles(fontSize),
+      tableWidth,
+      columnStyles: columnStyles as never,
+      margin: { left: this.margin, right: this.margin, top: 10, bottom: 20 },
+      didParseCell: (data) => {
+        const col = data.column.index
+        if (data.section === 'head') {
+          if (data.row.index === 1 && budgetCols.has(col)) data.cell.styles.fillColor = [...BUDGET_SHADE_STRONG] as RGB
+          return
+        }
+        if (data.section !== 'body') return
+        const kind = kinds[data.row.index]
+        const isBudget = budgetCols.has(col)
+        if (col > 0) data.cell.styles.halign = 'right'
+        if (isBudget) data.cell.styles.fillColor = [...BUDGET_SHADE] as RGB
+        if (col === 0) {
+          data.cell.styles.cellPadding = {
+            top: fontSize >= 10 ? 0.5 : 0.4,
+            bottom: fontSize >= 10 ? 0.5 : 0.4,
+            right: 0.6,
+            left: 1.1 + INDENT_MM[(indents[data.row.index] ?? 0) as 0 | 1 | 2],
+          }
+        }
+        if (kind === 'section') {
+          if (col === 0) {
+            data.cell.styles.textColor = [...SECTION_TEXT] as RGB
+            data.cell.styles.fontSize = fontSize + 1
+          }
+          data.cell.styles.fontStyle = 'bold'
+        } else if (kind === 'group') {
+          data.cell.styles.fontStyle = 'bold'
+          data.cell.styles.fillColor = isBudget ? ([...BUDGET_SHADE_STRONG] as RGB) : ([...GROUP_SHADE] as RGB)
+        } else if (kind === 'total' || kind === 'profit') {
+          data.cell.styles.fontStyle = 'bold'
+          data.cell.styles.lineWidth = { top: 0, right: 0, bottom: 0.35, left: 0 }
+          data.cell.styles.lineColor = [...TOTAL_RULE] as RGB
+        } else if (kind === 'margin') {
+          data.cell.styles.fontStyle = 'italic'
+        }
+        paintNegatives(data as never)
+      },
+    })
+
+    this.yPosition = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 5
+    const translated = vm.byTenant.filter(t => t.functional_currency && t.functional_currency !== vm.business.presentation_currency)
+    const notes = [
+      ...model.notes,
+      ...(translated.length > 0
+        ? [`${translated.map(t => `${t.display_name} translated from ${t.functional_currency}`).join(' · ')} — all figures in ${vm.business.presentation_currency} at monthly-average rates.`]
+        : []),
+    ]
+    for (const note of notes) {
+      this.yPosition = this.drawNote(note, undefined, { fontSize: 7.5, color: [90, 90, 90] }) + 1.5
+    }
+  }
+
+  /** config.layout, config.section, config.columns and the title override — see consolidated-pl-page. */
+  renderConsolidatedPL(box: WidgetBoundingBox, widget?: import('../types/pdf-layout').LayoutWidget): void {
+    this.renderWithSkipPage(() => this.addConsolidatedPLPage(widget), box)
   }
 
   // =====================================================================
