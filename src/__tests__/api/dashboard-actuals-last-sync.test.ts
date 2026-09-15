@@ -7,24 +7,30 @@
  * line never rendered. financial_metrics was never the charts' source either:
  * they read the xero_pl_lines mirror.
  *
- * `lastSync` is now the business's Xero data clock from the one definition
- * (`businessDataClock`): every org under both id forms, each on its own tenant's
- * clock, the stalest one. These tests go through the exported GET — the
- * withQuerySchema wrapper included — and post the business_profiles.id the
- * dashboard sends (useBusinessDashboard), while xero_connections rows live under
- * businesses.id. The database stand-in honours eq/in/order/limit and returns only
- * the selected columns, so a filter or column the route leaves out changes the
- * answer instead of hiding behind the fixture.
+ * `lastSync` is now the Xero data clock from the one definition
+ * (`businessDataClock`) over every org behind the figures: the business's
+ * connection rows under both id forms, and every tenant whose mirror rows the
+ * charts drew — disconnecting keeps those rows, and IICT Group's charts still
+ * summed an org with no connection row on 16 Sep 2026. The stalest clock wins.
+ *
+ * These tests go through the exported GET — the withQuerySchema wrapper
+ * included — and post the business_profiles.id the dashboard sends
+ * (useBusinessDashboard), while xero_connections rows live under businesses.id.
+ * The database stand-in honours eq/in/order/limit and returns only the selected
+ * columns, so a filter or column the route leaves out changes the answer instead
+ * of hiding behind the fixture.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { generateFiscalMonthKeys, getCurrentFiscalYear } from '@/lib/utils/fiscal-year-utils'
 import { ACCESS_TOKEN_TTL_MS } from '@/lib/xero/connection-status'
 
 type Row = Record<string, unknown>
-type TableAnswer = Row[] | { error: { message: string; code?: string } }
+type Read = { table: string; columns: string; filters: Array<[string, string, unknown]> }
 
 const db = vi.hoisted(() => ({
-  tables: {} as Record<string, Row[] | { error: { message: string; code?: string } }>,
+  tables: {} as Record<string, Array<Record<string, unknown>> | { error: { message: string; code?: string } }>,
+  /** Fail only the reads of a table that match — e.g. one of two queries on it. */
+  failWhen: {} as Record<string, (read: { table: string; columns: string; filters: Array<[string, string, unknown]> }) => boolean>,
   reads: [] as Array<{ table: string; columns: string; filters: Array<[string, string, unknown]> }>,
 }))
 
@@ -49,14 +55,15 @@ import { GET } from '@/app/api/forecast/dashboard-actuals/route'
 
 /** A PostgREST-shaped query over db.tables that honours the filters it is given. */
 function stubQuery(table: string) {
-  const read = { table, columns: '*', filters: [] as Array<[string, string, unknown]> }
+  const read: Read = { table, columns: '*', filters: [] }
   db.reads.push(read)
   let order: Array<{ column: string; ascending: boolean }> = []
   let limit: number | null = null
 
   const run = (): { data: Row[] | null; error: { message: string; code?: string } | null } => {
-    const answer: TableAnswer = db.tables[table] ?? []
+    const answer = db.tables[table] ?? []
     if (!Array.isArray(answer)) return { data: null, error: answer.error }
+    if (db.failWhen[table]?.(read)) return { data: null, error: { message: `${table} read failed`, code: '57014' } }
     let rows = answer.filter((r) =>
       read.filters.every(([op, column, value]) =>
         op === 'eq' ? r[column] === value : (value as unknown[]).includes(r[column]),
@@ -113,6 +120,10 @@ function stubQuery(table: string) {
 const PROFILE_ID = '04e9b68f-0000-4d05-8e9c-87f4254ef11f' // what the dashboard posts
 const BUSINESS_ID = '3203832b-0000-4da6-9a2c-7c29cb564ffd' // what xero_connections is keyed by
 
+const FY = getCurrentFiscalYear(7)
+const [FIRST_MONTH] = generateFiscalMonthKeys(FY, 7)
+const [LAST_YEAR_FIRST_MONTH] = generateFiscalMonthKeys(FY - 1, 7)
+
 const HOUR = 60 * 60 * 1000
 let NOW = 0
 const hoursAgo = (hours: number) => new Date(NOW - hours * HOUR).toISOString()
@@ -133,30 +144,20 @@ function connection(over: Row & { id: string; tenant_id: string; tenant_name: st
   }
 }
 
-function syncClock(byTenant: Record<string, string>, ok = true) {
-  return { ok, byTenant: new Map(Object.entries(byTenant).map(([tenant, iso]) => [tenant, Date.parse(iso)])) }
+/** Revenue rows in the P&L mirror, one per tenant, in the requested year unless a month is given. */
+function mirror(...lines: Array<{ tenant_id: string | null; revenue: number; month?: string }>): Row[] {
+  return lines.map((line, i) => ({
+    business_id: PROFILE_ID,
+    tenant_id: line.tenant_id,
+    account_id: `acc-${i}`,
+    account_name: `Sales ${i}`,
+    account_type: 'revenue',
+    monthly_values: { [line.month ?? FIRST_MONTH]: line.revenue },
+  }))
 }
 
-function seedCharts() {
-  const [firstMonth] = generateFiscalMonthKeys(getCurrentFiscalYear(7), 7)
-  db.tables.business_profiles = [{ id: PROFILE_ID, business_id: BUSINESS_ID }]
-  db.tables.financial_forecasts = [
-    { id: 'fc-1', business_id: PROFILE_ID, fiscal_year: getCurrentFiscalYear(7), is_active: true, updated_at: hoursAgo(5) },
-  ]
-  db.tables.forecast_pl_lines = [
-    {
-      forecast_id: 'fc-1',
-      account_name: 'Sales',
-      category: 'Revenue',
-      account_type: 'revenue',
-      actual_months: {},
-      forecast_months: { [firstMonth]: 1000 },
-      is_from_xero: false,
-    },
-  ]
-  db.tables.xero_pl_lines_wide_compat = [
-    { business_id: PROFILE_ID, account_name: 'Sales', account_type: 'revenue', monthly_values: { [firstMonth]: 900 } },
-  ]
+function syncClock(byTenant: Record<string, string>, ok = true) {
+  return { ok, byTenant: new Map(Object.entries(byTenant).map(([tenant, iso]) => [tenant, Date.parse(iso)])) }
 }
 
 async function getCharts(businessId = PROFILE_ID) {
@@ -166,20 +167,36 @@ async function getCharts(businessId = PROFILE_ID) {
   return { status: response.status, json: await response.json() }
 }
 
-const connectionReads = () => db.reads.filter((r) => r.table === 'xero_connections')
+const readsOf = (table: string) => db.reads.filter((r) => r.table === table)
 
 beforeEach(() => {
   NOW = Date.now()
-  db.tables = {}
   db.reads = []
+  db.failWhen = {}
+  db.tables = {
+    business_profiles: [{ id: PROFILE_ID, business_id: BUSINESS_ID }],
+    financial_forecasts: [{ id: 'fc-1', business_id: PROFILE_ID, fiscal_year: FY, is_active: true, updated_at: hoursAgo(5) }],
+    forecast_pl_lines: [
+      {
+        forecast_id: 'fc-1',
+        account_name: 'Sales',
+        category: 'Revenue',
+        account_type: 'revenue',
+        actual_months: { [FIRST_MONTH]: 777 },
+        forecast_months: { [FIRST_MONTH]: 1000 },
+        is_from_xero: false,
+      },
+    ],
+    xero_pl_lines_wide_compat: [],
+    xero_connections: [],
+  }
   vi.mocked(getLastSyncByTenant).mockReset()
   vi.mocked(Sentry.captureException).mockClear()
-  seedCharts()
 })
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe('dashboard-actuals lastSync — the one data clock, stalest org', () => {
+describe('dashboard-actuals lastSync — the stalest clock behind the figures', () => {
   it("a multi-org business reads its stalest org's clock, not the headline org's — found under the id the dashboard does not send", async () => {
     // IICT Group Limited's token stopped refreshing 20h ago but its data synced an
     // hour ago, so it is the business's headline status (auth_stale). IICT Group
@@ -194,6 +211,7 @@ describe('dashboard-actuals lastSync — the one data clock, stalest org', () =>
       }),
       connection({ id: 'conn-pty', tenant_id: 'tenant-pty', tenant_name: 'IICT Group Pty Ltd', last_synced_at: hoursAgo(40) }),
     ]
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-limited', revenue: 600 }, { tenant_id: 'tenant-pty', revenue: 300 })
     vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({}))
 
     const { status, json } = await getCharts()
@@ -212,19 +230,88 @@ describe('dashboard-actuals lastSync — the one data clock, stalest org', () =>
     expect(json.data).not.toHaveProperty('lastSyncedAt')
 
     // Both id forms were asked for; the rows were under businesses.id.
-    const [read] = connectionReads()
+    const [read] = readsOf('xero_connections')
     expect(read.filters).toEqual([['in', 'business_id', expect.arrayContaining([PROFILE_ID, BUSINESS_ID])]])
     expect(read.columns).not.toContain('token')
 
-    // The sync clock is the shared lookup, read as the service role over the same
-    // 60-day window as the pill and the board.
+    // The sync clock is the shared lookup, read once as the service role over the
+    // same 60-day window as the pill and the board.
     expect(getLastSyncByTenant).toHaveBeenCalledTimes(1)
     expect(getLastSyncByTenant).toHaveBeenCalledWith(SERVICE_ROLE, 60)
 
-    // The charts themselves are unchanged.
+    // The charts themselves: Xero's actuals replace the forecast's stored ones.
     expect(json.hasData).toBe(true)
     expect(json.data.months).toHaveLength(12)
     expect(json.data.months[0]).toMatchObject({ revenueActual: 900, revenueForecast: 1000 })
+  })
+
+  it("figures still drawn from an org whose connection is gone are dated by that org's last sync — the IICT case", async () => {
+    // Two orgs reconnected and synced an hour ago. IICT Group Pty Ltd has no
+    // connection row any more, but its rows are still in the mirror and in the
+    // charts, last synced 130h ago. The line must not print the fresh date.
+    db.tables.xero_connections = [
+      connection({ id: 'conn-aust', tenant_id: 'tenant-aust', tenant_name: 'IICT (Aust) Pty Ltd', last_synced_at: hoursAgo(1) }),
+      connection({ id: 'conn-limited', tenant_id: 'tenant-limited', tenant_name: 'IICT Group Limited', last_synced_at: hoursAgo(1) }),
+    ]
+    db.tables.xero_pl_lines_wide_compat = mirror(
+      { tenant_id: 'tenant-aust', revenue: 100 },
+      { tenant_id: 'tenant-limited', revenue: 200 },
+      { tenant_id: 'tenant-pty', revenue: 400 },
+    )
+    vi.mocked(getLastSyncByTenant).mockResolvedValue(
+      syncClock({ 'tenant-aust': hoursAgo(1), 'tenant-limited': hoursAgo(1), 'tenant-pty': hoursAgo(130) }),
+    )
+
+    const { json } = await getCharts()
+
+    expect(json.data.months[0]).toMatchObject({ revenueActual: 700 })
+    expect(json.data.lastSync).toEqual({
+      status: 'synced',
+      lastSyncAt: hoursAgo(130),
+      orgs: [
+        { tenantName: null, lastSyncAt: hoursAgo(130) },
+        { tenantName: 'IICT (Aust) Pty Ltd', lastSyncAt: hoursAgo(1) },
+        { tenantName: 'IICT Group Limited', lastSyncAt: hoursAgo(1) },
+      ],
+    })
+    // The mirror read asked for the tenant of every row.
+    expect(readsOf('xero_pl_lines_wide_compat')[0].columns).toContain('tenant_id')
+  })
+
+  it('an org whose rows are all outside the requested year is not in these charts, so it does not date them', async () => {
+    db.tables.xero_connections = [
+      connection({ id: 'conn-aust', tenant_id: 'tenant-aust', tenant_name: 'IICT (Aust) Pty Ltd', last_synced_at: hoursAgo(1) }),
+    ]
+    db.tables.xero_pl_lines_wide_compat = mirror(
+      { tenant_id: 'tenant-aust', revenue: 100 },
+      { tenant_id: 'tenant-old', revenue: 400, month: LAST_YEAR_FIRST_MONTH },
+    )
+    vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({ 'tenant-aust': hoursAgo(1) }))
+
+    const { json } = await getCharts()
+
+    expect(json.data.months[0]).toMatchObject({ revenueActual: 100 })
+    expect(json.data.lastSync).toEqual({
+      status: 'synced',
+      lastSyncAt: hoursAgo(1),
+      orgs: [{ tenantName: 'IICT (Aust) Pty Ltd', lastSyncAt: hoursAgo(1) }],
+    })
+  })
+
+  it('a business with no connection left, whose charts still draw Xero figures, gets a date — not none', async () => {
+    db.tables.xero_connections = []
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-gone', revenue: 500 })
+    vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({ 'tenant-gone': hoursAgo(20) }))
+
+    const { json } = await getCharts()
+
+    expect(json.data.lastSync).toEqual({
+      status: 'synced',
+      lastSyncAt: hoursAgo(20),
+      orgs: [{ tenantName: null, lastSyncAt: hoursAgo(20) }],
+    })
+    expect(getLastSyncByTenant).toHaveBeenCalledTimes(1)
+    expect(getLastSyncByTenant).toHaveBeenCalledWith(SERVICE_ROLE, 60)
   })
 
   it("each org's clock is the fresher of its stamped column and its tenant's sync_jobs", async () => {
@@ -234,6 +321,7 @@ describe('dashboard-actuals lastSync — the one data clock, stalest org', () =>
       connection({ id: 'conn-a', tenant_id: 'tenant-a', tenant_name: 'A Pty Ltd', last_synced_at: hoursAgo(3) }),
       connection({ id: 'conn-b', tenant_id: 'tenant-b', tenant_name: 'B Pty Ltd', last_synced_at: hoursAgo(60) }),
     ]
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-a', revenue: 1 }, { tenant_id: 'tenant-b', revenue: 1 })
     vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({ 'tenant-a': hoursAgo(50), 'tenant-b': hoursAgo(5) }))
 
     const { json } = await getCharts()
@@ -248,10 +336,10 @@ describe('dashboard-actuals lastSync — the one data clock, stalest org', () =>
     })
   })
 
-  it('a retired org sets nothing and a dead row superseded by its reconnect is not an org', async () => {
+  it('a retired org with no figures in the charts sets nothing, and a dead row superseded by its reconnect is not an org', async () => {
     db.tables.xero_connections = [
       connection({ id: 'conn-live', tenant_id: 'tenant-live', tenant_name: 'Live Pty Ltd', last_synced_at: hoursAgo(2) }),
-      // The same org's pre-reconnect row, switched off, never stamped.
+      // The same org's pre-reconnect row, switched off.
       connection({ id: 'conn-old', tenant_id: 'tenant-live', tenant_name: 'Live Pty Ltd', is_active: false, last_synced_at: hoursAgo(24 * 40) }),
       // Wound up on purpose: off AND excluded from consolidation.
       connection({
@@ -263,6 +351,7 @@ describe('dashboard-actuals lastSync — the one data clock, stalest org', () =>
         last_synced_at: hoursAgo(24 * 55),
       }),
     ]
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-live', revenue: 1 })
     vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({}))
 
     const { json } = await getCharts()
@@ -279,6 +368,7 @@ describe('dashboard-actuals lastSync — the one data clock, stalest org', () =>
       connection({ id: 'conn-roofing', tenant_id: 'tenant-roofing', tenant_name: 'Dragon Roofing Pty Ltd', last_synced_at: hoursAgo(2) }),
       connection({ id: 'conn-hail', tenant_id: 'tenant-hail', tenant_name: 'EASY HAIL CLAIM PTY LTD', created_at: hoursAgo(1) }),
     ]
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-roofing', revenue: 1 })
     vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({ 'tenant-roofing': hoursAgo(2) }))
 
     const { json } = await getCharts()
@@ -292,13 +382,12 @@ describe('dashboard-actuals lastSync — the one data clock, stalest org', () =>
     })
   })
 
-  it('no Xero connection is none, and the fleet sync clock is not read', async () => {
-    db.tables.xero_connections = []
-
+  it('no Xero connection and no Xero figures is none, and the fleet sync clock is not read', async () => {
     const { status, json } = await getCharts()
 
     expect(status).toBe(200)
     expect(json.data.lastSync).toEqual({ status: 'none' })
+    expect(json.data.months[0]).toMatchObject({ revenueActual: 777 })
     expect(getLastSyncByTenant).not.toHaveBeenCalled()
   })
 })
@@ -308,6 +397,7 @@ describe('dashboard-actuals lastSync — a failed check is unknown, never a date
     db.tables.xero_connections = [
       connection({ id: 'conn-a', tenant_id: 'tenant-a', tenant_name: 'A Pty Ltd', last_synced_at: hoursAgo(1) }),
     ]
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-a', revenue: 1 })
     vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({}, false))
 
     const { status, json } = await getCharts()
@@ -319,6 +409,7 @@ describe('dashboard-actuals lastSync — a failed check is unknown, never a date
 
   it('a failed xero_connections read is unknown, goes to Sentry, and reads no sync clock', async () => {
     db.tables.xero_connections = { error: { message: 'permission denied for table xero_connections', code: '42501' } }
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-a', revenue: 1 })
 
     const { status, json } = await getCharts()
 
@@ -345,20 +436,66 @@ describe('dashboard-actuals lastSync — a failed check is unknown, never a date
     expect(Sentry.captureException).toHaveBeenCalled()
   })
 
-  it('an id the resolver could not map finds no connection rows — unknown, not "no Xero"', async () => {
-    // xero_connections is keyed by businesses.id. With no business_profiles row to
-    // map the posted profile id, the resolver echoes it back alone, and nothing
-    // under it proves the business has no connection.
-    db.tables.business_profiles = []
-    db.tables.xero_connections = [
-      connection({ id: 'conn-a', tenant_id: 'tenant-a', tenant_name: 'A Pty Ltd', last_synced_at: hoursAgo(1) }),
-    ]
+  it('a sync clock lookup that throws for figures with no connection left is unknown too', async () => {
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-gone', revenue: 1 })
+    vi.mocked(getLastSyncByTenant).mockRejectedValue(new Error('fetch failed'))
 
     const { status, json } = await getCharts()
 
     expect(status).toBe(200)
-    expect(connectionReads()[0].filters).toEqual([['in', 'business_id', [PROFILE_ID]]])
     expect(json.data.lastSync).toEqual({ status: 'unknown' })
-    expect(getLastSyncByTenant).not.toHaveBeenCalled()
+  })
+
+  it('an id the resolver could not map finds no connection rows — unknown, even with figures drawn', async () => {
+    // xero_connections is keyed by businesses.id. With no business_profiles row to
+    // map the posted profile id, the resolver echoes it back alone: nothing under
+    // it proves the business has no connection, or which orgs it has.
+    db.tables.business_profiles = []
+    db.tables.xero_connections = [
+      connection({ id: 'conn-a', tenant_id: 'tenant-a', tenant_name: 'A Pty Ltd', last_synced_at: hoursAgo(1) }),
+    ]
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-a', revenue: 1 })
+    vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({ 'tenant-a': hoursAgo(1) }))
+
+    const { status, json } = await getCharts()
+
+    expect(status).toBe(200)
+    expect(readsOf('xero_connections')[0].filters).toEqual([['in', 'business_id', [PROFILE_ID]]])
+    expect(json.data.lastSync).toEqual({ status: 'unknown' })
+  })
+})
+
+describe('dashboard-actuals — a failed read is a 500, never charts that quietly lost something', () => {
+  it('a failed Xero mirror read is a 500 — the forecast’s stored actuals are not passed off as Xero’s', async () => {
+    db.tables.xero_pl_lines_wide_compat = { error: { message: 'canceling statement due to statement timeout', code: '57014' } }
+
+    const { status, json } = await getCharts()
+
+    expect(status).toBe(500)
+    expect(json).not.toHaveProperty('data')
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({ code: '57014' }),
+      expect.objectContaining({ tags: expect.objectContaining({ route: 'forecast/dashboard-actuals' }) }),
+    )
+  })
+
+  it("a failed read of the year's forecast is a 500, not charts without the plan", async () => {
+    db.failWhen.financial_forecasts = (read) => read.filters.some(([, column]) => column === 'fiscal_year')
+
+    const { status } = await getCharts()
+
+    expect(status).toBe(500)
+  })
+
+  it('a failed read of the latest forecast is a 500, not charts without its actuals', async () => {
+    db.tables.financial_forecasts = [
+      { id: 'fc-old', business_id: PROFILE_ID, fiscal_year: FY - 1, is_active: true, updated_at: hoursAgo(5) },
+    ]
+    db.failWhen.financial_forecasts = (read) => !read.filters.some(([, column]) => column === 'fiscal_year')
+
+    const { status } = await getCharts()
+
+    expect(readsOf('financial_forecasts')).toHaveLength(2)
+    expect(status).toBe(500)
   })
 })

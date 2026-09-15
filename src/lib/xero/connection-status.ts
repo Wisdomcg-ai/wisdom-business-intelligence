@@ -439,27 +439,37 @@ export interface XeroOrgDataClock {
 }
 
 /**
- * How current a business's Xero NUMBERS are, for a surface that shows every
- * org's figures together — the KPI dashboard charts' "Last synced".
+ * How current the Xero figures on a page are — the KPI dashboard charts'
+ * "Last synced" — as one clock: the STALEST clock of every org behind them.
  *
- * It is the STALEST counted org's clock, never the headline org's. A total is
- * only as current as the org that synced longest ago, and the headline org is
- * picked by status: an auth_stale or dead org that synced an hour ago would
- * otherwise speak for a sibling three weeks behind. The orgs that count are
- * exactly `classifyBusinessConnections`' (a retired org sets nothing; a dead row
- * superseded by a live row for the same org is not an org), each on its own
- * tenant's clock (`dataClockFor`).
+ * Never the headline org's clock. A total is only as current as the org that
+ * synced longest ago, and the headline org is picked by status: an auth_stale or
+ * dead org that synced an hour ago would otherwise speak for a sibling three
+ * weeks behind.
  *
- *   none          no org counts: no Xero connection, so no clock to show
+ * The orgs behind the figures are two sets, and the clock needs both:
+ *   - the orgs `classifyBusinessConnections` counts, each on its own tenant's
+ *     clock (`dataClockFor`) — a connected org whose figures are not in yet
+ *     is exactly what "not yet" means;
+ *   - every tenant whose mirror rows the page actually drew (`tenantsShown`).
+ *     Disconnecting deletes the connection rows but keeps the mirror rows, and a
+ *     retired org's rows stay too, so a page can draw figures from an org that
+ *     no longer counts. On 16 Sep 2026 IICT Group's charts still summed 540 rows
+ *     of IICT Group Pty Ltd, last written 10 Sep, with no connection row for it.
+ *     Such an org's clock is its tenant's sync_jobs clock (folded with any
+ *     connection row left for it) and it has no name unless that row gives one.
+ *
+ *   none          no org counts and no figures were drawn: nothing to date
  *   unknown       the clock could not be established — the sync_jobs lookup
- *                 failed, or an org has no tenant_id to look it up by, the two
- *                 reasons `classifyXeroConnection` answers unknown on the data
- *                 axis. Never a date, and never "never synced".
- *   never_synced  some org has never synced
- *   synced        every org has synced; `lastSyncAt` is the oldest of them
+ *                 failed; an org or a drawn row has no tenant_id to look up
+ *                 (the data-axis reasons `classifyXeroConnection` answers
+ *                 unknown); or a drawn org's clock is empty, which cannot mean
+ *                 "never synced" for an org whose figures exist. Never a date.
+ *   never_synced  some counted org has never synced
+ *   synced        every org has a clock; `lastSyncAt` is the oldest of them
  *
- * `orgs` is every counted org's clock, stalest first, so a surface can say whose
- * clock it is when the orgs disagree.
+ * `orgs` is every org's clock, stalest first, so a surface can say whose clock
+ * it is when the orgs disagree.
  */
 export type XeroBusinessDataClock =
   | { status: 'none' }
@@ -470,14 +480,36 @@ export type XeroBusinessDataClock =
 export function businessDataClock(
   rows: readonly XeroConnectionStatusRow[],
   syncClock: XeroSyncClock,
+  tenantsShown: readonly (string | null)[],
 ): XeroBusinessDataClock {
   const { orgs } = classifyBusinessConnections(rows, syncClock);
-  if (orgs.length === 0) return { status: 'none' };
-  if (!syncClock.ok || orgs.some((o) => o.tenantId === null)) return { status: 'unknown' };
+  const countedTenants = new Set(orgs.map((o) => o.tenantId));
+  const uncounted = new Set<string>();
+  let blankShown = false;
+  for (const id of tenantsShown) {
+    const tenant = id?.trim();
+    if (!tenant) blankShown = true;
+    else if (!countedTenants.has(tenant)) uncounted.add(tenant);
+  }
 
-  const clocks = orgs
-    .map((o) => ({ tenantName: o.tenantName, lastSyncAt: o.lastSyncAt }))
-    .sort((a, b) => compareInstants(a.lastSyncAt, b.lastSyncAt) || compareText(a.tenantName, b.tenantName));
+  if (orgs.length === 0 && uncounted.size === 0 && !blankShown) return { status: 'none' };
+  if (!syncClock.ok || blankShown || orgs.some((o) => o.tenantId === null)) return { status: 'unknown' };
+
+  const clocks: XeroOrgDataClock[] = orgs.map((o) => ({ tenantName: o.tenantName, lastSyncAt: o.lastSyncAt }));
+  for (const tenant of uncounted) {
+    const orgRows = rows.filter((r) => r.tenant_id?.trim() === tenant);
+    const lastSyncMs = Math.max(
+      0,
+      ...[{ tenant_id: tenant, last_synced_at: null }, ...orgRows].map((r) => dataClockFor(r, syncClock).lastSyncMs ?? 0),
+    );
+    if (lastSyncMs === 0) return { status: 'unknown' };
+    clocks.push({
+      tenantName: orgRows.map((r) => r.tenant_name?.trim()).find((name) => !!name) ?? null,
+      lastSyncAt: new Date(lastSyncMs).toISOString(),
+    });
+  }
+
+  clocks.sort((a, b) => compareInstants(a.lastSyncAt, b.lastSyncAt) || compareText(a.tenantName, b.tenantName));
   const stalest = clocks[0].lastSyncAt;
   return stalest === null
     ? { status: 'never_synced', orgs: clocks }

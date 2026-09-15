@@ -39,10 +39,13 @@ import { FinancialSummaryCharts } from '@/app/business-dashboard/components/Fina
 
 const PROFILE_ID = 'aabd3c49-4dc8-4aa6-a9a6-75f62ab89ff5'
 
-// Instants at 09:00Z print the same calendar date from UTC-11 to UTC+13.
-const SEP_10 = '2026-09-10T09:00:00.000Z'
-const SEP_16 = '2026-09-16T09:00:00.000Z'
-const SEP_16_LATER = '2026-09-16T09:30:00.000Z'
+// 12:00Z and 12:20Z print the same calendar date as each other in every real
+// time zone (UTC-12 to UTC+14): midnight falls between them only at an offset
+// between +11:40 and +12:00, which no zone uses. printed() formats in the test's
+// own zone, so the expectations hold wherever the suite runs.
+const SEP_10 = '2026-09-10T12:00:00.000Z'
+const SEP_16 = '2026-09-16T12:00:00.000Z'
+const SEP_16_LATER = '2026-09-16T12:20:00.000Z'
 
 const printed = (iso: string) =>
   new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -124,6 +127,23 @@ describe('FinancialSummaryCharts — "Last synced" is the business data clock', 
     await renderCharts()
     expect(syncLine()?.textContent).toBe(`Last synced: ${printed(SEP_10)} (IICT Group Pty Ltd)`)
     expect(screen.queryByText(new RegExp(printed(SEP_16)))).toBeNull()
+  })
+
+  it('the stalest org has no name (its connection is gone): counted, never guessed', async () => {
+    answer(
+      200,
+      charts({
+        status: 'synced',
+        lastSyncAt: SEP_10,
+        orgs: [
+          { tenantName: null, lastSyncAt: SEP_10 },
+          { tenantName: 'IICT (Aust) Pty Ltd', lastSyncAt: SEP_16 },
+          { tenantName: 'IICT Group Limited', lastSyncAt: SEP_16_LATER },
+        ],
+      }),
+    )
+    await renderCharts()
+    expect(syncLine()?.textContent).toBe(`Last synced: ${printed(SEP_10)} (1 of 3 orgs)`)
   })
 
   it('several orgs sharing the stalest day: counted, not named', async () => {

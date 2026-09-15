@@ -1,13 +1,16 @@
 /**
- * `businessDataClock` — the one definition of how current a business's Xero
- * numbers are, as the KPI dashboard's "Last synced" shows them.
+ * `businessDataClock` — the one definition of how current the Xero figures on a
+ * page are, as the KPI dashboard's "Last synced" shows them.
  *
  * The line used to read `financial_metrics.updated_at`, a column that table has
- * never had, so it never rendered. The clock it now shows is the STALEST counted
- * org's: the charts add up every org, so one org's fresh sync must never stand in
- * for a sibling that is weeks behind — including the headline org
- * `classifyBusinessConnections` picks by status. A lookup that fails is
- * `unknown`, never a date and never "never synced".
+ * never had, so it never rendered. The clock it now shows is the STALEST clock of
+ * every org behind the figures: the orgs the classifier counts, and every tenant
+ * whose mirror rows the page drew — disconnecting keeps the rows, so on 16 Sep
+ * 2026 IICT Group's charts still summed IICT Group Pty Ltd (last written 10 Sep)
+ * with no connection row for it. One org's fresh sync must never stand in for
+ * figures that are older, including the headline org `classifyBusinessConnections`
+ * picks by status. A lookup that fails is `unknown`, never a date and never
+ * "never synced".
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
@@ -22,6 +25,9 @@ const NOW = Date.parse('2026-09-16T02:00:00.000Z')
 const HOUR = 60 * 60 * 1000
 const hoursAgo = (hours: number) => new Date(NOW - hours * HOUR).toISOString()
 const ms = (iso: string) => Date.parse(iso)
+
+/** No mirror rows drawn — the page shows no Xero figures. */
+const NOTHING_SHOWN: string[] = []
 
 const row = (over: Partial<XeroConnectionStatusRow> & Pick<XeroConnectionStatusRow, 'id'>): XeroConnectionStatusRow => ({
   business_id: 'biz-1',
@@ -54,29 +60,38 @@ afterEach(() => {
 describe('businessDataClock — one org', () => {
   it("is the fresher of the org's own column and its tenant's last job", () => {
     const stampedLater = row({ id: 'a', tenant_name: 'Urban Road Pty Ltd', last_synced_at: hoursAgo(3) })
-    expect(businessDataClock([stampedLater], jobs({ 'tenant-a': hoursAgo(30) }))).toEqual({
+    expect(businessDataClock([stampedLater], jobs({ 'tenant-a': hoursAgo(30) }), ['tenant-a'])).toEqual({
       status: 'synced',
       lastSyncAt: hoursAgo(3),
       orgs: [{ tenantName: 'Urban Road Pty Ltd', lastSyncAt: hoursAgo(3) }],
     })
 
     const jobLater = row({ id: 'a', tenant_name: 'Urban Road Pty Ltd', last_synced_at: hoursAgo(30) })
-    expect(businessDataClock([jobLater], jobs({ 'tenant-a': hoursAgo(2) }))).toMatchObject({
+    expect(businessDataClock([jobLater], jobs({ 'tenant-a': hoursAgo(2) }), ['tenant-a'])).toMatchObject({
       status: 'synced',
       lastSyncAt: hoursAgo(2),
     })
   })
 
-  it('never synced (no column, no job) is never_synced, not a date', () => {
+  it('a connected org that has never synced is never_synced, not a date', () => {
     const brandNew = row({ id: 'a', tenant_name: 'Distinct Directions Pty Ltd', created_at: hoursAgo(2) })
-    expect(businessDataClock([brandNew], jobs({}))).toEqual({
+    expect(businessDataClock([brandNew], jobs({}), NOTHING_SHOWN)).toEqual({
       status: 'never_synced',
       orgs: [{ tenantName: 'Distinct Directions Pty Ltd', lastSyncAt: null }],
     })
   })
 
-  it('no rows is none', () => {
-    expect(businessDataClock([], jobs({}))).toEqual({ status: 'none' })
+  it('no connection and no figures is none', () => {
+    expect(businessDataClock([], jobs({}), NOTHING_SHOWN)).toEqual({ status: 'none' })
+  })
+
+  it('the same tenant drawn many times is still one org', () => {
+    const org = row({ id: 'a', tenant_name: 'A Pty Ltd', last_synced_at: hoursAgo(4) })
+    expect(businessDataClock([org], jobs({}), ['tenant-a', 'tenant-a', ' tenant-a '])).toEqual({
+      status: 'synced',
+      lastSyncAt: hoursAgo(4),
+      orgs: [{ tenantName: 'A Pty Ltd', lastSyncAt: hoursAgo(4) }],
+    })
   })
 })
 
@@ -100,7 +115,7 @@ describe('businessDataClock — a multi-org business is as current as its stales
     expect(business.status).toBe('auth_stale')
     expect(business.lastSyncAt).toBe(hoursAgo(1))
 
-    expect(businessDataClock(rows, clock)).toEqual({
+    expect(businessDataClock(rows, clock, ['tenant-limited', 'tenant-pty'])).toEqual({
       status: 'synced',
       lastSyncAt: hoursAgo(40),
       orgs: [
@@ -117,7 +132,7 @@ describe('businessDataClock — a multi-org business is as current as its stales
       row({ id: 'fresh', tenant_name: 'Fresh Org', last_synced_at: hoursAgo(2) }),
     ]
     expect(classifyBusinessConnections(rows, jobs({})).lastSyncAt).toBe(hoursAgo(72))
-    expect(businessDataClock(rows, jobs({}))).toMatchObject({ status: 'synced', lastSyncAt: hoursAgo(240) })
+    expect(businessDataClock(rows, jobs({}), NOTHING_SHOWN)).toMatchObject({ status: 'synced', lastSyncAt: hoursAgo(240) })
   })
 
   it('an org that has never synced makes the business never_synced, and is listed first', () => {
@@ -125,7 +140,7 @@ describe('businessDataClock — a multi-org business is as current as its stales
       row({ id: 'roofing', tenant_name: 'Dragon Roofing Pty Ltd', last_synced_at: hoursAgo(2) }),
       row({ id: 'hail', tenant_name: 'EASY HAIL CLAIM PTY LTD', created_at: hoursAgo(1) }),
     ]
-    expect(businessDataClock(rows, jobs({}))).toEqual({
+    expect(businessDataClock(rows, jobs({}), ['tenant-roofing'])).toEqual({
       status: 'never_synced',
       orgs: [
         { tenantName: 'EASY HAIL CLAIM PTY LTD', lastSyncAt: null },
@@ -154,13 +169,50 @@ describe('businessDataClock — a multi-org business is as current as its stales
       [2, 1, 0],
       [1, 2, 0],
     ]) {
-      expect(businessDataClock(order.map((i) => rows[i]), jobs({}))).toEqual(expected)
+      expect(businessDataClock(order.map((i) => rows[i]), jobs({}), ['tenant-a', 'tenant-b', 'tenant-c'])).toEqual(expected)
     }
   })
 })
 
-describe('businessDataClock — the orgs that count are the classifier’s', () => {
-  it('an org retired on purpose (off AND excluded from consolidation) sets nothing', () => {
+describe('businessDataClock — figures the page drew count, whether or not their org still does', () => {
+  it("figures from an org with no connection row are dated by its tenant's last sync — the IICT case", () => {
+    // Two orgs reconnected and synced an hour ago. The third org's connection is
+    // gone, but its rows are still in the mirror and in the charts, last synced
+    // 130h ago. Counting only the connection rows would print the fresh date.
+    const rows = [
+      row({ id: 'aust', tenant_name: 'IICT (Aust) Pty Ltd', last_synced_at: hoursAgo(1) }),
+      row({ id: 'limited', tenant_name: 'IICT Group Limited', last_synced_at: hoursAgo(1) }),
+    ]
+    const clock = jobs({ 'tenant-aust': hoursAgo(1), 'tenant-limited': hoursAgo(1), 'tenant-pty': hoursAgo(130) })
+
+    expect(businessDataClock(rows, clock, ['tenant-aust', 'tenant-limited'])).toMatchObject({ lastSyncAt: hoursAgo(1) })
+    expect(businessDataClock(rows, clock, ['tenant-aust', 'tenant-pty', 'tenant-limited'])).toEqual({
+      status: 'synced',
+      lastSyncAt: hoursAgo(130),
+      orgs: [
+        { tenantName: null, lastSyncAt: hoursAgo(130) },
+        { tenantName: 'IICT (Aust) Pty Ltd', lastSyncAt: hoursAgo(1) },
+        { tenantName: 'IICT Group Limited', lastSyncAt: hoursAgo(1) },
+      ],
+    })
+  })
+
+  it('such an org with no sync in the window is unknown — its figures exist, so it is not "never synced"', () => {
+    const rows = [row({ id: 'aust', tenant_name: 'IICT (Aust) Pty Ltd', last_synced_at: hoursAgo(1) })]
+    expect(businessDataClock(rows, jobs({ 'tenant-aust': hoursAgo(1) }), ['tenant-aust', 'tenant-pty'])).toEqual({
+      status: 'unknown',
+    })
+  })
+
+  it('a business with no connection left, whose figures are still drawn, gets a date — not none', () => {
+    expect(businessDataClock([], jobs({ 'tenant-gone': hoursAgo(20) }), ['tenant-gone'])).toEqual({
+      status: 'synced',
+      lastSyncAt: hoursAgo(20),
+      orgs: [{ tenantName: null, lastSyncAt: hoursAgo(20) }],
+    })
+  })
+
+  it('a retired org sets nothing while its figures are not drawn', () => {
     const rows = [
       row({ id: 'live', tenant_name: 'Live Org', last_synced_at: hoursAgo(2) }),
       row({
@@ -171,10 +223,31 @@ describe('businessDataClock — the orgs that count are the classifier’s', () 
         last_synced_at: hoursAgo(24 * 50),
       }),
     ]
-    expect(businessDataClock(rows, jobs({}))).toEqual({
+    expect(businessDataClock(rows, jobs({}), ['tenant-live'])).toEqual({
       status: 'synced',
       lastSyncAt: hoursAgo(2),
       orgs: [{ tenantName: 'Live Org', lastSyncAt: hoursAgo(2) }],
+    })
+  })
+
+  it('a retired org whose figures are still drawn counts at its own clock, under its own name', () => {
+    const rows = [
+      row({ id: 'live', tenant_name: 'Live Org', last_synced_at: hoursAgo(2) }),
+      row({
+        id: 'wound-up',
+        tenant_name: 'Wound Up Pty Ltd',
+        is_active: false,
+        include_in_consolidation: false,
+        last_synced_at: hoursAgo(24 * 50),
+      }),
+    ]
+    expect(businessDataClock(rows, jobs({}), ['tenant-live', 'tenant-wound-up'])).toEqual({
+      status: 'synced',
+      lastSyncAt: hoursAgo(24 * 50),
+      orgs: [
+        { tenantName: 'Wound Up Pty Ltd', lastSyncAt: hoursAgo(24 * 50) },
+        { tenantName: 'Live Org', lastSyncAt: hoursAgo(2) },
+      ],
     })
   })
 
@@ -184,7 +257,7 @@ describe('businessDataClock — the orgs that count are the classifier’s', () 
       row({ id: 'a', tenant_name: 'A', last_synced_at: hoursAgo(24 * 20), ...retired }),
       row({ id: 'b', tenant_name: 'B', last_synced_at: hoursAgo(24 * 30), ...retired }),
     ]
-    expect(businessDataClock(rows, jobs({}))).toMatchObject({ status: 'synced', lastSyncAt: hoursAgo(24 * 30) })
+    expect(businessDataClock(rows, jobs({}), NOTHING_SHOWN)).toMatchObject({ status: 'synced', lastSyncAt: hoursAgo(24 * 30) })
   })
 
   it('a dead row superseded by a live row for the same org is not an org', () => {
@@ -192,7 +265,7 @@ describe('businessDataClock — the orgs that count are the classifier’s', () 
       row({ id: 'old', tenant_id: 'tenant-x', tenant_name: 'X Pty Ltd', is_active: false, last_synced_at: hoursAgo(24 * 30) }),
       row({ id: 'reconnected', tenant_id: 'tenant-x', tenant_name: 'X Pty Ltd', last_synced_at: hoursAgo(1) }),
     ]
-    expect(businessDataClock(rows, jobs({}))).toEqual({
+    expect(businessDataClock(rows, jobs({}), ['tenant-x'])).toEqual({
       status: 'synced',
       lastSyncAt: hoursAgo(1),
       orgs: [{ tenantName: 'X Pty Ltd', lastSyncAt: hoursAgo(1) }],
@@ -206,11 +279,17 @@ describe('businessDataClock — could not check is never a date', () => {
       row({ id: 'a', tenant_name: 'A', last_synced_at: hoursAgo(1) }),
       row({ id: 'b', tenant_name: 'B', last_synced_at: hoursAgo(1) }),
     ]
-    expect(businessDataClock(rows, jobs({ 'tenant-a': hoursAgo(1) }, false))).toEqual({ status: 'unknown' })
+    expect(businessDataClock(rows, jobs({ 'tenant-a': hoursAgo(1) }, false), ['tenant-a', 'tenant-b'])).toEqual({
+      status: 'unknown',
+    })
   })
 
-  it('a failed lookup for a business with no rows is still none — there was nothing to look up', () => {
-    expect(businessDataClock([], jobs({}, false))).toEqual({ status: 'none' })
+  it('a failed lookup for drawn figures with no connection left is unknown', () => {
+    expect(businessDataClock([], jobs({ 'tenant-gone': hoursAgo(1) }, false), ['tenant-gone'])).toEqual({ status: 'unknown' })
+  })
+
+  it('a failed lookup with no connection and no figures is still none — there was nothing to look up', () => {
+    expect(businessDataClock([], jobs({}, false), NOTHING_SHOWN)).toEqual({ status: 'none' })
   })
 
   it('an org with no tenant_id cannot be looked up in sync_jobs, so the clock is unknown', () => {
@@ -218,6 +297,13 @@ describe('businessDataClock — could not check is never a date', () => {
       row({ id: 'a', tenant_name: 'A', last_synced_at: hoursAgo(1) }),
       row({ id: 'blank', tenant_id: '   ', tenant_name: 'Blank', last_synced_at: hoursAgo(1) }),
     ]
-    expect(businessDataClock(rows, jobs({ 'tenant-a': hoursAgo(1) }))).toEqual({ status: 'unknown' })
+    expect(businessDataClock(rows, jobs({ 'tenant-a': hoursAgo(1) }), ['tenant-a'])).toEqual({ status: 'unknown' })
+  })
+
+  it('a drawn row with no tenant_id cannot be dated, so the clock is unknown', () => {
+    const rows = [row({ id: 'a', tenant_name: 'A', last_synced_at: hoursAgo(1) })]
+    expect(businessDataClock(rows, jobs({ 'tenant-a': hoursAgo(1) }), ['tenant-a', null])).toEqual({ status: 'unknown' })
+    expect(businessDataClock(rows, jobs({ 'tenant-a': hoursAgo(1) }), ['tenant-a', '  '])).toEqual({ status: 'unknown' })
+    expect(businessDataClock([], jobs({}), [null])).toEqual({ status: 'unknown' })
   })
 })
