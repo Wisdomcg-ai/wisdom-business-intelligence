@@ -172,6 +172,14 @@ describe('what the page will not do quietly', () => {
     expect(t.notes.join(' ')).toContain('Total New Members')
   })
 
+  it('says when only this month was loaded, rather than printing seven blank months as fact', () => {
+    const monthOnly = { ...HUBSPOT_SERIES, history: undefined }
+    const t = build(HUBSPOT_TREND_CONFIG, monthOnly as never)
+    expect(cell(t, 'Total Members', 'members')!.actual).toBe(1160)
+    expect(cell(t, 'Total Members', 'members', '2026-07')).toEqual({ actual: null, budget: null })
+    expect(t.notes.join(' ')).toContain('Only this month’s figures were loaded')
+  })
+
   it('a month with nothing entered is a dash, never a zero', () => {
     const t = build({ ...HUBSPOT_TREND_CONFIG, months: 10 })
     expect(t.months).toHaveLength(10)

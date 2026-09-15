@@ -126,6 +126,11 @@ export function buildExternalMetricTable(
     }
   }
 
+  // A trend rendered from a response that carried only the report month (an
+  // older route, a load that fell back) would print seven blank months as
+  // though nothing had happened in them.
+  const monthOnly = config.layout === 'trend' && series.history === undefined && months.length > 1
+
   const inWindow = new Set(months)
   const valued = source.filter((v) => inWindow.has(v.period_month ?? reportMonth))
   const byCell = new Map<string, number>()
@@ -268,6 +273,8 @@ export function buildExternalMetricTable(
     for (const dimension of dimensionRows) addRow(dimensionRow(dimension, dimension))
     addRow(sumRow('Total', 'Total', 'total', [...rows]))
   }
+
+  if (monthOnly) notes.push(`Only this month’s figures were loaded, so the earlier months are blank.`)
 
   const hasBudget: Record<string, boolean> = {}
   for (const measure of measures) {
