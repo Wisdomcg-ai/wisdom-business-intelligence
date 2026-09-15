@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import { isSilentLine, withoutSilentLines, isSilentFullYearLine, withoutSilentFullYearLines } from '../empty-lines'
 
-const silent = { actual: 0, budget: 0, ytd_actual: 0, ytd_budget: 0, budget_annual_total: 0, budget_next_month: 0, prior_year_actual: 0 }
+const silent = { actual: 0, budget: 0, ytd_actual: 0, ytd_budget: 0, budget_annual_total: 0, budget_next_month: 0, prior_year: 0 }
 
 describe('isSilentLine', () => {
   it('drops a dormant account with nothing anywhere', () => {
@@ -32,7 +32,24 @@ describe('isSilentLine', () => {
 
   it('KEEPS an account that carried money last year and none this year', () => {
     // "We stopped doing this" is a finding, not an absence.
-    expect(isSilentLine({ ...silent, prior_year_actual: 27482 })).toBe(false)
+    expect(isSilentLine({ ...silent, prior_year: 27482 })).toBe(false)
+  })
+
+  it('reads prior_year — the field the generate route writes — so the column foots', () => {
+    // Distinct Directions, August 2026: Other Revenue carried 9,481 in August
+    // 2025 and nothing since. The rule read `prior_year_actual`, which nothing
+    // emits, dropped the row, and Total Other Income printed 9,484 over a
+    // single visible row of 3.
+    const otherRevenue = { account_name: 'Other Revenue', actual: 0, budget: 0, ytd_actual: 0, ytd_budget: 0, budget_annual_total: 0, budget_next_month: 0, prior_year: 9481 }
+    expect(isSilentLine(otherRevenue)).toBe(false)
+  })
+
+  it('does not count a prior year the table does not print', () => {
+    // With the column off no cell shows the figure, so the row would be zeros.
+    expect(isSilentLine({ ...silent, prior_year: 27482 }, { priorYear: false })).toBe(true)
+    expect(isSilentLine({ ...silent, prior_year: 27482 }, { priorYear: true })).toBe(false)
+    // A null prior year (no data that far back) is not money.
+    expect(isSilentLine({ ...silent, prior_year: null }, { priorYear: true })).toBe(true)
   })
 
   it('treats floating-point residue as zero', () => {

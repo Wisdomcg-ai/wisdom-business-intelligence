@@ -4,9 +4,11 @@
  * Scope (Iteration 34.0): HKD/AUD for IICT Group Limited. Dragon consolidation
  * is pure-AUD and never invokes this module.
  *
- * Per POST-RESEARCH CORRECTIONS (2026-04-18, confirmed by user): manual-entry
- * rates only. No Vercel cron, no RBA F11.1 scraper, no external API. Users
- * enter monthly rates via the admin UI shipped in plan 34-00f. A missing
+ * Rates come from Open Exchange Rates (Calxa's source): the admin UI's "Sync
+ * from OXR" button, manual entry in the same UI, and since Sep 2026 the
+ * monthly /api/cron/sync-fx-rates, which stores each closed month for every
+ * pair a consolidation needs (the 2026-04-18 manual-only decision left IICT
+ * untranslated for Jun–Aug 2026 — IICT-03). This module only reads. A missing
  * rate is SURFACED to the user through `fx_context.missing_rates[]` — it is
  * NEVER silently defaulted to 1.0 (that would silently mis-state the
  * consolidated numbers).

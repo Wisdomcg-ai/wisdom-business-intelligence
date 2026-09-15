@@ -70,6 +70,16 @@ export const MONITORED_CRONS: readonly MonitoredCron[] = [
     maxStaleHours: 30,
     activeFrom: '2026-09-02T00:00:00Z',
   },
+  // 02:15 UTC on the 1st–7th of each month — stores the month just closed for
+  // every FX pair a consolidation needs. The longest quiet gap is the 7th to
+  // the next 1st (25 days); 27 days tolerates one missed slot. Silence here is
+  // how IICT's HKD went into AUD 1:1 for three months.
+  {
+    path: '/api/cron/sync-fx-rates',
+    label: 'Monthly FX rates',
+    maxStaleHours: 24 * 27,
+    activeFrom: '2026-09-16T00:00:00Z',
+  },
 ]
 
 export interface HeartbeatSnapshot {

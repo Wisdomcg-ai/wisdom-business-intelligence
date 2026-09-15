@@ -21,6 +21,7 @@ import { getPriorYearMonth } from '@/lib/monthly-report/shared'
 import { compareStatementLines, looksLikeWizardCode, realStatementCodes, statementAccountCode } from '@/lib/monthly-report/statement-order'
 import { mappingGroup } from '@/lib/monthly-report/expense-groups'
 import { buildFullYearSubtotal } from '@/lib/monthly-report/full-year-subtotal'
+import { loadActiveTenants, multiOrgFallbackRefusal } from '@/lib/monthly-report/multi-org-fallback'
 import type { FullYearLine, FullYearMonthData, FullYearReport } from '@/app/finances/monthly-report/types'
 
 type Client = any
@@ -39,7 +40,16 @@ export type FullYearLoadResult =
       data_quality: string
       per_tenant_quality: any[]
     }
-  | { ok: false; error: string; detail?: string }
+  | {
+      ok: false
+      error: string
+      detail?: string
+      /**
+       * True when the report was REFUSED rather than failed: the error is a
+       * sentence for the coach (multiOrgFallbackRefusal), not a system error.
+       */
+      refused?: true
+    }
 
 function mapTypeToCategory(accountType: string): string {
   switch ((accountType || '').toLowerCase()) {
@@ -245,6 +255,12 @@ export async function loadFullYearReport(
       per_tenant_quality: composite.per_tenant_quality,
     }
   } else {
+    // Refused for more than one organisation: this read keys on the account
+    // name and a later organisation's months overwrite an earlier one's, with
+    // no exchange rates (see multi-org-fallback). A read failure throws.
+    const refusal = multiOrgFallbackRefusal(await loadActiveTenants(supabase, ids.all), fiscal_year)
+    if (refusal) return { ok: false, error: refusal, refused: true }
+
     const { data: rawXeroLines, error: xeroErr } = await supabase
       .from('xero_pl_lines_wide_compat')
       .select('account_code, account_name, account_type, section, monthly_values')
