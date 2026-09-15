@@ -36,9 +36,10 @@
  *                        (subscription_vendor_actuals) through the route's own
  *                        assembler — APPROXIMATE, see subscription-detail-persisted
  *   contractor_detail    skipped (nothing persisted), unless supplied
- *   balance_sheet        a FINAL month's copy frozen at Finalise, as the app
- *                        prints it; otherwise its "couldn't be produced"
- *                        reason, unless supplied
+ *   balance_sheet        the sheets an Approve & Send printed, or a FINAL
+ *                        month's copy frozen at Finalise, as the app prints
+ *                        them; otherwise its "couldn't be produced" reason,
+ *                        unless supplied
  *
  * Any of the three can be supplied as the route's JSON response body (copy it
  * from the browser's network tab) in --payload-dir:
@@ -555,12 +556,29 @@ async function main() {
     }
   }
 
-  // Balance sheets: a finalised month's frozen copy, as the app prints it;
-  // otherwise live Xero in the app, so a payload or the reason here.
+  // Balance sheets, in the export's order: the copy the month's Approve & Send
+  // printed (while this is the report that was sent, and not reopened); then a
+  // finalised month's frozen copy; otherwise live Xero in the app, so a payload
+  // or the reason here.
   const wantsBalanceSheet = !!sections.balance_sheet || layoutTypes.has('balance_sheet')
-  const { frozenBalanceSheetSources } = await import('@/lib/monthly-report/balance-sheet-freeze')
-  const frozenSheets = wantsBalanceSheet ? frozenBalanceSheetSources(snap, reportMonth) : null
-  if (frozenSheets) {
+  const { frozenBalanceSheetSources, sentBalanceSheetSources, pnlFigures, FROZEN_BALANCE_SHEETS_KEY } = await import('@/lib/monthly-report/balance-sheet-freeze')
+  let sentSheets: ReturnType<typeof sentBalanceSheetSources> = null
+  if (wantsBalanceSheet) {
+    const { data: sent, error: sentErr } = await admin
+      .from('cfo_report_status')
+      .select(`frozen:snapshot_data->${FROZEN_BALANCE_SHEETS_KEY}, report:snapshot_data->report`)
+      .eq('business_id', bizId)
+      .eq('period_month', `${reportMonth}-01`)
+      .maybeSingle()
+    if (sentErr) throw sentErr
+    sentSheets = sentBalanceSheetSources(sent ? { frozen: sent.frozen, report: pnlFigures(sent.report) } : null, report, reportMonth)
+  }
+  const frozenSheets = wantsBalanceSheet && !sentSheets ? frozenBalanceSheetSources(snap, reportMonth) : null
+  if (sentSheets) {
+    eager.balanceSheets = sentSheets
+    note('balanceSheet:mom', 'snapshot', 'the sheet the Approve & Send PDF printed (cfo_report_status.snapshot_data)')
+    note('balanceSheet:yoy', 'snapshot', 'the sheet the Approve & Send PDF printed (cfo_report_status.snapshot_data)')
+  } else if (frozenSheets) {
     eager.balanceSheets = frozenSheets
     note('balanceSheet:mom', 'snapshot', 'frozen into the final snapshot at Finalise')
     note('balanceSheet:yoy', 'snapshot', 'frozen into the final snapshot at Finalise')

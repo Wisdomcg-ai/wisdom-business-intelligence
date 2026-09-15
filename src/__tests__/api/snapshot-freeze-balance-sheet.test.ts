@@ -45,7 +45,7 @@ vi.mock('@sentry/nextjs', () => ({
   captureMessage: vi.fn(),
 }))
 
-import { PATCH, POST } from '@/app/api/monthly-report/snapshot/route'
+import { GET, PATCH, POST } from '@/app/api/monthly-report/snapshot/route'
 import fixture from '@/lib/monthly-report/__tests__/fixtures/urban-road-bs-aug-2026.json'
 import { buildBalanceSheetData, balanceSheetDates, type XeroBalanceSheetReport } from '@/lib/monthly-report/balance-sheet-rows'
 import { FROZEN_BALANCE_SHEETS_KEY } from '@/lib/monthly-report/balance-sheet-freeze'
@@ -238,5 +238,68 @@ describe('POST never carries a freeze forward', () => {
     }))
     expect(res.status).toBe(200)
     expect(upsert.upsertArgs[0].report_data).toEqual(storedReport)
+  })
+})
+
+// ─── Package B: the sheets an Approve & Send printed ────────────────────────
+//
+// They live in cfo_report_status.snapshot_data — the payload written at
+// approval, which no snapshot save touches — and the export reads them back
+// through this route, service-role behind the same access checks, so every
+// viewer's export of the month finds the copy the client was sent.
+
+describe('GET view=sent_balance_sheets', () => {
+  const sentFreeze = { frozen_at: '2026-09-15T01:00:00.000Z', report_month: '2026-08', mom, yoy }
+  const sentReport = {
+    report_month: '2026-08',
+    budget_source: 'budget_version',
+    summary: { revenue: { actual: 1 } },
+    net_profit_row: { account_name: 'Net Profit', actual: 22_118.4 },
+    sections: [{ category: 'Revenue', lines: new Array(50).fill({ account_name: 'x', actual: 1 }) }],
+  }
+  const getReq = (query: string) => new NextRequest(`http://test.local/api/monthly-report/snapshot?${query}`)
+
+  it("returns the month's sent copy and the sent report's P&L figures — not the whole report", async () => {
+    const read = chain({ data: { frozen: sentFreeze, report: sentReport }, error: null })
+    mockAdminFrom.mockImplementation((table: string) => (table === 'cfo_report_status' ? read : chain({ data: null, error: null })))
+
+    const res = await GET(getReq('business_id=biz-1&report_month=2026-08&view=sent_balance_sheets'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    const { sections: _sections, ...figures } = sentReport
+    expect(body).toEqual({ sent_balance_sheets: { frozen: sentFreeze, report: figures } })
+    // cfo_report_status is keyed by businesses.id and the period's first day.
+    expect(read.eqs).toEqual([['business_id', 'biz-1'], ['period_month', '2026-08-01']])
+    expect(read.selectArgs[0]).toContain(`snapshot_data->${FROZEN_BALANCE_SHEETS_KEY}`)
+  })
+
+  it('a month never sent (or sent before this shipped) is null', async () => {
+    const read = chain({ data: { frozen: null, report: sentReport }, error: null })
+    mockAdminFrom.mockImplementation(() => read)
+    const body = await (await GET(getReq('business_id=biz-1&report_month=2026-08&view=sent_balance_sheets'))).json()
+    expect(body).toEqual({ sent_balance_sheets: null })
+  })
+
+  it('a failed read is a 500, captured under the invariant', async () => {
+    mockAdminFrom.mockImplementation(() => chain({ data: null, error: { message: 'boom' } }))
+    const res = await GET(getReq('business_id=biz-1&report_month=2026-08&view=sent_balance_sheets'))
+    expect(res.status).toBe(500)
+    expect(captureException).toHaveBeenCalledWith(
+      { message: 'boom' },
+      expect.objectContaining({ tags: expect.objectContaining({ invariant: 'balance-sheet-freeze', stage: 'export_read_sent' }) }),
+    )
+  })
+
+  it('a malformed month is refused before any read', async () => {
+    const res = await GET(getReq('business_id=biz-1&report_month=Aug&view=sent_balance_sheets'))
+    expect(res.status).toBe(400)
+    expect(mockAdminFrom).not.toHaveBeenCalled()
+  })
+
+  it("another business's sent copy cannot be read", async () => {
+    mockVerifyBusinessAccess.mockResolvedValue(false)
+    const res = await GET(getReq('business_id=biz-1&report_month=2026-08&view=sent_balance_sheets'))
+    expect(res.status).toBe(403)
+    expect(mockAdminFrom).not.toHaveBeenCalled()
   })
 })

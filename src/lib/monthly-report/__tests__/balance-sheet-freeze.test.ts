@@ -36,9 +36,13 @@ import {
   freezeBalanceSheetsAtFinalise,
   frozenBalanceSheetSources,
   loadLiveBalanceSheets,
+  loadSentBalanceSheets,
   markBalanceSheetFreezeDue,
+  pnlFigures,
+  printedBalanceSheets,
   readFrozenBalanceSheets,
   reportMatchesSnapshot,
+  sentBalanceSheetSources,
   waitForPendingFreeze,
   withoutFrozenBalanceSheets,
 } from '../balance-sheet-freeze'
@@ -573,5 +577,185 @@ describe('loadLiveBalanceSheets — one deadline for both comparisons', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// ─── The sheets an Approve & Send printed (package B) ───────────────────────
+//
+// Approve & Send is offered straight from draft, so a coach can send without
+// ever pressing Finalise. The PDF the client received then printed a LIVE
+// sheet, and nothing kept it: a later resend or export asked Xero again. The
+// sheets the sent PDF was built from are now kept in cfo_report_status's
+// snapshot_data, and an export of that month prints them — for as long as the
+// report on screen is the report that was sent, and until the coach
+// deliberately reopens it with Revert to Draft.
+
+/** The live sheet after the send: an $853.89 credit posted afterwards moved Trade Debtors. */
+const movedMom = {
+  ...mom,
+  rows: mom.rows.map((r) =>
+    r.label === 'Trade Debtors' && typeof r.current === 'number' ? { ...r, current: r.current - 853.89 } : r,
+  ),
+}
+const sentFreeze = { frozen_at: '2026-09-15T01:00:00.000Z', report_month: '2026-08', mom, yoy }
+
+describe('printedBalanceSheets — the sheets a PDF was built from, as the send stores them', () => {
+  it('takes each comparison\'s sheet, exactly as printed', () => {
+    expect(printedBalanceSheets({ mom: { data: mom }, yoy: { data: yoy } })).toEqual({ mom, yoy })
+  })
+
+  it('a comparison the PDF printed a reason for travels as null — the send says why nothing was frozen', () => {
+    expect(printedBalanceSheets({ mom: { data: mom }, yoy: { data: null, reason: 'Xero returned 503' } })).toEqual({ mom, yoy: null })
+  })
+
+  it('a pack with no balance sheet page sends nothing', () => {
+    expect(printedBalanceSheets(undefined)).toBeUndefined()
+  })
+})
+
+describe('sentBalanceSheetSources — the sent copy, when it may be printed', () => {
+  const sent = { frozen: sentFreeze, report: pnlFigures(report) }
+
+  it('a whole sent copy of this month, beside the report that was sent, is printed', () => {
+    expect(sentBalanceSheetSources(sent, report, '2026-08')).toEqual({ mom: { data: mom }, yoy: { data: yoy } })
+  })
+
+  it.each([
+    ['nothing sent', null],
+    ['a send that froze nothing', { frozen: null, report: pnlFigures(report) }],
+    ['a send of another month', { frozen: { ...sentFreeze, report_month: '2026-07' }, report: pnlFigures(report) }],
+    ['half a sent copy', { frozen: { ...sentFreeze, yoy: null }, report: pnlFigures(report) }],
+    ['a send the coach reopened (Revert to Draft)', { frozen: { ...sentFreeze, reopened_at: '2026-09-16T00:00:00.000Z' }, report: pnlFigures(report) }],
+  ])('%s is not', (_why, value) => {
+    expect(sentBalanceSheetSources(value, report, '2026-08')).toBeNull()
+  })
+
+  it('a report regenerated since the send (net profit moved) is not printed beside the sent sheet', () => {
+    const regenerated = { ...report, net_profit_row: { ...report.net_profit_row, actual: 21_264.51 } }
+    expect(sentBalanceSheetSources(sent, regenerated, '2026-08')).toBeNull()
+  })
+
+  it('pnlFigures keeps only what the sheet can disagree with', () => {
+    expect(pnlFigures({ ...report, sections: [{ big: true }], commentary: 'x' })).toEqual({
+      report_month: '2026-08',
+      budget_source: 'budget_version',
+      summary: report.summary,
+      gross_profit_row: report.gross_profit_row,
+      net_profit_row: report.net_profit_row,
+    })
+    expect(pnlFigures(null)).toBeNull()
+  })
+})
+
+describe('balanceSheetsForExport — a month that was sent prints what was sent', () => {
+  beforeEach(() => {
+    captureMessage.mockReset()
+    captureException.mockReset()
+  })
+
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
+  /** Xero as it stands AFTER the send: Trade Debtors has moved. */
+  const liveNow = () =>
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/Xero/balance-sheet')) {
+        return json(new URLSearchParams(url.split('?')[1]).get('compare') === 'mom' ? movedMom : yoy)
+      }
+      if (init?.method === 'PATCH') return json({ success: true, updated: true, frozen_at: 'now' })
+      throw new Error(`unexpected fetch ${url}`)
+    })
+  const sent = { frozen: sentFreeze, report: pnlFigures(report) }
+
+  it('a DRAFT month sent from draft prints the sent sheets, not the moved live one — and asks Xero nothing', async () => {
+    const f = liveNow()
+    const sources = await balanceSheetsForExport({
+      businessId: BIZ, reportMonth: '2026-08', report, stored: null, sent, fetchImpl: f as unknown as typeof fetch,
+    })
+    expect(sources).toEqual({ mom: { data: mom }, yoy: { data: yoy } })
+    expect(f).not.toHaveBeenCalled()
+    expect(captureMessage).not.toHaveBeenCalled()
+  })
+
+  it('sent, then finalised with a freeze taken later from the moved sheet: the export prints what was sent, and writes nothing', async () => {
+    const f = liveNow()
+    const stored = {
+      status: 'final',
+      report_data: { ...report, [FROZEN_BALANCE_SHEETS_KEY]: { ...freeze, mom: movedMom, finalised_at: FINALISED_AT } },
+    }
+    const sources = await balanceSheetsForExport({
+      businessId: BIZ, reportMonth: '2026-08', report, stored, sent, fetchImpl: f as unknown as typeof fetch,
+    })
+    expect(sources).toEqual({ mom: { data: mom }, yoy: { data: yoy } })
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('finalised and frozen, then sent: the sent copy IS the Finalise freeze, and the Finalise freeze is still what prints', async () => {
+    const f = liveNow()
+    const stored = { status: 'final', report_data: { ...report, [FROZEN_BALANCE_SHEETS_KEY]: { ...freeze, finalised_at: FINALISED_AT } } }
+    const sources = await balanceSheetsForExport({
+      businessId: BIZ, reportMonth: '2026-08', report, stored, sent, fetchImpl: f as unknown as typeof fetch,
+    })
+    expect(sources).toEqual(frozenBalanceSheetSources(stored, '2026-08'))
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('a send the coach reopened exports by the rules it always had: a draft asks Xero', async () => {
+    const f = liveNow()
+    const sources = await balanceSheetsForExport({
+      businessId: BIZ, reportMonth: '2026-08', report, stored: null,
+      sent: { ...sent, frozen: { ...sentFreeze, reopened_at: '2026-09-16T00:00:00.000Z' } },
+      fetchImpl: f as unknown as typeof fetch,
+    })
+    expect(sources.mom).toEqual({ data: movedMom })
+  })
+
+  it('a regenerated report prints live, so the sheet agrees with the P&L beside it', async () => {
+    const f = liveNow()
+    const regenerated = { ...report, net_profit_row: { ...report.net_profit_row, actual: 21_264.51 } }
+    const sources = await balanceSheetsForExport({
+      businessId: BIZ, reportMonth: '2026-08', report: regenerated, stored: null, sent, fetchImpl: f as unknown as typeof fetch,
+    })
+    expect(sources.mom).toEqual({ data: movedMom })
+  })
+})
+
+describe('loadSentBalanceSheets — reading the sent copy for an export', () => {
+  beforeEach(() => {
+    captureMessage.mockReset()
+    captureException.mockReset()
+  })
+
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
+
+  it('reads the month\'s sent copy from the snapshot route', async () => {
+    const body = { sent_balance_sheets: { frozen: sentFreeze, report: pnlFigures(report) } }
+    const f = vi.fn(async () => json(body))
+    await expect(loadSentBalanceSheets(BIZ, '2026-08', f as unknown as typeof fetch)).resolves.toEqual(body.sent_balance_sheets)
+    expect(f).toHaveBeenCalledWith(
+      `/api/monthly-report/snapshot?business_id=${BIZ}&report_month=2026-08&view=sent_balance_sheets`,
+    )
+  })
+
+  it('a month never sent is null, and nothing is said', async () => {
+    const f = vi.fn(async () => json({ sent_balance_sheets: null }))
+    await expect(loadSentBalanceSheets(BIZ, '2026-08', f as unknown as typeof fetch)).resolves.toBeNull()
+    expect(captureMessage).not.toHaveBeenCalled()
+  })
+
+  it('a read that fails is null — the export goes on by the other rules — and is captured, not swallowed', async () => {
+    const f = vi.fn(async () => json({ error: 'Failed to read the sent balance sheet' }, 500))
+    await expect(loadSentBalanceSheets(BIZ, '2026-08', f as unknown as typeof fetch)).resolves.toBeNull()
+    expect(captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('could not read the sent balance sheet'),
+      expect.objectContaining({ tags: { invariant: 'balance-sheet-freeze', stage: 'export_read_sent' } }),
+    )
+  })
+
+  it('never throws, even when the network does', async () => {
+    const f = vi.fn(async () => { throw new TypeError('Failed to fetch') })
+    await expect(loadSentBalanceSheets(BIZ, '2026-08', f as unknown as typeof fetch)).resolves.toBeNull()
+    expect(captureException).toHaveBeenCalledWith(
+      expect.any(TypeError),
+      expect.objectContaining({ tags: { invariant: 'balance-sheet-freeze', stage: 'export_read_sent' } }),
+    )
   })
 })
