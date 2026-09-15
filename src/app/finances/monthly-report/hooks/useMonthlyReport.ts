@@ -16,12 +16,12 @@
  * data or (worse) wrong data from the parent's own xero_pl_lines (which is
  * a thin umbrella record, not the consolidated numbers).
  *
- * Budget is `0` on all lines in 34.0 — consolidated budgets are a follow-up
- * (requires combined forecast model, out of scope for this iteration).
- * BudgetVsActualTable already handles `has_budget: false` gracefully.
+ * The consolidated route serves the business's settings row beside the
+ * report, and the adapted report carries it — the same row the single-entity
+ * route puts on its report.
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type {
   GeneratedReport,
@@ -70,6 +70,17 @@ export function adaptConsolidatedToGeneratedReport(
   reportMonth: string,
   fiscalYear: number,
   businessId: string,
+  context: {
+    /**
+     * The business's settings row, as POST /api/monthly-report/consolidated
+     * serves it beside the report. Every page that prints the report reads its
+     * columns from here — Budget vs Actual on screen, and the summary, detail
+     * and YTD pages of the PDF.
+     */
+    settings: MonthlyReportSettings
+    /** Generate's reconciliation verdict — the single-entity route's force_draft. */
+    isDraft?: boolean
+  },
 ): GeneratedReport {
   const consolidatedLines: Array<{
     account_type: string
@@ -146,6 +157,9 @@ export function adaptConsolidatedToGeneratedReport(
       unspent_budget: hasBudget ? budgetAnnualTotal - ytdActual : 0,
       budget_next_month: budgetMonths[nextMonth] ?? 0,
       budget_annual_total: budgetAnnualTotal,
+      // The engine consolidates the fiscal year's months only. With the
+      // prior-year column switched on, every row prints the dash that says the
+      // figure is not there — never a $0 that says it was nothing.
       prior_year: null,
     }
     byCategory.get(category)!.push(line)
@@ -187,51 +201,23 @@ export function adaptConsolidatedToGeneratedReport(
   const operatingProfitRow = derived.operating_profit_row
   const netProfitRow = derived.net_profit_row
 
-  // Minimal settings stub — the page keeps the real settings state and
-  // passes them to BudgetVsActualDashboard; this field exists on GeneratedReport
-  // but BudgetVsActualTable reads `settings` from props, not `report.settings`.
-  const settings: MonthlyReportSettings = {
-    business_id: businessId,
-    sections: {
-      revenue_detail: true,
-      cogs_detail: true,
-      opex_detail: true,
-      payroll_detail: false,
-      subscription_detail: false,
-      balance_sheet: false,
-      cashflow: false,
-      trend_charts: false,
-      chart_cash_runway: false,
-      chart_cumulative_net_cash: false,
-      chart_working_capital_gap: false,
-      chart_revenue_vs_expenses: false,
-      chart_revenue_breakdown: false,
-      chart_variance_heatmap: false,
-      chart_budget_burn_rate: false,
-      chart_break_even: false,
-      chart_team_cost_pct: false,
-      chart_cost_per_employee: false,
-      chart_subscription_creep: false,
-    },
-    show_prior_year: false,
-    show_ytd: true,
-    show_unspent_budget: false,
-    show_budget_next_month: false,
-    show_budget_annual_total: false,
-    budget_forecast_id: null,
-  }
-
   return {
     business_id: businessId,
     report_month: reportMonth,
     fiscal_year: fiscalYear,
-    settings,
+    // The business's own settings, not a stub. A stub here switched off the
+    // Unspent, Next Month and Annual columns (and the prior year) on every page
+    // of every consolidated pack, whatever the coach had set (IICT-12, DRG-05).
+    settings: context.settings,
     sections,
     summary,
     gross_profit_row: grossProfitRow,
     operating_profit_row: operatingProfitRow,
     net_profit_row: netProfitRow,
-    is_draft: false,
+    // As the single-entity route marks it: a draft when Generate said so, so
+    // Finalise stays locked on a month whose reconciliation did not come back
+    // clean. unreconciled_count is 0 on both routes.
+    is_draft: context.isDraft ?? false,
     unreconciled_count: 0,
     has_budget: hasBudget,
     is_consolidation: true,
@@ -255,27 +241,34 @@ export function useMonthlyReport(businessId: string) {
   const [qualityCheckFailed, setQualityCheckFailed] = useState(true)
   const [perTenantQuality, setPerTenantQuality] = useState<import('@/lib/services/forecast-read-service').PerTenantQuality[]>([])
 
+  // The detection below, as a promise Generate can wait on (DRG-52).
+  const detectionRef = useRef<Promise<boolean> | null>(null)
+
   // MLTE-05: detect consolidation mode = business has 2+ active,
   // consolidation-included xero_connections. Mirrors useConsolidatedReport.
   useEffect(() => {
     if (!businessId) {
+      detectionRef.current = null
       setIsConsolidationGroup(null)
       return
     }
     let cancelled = false
     const supabase = createClient()
-    supabase
-      .from('xero_connections')
-      .select('id', { count: 'exact', head: true })
-      .eq('business_id', businessId)
-      .eq('is_active', true)
-      .eq('include_in_consolidation', true)
-      .then(({ count }) => {
-        if (!cancelled) setIsConsolidationGroup((count ?? 0) >= 2)
-      })
-      .then(undefined, () => {
-        if (!cancelled) setIsConsolidationGroup(false)
-      })
+    const detection = Promise.resolve(
+      supabase
+        .from('xero_connections')
+        .select('id', { count: 'exact', head: true })
+        .eq('business_id', businessId)
+        .eq('is_active', true)
+        .eq('include_in_consolidation', true),
+    ).then(
+      ({ count }) => (count ?? 0) >= 2,
+      () => false,
+    )
+    detectionRef.current = detection
+    detection.then((isGroup) => {
+      if (!cancelled) setIsConsolidationGroup(isGroup)
+    })
     return () => {
       cancelled = true
     }
@@ -291,7 +284,15 @@ export function useMonthlyReport(businessId: string) {
         // MLTE-05 branching: route to consolidated API when the resolved
         // businessId is a consolidation parent. Adapter maps the response
         // into GeneratedReport so the existing UI renders unchanged.
-        const isGroup = isConsolidationGroup === true
+        //
+        // DRG-52: a Generate clicked before the connection count has been read
+        // waits for it. It used to take the single-entity route, which sums
+        // every org's figures as they are — IICT Group Limited's HKD added
+        // into AUD one-for-one.
+        const isGroup =
+          isConsolidationGroup !== null
+            ? isConsolidationGroup
+            : (await (detectionRef.current ?? Promise.resolve(false))) === true
         const endpoint = isGroup
           ? '/api/monthly-report/consolidated'
           : '/api/monthly-report/generate'
@@ -337,6 +338,13 @@ export function useMonthlyReport(businessId: string) {
         }
 
         if (isGroup) {
+          // The route serves the business's settings row beside the report.
+          // Without it there is no telling which columns this pack prints, and
+          // the stub that used to stand in for it hid three of them.
+          if (!data.settings) {
+            setError('The report settings could not be loaded. Try generating again.')
+            return null
+          }
           // Adapt ConsolidatedReport → GeneratedReport so the Actual-vs-Budget
           // tab renders using the same template system (MLTE-05).
           const adapted = adaptConsolidatedToGeneratedReport(
@@ -344,6 +352,7 @@ export function useMonthlyReport(businessId: string) {
             reportMonth,
             fiscalYear,
             businessId,
+            { settings: data.settings, isDraft: forceDraft === true },
           )
           setReport(adapted)
           return adapted

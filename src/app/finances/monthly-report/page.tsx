@@ -38,6 +38,13 @@ import {
   shouldShowMultiCurrencyToast,
   buildMultiCurrencyToastMessage,
 } from './utils/multi-currency-toast'
+import {
+  multiCurrencyRedirectTarget,
+  showsReportControls,
+  generateAccess,
+  showsFxRatesOnReportTab,
+  CONSOLIDATED_COACH_ONLY_MESSAGE,
+} from './utils/consolidated-tab-routing'
 import { getForecastFiscalYear } from '@/app/finances/forecast/utils/fiscal-year'
 import { useMonthlyReport } from './hooks/useMonthlyReport'
 import { useConsolidatedReport } from './hooks/useConsolidatedReport'
@@ -277,29 +284,6 @@ export default function MonthlyReportPage() {
     }
   }, [businessId])
 
-  useEffect(() => {
-    // Consolidation is coach/admin-only — never auto-route a client onto a
-    // consolidated tab they're not allowed to see (they keep the standard tabs).
-    if (!isMultiCurrency || userRole === 'client') return
-    const consolEquivalent: Partial<Record<ReportTab, ReportTab>> = {
-      report: 'consolidated',
-      'balance-sheet': 'balance-sheet-consolidated',
-      cashflow: 'cashflow-consolidated',
-    }
-    const target = consolEquivalent[activeTab]
-    if (target) {
-      setActiveTab(target)
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('monthly-report-active-tab', target)
-        // Phase 71 Plan 09 (S6) — one-time toast per session per business so
-        // the silent mid-session tab switch is no longer mysterious.
-        if (shouldShowMultiCurrencyToast(businessId, isMultiCurrency, window.localStorage)) {
-          toast.info(buildMultiCurrencyToastMessage(activeCurrencies))
-        }
-      }
-    }
-  }, [isMultiCurrency, activeTab, businessId, activeCurrencies, userRole])
-
   // Hooks
   const {
     report,
@@ -353,6 +337,26 @@ export default function MonthlyReportPage() {
   // tab visibility and content render below, so a client can't reach it via a
   // visible tab, a stale saved tab, or the auto-redirect.
   const canSeeConsolidated = isConsolidationGroup === true && userRole !== 'client'
+
+  useEffect(() => {
+    // Consolidation is coach/admin-only — never auto-route a client onto a
+    // consolidated tab they're not allowed to see (they keep the standard tabs).
+    // IICT-01: a consolidation parent's Budget vs Actual tab is the translated
+    // consolidation and the tab Generate lives on, so it is no longer left —
+    // see consolidated-tab-routing for the rules.
+    const target = multiCurrencyRedirectTarget({ activeTab, isMultiCurrency, isConsolidationGroup, userRole })
+    if (target) {
+      setActiveTab(target)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('monthly-report-active-tab', target)
+        // Phase 71 Plan 09 (S6) — one-time toast per session per business so
+        // the silent mid-session tab switch is no longer mysterious.
+        if (shouldShowMultiCurrencyToast(businessId, isMultiCurrency, window.localStorage)) {
+          toast.info(buildMultiCurrencyToastMessage(activeCurrencies))
+        }
+      }
+    }
+  }, [isMultiCurrency, isConsolidationGroup, activeTab, businessId, activeCurrencies, userRole])
 
   // Bounce a client off any consolidated tab they may have persisted (from
   // before this gate, or a multi-currency redirect). Wait for currentUser to
@@ -764,10 +768,11 @@ export default function MonthlyReportPage() {
 
   // Phase 34 (MLTE-04): when the consolidated tab is active and this business
   // is a consolidation parent, fetch the consolidated report. The tab + banner
-  // rendering is wired in the tab content section below.
+  // rendering is wired in the tab content section below. A multi-currency
+  // parent's Budget vs Actual tab loads it too, for its missing-rate banner.
   useEffect(() => {
     if (
-      activeTab === 'consolidated' &&
+      (activeTab === 'consolidated' || showsFxRatesOnReportTab(activeTab, isMultiCurrency, canSeeConsolidated)) &&
       isConsolidationGroup === true &&
       !consolidatedReport &&
       !consolidatedLoading &&
@@ -778,7 +783,7 @@ export default function MonthlyReportPage() {
     ) {
       generateConsolidated(selectedMonth, fiscalYear)
     }
-  }, [activeTab, isConsolidationGroup, consolidatedReport, consolidatedLoading, consolidatedError, businessId, selectedMonth, fiscalYear, generateConsolidated])
+  }, [activeTab, isMultiCurrency, canSeeConsolidated, isConsolidationGroup, consolidatedReport, consolidatedLoading, consolidatedError, businessId, selectedMonth, fiscalYear, generateConsolidated])
 
   // Phase 34 Iteration 34.1 — mirror the P&L auto-load for the Consolidated BS
   // tab. Fire when the user switches to balance-sheet-consolidated AND this
@@ -1021,6 +1026,12 @@ export default function MonthlyReportPage() {
     // treats as actual is scoped to the report month — so a month change
     // invalidates it just as a fiscal-year change does.
     clearFullYear()
+    // The consolidated report is the month's too, and the export reuses it for
+    // the per-entity page — kept, it prints the last month's entity figures
+    // under this month's heading (DRG-16). The cashflow is a fiscal-year view
+    // and stays.
+    clearConsolidated()
+    clearConsolidatedBS()
     // Restore persisted commentary from snapshot if one exists
     const snapshot = await loadSnapshot(month)
     if (snapshot?.commentary) {
@@ -1875,6 +1886,13 @@ export default function MonthlyReportPage() {
     )
   }
 
+  // IICT-01 — the reconciliation gate, Generate and the report's error are
+  // drawn on Budget vs Actual, and on the Consolidated P&L tab a coach of a
+  // consolidation parent may land on. DRG-51 — a client of a consolidation
+  // parent cannot generate its report. See consolidated-tab-routing.
+  const reportControls = showsReportControls(activeTab, canSeeConsolidated)
+  const canGenerate = generateAccess(isConsolidationGroup, userRole) === 'generate'
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* D-44.2-02 — read-path data integrity banner. Renders nothing when verified. */}
@@ -2004,8 +2022,8 @@ export default function MonthlyReportPage() {
           onManage={xeroManage}
         />
 
-        {/* Reconciliation Gate (only on report tab) */}
-        {activeTab === 'report' && (
+        {/* Reconciliation Gate (only where the report is generated) */}
+        {reportControls && canGenerate && (
           <ReconciliationGate
             reconciliation={reconciliation}
             isLoading={reconLoading}
@@ -2015,7 +2033,7 @@ export default function MonthlyReportPage() {
         )}
 
         {/* Generate Report Button */}
-        {activeTab === 'report' && !report && mappings.length > 0 && (
+        {reportControls && canGenerate && !report && mappings.length > 0 && (
           <div className="mb-6 text-center">
             <button
               onClick={() => handleGenerateReport()}
@@ -2031,8 +2049,16 @@ export default function MonthlyReportPage() {
           </div>
         )}
 
+        {/* DRG-51 — a client of a consolidation parent is told who prepares
+            the report, not shown a Generate button that can only be refused */}
+        {reportControls && !canGenerate && !report && mappings.length > 0 && (
+          <div className="mb-6 p-4 bg-white rounded-lg border border-gray-200 text-center">
+            <p className="text-sm text-gray-700">{CONSOLIDATED_COACH_ONLY_MESSAGE}</p>
+          </div>
+        )}
+
         {/* Error */}
-        {reportError && activeTab === 'report' && (
+        {reportError && reportControls && (
           <div className="mb-6 p-4 bg-red-50 rounded-lg border border-red-200">
             <p className="text-sm text-red-800">{reportError}</p>
           </div>
@@ -2055,6 +2081,15 @@ export default function MonthlyReportPage() {
         />
 
         {/* Tab Content */}
+        {/* A multi-currency consolidation parent's coach lands here, over the
+            translated figures — so a month without a rate says so here, as it
+            does on the Consolidated P&L tab. */}
+        {showsFxRatesOnReportTab(activeTab, isMultiCurrency, canSeeConsolidated) && (
+          <FXRateMissingBanner
+            missingRates={consolidatedReport?.fx_context?.missing_rates ?? []}
+            onAddRate={() => router.push(`/admin/consolidation/${businessId}?from=${encodeURIComponent(pathname)}`)}
+          />
+        )}
         {activeTab === 'report' && report && (
           <BudgetVsActualDashboard
             report={report}

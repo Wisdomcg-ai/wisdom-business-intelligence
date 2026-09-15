@@ -4,7 +4,9 @@
  * Multi-tenant consolidation endpoint (Phase 34, tenant model).
  *
  * Input:  { business_id, report_month, fiscal_year }
- * Output: ConsolidatedReport — per-tenant columns for the business.
+ * Output: { report: ConsolidatedReport — per-tenant columns for the business,
+ *           settings — the business's monthly_report_settings, as
+ *           GET /api/monthly-report/settings serves them }
  *
  * Behavior: consolidation is only meaningful when the business has 2+ active
  * Xero connections marked include_in_consolidation. With 0 or 1 tenant, the
@@ -49,6 +51,7 @@ import {
 } from '@/lib/consolidation/fx'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
+import { loadReportSettings } from '@/lib/monthly-report/report-settings-load'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 
@@ -164,6 +167,17 @@ async function postHandler(request: Request) {
     const yearStartMonth = parentProfile?.fiscal_year_start ?? DEFAULT_YEAR_START_MONTH
     const fyMonths = generateFiscalMonthKeys(fiscal_year, yearStartMonth) as readonly string[]
 
+    // --- REPORT SETTINGS ---
+    // The business's own settings row, read the way the settings panel reads
+    // it, served beside the report for the Budget vs Actual adapter. The
+    // adapter used to put a stub in its place that switched off Unspent
+    // Budget, Budget Next Month, Budget Annual Total and the prior year, so
+    // Dragon and IICT printed six figure columns where Calxa prints nine,
+    // whatever the coach had set (IICT-12, DRG-05). A failed read fails the
+    // request: a report with guessed columns is not one to send.
+    stage = 'load_settings'
+    const { settings } = await loadReportSettings(supabase, ids.businessId)
+
     // --- ENGINE ---
     // Presentation currency is always AUD for now. FX callback kicks in only
     // for tenants with non-AUD functional_currency (engine short-circuits AUD tenants).
@@ -219,6 +233,7 @@ async function postHandler(request: Request) {
     return NextResponse.json({
       success: true,
       report,
+      settings,
       data_quality: data_quality?.data_quality ?? null,
       per_tenant_quality: data_quality?.per_tenant_quality ?? [],
     })
