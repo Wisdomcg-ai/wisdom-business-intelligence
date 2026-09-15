@@ -7,7 +7,7 @@
  * transactions is a FAIL (the one dishonest state the pack must never ship).
  */
 import { describe, it, expect } from 'vitest'
-import { runPreflight, overallStatus, type PreflightInputs } from './preflight'
+import { runPreflight, overallStatus, exportRefusals, consolidatedForPreflight, type PreflightInputs } from './preflight'
 import type { GeneratedReport } from '@/app/finances/monthly-report/types'
 
 function baseReport(overrides: Partial<GeneratedReport> = {}): GeneratedReport {
@@ -300,5 +300,84 @@ describe('reconciliation check — a failed check can never pass as clean (FLEET
     expect(row.status).toBe('pass')
     expect(row.detail).toContain('recorded transactions')
     expect(row.detail).toContain('not visible')
+  })
+})
+
+describe('exchange rates refuse a consolidated export (IICT-04)', () => {
+  // IICT Group, August 2026: no HKD/AUD rate stored after May. The route's
+  // list, confined to the fiscal year (IICT-62), holds Jul, Aug and Sep — Sep
+  // being Xero's month in progress, which the August pack does not print.
+  const iict = {
+    diagnostics: { tenants_loaded: 3, tenants_missing_currency: [] as string[] },
+    fx_context: {
+      rates_used: {},
+      missing_rates: [
+        { currency_pair: 'HKD/AUD', period: '2026-07' },
+        { currency_pair: 'HKD/AUD', period: '2026-08' },
+        { currency_pair: 'HKD/AUD', period: '2026-09' },
+      ],
+    },
+  }
+  const august = () => baseReport({ report_month: '2026-08', is_consolidation: true })
+
+  it('reads the rates off fx_context — the diagnostics alone passed "FX rates complete"', () => {
+    const before = byKey({ report: august(), consolidated: iict.diagnostics }).get('entity_sum')
+    expect(before.status).toBe('pass')
+    const row = byKey({ report: august(), consolidated: consolidatedForPreflight(iict) }).get('entity_sum')
+    expect(row.status).toBe('fail')
+    expect(row.blocks).toBe(true)
+  })
+
+  it('names exactly the months the August pack prints from', () => {
+    const { results, get } = byKey({ report: august(), consolidated: consolidatedForPreflight(iict) })
+    const row = get('entity_sum')
+    expect(row.detail).toContain('Export refused — no HKD/AUD exchange rate is stored for Jul 2026 and Aug 2026')
+    expect(row.detail).not.toContain('Sep 2026')
+    expect(exportRefusals(results)).toEqual([row])
+  })
+
+  it('a June 2026 pack with no June rate is refused naming June', () => {
+    const june = { ...iict, fx_context: { rates_used: {}, missing_rates: [{ currency_pair: 'HKD/AUD', period: '2026-06' }] } }
+    const row = byKey({ report: baseReport({ report_month: '2026-06', is_consolidation: true }), consolidated: consolidatedForPreflight(june) }).get('entity_sum')
+    expect(row.blocks).toBe(true)
+    expect(row.detail).toContain('Jun 2026')
+  })
+
+  it('once the rates are stored it passes and refuses nothing', () => {
+    const loaded = { ...iict, fx_context: { rates_used: { 'HKD/AUD::2026-08': 0.179536 }, missing_rates: [{ currency_pair: 'HKD/AUD', period: '2026-09' }] } }
+    const { results, get } = byKey({ report: august(), consolidated: consolidatedForPreflight(loaded) })
+    expect(get('entity_sum').status).toBe('pass')
+    expect(exportRefusals(results)).toEqual([])
+  })
+
+  it('a consolidated report whose per-entity figures did not load is could-not-check, and refused', () => {
+    const { results, get } = byKey({ report: august(), consolidated: null })
+    expect(get('entity_sum').status).toBe('fail')
+    expect(get('entity_sum').detail).toContain('could not be checked')
+    expect(exportRefusals(results)).toHaveLength(1)
+  })
+
+  it('a single-entity business is still a skip, and no other failure blocks (warning-only house style)', () => {
+    const { results, get } = byKey({ report: baseReport({ is_draft: false, unreconciled_count: 3 }) })
+    expect(get('entity_sum').status).toBe('skip')
+    expect(get('draft_state').status).toBe('fail')
+    expect(exportRefusals(results)).toEqual([])
+  })
+})
+
+describe('a refused v1 cashflow is a warning, not the v2 failure', () => {
+  it('says the cash pages print a reason, without claiming a cash model is on', () => {
+    const row = byKey({
+      report: baseReport(),
+      cashflowReason: 'This business has more than one Xero organisation, and the cashflow cannot yet be built for more than one.',
+      cashflowReasonModel: 'v1',
+    }).get('cash_model_ties')
+    expect(row.status).toBe('warn')
+    expect(row.detail).toContain('print a reason instead of figures')
+    expect(row.detail).not.toContain('cash model is on')
+  })
+
+  it('a v2 refusal is still a failure', () => {
+    expect(byKey({ report: baseReport(), cashflowReason: 'x' }).get('cash_model_ties').status).toBe('fail')
   })
 })

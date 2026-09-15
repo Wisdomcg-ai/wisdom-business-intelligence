@@ -21,9 +21,10 @@
  *   wages                wages-detail-load (stored payslips; no live fallback)
  *   payroll grid         payroll-grid-load
  *   ratio analysis       account-actuals-load
- *   cashflow             pack-cash-model-load + pack-cash-model when the business's cash_model
- *                        is on; otherwise select-forecast + cashflow-assumptions-load +
- *                        opening-bank-load + pack-cashflow
+ *   cashflow             only when pack-cashflow-gate says the pack carries it; then
+ *                        pack-cash-model-load + pack-cash-model when the business's cash_model
+ *                        is on; otherwise opening-bank-load (with its v1 refusal) +
+ *                        select-forecast (findPackForecast) + cashflow-assumptions-load + pack-cashflow
  *   external metrics     external-metrics-load
  *   memo                 the snapshot's coach_notes
  *   money flow           money-flow-load
@@ -62,9 +63,8 @@
  *                        either way, so a slow settings load exports WITHOUT it
  *                        for the rest of the visit. A warning is printed when a
  *                        default template exists.
- *   forecast periods     corrected in memory here. The app persists the
- *                        correction first and, if that update fails, runs the
- *                        cashflow on the stale periods.
+ *   forecast periods     corrected in memory, here and in the app alike (findPackForecast);
+ *                        only the forecast page persists them.
  *   stale tab state      the export reuses the Full Year, subscription, wages
  *                        and cashflow data a tab already holds
  *                        (`let fyReport = fullYearReport`, `cashflowForecast ||`),
@@ -421,16 +421,23 @@ async function main() {
     note('wages', 'skipped', sections.payroll_detail ? 'no wages_account_names — the app loads nothing' : 'settings.sections.payroll_detail is off — the app loads nothing')
   }
 
+  // Cashflow — only for a pack that carries it: sections.cashflow on, or a
+  // layout placing a cash page or a chart drawn from it, as in the app.
+  const { packLoadsCashflow } = await import('@/lib/monthly-report/pack-cashflow-gate')
+  const wantsCashflow = packLoadsCashflow(settings.sections, pdfLayout as never)
+  if (!wantsCashflow) {
+    note('cashflow', 'skipped', 'settings.sections.cashflow is off and the layout places no cashflow widget — the app loads nothing')
+  }
+
   // Cashflow, cash model v2 — the business's cash_model from these settings,
   // so --settings-override '{"cash_model":{…}}' renders the model before
   // anyone saves it. Off (no cash_model, or the column not yet migrated)
   // falls through to the v1 block below, exactly as the app does.
   const { parseCashModelConfig } = await import('@/lib/monthly-report/cash-model-config')
   const { loadPackCashModel } = await import('@/lib/monthly-report/pack-cash-model-load')
-  const cashModelLoad = await loadPackCashModel(admin, bizId, reportMonth, {
-    config: parseCashModelConfig(settings.cash_model),
-    bankAccountIds,
-  })
+  const cashModelLoad = wantsCashflow
+    ? await loadPackCashModel(admin, bizId, reportMonth, { config: parseCashModelConfig(settings.cash_model), bankAccountIds })
+    : { status: 'off' as const }
   if (cashModelLoad.status !== 'off') {
     const { buildPackCashModel } = await import('@/lib/monthly-report/pack-cash-model')
     const model = cashModelLoad.status === 'ready'
@@ -446,53 +453,45 @@ async function main() {
         `budget from ${model.cashflow.cash_model?.first_forecast_month ?? '(none)'} at debtors ${model.cashflow.cash_model?.dso_days} / creditors ${model.cashflow.cash_model?.dpo_days} days`)
     } else {
       eager.cashflowReason = model.reason
+      eager.cashflowReasonModel = 'v2'
       note('cashflow', 'live-built', `cash model v2 REFUSED — the pack prints: ${model.reason}`)
     }
   }
 
   // Cashflow — the forecast is picked by the CLOCK (getForecastFiscalYear), as
   // in the app.
-  if (cashModelLoad.status === 'off') {
+  if (wantsCashflow && cashModelLoad.status === 'off') {
     const { getForecastFiscalYear } = await import('@/app/finances/forecast/utils/fiscal-year')
-    const { pickForecast, forecastPeriodsFor } = await import('@/lib/forecast/select-forecast')
-    const { resolveBusinessProfileIds } = await import('@/lib/business/resolveBusinessProfileIds')
+    const { findPackForecast } = await import('@/lib/forecast/select-forecast')
     const { loadCashflowAssumptions } = await import('@/lib/forecast/cashflow-assumptions-load')
-    const { loadOpeningBank } = await import('@/lib/monthly-report/opening-bank-load')
+    const { loadPackCashflowOpening } = await import('@/lib/monthly-report/opening-bank-load')
     const { buildPackCashflowForecast, packCashflowPlLines } = await import('@/lib/monthly-report/pack-cashflow')
     const forecastFY = getForecastFiscalYear()
-    const ids = await resolveBusinessProfileIds(admin, bizId)
-    const { data: existing, error: fcErr } = await admin
-      .from('financial_forecasts')
-      .select('*')
-      .in('business_id', [...new Set([bizId, ids.profileId].filter(Boolean))])
-      .eq('fiscal_year', forecastFY)
-      .order('updated_at', { ascending: false })
-      .limit(10)
-    if (fcErr) throw fcErr
-    const forecast = pickForecast(existing)
-    if (!forecast) {
-      note('cashflow', 'skipped', `no FY${forecastFY} forecast — the app would CREATE an empty shell here (a write); no cashflow either way`)
+    // The v1 verdict first, from the same read as the opening, as the app asks it.
+    const { opening, v1Refusal } = await loadPackCashflowOpening(admin, bizId, reportMonth, { bankAccountIds })
+    const { forecast, error: fcErr } = v1Refusal ? { forecast: null, error: null } : await findPackForecast<any>(admin, bizId, forecastFY)
+    if (fcErr) throw new Error(`forecast lookup failed: ${fcErr}`)
+    if (v1Refusal) {
+      eager.cashflowReason = v1Refusal
+      eager.cashflowReasonModel = 'v1'
+      note('cashflow', 'live-built', `v1 cashflow REFUSED — the pack prints: ${v1Refusal}`)
+    } else if (!forecast) {
+      note('cashflow', 'skipped', `no FY${forecastFY} forecast — no cashflow (the app no longer creates a shell here)`)
     } else {
-      // The app persists a period correction and then uses the corrected row
-      // (or, if the update fails, the stale one); here the correction is
-      // applied in memory only.
-      const { periods, needsUpdate } = forecastPeriodsFor(forecast, forecastFY)
-      if (needsUpdate) {
-        Object.assign(forecast, { fiscal_year: forecastFY, ...Object.fromEntries(
-          ['baseline_start_month', 'baseline_end_month', 'actual_start_month', 'actual_end_month', 'forecast_start_month', 'forecast_end_month']
-            .map((k) => [k, (periods as Record<string, unknown>)[k]]),
-        ) })
+      // An inactive forecast's lines are never the budget (IICT-09), as in the app.
+      let forecastLines: any[] = []
+      if (forecast.is_active) {
+        const { data, error: linesErr } = await admin
+          .from('forecast_pl_lines').select('*').eq('forecast_id', forecast.id).order('sort_order', { ascending: true })
+        if (linesErr) throw linesErr
+        forecastLines = data ?? []
       }
-      const { data: forecastLines, error: linesErr } = await admin
-        .from('forecast_pl_lines').select('*').eq('forecast_id', forecast.id).order('sort_order', { ascending: true })
-      if (linesErr) throw linesErr
-      if (packCashflowPlLines(eager.fullYearReport, reportMonth, forecastLines ?? []).length === 0) {
+      if (packCashflowPlLines(eager.fullYearReport, reportMonth, forecastLines).length === 0) {
         note('cashflow', 'skipped', 'no P&L lines to run the engine on — the app shows no cashflow')
       } else {
         const saved = await loadCashflowAssumptions(admin, forecast.id)
-        const opening = await loadOpeningBank(admin, bizId, reportMonth, { bankAccountIds })
         const cf = buildPackCashflowForecast({
-          fullYear: eager.fullYearReport, reportMonth, forecast, forecastLines: forecastLines ?? [],
+          fullYear: eager.fullYearReport, reportMonth, forecast, forecastLines,
           savedAssumptions: saved?.cashflow ?? null, opening,
         })
         if (cf) {
@@ -509,7 +508,7 @@ async function main() {
             'not the real opening balances, which the pack zeroes — a proxy, not a double count, whatever the basis line calls the month')
         }
         note('cashflow', cf ? 'live-built' : 'skipped',
-          `pack-cashflow on forecast "${forecast.name ?? forecast.id}" (FY${forecastFY}${needsUpdate ? ', periods corrected in memory' : ''}), ` +
+          `pack-cashflow on forecast "${forecast.name ?? forecast.id}" (FY${forecastFY}, periods corrected in memory), ` +
           `opening ${opening.status === 'read' ? `${opening.amount} at ${opening.asAt}` : `unavailable (${opening.reason})`}`)
       }
     }

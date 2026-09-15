@@ -63,6 +63,13 @@ const CATEGORY_ORDER: ReportCategory[] = [
  * When the engine found no budget (zero-filled budgetLines universe),
  * `has_budget: false` preserves the pre-Phase-B rendering exactly.
  *
+ * `draft` is the reconciliation state the page computed at Generate. It used
+ * to be hard-coded final and clean, so a consolidated report could never
+ * print the cover's draft or unreconciled line, pre-flight passed "Final, with
+ * a clean reconciliation gate", and Finalise was enabled — for IICT while one
+ * of its three Xero organisations had refused every sync since 10 Sep
+ * (IICT-04, DRG-02). Absent is fail-closed: a draft.
+ *
  * Exported for unit tests.
  */
 export function adaptConsolidatedToGeneratedReport(
@@ -70,6 +77,7 @@ export function adaptConsolidatedToGeneratedReport(
   reportMonth: string,
   fiscalYear: number,
   businessId: string,
+  draft: { isDraft: boolean; unreconciledCount: number } = { isDraft: true, unreconciledCount: 0 },
 ): GeneratedReport {
   const consolidatedLines: Array<{
     account_type: string
@@ -231,8 +239,8 @@ export function adaptConsolidatedToGeneratedReport(
     gross_profit_row: grossProfitRow,
     operating_profit_row: operatingProfitRow,
     net_profit_row: netProfitRow,
-    is_draft: false,
-    unreconciled_count: 0,
+    is_draft: draft.isDraft,
+    unreconciled_count: Math.max(0, Math.round(draft.unreconciledCount || 0)),
     has_budget: hasBudget,
     is_consolidation: true,
   }
@@ -282,7 +290,12 @@ export function useMonthlyReport(businessId: string) {
   }, [businessId])
 
   const generateReport = useCallback(
-    async (reportMonth: string, fiscalYear: number, forceDraft?: boolean) => {
+    /**
+     * @param unreconciledCount the reconciliation gate's count, when the check
+     *   completed. The consolidated report carries it to the cover; the
+     *   single-entity route takes only force_draft, as before.
+     */
+    async (reportMonth: string, fiscalYear: number, forceDraft?: boolean, unreconciledCount?: number) => {
       if (!businessId) return
       setIsLoading(true)
       setError(null)
@@ -344,6 +357,9 @@ export function useMonthlyReport(businessId: string) {
             reportMonth,
             fiscalYear,
             businessId,
+            // The same state the single-entity route stamps from force_draft
+            // — and a missing answer is a draft, never a clean final.
+            { isDraft: forceDraft !== false, unreconciledCount: unreconciledCount ?? 0 },
           )
           setReport(adapted)
           return adapted
