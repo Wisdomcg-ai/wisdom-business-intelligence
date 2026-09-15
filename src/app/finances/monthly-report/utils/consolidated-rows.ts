@@ -6,6 +6,7 @@
  * Types mirror the /api/monthly-report/consolidated response (the engine's
  * ConsolidatedReport). Pure.
  */
+import { calcVariance, mapTypeToCategory } from '@/lib/monthly-report/shared'
 
 export interface ConsolidatedForecastLineVM {
   account_type: string
@@ -61,6 +62,7 @@ export interface ConsolidatedReportVM {
 export interface ConsolidatedTenantCell {
   actual: number
   budget: number
+  /** Favourable-positive, by account type — see buildConsolidatedRows. */
   variance: number
   hasBudget: boolean
 }
@@ -121,8 +123,16 @@ export function buildConsolidatedRows(
   }
 
   // Build display rows from consolidated.lines (canonical order).
+  //
+  // Variances take the statement's sign (calcVariance): income actual − budget,
+  // every cost budget − actual, so an overspend is negative here as on every
+  // other page. This was actual − budget for every type, and Dragon's Tradies
+  // Contractors ($472,604 against $211,664, August 2026) printed +260,940 on
+  // this page — green in the tab — and (260,940) on the statement.
   const rows: ConsolidatedDisplayRow[] = report.consolidated.lines.map((l) => {
     const key = alignmentKey(l)
+    const category = mapTypeToCategory(l.account_type)
+    const isRevenue = category === 'Revenue' || category === 'Other Income'
     const tenantCells = report.byTenant.map((col) => {
       const actualLine = col.lines.find((el) => alignmentKey(el) === key)
       const actual = actualLine?.monthly_values[reportMonth] ?? 0
@@ -131,13 +141,13 @@ export function buildConsolidatedRows(
         ? tenantBudgetIndex.get(col.tenant_id)?.get(key)
         : undefined
       const budget = budgetLine?.monthly_values[reportMonth] ?? 0
-      const variance = actual - budget
+      const variance = calcVariance(actual, budget, isRevenue).amount
       return { actual, budget, variance, hasBudget }
     })
     const elim = elimsByKey.get(key) ?? 0
     const consolidatedActual = l.monthly_values[reportMonth] ?? 0
     const consolidatedBudget = budgetByKey.get(key)?.monthly_values[reportMonth] ?? 0
-    const consolidatedVariance = consolidatedActual - consolidatedBudget
+    const consolidatedVariance = calcVariance(consolidatedActual, consolidatedBudget, isRevenue).amount
     const consolidatedVariancePct =
       consolidatedBudget !== 0
         ? (consolidatedVariance / Math.abs(consolidatedBudget)) * 100
