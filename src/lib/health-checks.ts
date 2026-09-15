@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import {
   ACCESS_TOKEN_TTL_MS,
@@ -90,21 +91,48 @@ async function checkErrorRate(supabase: ReturnType<typeof createServiceRoleClien
   }
 }
 
+type SyncClockLookup = { ok: boolean; byTenant: Map<string, number> };
+
+/** The database function behind the lookup (migration 20260915050000). */
+const SYNC_CLOCK_RPC = "last_xero_sync_by_tenant";
+
+/** A job in either state landed its numbers. Must match the function's status filter. */
+const SYNCED_STATUSES = ["success", "partial"];
+
 /**
- * REL-N2: derive each tenant's most-recent successful sync time from
- * `sync_jobs.finished_at` — the timestamp the sync orchestrator + nightly cron
- * write via `finalize_xero_sync_job`. Keyed by the STABLE Xero `tenant_id`,
- * which sidesteps the dual business-id problem entirely (xero_connections and
- * sync_jobs may key business_id to different id-spaces, but both carry the same
- * Xero tenant_id).
+ * Rows the fallback asks for per page. PostgREST may cap a page lower; the read
+ * advances by the rows it actually received, so a lower cap costs pages, never rows.
+ */
+const FALLBACK_PAGE_ROWS = 1000;
+
+/**
+ * Past this many pages the fallback gives up and reports a failed lookup rather
+ * than read without bound. 50 full pages is 15× the 60-day window's rows on
+ * 15 Sep 2026.
+ */
+const FALLBACK_MAX_PAGES = 50;
+
+/**
+ * REL-N2: each Xero tenant's most recent successful sync — `sync_jobs.finished_at`
+ * of a success or partial job. Keyed by the STABLE Xero `tenant_id`, which
+ * sidesteps the dual business-id problem entirely (xero_connections and
+ * sync_jobs key business_id to different id-spaces, but both carry the same
+ * tenant_id). Callers fold it with `xero_connections.last_synced_at`, most
+ * recent wins, so either clock moving is enough.
  *
- * Why this exists: the nightly cron sync does NOT update
- * `xero_connections.last_synced_at`, so a freshness check that reads only that
- * column false-positives "stale" on every cron-only tenant. This map is the
- * authoritative freshness signal; `last_synced_at` is treated as a secondary
- * hint and the two are combined (most-recent-wins) by callers.
+ * The database computes it: `last_xero_sync_by_tenant` returns one jsonb value,
+ * one entry per tenant. This used to fetch every successful row in the window
+ * and reduce them here, but PostgREST returns at most 1,000 rows per request.
+ * On 15 Sep 2026 the 60-day window held 3,214, and a read of that shape takes
+ * the oldest 1,000: run on prod, 12 of 15 tenants read ~3 weeks stale and 3
+ * were missing — under ok:true.
  *
- * Returns `{ok, byTenant}`. `ok` is false when the query itself failed.
+ * Code deploys on merge and the migration is applied by hand afterwards. Until
+ * it is, the function is missing (PGRST202/42883), and this reads the window
+ * page by page instead: more requests, never a partial answer.
+ *
+ * Returns `{ok, byTenant}`. `ok` is false when the lookup failed or did not
+ * read the whole window, and the map is then empty.
  *
  * This used to return a bare empty Map on error, described as degrading
  * gracefully. It wasn't graceful — an empty map is indistinguishable from "no
@@ -115,24 +143,78 @@ async function checkErrorRate(supabase: ReturnType<typeof createServiceRoleClien
 export async function getLastSyncByTenant(
   supabase: ReturnType<typeof createServiceRoleClient>,
   windowDays = 7,
-): Promise<{ ok: boolean; byTenant: Map<string, number> }> {
-  const out = new Map<string, number>();
+): Promise<SyncClockLookup> {
   const sinceIso = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
-  // `.gte("finished_at", ...)` also excludes NULL finished_at (a still-running
-  // or never-finalized job), so no explicit not-null filter is needed.
-  const { data, error } = await supabase
-    .from("sync_jobs")
-    .select("tenant_id, finished_at")
-    .in("status", ["success", "partial"])
-    .gte("finished_at", sinceIso);
-  if (error || !data) return { ok: false, byTenant: out };
-  for (const row of data as Array<{ tenant_id: string | null; finished_at: string | null }>) {
-    if (!row.tenant_id || !row.finished_at) continue;
-    const ts = new Date(row.finished_at).getTime();
-    const prev = out.get(row.tenant_id);
-    if (prev == null || ts > prev) out.set(row.tenant_id, ts);
+  const { data, error } = await supabase.rpc(SYNC_CLOCK_RPC, { p_since: sinceIso });
+  if (!error) return syncClockFromRpc(data);
+  if (error.code !== "PGRST202" && error.code !== "42883") return failedLookup();
+
+  // Correct, but many requests where one would do — and a migration left
+  // unapplied would otherwise go unnoticed, because the pills stay right.
+  Sentry.captureMessage(`[health-checks] ${SYNC_CLOCK_RPC} is missing — reading sync_jobs page by page`, {
+    level: "warning",
+    tags: { invariant: "sync_clock_rpc_missing" },
+    extra: { code: error.code, message: error.message },
+  } as never);
+  return readSyncClockByPages(supabase, sinceIso);
+}
+
+function failedLookup(): SyncClockLookup {
+  return { ok: false, byTenant: new Map() };
+}
+
+/** The function's reply: one object of tenant_id → ISO finished_at, or the lookup failed. */
+function syncClockFromRpc(data: unknown): SyncClockLookup {
+  // null (the function is STRICT), an array or a scalar is not the object it returns.
+  if (data === null || typeof data !== "object" || Array.isArray(data)) return failedLookup();
+  const byTenant = new Map<string, number>();
+  for (const [tenantId, finishedAt] of Object.entries(data)) {
+    const ts = typeof finishedAt === "string" ? new Date(finishedAt).getTime() : NaN;
+    // Skipping an unreadable entry would leave that tenant looking unsynced.
+    if (!tenantId || !Number.isFinite(ts)) return failedLookup();
+    byTenant.set(tenantId, ts);
   }
-  return { ok: true, byTenant: out };
+  return { ok: true, byTenant };
+}
+
+/**
+ * The same answer from the rows themselves, for as long as the function is not
+ * deployed. Pages follow a total order (finished_at, then id) so an offset means
+ * the same row on every request. A job finishing mid-read can only add a row,
+ * which at worst repeats one already seen — harmless to a maximum. Nothing
+ * deletes sync_jobs rows or moves one out of success/partial.
+ */
+async function readSyncClockByPages(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  sinceIso: string,
+): Promise<SyncClockLookup> {
+  const byTenant = new Map<string, number>();
+  let offset = 0;
+  for (let page = 0; page < FALLBACK_MAX_PAGES; page++) {
+    // `.gte("finished_at", ...)` also excludes NULL finished_at (a still-running
+    // or never-finalized job), so no explicit not-null filter is needed.
+    const { data, error } = await supabase
+      .from("sync_jobs")
+      .select("tenant_id, finished_at")
+      .in("status", SYNCED_STATUSES)
+      .gte("finished_at", sinceIso)
+      .order("finished_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + FALLBACK_PAGE_ROWS - 1);
+    // The pages already read are only part of the window.
+    if (error || !Array.isArray(data)) return failedLookup();
+    // Only an EMPTY page ends the read: a short one can be PostgREST's row cap.
+    if (data.length === 0) return { ok: true, byTenant };
+    for (const row of data as Array<{ tenant_id: string | null; finished_at: string | null }>) {
+      // tenant_id '' is the outer per-business row, which names no org.
+      if (!row.tenant_id || !row.finished_at) continue;
+      const ts = new Date(row.finished_at).getTime();
+      const prev = byTenant.get(row.tenant_id);
+      if (prev == null || ts > prev) byTenant.set(row.tenant_id, ts);
+    }
+    offset += data.length;
+  }
+  return failedLookup();
 }
 
 async function checkXero(supabase: ReturnType<typeof createServiceRoleClient>): Promise<CheckResult> {
