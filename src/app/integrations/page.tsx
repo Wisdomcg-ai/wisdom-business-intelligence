@@ -3,19 +3,54 @@
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Link2, CheckCircle, XCircle, RefreshCw, Trash2, ExternalLink, Plus, Settings } from 'lucide-react'
+import { Link2, CheckCircle, XCircle, RefreshCw, Trash2, Plus, Settings, AlertTriangle, Clock, HelpCircle, MinusCircle } from 'lucide-react'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import PageHeader from '@/components/ui/PageHeader'
+import {
+  describeXeroStatus,
+  fetchXeroBusinessStatus,
+  type XeroStatusOrg,
+  type XeroStatusResponse,
+} from '@/lib/xero/business-status-view'
 
 interface Integration {
   id: string
   name: string
   description: string
   icon: string
-  status: 'connected' | 'disconnected'
+  /** 'unknown' — we could not check. Counted as neither connected nor available. */
+  status: 'connected' | 'disconnected' | 'unknown'
   lastSync?: string
   accountName?: string
+}
+
+/** One org's own state, in words. */
+function orgStateLabel(org: XeroStatusOrg): string {
+  const date = (iso: string) => new Date(iso).toLocaleDateString()
+  switch (org.status) {
+    case 'connected':
+      return org.last_sync_at ? `Synced ${date(org.last_sync_at)}` : 'Connected'
+    case 'pending_first_sync':
+      return 'First sync pending'
+    case 'data_stale':
+      return org.last_sync_at ? `Not updated since ${date(org.last_sync_at)}` : 'Never synced'
+    case 'auth_stale':
+      return 'Stopped refreshing — reconnect'
+    case 'dead':
+      return 'Disconnected — reconnect'
+    case 'unknown':
+    default:
+      return "Couldn't check"
+  }
+}
+
+function OrgStateIcon({ status }: { status: XeroStatusOrg['status'] }) {
+  if (status === 'connected') return <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+  if (status === 'pending_first_sync') return <Clock className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+  if (status === 'data_stale') return <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+  if (status === 'dead' || status === 'auth_stale') return <AlertTriangle className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />
+  return <HelpCircle className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
 }
 
 export default function IntegrationsPage() {
@@ -23,8 +58,12 @@ export default function IntegrationsPage() {
   const pathname = usePathname()
   const { activeBusiness, currentUser, isLoading: contextLoading } = useBusinessContext()
   const [loading, setLoading] = useState(true)
-  const [xeroConnected, setXeroConnected] = useState(false)
-  const [xeroData, setXeroData] = useState<any>(null)
+  // Every org of the business, classified on the server — the same answer as the
+  // coach pill and the /cfo board. This page used to read the active rows itself:
+  // a disconnected org vanished from the list, every listed org got a green tick
+  // however old its numbers, and a failed read rendered "Not Connected".
+  const [xeroStatus, setXeroStatus] = useState<XeroStatusResponse | null>(null)
+  const [xeroCheckFailed, setXeroCheckFailed] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [businessId, setBusinessId] = useState<string | null>(null)
 
@@ -38,9 +77,10 @@ export default function IntegrationsPage() {
     setLoading(true)
 
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    console.log('[Integrations] User ID:', user.id)
+    if (!user) {
+      setLoading(false)
+      return
+    }
 
     // Business resolution via the shared role-aware helper.
     const { businessId: bizId } = await resolveBusinessId(supabase, {
@@ -51,32 +91,9 @@ export default function IntegrationsPage() {
 
     if (bizId) {
       setBusinessId(bizId)
-
-      // Multi-tenant: a business can have multiple xero_connections, one per Xero org.
-      // Also try resolving through business_profiles in case connections were stored there.
-      const idCandidates: string[] = [bizId]
-      const { data: profile } = await supabase
-        .from('business_profiles')
-        .select('id')
-        .eq('business_id', bizId)
-        .maybeSingle()
-      if (profile?.id) idCandidates.push(profile.id)
-
-      const { data: allConnections, error: connError } = await supabase
-        .from('xero_connections')
-        .select('*')
-        .in('business_id', idCandidates)
-        .eq('is_active', true)
-        .order('display_order', { ascending: true })
-
-      console.log('[Integrations] Connections loaded:', allConnections?.length ?? 0, 'for bizId candidates:', idCandidates)
-      if (connError) console.error('[Integrations] Load error:', connError)
-
-      if (allConnections && allConnections.length > 0) {
-        setXeroConnected(true)
-        // Keep the full list for any consumer that wants it; first connection for legacy UI
-        setXeroData({ ...allConnections[0], all: allConnections })
-      }
+      const check = await fetchXeroBusinessStatus(bizId)
+      setXeroCheckFailed(!check.ok)
+      setXeroStatus(check.ok ? check.data : null)
     }
 
     setLoading(false)
@@ -101,8 +118,8 @@ export default function IntegrationsPage() {
       // dual-ID delete fires (covers rows under BOTH businesses.id AND
       // business_profiles.id). Do NOT optimistically flip — JDS 2026-05-05
       // taught us that flipping before the server confirms hides stale rows
-      // that survive a partial delete. State only mutates when the server
-      // confirms deleted_count > 0.
+      // that survive a partial delete. State only changes when the server
+      // confirms deleted_count > 0, and then it is re-read, not assumed.
       const res = await fetch('/api/Xero/disconnect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -112,8 +129,7 @@ export default function IntegrationsPage() {
       const data = await res.json().catch(() => ({}))
 
       if (res.ok && data.success && (data.deleted_count ?? 0) > 0) {
-        setXeroConnected(false)
-        setXeroData(null)
+        await loadIntegrations()
       } else {
         const message = data.message || data.error || 'Failed to disconnect Xero'
         console.error('[Integrations] Disconnect failed:', { status: res.status, data })
@@ -158,15 +174,20 @@ export default function IntegrationsPage() {
     }
   }
 
+  const xeroCopy = xeroStatus ? describeXeroStatus(xeroStatus) : null
+  const xeroIntegrationStatus: Integration['status'] = xeroCheckFailed
+    ? 'unknown'
+    : xeroStatus && xeroStatus.orgs.length > 0 && xeroStatus.connected
+      ? 'connected'
+      : 'disconnected'
+
   const integrations: Integration[] = [
     {
       id: 'xero',
       name: 'Xero',
       description: 'Sync your financial data from Xero accounting software',
       icon: '📊',
-      status: xeroConnected ? 'connected' : 'disconnected',
-      lastSync: xeroData?.last_sync_at,
-      accountName: xeroData?.tenant_name
+      status: xeroIntegrationStatus,
     },
     {
       id: 'hubspot',
@@ -176,6 +197,10 @@ export default function IntegrationsPage() {
       status: 'disconnected'
     }
   ]
+
+  // Xero has orgs to show: connected ones, and disconnected ones that still need a reconnect.
+  const xeroHasOrgs = !xeroCheckFailed && !!xeroStatus && xeroStatus.orgs.length > 0
+  const xeroHealthy = xeroCopy?.tone === 'ok' || xeroCopy?.tone === 'pending'
 
   if (loading) {
     return (
@@ -240,19 +265,42 @@ export default function IntegrationsPage() {
 
         {/* Integrations Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {integrations.map((integration) => (
+          {integrations.map((integration) => {
+            const isXero = integration.id === 'xero'
+            const borderClass = isXero
+              ? xeroHealthy
+                ? 'border-green-500'
+                : xeroHasOrgs || xeroCheckFailed
+                  ? 'border-amber-300'
+                  : 'border-gray-200 hover:border-brand-orange-400 hover:shadow-md'
+              : integration.status === 'connected'
+                ? 'border-green-500'
+                : 'border-gray-200 hover:border-brand-orange-400 hover:shadow-md'
+
+            return (
             <div
               key={integration.id}
-              className={`rounded-xl shadow-sm border bg-white p-4 sm:p-6 transition-all ${
-                integration.status === 'connected'
-                  ? 'border-green-500'
-                  : 'border-gray-200 hover:border-brand-orange-400 hover:shadow-md'
-              }`}
+              className={`rounded-xl shadow-sm border bg-white p-4 sm:p-6 transition-all ${borderClass}`}
             >
               {/* Icon and Status */}
               <div className="flex items-start justify-between mb-4">
                 <div className="text-3xl sm:text-4xl">{integration.icon}</div>
-                {integration.status === 'connected' ? (
+                {isXero && (xeroCheckFailed || (xeroHasOrgs && xeroCopy?.tone === 'unknown')) ? (
+                  <span className="flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-800 text-xs font-medium rounded-full">
+                    <HelpCircle className="w-3 h-3" />
+                    Couldn&apos;t check
+                  </span>
+                ) : isXero && xeroHasOrgs && !xeroHealthy && !xeroStatus?.connected ? (
+                  <span className="flex items-center gap-1 px-2 py-1 bg-red-50 text-red-700 text-xs font-medium rounded-full">
+                    <AlertTriangle className="w-3 h-3" />
+                    Disconnected
+                  </span>
+                ) : isXero && xeroHasOrgs && !xeroHealthy ? (
+                  <span className="flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-800 text-xs font-medium rounded-full">
+                    <AlertTriangle className="w-3 h-3" />
+                    Needs attention
+                  </span>
+                ) : integration.status === 'connected' ? (
                   <span className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">
                     <CheckCircle className="w-3 h-3" />
                     Connected
@@ -272,30 +320,47 @@ export default function IntegrationsPage() {
                 {integration.description}
               </p>
 
-              {/* Account Info (if connected) */}
-              {integration.status === 'connected' && integration.id === 'xero' && xeroData?.all?.length > 0 && (
+              {/* Xero: we could not check — say so, and offer nothing that assumes an answer */}
+              {isXero && xeroCheckFailed && (
+                <div className="mb-4 p-3 bg-amber-50 rounded-lg">
+                  <p className="text-sm text-amber-800">
+                    Couldn&apos;t check your Xero connection just now. This is not a sign that it is disconnected.
+                  </p>
+                </div>
+              )}
+
+              {/* Xero: every org, each with its own state */}
+              {isXero && xeroHasOrgs && xeroStatus && (
                 <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                  {!xeroHealthy && xeroCopy && (
+                    <p className="text-sm font-medium text-amber-900 mb-2">{xeroCopy.title}</p>
+                  )}
                   <p className="text-xs text-gray-600 mb-2">
-                    Connected Organisation{xeroData.all.length > 1 ? `s (${xeroData.all.length})` : ''}
+                    Organisation{xeroStatus.orgs.length > 1 ? `s (${xeroStatus.orgs.length})` : ''}
                   </p>
                   <ul className="space-y-1">
-                    {xeroData.all.map((conn: any) => (
-                      <li key={conn.id} className="flex items-center gap-2 text-sm">
-                        <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                    {xeroStatus.orgs.map((org) => (
+                      <li key={org.connection_id ?? org.tenant_id ?? org.tenant_name ?? ''} className="flex items-center gap-2 text-sm">
+                        <OrgStateIcon status={org.status} />
                         <span className="font-medium text-gray-900 truncate">
-                          {conn.display_name || conn.tenant_name}
+                          {org.display_name || org.tenant_name || 'Xero organisation'}
                         </span>
-                        {conn.last_synced_at && (
-                          <span className="text-xs text-gray-500 ml-auto flex-shrink-0">
-                            {new Date(conn.last_synced_at).toLocaleDateString()}
-                          </span>
-                        )}
+                        <span className="text-xs text-gray-500 ml-auto flex-shrink-0">
+                          {orgStateLabel(org)}
+                        </span>
+                      </li>
+                    ))}
+                    {xeroStatus.retired_orgs.map((org) => (
+                      <li key={`retired-${org.connection_id ?? org.tenant_id ?? org.tenant_name ?? ''}`} className="flex items-center gap-2 text-sm text-gray-400">
+                        <MinusCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="truncate">{org.display_name || org.tenant_name || 'Xero organisation'}</span>
+                        <span className="text-xs ml-auto flex-shrink-0">Switched off</span>
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
-              {integration.status === 'connected' && integration.id !== 'xero' && integration.accountName && (
+              {!isXero && integration.status === 'connected' && integration.accountName && (
                 <div className="mb-4 p-3 bg-gray-50 rounded-lg">
                   <p className="text-xs text-gray-600">Connected Account</p>
                   <p className="text-sm font-medium text-gray-900">{integration.accountName}</p>
@@ -309,24 +374,45 @@ export default function IntegrationsPage() {
 
               {/* Actions */}
               <div className="space-y-2">
-                {integration.id === 'xero' ? (
-                  integration.status === 'connected' ? (
+                {isXero ? (
+                  xeroCheckFailed ? (
+                    <button
+                      onClick={loadIntegrations}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Try again
+                    </button>
+                  ) : xeroHasOrgs ? (
                     <>
-                      <button
-                        onClick={handleSyncXero}
-                        disabled={syncing}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-orange text-white text-sm font-medium rounded-lg hover:bg-brand-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                      >
-                        <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                        {syncing ? 'Syncing...' : 'Sync Now'}
-                      </button>
-                      <button
-                        onClick={handleConnectXero}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white border border-brand-orange hover:bg-orange-50 text-brand-orange text-sm font-medium rounded-lg transition-colors"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Add Another Organisation
-                      </button>
+                      {xeroCopy?.tone === 'reconnect' && (
+                        <button
+                          onClick={handleConnectXero}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-orange text-white text-sm font-medium rounded-lg hover:bg-brand-orange-600 transition-colors"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                          Reconnect Xero
+                        </button>
+                      )}
+                      {xeroCopy?.canSync && (
+                        <button
+                          onClick={handleSyncXero}
+                          disabled={syncing}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-brand-orange text-white text-sm font-medium rounded-lg hover:bg-brand-orange-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                          {syncing ? 'Syncing...' : 'Sync Now'}
+                        </button>
+                      )}
+                      {xeroCopy?.tone !== 'reconnect' && (
+                        <button
+                          onClick={handleConnectXero}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white border border-brand-orange hover:bg-orange-50 text-brand-orange text-sm font-medium rounded-lg transition-colors"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add Another Organisation
+                        </button>
+                      )}
                       <button
                         onClick={handleDisconnectXero}
                         disabled={syncing}
@@ -355,7 +441,8 @@ export default function IntegrationsPage() {
                 )}
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Help Section */}

@@ -111,20 +111,28 @@ async function checkErrorRate(supabase: ReturnType<typeof createServiceRoleClien
  * tenant has synced", and every caller read that as a reason to say nothing.
  * "Degrade gracefully" meant "degrade to green". Callers must now branch on `ok`
  * and report `unknown` rather than inventing freshness they could not measure.
+ *
+ * `tenantIds` narrows the read to one business's orgs — a per-business caller
+ * polled every few minutes has no use for the whole fleet's jobs. An empty list
+ * means there is no org to ask about: `ok`, with nothing in the map.
  */
 export async function getLastSyncByTenant(
   supabase: ReturnType<typeof createServiceRoleClient>,
   windowDays = 7,
+  tenantIds?: readonly string[],
 ): Promise<{ ok: boolean; byTenant: Map<string, number> }> {
   const out = new Map<string, number>();
+  if (tenantIds && tenantIds.length === 0) return { ok: true, byTenant: out };
   const sinceIso = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
   // `.gte("finished_at", ...)` also excludes NULL finished_at (a still-running
   // or never-finalized job), so no explicit not-null filter is needed.
-  const { data, error } = await supabase
+  let query = supabase
     .from("sync_jobs")
     .select("tenant_id, finished_at")
     .in("status", ["success", "partial"])
     .gte("finished_at", sinceIso);
+  if (tenantIds) query = query.in("tenant_id", [...tenantIds]);
+  const { data, error } = await query;
   if (error || !data) return { ok: false, byTenant: out };
   for (const row of data as Array<{ tenant_id: string | null; finished_at: string | null }>) {
     if (!row.tenant_id || !row.finished_at) continue;

@@ -35,7 +35,6 @@ const mockGetUser = vi.fn();
 const mockRouteHandlerFrom = vi.fn();
 const mockAdminFrom = vi.fn();
 const mockGetValidAccessToken = vi.fn();
-const mockResolveXeroBusinessId = vi.fn();
 
 // ─── Module mocks (must be declared before importing the route) ──────────────
 
@@ -54,10 +53,6 @@ vi.mock('@/lib/xero/token-manager', () => ({
   getValidAccessToken: mockGetValidAccessToken,
 }));
 
-vi.mock('@/lib/business/resolveXeroBusinessId', () => ({
-  resolveXeroBusinessId: mockResolveXeroBusinessId,
-}));
-
 // ─── Helpers for Test 4 ──────────────────────────────────────────────────────
 
 function makeReq(body: unknown) {
@@ -72,17 +67,17 @@ function makeReq(body: unknown) {
  * Build the supabaseAdmin .from() stub for a successful reactivate.
  * Returns chainable mocks for:
  *   - businesses: returns { id, owner_id, assigned_coach_id }
- *   - xero_connections (read 1): returns the inactive connection row
+ *   - business_profiles: no profile row (the business-id form is the only one)
+ *   - xero_connections (read by business_id): the business's rows — one inactive
  *   - xero_connections (update is_active=true): returns success
- *   - xero_connections (read 2): returns the freshly-saved row
+ *   - xero_connections (read by id): the freshly-saved row
+ * Multi-org behaviour is covered in src/__tests__/api/xero-reactivate-every-org.test.ts.
  */
 function buildAdminFromForReactivate(opts: {
   business: { id: string; owner_id: string; assigned_coach_id: string | null };
   connectionRow: any;
   refreshedRow: any;
 }) {
-  let xcReadCount = 0;
-
   return (table: string) => {
     if (table === 'businesses') {
       const chain: any = {
@@ -92,28 +87,35 @@ function buildAdminFromForReactivate(opts: {
       };
       return chain;
     }
-    if (table === 'xero_connections') {
-      // Three calls land on this table in the success path:
-      //   1. SELECT * ... .single()     → connection row (inactive)
-      //   2. UPDATE { is_active: true } → no-op resolve
-      //   3. SELECT id,tenant_name,expires_at ... .single() → refreshed row
+    if (table === 'business_profiles') {
       const chain: any = {
         select: () => chain,
-        update: () => chain,
         eq: () => chain,
-        order: () => chain,
-        limit: () => chain,
-        single: () => {
-          xcReadCount += 1;
-          if (xcReadCount === 1) {
-            return Promise.resolve({ data: opts.connectionRow, error: null });
-          }
-          return Promise.resolve({ data: opts.refreshedRow, error: null });
+        maybeSingle: () => Promise.resolve({ data: null, error: null }),
+      };
+      return chain;
+    }
+    if (table === 'xero_connections') {
+      let isUpdate = false;
+      let inColumn = '';
+      const chain: any = {
+        select: () => chain,
+        update: () => {
+          isUpdate = true;
+          return chain;
         },
-        // The .update().eq() chain in reactivate awaits directly (no .single()).
-        // Make the chain itself thenable so `await supabaseAdmin.from(...).update(...).eq(...)`
-        // resolves to { error: null }.
-        then: (resolve: any) => resolve({ error: null }),
+        eq: () => chain,
+        in: (column: string) => {
+          inColumn = column;
+          return chain;
+        },
+        order: () => chain,
+        // Every chain in reactivate is awaited directly.
+        then: (resolve: any) => {
+          if (isUpdate) return resolve({ error: null });
+          if (inColumn === 'business_id') return resolve({ data: [opts.connectionRow], error: null });
+          return resolve({ data: [opts.refreshedRow], error: null });
+        },
       };
       return chain;
     }
@@ -209,13 +211,9 @@ describe('Phase 53-02 — centralized Xero token refresh', () => {
 
     // RBAC: owner check via supabaseAdmin.from('businesses') succeeds without
     // needing the role-row fallback. (allowed=true after the first check.)
-    mockResolveXeroBusinessId.mockResolvedValue({
-      connectionBusinessId: 'biz-canonical-1',
-    });
-
     const connectionRow = {
       id: 'conn-1',
-      business_id: 'biz-canonical-1',
+      business_id: 'biz-1',
       tenant_id: 'tenant-uuid-1',
       tenant_name: 'Test Org',
       access_token: 'ENCRYPTED-AT',

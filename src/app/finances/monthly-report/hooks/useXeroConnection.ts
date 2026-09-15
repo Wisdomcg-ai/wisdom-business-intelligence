@@ -3,25 +3,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { toast } from 'sonner'
-
-interface XeroConnectionData {
-  id: string
-  tenant_name: string
-  is_active: boolean
-  last_synced_at: string | null
-  expires_at: string
-}
-
-interface XeroStatusResponse {
-  connected: boolean
-  expired?: boolean
-  connection: XeroConnectionData | null
-}
+import {
+  fetchXeroBusinessStatus,
+  type XeroStatusConnection,
+  type XeroStatusResponse,
+} from '@/lib/xero/business-status-view'
 
 export function useXeroConnection(businessId: string) {
   const router = useRouter()
   const pathname = usePathname()
-  const [xeroConnection, setXeroConnection] = useState<XeroConnectionData | null>(null)
+  // Present when the business has a live Xero org — gates the post-OAuth sync.
+  const [xeroConnection, setXeroConnection] = useState<XeroStatusConnection | null>(null)
+  // The whole business, every org: what the banner renders.
+  const [xeroStatus, setXeroStatus] = useState<XeroStatusResponse | null>(null)
+  // Set only by a sync that Xero refused (401); the status carries everything else.
   const [isExpired, setIsExpired] = useState(false)
   // PRES-09 — started as `false`, so between mount and the first response the
   // banner rendered its "Not connected to Xero" state as a settled answer. The
@@ -42,37 +37,27 @@ export function useXeroConnection(businessId: string) {
       setError(null)
 
       try {
-        const res = await fetch(`/api/Xero/status?business_id=${businessId}`)
-        if (!res.ok) {
-          // A 5xx here is not evidence of anything about the client's Xero.
-          // Previously the body was parsed anyway, `data.connected` came back
-          // undefined, and the else-branch below reported "not connected".
+        // A non-2xx, a network or parse failure, or a body that is not a status
+        // answer all come back not-ok: none of them is evidence about the
+        // client's Xero. Each used to fall through to "not connected", which put
+        // "Not connected to Xero" above a report built from Xero data already in
+        // the database.
+        const result = await fetchXeroBusinessStatus(businessId)
+        setIsExpired(false)
+        if (!result.ok) {
           setCheckFailed(true)
+          setXeroStatus(null)
           setXeroConnection(null)
-          setIsExpired(false)
           setError('Could not check the Xero connection')
           return
         }
-        const data: XeroStatusResponse = await res.json()
         setCheckFailed(false)
-
-        if (data.connected && data.connection) {
-          setXeroConnection(data.connection)
-          setIsExpired(false)
-        } else if (data.expired) {
-          setXeroConnection(null)
-          setIsExpired(true)
-        } else {
-          setXeroConnection(null)
-          setIsExpired(false)
-        }
+        setXeroStatus(result.data)
+        setXeroConnection(result.data.connected ? result.data.connection : null)
       } catch (err) {
         console.error('[useXeroConnection] Status fetch error:', err)
-        // Same reasoning as the !res.ok branch: a network or parse failure tells
-        // us nothing about whether Xero is connected. Leaving xeroConnection at
-        // null made the banner assert "Not connected to Xero" above a fully
-        // populated report rendered from Xero data already in the database.
         setCheckFailed(true)
+        setXeroStatus(null)
         setError('Failed to check Xero connection')
       } finally {
         setIsLoading(false)
@@ -112,11 +97,14 @@ export function useXeroConnection(businessId: string) {
         return false
       }
 
-      // Update last_synced_at in state
-      setXeroConnection(prev => prev ? {
-        ...prev,
-        last_synced_at: new Date().toISOString(),
-      } : prev)
+      // Re-ask rather than stamping "synced just now" on the banner: a sync that
+      // reached some orgs and not others must not read as the whole business.
+      const refreshed = await fetchXeroBusinessStatus(businessId)
+      if (refreshed.ok) {
+        setCheckFailed(false)
+        setXeroStatus(refreshed.data)
+        setXeroConnection(refreshed.data.connected ? refreshed.data.connection : null)
+      }
 
       toast.success(`Synced ${data.accounts_synced} accounts across ${data.months_synced} months`)
       return true
@@ -138,6 +126,7 @@ export function useXeroConnection(businessId: string) {
 
   return {
     xeroConnection,
+    xeroStatus,
     isExpired,
     isLoading,
     isSyncing,

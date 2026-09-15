@@ -10,7 +10,12 @@ import ForecastService from '@/app/finances/forecast/services/forecast-service'
 import '@/app/finances/forecast/forecast-styles.css'
 import { ForecastGenerator } from '@/app/finances/forecast/services/forecast-generator'
 import { ForecastingEngine } from '@/app/finances/forecast/services/forecasting-engine'
-import type { FinancialForecast, PLLine, ForecastEmployee, XeroConnection, DistributionMethod, ForecastMethod } from '@/app/finances/forecast/types'
+import type { FinancialForecast, PLLine, ForecastEmployee, DistributionMethod, ForecastMethod } from '@/app/finances/forecast/types'
+import {
+  fetchXeroBusinessStatus,
+  type XeroStatusConnection,
+  type XeroStatusResponse,
+} from '@/lib/xero/business-status-view'
 import PLForecastTable from '@/app/finances/forecast/components/PLForecastTable'
 import PayrollTable from '@/app/finances/forecast/components/PayrollTable'
 import CompletenessChecker from '@/app/finances/forecast/components/CompletenessChecker'
@@ -44,7 +49,10 @@ export default function CoachForecastPage() {
   const [forecast, setForecast] = useState<FinancialForecast | null>(null)
   const [plLines, setPlLines] = useState<PLLine[]>([])
   const [employees, setEmployees] = useState<ForecastEmployee[]>([])
-  const [xeroConnection, setXeroConnection] = useState<XeroConnection | null>(null)
+  const [xeroConnection, setXeroConnection] = useState<XeroStatusConnection | null>(null)
+  // The whole business, every org — what the Xero panel renders.
+  const [xeroStatus, setXeroStatus] = useState<XeroStatusResponse | null>(null)
+  const [xeroCheckFailed, setXeroCheckFailed] = useState(false)
 
   const [activeTab, setActiveTab] = useState<ForecastTab>(() => {
     if (typeof window !== 'undefined') {
@@ -211,19 +219,18 @@ export default function CoachForecastPage() {
       const emps = await ForecastService.loadEmployees(loadedForecast.id!)
       setEmployees(emps)
 
-      // Load Xero connection via API (bypasses RLS timing issues)
-      try {
-        const statusRes = await fetch(`/api/Xero/status?business_id=${clientId}`)
-        const statusData = await statusRes.json()
-        if (statusData.connected && statusData.connection) {
-          setXeroConnection(statusData.connection)
-        } else {
-          setXeroConnection(null)
-        }
-      } catch (err) {
-        console.error('[Coach Forecast] Error loading Xero connection:', err)
-        const xeroConn = await ForecastService.getXeroConnection(clientId)
-        setXeroConnection(xeroConn)
+      // Load Xero connection via API (bypasses RLS timing issues). A failed check
+      // is "couldn't check" — not "Not connected", and not whichever single org a
+      // direct query happened to return.
+      const xeroCheck = await fetchXeroBusinessStatus(clientId)
+      if (xeroCheck.ok) {
+        setXeroStatus(xeroCheck.data)
+        setXeroCheckFailed(false)
+        setXeroConnection(xeroCheck.data.connected ? xeroCheck.data.connection : null)
+      } else {
+        setXeroStatus(null)
+        setXeroCheckFailed(true)
+        setXeroConnection(null)
       }
 
       setIsLoading(false)
@@ -598,6 +605,8 @@ export default function CoachForecastPage() {
             <div className="border-t pt-4">
               <XeroConnectionPanel
                 xeroConnection={xeroConnection}
+                status={xeroStatus}
+                checkFailed={xeroCheckFailed}
                 isSaving={isSaving || isSyncing}
                 onConnect={handleConnectXero}
                 onDisconnect={handleDisconnectXero}
