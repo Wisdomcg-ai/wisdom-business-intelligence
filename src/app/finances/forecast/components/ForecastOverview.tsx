@@ -1159,7 +1159,7 @@ interface DashboardActualsMonth {
 }
 
 interface DashboardActualsResponse {
-  data: { months: DashboardActualsMonth[]; lastSyncedAt: string | null } | null
+  data: { months: DashboardActualsMonth[] } | null
   hasData: boolean
 }
 

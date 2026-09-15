@@ -430,3 +430,56 @@ export function classifyBusinessConnections(
   const moreOrgsNeedingAttention = orgs.filter((o) => o.status !== worst.status && needsAttention(o.status)).length;
   return { ...worst, orgs, retiredOrgs, worstOrgCount, statusScope, moreOrgsNeedingAttention };
 }
+
+/** One counted org's data clock, as a business-level "Last synced" shows it. */
+export interface XeroOrgDataClock {
+  tenantName: string | null;
+  /** Last successful data sync on this org's own tenant clock; null = never synced. */
+  lastSyncAt: string | null;
+}
+
+/**
+ * How current a business's Xero NUMBERS are, for a surface that shows every
+ * org's figures together — the KPI dashboard charts' "Last synced".
+ *
+ * It is the STALEST counted org's clock, never the headline org's. A total is
+ * only as current as the org that synced longest ago, and the headline org is
+ * picked by status: an auth_stale or dead org that synced an hour ago would
+ * otherwise speak for a sibling three weeks behind. The orgs that count are
+ * exactly `classifyBusinessConnections`' (a retired org sets nothing; a dead row
+ * superseded by a live row for the same org is not an org), each on its own
+ * tenant's clock (`dataClockFor`).
+ *
+ *   none          no org counts: no Xero connection, so no clock to show
+ *   unknown       the clock could not be established — the sync_jobs lookup
+ *                 failed, or an org has no tenant_id to look it up by, the two
+ *                 reasons `classifyXeroConnection` answers unknown on the data
+ *                 axis. Never a date, and never "never synced".
+ *   never_synced  some org has never synced
+ *   synced        every org has synced; `lastSyncAt` is the oldest of them
+ *
+ * `orgs` is every counted org's clock, stalest first, so a surface can say whose
+ * clock it is when the orgs disagree.
+ */
+export type XeroBusinessDataClock =
+  | { status: 'none' }
+  | { status: 'unknown' }
+  | { status: 'never_synced'; orgs: XeroOrgDataClock[] }
+  | { status: 'synced'; lastSyncAt: string; orgs: XeroOrgDataClock[] };
+
+export function businessDataClock(
+  rows: readonly XeroConnectionStatusRow[],
+  syncClock: XeroSyncClock,
+): XeroBusinessDataClock {
+  const { orgs } = classifyBusinessConnections(rows, syncClock);
+  if (orgs.length === 0) return { status: 'none' };
+  if (!syncClock.ok || orgs.some((o) => o.tenantId === null)) return { status: 'unknown' };
+
+  const clocks = orgs
+    .map((o) => ({ tenantName: o.tenantName, lastSyncAt: o.lastSyncAt }))
+    .sort((a, b) => compareInstants(a.lastSyncAt, b.lastSyncAt) || compareText(a.tenantName, b.tenantName));
+  const stalest = clocks[0].lastSyncAt;
+  return stalest === null
+    ? { status: 'never_synced', orgs: clocks }
+    : { status: 'synced', lastSyncAt: stalest, orgs: clocks };
+}

@@ -20,6 +20,15 @@
  *      fiscal_year exactly matches the requested FY. Mismatched-FY forecasts
  *      contribute zero forecast bars (correct: no plan exists for that FY).
  *
+ * `lastSync` is the charts' "Last synced" line: the business's Xero data clock
+ * from `businessDataClock` (src/lib/xero/connection-status.ts) — every org, each
+ * on its own tenant's clock, and the STALEST one, because the charts add up every
+ * org's figures. It used to be `financial_metrics.updated_at`, a column that
+ * table has never had: the query errored, the error was ignored, and the line
+ * never rendered. financial_metrics was never the charts' source either — they
+ * read the xero_pl_lines mirror. A lookup that fails is `unknown`, which the
+ * charts show as "couldn't check", never as a date.
+ *
  * Query params:
  *   businessId     (required) UUID of the business (dual-ID resolved)
  *   fiscalYear     (optional) defaults to current fiscal year
@@ -27,9 +36,16 @@
  */
 
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import { generateFiscalMonthKeys, getCurrentFiscalYear, getFiscalMonthLabels } from '@/lib/utils/fiscal-year-utils'
-import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { resolveBusinessProfileIds, type ResolvedBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { getLastSyncByTenant } from '@/lib/health-checks'
+import {
+  businessDataClock,
+  type XeroBusinessDataClock,
+  type XeroConnectionStatusRow,
+} from '@/lib/xero/connection-status'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -90,6 +106,50 @@ function emptyAgg(): MonthAggregate {
   }
 }
 
+/** Same window as the coach pill and the CFO board, so a cold tenant reads old rather than never. */
+const SYNC_CLOCK_WINDOW_DAYS = 60
+
+const CONNECTION_COLUMNS =
+  'id, business_id, tenant_id, tenant_name, include_in_consolidation, is_active, last_synced_at, updated_at, expires_at, created_at'
+
+/**
+ * The charts' "Last synced" — see the header. Never rejects: anything that goes
+ * wrong is `unknown`, so the charts say "couldn't check" instead of a date.
+ */
+async function readLastSync(
+  supabase: Awaited<ReturnType<typeof createRouteHandlerClient>>,
+  ids: ResolvedBusinessProfileIds,
+): Promise<XeroBusinessDataClock> {
+  try {
+    // Every row under both id forms, dead rows included, through the caller's own
+    // client: RLS admits the same people who may see this business's figures.
+    const { data, error } = await supabase
+      .from('xero_connections')
+      .select(CONNECTION_COLUMNS)
+      .in('business_id', ids.all)
+    if (error) {
+      Sentry.captureException(error, { tags: { route: 'forecast/dashboard-actuals' }, extra: { context: '[dashboard-actuals] xero_connections read failed — Last synced is unknown' } } as any)
+      return { status: 'unknown' }
+    }
+    const rows = (data ?? []) as XeroConnectionStatusRow[]
+    if (rows.length === 0) {
+      // xero_connections is keyed by businesses.id and the dashboard sends the
+      // business_profiles.id. A resolver that could not map the id echoes it back
+      // alone, so finding nothing under it says nothing about the business.
+      return ids.all.length > 1 ? { status: 'none' } : { status: 'unknown' }
+    }
+    // The sync clock is read as the service role, as the pill and the board read
+    // it: sync_jobs' RLS policy matches its business_profiles.id column against
+    // businesses.id sets, so a user's client sees next to none of it. Only the
+    // tenants of the rows read above are looked up in the answer.
+    const syncClock = await getLastSyncByTenant(createServiceRoleClient(), SYNC_CLOCK_WINDOW_DAYS)
+    return businessDataClock(rows, syncClock)
+  } catch (err) {
+    Sentry.captureException(err, { tags: { route: 'forecast/dashboard-actuals' }, extra: { context: '[dashboard-actuals] Last synced lookup threw' } } as any)
+    return { status: 'unknown' }
+  }
+}
+
 async function getHandler(request: Request) {
   const supabase = await createRouteHandlerClient()
 
@@ -135,6 +195,9 @@ async function getHandler(request: Request) {
       businessId,
     )
     if (_sectionBlocked) return _sectionBlocked
+
+    // Needs nothing from the P&L steps below, so it runs alongside them.
+    const lastSyncRead = readLastSync(supabase, ids)
 
     // Generate fiscal month keys in correct fiscal year order
     const monthKeys = generateFiscalMonthKeys(fiscalYear, yearStartMonth)
@@ -259,16 +322,7 @@ async function getHandler(request: Request) {
       }
     }
 
-    // Get last synced timestamp from financial_metrics
-    const { data: metricsRow } = await supabase
-      .from('financial_metrics')
-      .select('updated_at')
-      .in('business_id', ids.all)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    const lastSyncedAt: string | null = metricsRow?.updated_at ?? null
+    const lastSync = await lastSyncRead
 
     // ── Step 4: Project aggregates into chart row format ──
     const months = monthKeys.map((monthKey, idx) => {
@@ -312,7 +366,7 @@ async function getHandler(request: Request) {
     return NextResponse.json({
       data: {
         months,
-        lastSyncedAt,
+        lastSync,
       },
       hasData: hasAnyData,
     })
