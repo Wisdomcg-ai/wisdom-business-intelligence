@@ -211,6 +211,21 @@ describe("FinancialSummaryCharts — a failed check is \"couldn't check\", never
     expect(syncLine()?.textContent).toBe("Last synced: couldn't check")
     expect(screen.queryByText(/Invalid Date/)).toBeNull()
   })
+
+  it('a "never synced" clock listing an org with an unreadable date is "couldn\'t check", not "not yet"', async () => {
+    answer(
+      200,
+      charts({
+        status: 'never_synced',
+        orgs: [
+          { tenantName: 'EASY HAIL CLAIM PTY LTD', lastSyncAt: null },
+          { tenantName: 'Dragon Roofing Pty Ltd', lastSyncAt: 'yesterday' },
+        ],
+      }),
+    )
+    await renderCharts()
+    expect(syncLine()?.textContent).toBe("Last synced: couldn't check")
+  })
 })
 
 describe('FinancialSummaryCharts — a failed load is not "no data yet"', () => {
