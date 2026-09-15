@@ -1,5 +1,5 @@
 import type { FullYearReport, FullYearLine, FullYearMonthData } from '../types'
-import { hasApprovedBudget, hasForecastBudget } from './full-year-approved'
+import { hasApprovedBudget, hasForecastBudget, forwardSeriesAbsentNote } from './full-year-approved'
 
 /**
  * What a month the year has not closed yet is FILLED WITH on the Full Year page.
@@ -109,6 +109,60 @@ export function fullYearBasisNote(
 export function fullYearCell(md: FullYearMonthData, basis: FullYearBasis): number {
   if (md.source === 'actual') return md.actual
   return basis === 'approved_budget' ? (md.approved_budget ?? 0) : md.budget
+}
+
+/**
+ * What a forward-looking CHART plots for the months the year has not closed,
+ * or null when it may plot nothing past the last closed month.
+ *
+ * Break-Even and Revenue vs Expenses read `budget` — the forecast — alone, so a
+ * client held to an approved budget with no active forecast (Distinct
+ * Directions, FY2027) was told "No forecast exists, so this chart stops at the
+ * last closed month" two pages after an Income Analysis chart that plotted the
+ * same approved budget month by month. The analysis charts already take the
+ * approved budget first; these take this page's basis, which is that rule plus
+ * the coverage check — a line cannot plot a month the budget has no rows for
+ * as a gap, only as a fall to $0.
+ */
+export function forwardSeriesBasis(report: FullYearReport | null | undefined): FullYearBasis | null {
+  if (!report) return null
+  if (fullYearBasis(report) === 'approved_budget') return 'approved_budget'
+  return hasForecastBudget(report) ? 'forecast' : null
+}
+
+/**
+ * One unclosed month's figure on a forward chart's basis. Callers only ask
+ * for it when forwardSeriesBasis is non-null; `null` reads the forecast, which
+ * is what the charts plotted before a basis existed (their fallback ratio uses
+ * it before the series is cut).
+ */
+export function forwardSeriesBudget(md: FullYearMonthData | undefined, basis: FullYearBasis | null): number {
+  if (!md) return 0
+  return basis === 'approved_budget' ? (md.approved_budget ?? 0) : (md.budget || 0)
+}
+
+/**
+ * What the shaded run of open months is called on a forward chart's tab: the
+ * approved budget is a budget, and calling it "Forecast" names the yardstick
+ * the page is not using.
+ */
+export function forwardSeriesLabel(report: FullYearReport | null | undefined): 'Budget' | 'Forecast' {
+  return forwardSeriesBasis(report) === 'approved_budget' ? 'Budget' : 'Forecast'
+}
+
+/**
+ * The sentence a forward chart prints when it stops at the last closed month,
+ * or null when it does not stop. A client with an approved budget that does
+ * not cover the open months is told that, not that a forecast is missing —
+ * the forecast was never the only thing that could have filled the months.
+ */
+export function forwardSeriesBasisNote(report: FullYearReport | null | undefined): string | null {
+  if (!report || forwardSeriesBasis(report) !== null) return null
+  if (hasApprovedBudget(report)) {
+    const fy = report.fiscal_year ? `FY${report.fiscal_year}` : 'this fiscal year'
+    return `The approved budget for ${fy} does not cover every month still to come and no forecast exists, so this chart stops at the last closed month — no forward series is shown.`
+  }
+  return forwardSeriesAbsentNote(report)
 }
 
 /**

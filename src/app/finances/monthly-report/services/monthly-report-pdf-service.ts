@@ -120,6 +120,7 @@ import {
   fullYearMonthLabel,
   fullYearPeriodLabel,
   fullYearBasisNote,
+  forwardSeriesBasisNote,
 } from '../utils/full-year-basis'
 import { closingRowsBreak, keepWithNextStarts, lastPageWidowBreak, tablePageStarts } from '../utils/full-year-page-break'
 import type { BalanceSheetCompare, BalanceSheetData } from '../types'
@@ -3457,7 +3458,7 @@ export class MonthlyReportPDFService {
     this.doc.text('Monthly revenue and total expenses with profit gap', this.margin, this.yPosition)
     this.yPosition += 10
 
-    const rveAbsentNote = forwardSeriesAbsentNote(fy)
+    const rveAbsentNote = forwardSeriesBasisNote(fy)
     if (rveAbsentNote) {
       this.drawNote(rveAbsentNote, undefined, { fontSize: 9, color: [146, 96, 20] })
       this.yPosition += 1.5
