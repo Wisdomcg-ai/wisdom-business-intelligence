@@ -9,23 +9,28 @@
  * 44-05 migration 4.
  *
  * Invocations:
- *   GET — Vercel-Cron compatibility. Authenticated via Bearer ${CRON_SECRET}
- *     when CRON_SECRET is set (production guard). Falls through to
- *     runSyncForAllBusinesses, the same orchestrator entry the dedicated
+ *   GET — Vercel-Cron compatibility, not itself scheduled in vercel.json.
+ *     Fails closed: 401 unless CRON_SECRET is set AND the bearer matches.
+ *     Runs runSyncForAllBusinesses, the same orchestrator entry the scheduled
  *     /api/cron/sync-all-xero route uses.
- *   POST — manual coach trigger. Body: { businessId? } single business, or
- *     { all: true } all-businesses (sequential). Authenticated via the user
- *     session (createRouteHandlerClient).
+ *
+ * There is deliberately no POST (AUTHZ-A, app-authz audit 24 Aug 2026). The
+ * old "manual coach trigger" checked only that a session existed, so any
+ * signed-in user — a client owner of an unrelated business included — could
+ * sync any business by id, or start the fleet-wide loop with { all: true },
+ * and read back raw SyncResult error strings. Nothing called it, so it was
+ * deleted rather than gated; Next.js answers an unexported method with 405
+ * before any code here runs. The manual levers are:
+ *   - one business: POST /api/Xero/refresh-pl (verifyBusinessAccess) or
+ *     POST /api/monthly-report/sync-xero (owner / assigned coach / super_admin)
+ *   - the fleet: the Vercel cron "Run" button on /api/cron/sync-all-xero, whose
+ *     800s ceiling, heartbeats and chaining are what that loop is sized for.
+ * Re-adding a POST here needs per-business authz and a super_admin-only fleet
+ * form — src/__tests__/api/xero-sync-all-post-removed.test.ts pins this.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@/lib/supabase/server'
-import { z } from 'zod'
-import { withSchema } from '@/lib/api/with-schema'
-import {
-  runSyncForAllBusinesses,
-  syncBusinessXeroPL,
-} from '@/lib/xero/sync-orchestrator'
+import { runSyncForAllBusinesses } from '@/lib/xero/sync-orchestrator'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -43,8 +48,7 @@ export async function GET(request: NextRequest) {
   // 3-conditional guard (cronSecret && NODE_ENV === 'production' && ...)
   // short-circuited if CRON_SECRET was absent in prod, leaving the route
   // unauthenticated. Devs should set CRON_SECRET=local-dev-secret in
-  // .env.local; the manual coach trigger uses POST + session auth and is
-  // unaffected. Pattern matches cron/daily-health-report:13-15.
+  // .env.local. Pattern matches cron/daily-health-report:13-15.
   const cronSecret = process.env.CRON_SECRET
   const auth = request.headers.get('authorization')
   if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
@@ -61,41 +65,3 @@ export async function GET(request: NextRequest) {
     )
   }
 }
-
-// VALID-04 (observe mode): POST syncs one business (businessId) or all (all=true).
-const SyncAllPostSchema = z
-  .object({
-    businessId: z.string().optional(),
-    all: z.boolean().optional(),
-  })
-  .passthrough()
-
-async function postHandler(request: Request) {
-  const supabase = await createRouteHandlerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const body = await request.json().catch(() => ({} as any))
-  const businessId: string | undefined = body.businessId
-  const allBusinesses: boolean = body.all === true
-
-  try {
-    if (allBusinesses) {
-      const results = await runSyncForAllBusinesses()
-      return NextResponse.json({ success: true, results })
-    }
-
-    if (!businessId) {
-      return NextResponse.json({ error: 'businessId required' }, { status: 400 })
-    }
-    const result = await syncBusinessXeroPL(businessId)
-    return NextResponse.json({ success: true, result })
-  } catch (err: any) {
-    return NextResponse.json(
-      { success: false, error: String(err?.message ?? err) },
-      { status: 500 },
-    )
-  }
-}
-
-export const POST = withSchema('Xero/sync-all', SyncAllPostSchema, postHandler)
