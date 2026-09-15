@@ -92,6 +92,7 @@ import type { CashflowForecastData, FinancialForecast } from '@/app/finances/for
 import { usePDFLayout } from './hooks/usePDFLayout'
 import { loadPackEntityName } from '@/lib/monthly-report/pack-entity-name'
 import { loadPackPreparedOn } from '@/lib/monthly-report/pack-prepared-on'
+import { exportBudgetSourceRefusal } from './utils/budget-yardstick'
 import { layoutWantsBadgeReconciliation, loadPackReconciliation, type PackReconciliation } from '@/lib/monthly-report/pack-reconciliation'
 import {
   balanceSheetsForExport,
@@ -1847,13 +1848,11 @@ export default function MonthlyReportPage() {
     //
     // Refusing is the only honest option. A warning would be read past, and
     // silently regenerating would discard whatever the coach has on screen.
-    const settingsSource = settings?.budget_source ?? 'forecast'
-    const reportSource = report.budget_source ?? null
-    if (settingsSource === 'budget_version' && reportSource !== 'budget_version') {
-      toast.error(
-        'This report was measured against the forecast, not the approved budget. Regenerate before exporting.',
-        { duration: 10000 },
-      )
+    // Two states, two sentences: a stale generate is fixed by regenerating, a
+    // budget the resolver REFUSED is not (exportBudgetSourceRefusal).
+    const budgetRefusal = exportBudgetSourceRefusal(settings?.budget_source, report)
+    if (budgetRefusal) {
+      toast.error(budgetRefusal, { duration: 10000 })
       return
     }
 

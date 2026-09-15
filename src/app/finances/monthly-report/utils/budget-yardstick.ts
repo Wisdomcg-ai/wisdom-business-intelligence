@@ -348,3 +348,30 @@ export function noBudgetNote(
   if (report.has_budget) return null
   return absentSentence(report.no_budget_reason, report.fiscal_year, report.no_budget_detail)
 }
+
+/**
+ * Why an export must not go out, when the client is on the budget store and the
+ * report on screen is not.
+ *
+ * Two different states, and the page used to print one sentence for both. A
+ * report measured against the FORECAST is a stale generate: regenerating fixes
+ * it. A report whose budget was REFUSED — an organisation with no version in
+ * force, a month with no exchange rate (a business with more than one Xero
+ * organisation, DRG-03) — has no budget at all, and regenerating produces the
+ * same pack again. Telling a coach to regenerate then sends them round a loop
+ * with nothing to show for it; the reason is what they can act on.
+ *
+ * Null when there is nothing to refuse.
+ */
+export function exportBudgetSourceRefusal(
+  settingsSource: string | null | undefined,
+  report: Pick<GeneratedReport, 'budget_source' | 'no_budget_reason' | 'no_budget_detail' | 'fiscal_year'>,
+): string | null {
+  if ((settingsSource ?? 'forecast') !== 'budget_version') return null
+  if (report.budget_source === 'budget_version') return null
+  if (report.budget_source === 'none') {
+    return `This client is held to an approved budget, and this report has none: ${noBudgetBecause(report.no_budget_reason, report.fiscal_year, report.no_budget_detail)}. `
+      + 'Fix that and generate the report again before exporting.'
+  }
+  return 'This report was measured against the forecast, not the approved budget. Regenerate before exporting.'
+}
