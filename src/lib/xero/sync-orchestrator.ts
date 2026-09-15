@@ -93,9 +93,30 @@ export type SyncResult = {
   }
 }
 
+/**
+ * How one Xero org finished within a sync run.
+ *   success / partial — its data landed and last_synced_at was stamped
+ *                       (partial: with failed months or reconciliation gaps)
+ *   paused            — stopped by Xero's daily request limit; not stamped
+ *   error             — the org's sync broke off (token refused, 403, …); not stamped
+ */
+export type TenantSyncOutcome = {
+  tenant_id: string
+  tenant_name: string | null
+  status: 'success' | 'partial' | 'paused' | 'error'
+}
+
 export type SyncOptions = {
   fyOverride?: number
   tenantIdFilter?: string
+  /**
+   * Called once for every org the run attempts, as it finishes. For a caller
+   * that must say WHICH org failed (the dashboard's Sync Xero button) —
+   * SyncResult only carries the business rollup. A callback rather than a
+   * SyncResult field so the cron's results and the FX flag-off golden stay
+   * byte-identical.
+   */
+  onTenantOutcome?: (outcome: TenantSyncOutcome) => void
 }
 
 // ─── Date helpers ───────────────────────────────────────────────────────────
@@ -239,6 +260,21 @@ function monthTagToMonthEnd(periodMonth: string): string {
   return lastDayOfMonth(y, m)
 }
 
+/**
+ * `error` of a SyncResult refused because another sync of the business holds
+ * the single-flight lock — not a failure of this business's Xero. Exported so
+ * callers can tell the two apart without string-sniffing.
+ */
+export const SYNC_IN_FLIGHT =
+  'Another sync for this business is already in progress (within 15-minute staleness window).'
+
+/**
+ * `error` of a SyncResult for a business with no active Xero connection. Only
+ * ever a real answer: a failed connection lookup throws instead.
+ */
+export const SYNC_NO_CONNECTIONS =
+  'No active xero_connections for this business. Connect Xero before syncing.'
+
 function inFlightRejectionResult(businessId: string): SyncResult {
   return {
     business_id: businessId,
@@ -249,8 +285,7 @@ function inFlightRejectionResult(businessId: string): SyncResult {
     xero_request_count: 0,
     coverage: { months_covered: 0, first_period: '', last_period: '', expected_months: 24 },
     reconciliation: { status: 'ok', discrepancy_count: 0 },
-    error:
-      'Another sync for this business is already in progress (within 15-minute staleness window).',
+    error: SYNC_IN_FLIGHT,
   }
 }
 
@@ -702,16 +737,25 @@ export async function syncBusinessXeroPL(
     const fyWindows: Window[] = [currentWindow, priorWindow]
 
     // 4. Iterate active xero_connections (multi-org per D-09).
-    const { data: connections } = await supabase
+    const { data: connections, error: connectionsError } = await supabase
       .from('xero_connections')
       .select('id, tenant_id, tenant_name, business_id')
       .in('business_id', ids.all)
       .eq('is_active', true)
 
+    // postgrest-js resolves a failed query into {data: null, error}. Falling
+    // through, a lookup failure reported "no active connections — connect
+    // Xero" for a business that IS connected. Throw so the catch below records
+    // the failure it actually is.
+    if (connectionsError) {
+      throw new Error(
+        `xero_connections lookup failed: ${(connectionsError as any)?.message ?? String(connectionsError)}`,
+      )
+    }
+
     if (!Array.isArray(connections) || connections.length === 0) {
       finalStatus = 'error'
-      finalError =
-        'No active xero_connections for this business. Connect Xero before syncing.'
+      finalError = SYNC_NO_CONNECTIONS
       return {
         business_id: businessId,
         status: 'error',
@@ -745,6 +789,18 @@ export async function syncBusinessXeroPL(
     let tenantPausedCount = 0
     let tenantSuccessCount = 0
 
+    const reportTenantOutcome = (
+      conn: { tenant_id: string | null; tenant_name: string | null },
+      status: TenantSyncOutcome['status'],
+    ) => {
+      if (!opts.onTenantOutcome) return
+      try {
+        opts.onTenantOutcome({ tenant_id: conn.tenant_id ?? '', tenant_name: conn.tenant_name ?? null, status })
+      } catch {
+        // A caller's reporting hook must never fail the sync.
+      }
+    }
+
     console.log('[syncBusinessXeroPL] connections:', connections.length, 'currentFY:', currentFY, 'priorFY:', priorFY, 'fyStartMonth:', fyStartMonth)
 
     for (const conn of connections) {
@@ -771,6 +827,7 @@ export async function syncBusinessXeroPL(
         }
         console.warn('[syncBusinessXeroPL] skipping connection with empty tenant_id:', conn.id)
         tenantErrorCount += 1
+        reportTenantOutcome(conn, 'error')
         continue
       }
 
@@ -1377,6 +1434,27 @@ export async function syncBusinessXeroPL(
         // tenant per run when any month kept its merged row.
         fxRun?.report()
 
+        // Nothing landed, and something failed: every P&L month and every
+        // balance-sheet date was refused or broke (e.g. Xero answers
+        // /Organisation and /Accounts but 403s every report). Graded 'partial',
+        // this org's freshness clock below would move with no data behind it —
+        // a refused org reading fresh. It did not sync: send it to the tenant
+        // catch as an error. An org whose fetches all succeeded but hold no rows
+        // (a new, empty file) has no failure and is unaffected.
+        const tenantNothingLanded =
+          tenantRowsInserted === 0 &&
+          (tenantMonthsFailed.length > 0 ||
+            tenantDiscrepancies.length > 0 ||
+            bsResult.monthsFailed.length > 0 ||
+            bsResult.unbalancedDates.length > 0)
+        if (tenantNothingLanded) {
+          const plMonthsAttempted = fyWindows.reduce((s, w) => s + w.monthsToFetch.length, 0)
+          throw new Error(
+            `No data landed for tenant ${conn.tenant_id}: pl months failed ${tenantMonthsFailed.length}/${plMonthsAttempted}, ` +
+              `bs dates failed ${bsResult.monthsFailed.length}, unbalanced ${bsResult.unbalancedDates.length}`,
+          )
+        }
+
         // 4h. Per-tenant terminal UPDATE.
         const tenantExpectedTotal = fyWindows.reduce((s, w) => s + w.expectedMonths, 0)
         const tenantCoverage = aggregateCoverage(tenantCoveragePerWindow, tenantExpectedTotal)
@@ -1475,6 +1553,7 @@ export async function syncBusinessXeroPL(
             )
           }
         }
+        reportTenantOutcome(conn, tenantStatus)
       } catch (err) {
         // (W3) Per-tenant exception. Mark tenant 'paused' for daily-rate
         // limit, otherwise 'error'. Continue to next tenant.
@@ -1483,6 +1562,7 @@ export async function syncBusinessXeroPL(
         const isPaused = err instanceof RateLimitDailyExceededError || tenantPaused
         if (isPaused) tenantPausedCount++
         else tenantErrorCount++
+        reportTenantOutcome(conn, isPaused ? 'paused' : 'error')
         if (tenantJobId !== null) {
           await supabase
             .from('sync_jobs')
@@ -1561,8 +1641,13 @@ export async function syncBusinessXeroPL(
     // stuck. Fill the gap here, where every sync path converges. Non-fatal and
     // strictly zero-mappings-only: autoMapIfUnmapped never touches a business
     // that has any rows, and never throws (failures are Sentry-tagged inside).
+    //
+    // account_mappings.business_id is businesses.id (FK), so pass bizId, never
+    // the raw input: a business_profiles.id (what the dashboard's Sync Xero
+    // button posts) counted zero mappings for every business and tried to
+    // insert a full set under the wrong id — an FK error on every press.
     if (finalStatus !== 'error' && rowsInserted + rowsUpdated > 0) {
-      const autoMap = await autoMapIfUnmapped(supabase, businessId)
+      const autoMap = await autoMapIfUnmapped(supabase, bizId)
       if (autoMap.triggered) {
         Sentry.captureMessage('[Sync] Auto-mapped previously unmapped business', {
           level: 'info' as any,
