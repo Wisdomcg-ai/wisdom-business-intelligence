@@ -612,7 +612,14 @@ export interface SubscriptionVendorLine {
    * Variance is still against `budget`, the gross vendor budget. Absent on the
    * stored history (the harness) and on responses from before it existed.
    */
-  statement?: { prior_month_actual: number; actual: number; variance: number; months?: Record<string, number> }
+  statement?: { prior_month_actual: number; actual: number; variance: number; months?: Record<string, number>; by_tenant?: Record<string, number> }
+  /**
+   * The report month per Xero organisation, for a page that prints a column
+   * each (Calxa's Dragon · Easy Hail — DRG-30). In the same money as `actual`,
+   * every organisation stated in the report's currency. Absent on a
+   * single-organisation business, the stored history, and older responses.
+   */
+  by_tenant?: Record<string, number>
   /**
    * The vendor month by month, gross, over the window the caller asked for
    * (`months` on the route; the Contractors Payment Summary's three) — a month
@@ -659,6 +666,8 @@ export interface SubscriptionAccountGroup {
    * a client onto the store does not move this page unasked.
    */
   pre_budget_store_total?: { budget: number; variance: number; source: 'forecast' | 'vendor_sum' }
+  /** The account's report month per organisation, from the ledger, for the per-entity columns. */
+  total_by_tenant?: Record<string, number>
   /** Lines left out of every vendor's `statement` figure because they could not be stated in the organisation's currency (the gross figures include them). */
   unconverted?: SubscriptionUnconvertedLine[]
   /** The account over the window the caller asked for. Absent when none was. */
@@ -738,6 +747,16 @@ export interface SubscriptionDetailData {
    * printing vendor figures.
    */
   statement_unavailable?: { reason: 'mixed_currencies'; currencies: (string | null)[] }
+  /**
+   * The page could not be produced at all: an organisation keeps its books in
+   * another currency and a month it reads has no rate stored, so nothing can
+   * be stated in the report's currency (IICT-35). `accounts` is empty and the
+   * page prints this reason instead of figures — never a total that is two
+   * currencies added together.
+   */
+  translation_unavailable?: { missing: { currency_pair: string; period: string }[]; organisations: string[] }
+  /** The organisations read, in the coach's display order, for the per-entity columns. */
+  tenants?: { tenant_id: string; name: string }[]
   /** A budget-store client only: grand_total.budget as it was before the store (see pre_budget_store_total). */
   pre_budget_store_grand_budget?: number
 }

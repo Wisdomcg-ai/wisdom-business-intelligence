@@ -29,6 +29,8 @@ import {
   type BudgetRowForVariance,
   type VendorActualForVariance,
 } from '@/lib/subscriptions/variance'
+import { buildSubscriptionFx, translationRefusal, type SubscriptionFx } from './subscription-fx'
+import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId'
 import type { SubscriptionAccountWindow, SubscriptionDetailData, SubscriptionUnconvertedLine } from '@/app/finances/monthly-report/types'
 
 type Client = any
@@ -63,6 +65,11 @@ export interface VendorAccumulation {
    */
   months?: Record<string, number>
   statement_months?: Record<string, number>
+  /**
+   * The report month per organisation, for a page that prints a column each
+   * (Calxa's Dragon · Easy Hail, DRG-30). In the same money as `actual`.
+   */
+  by_tenant?: Record<string, { actual: number; statement_actual: number }>
 }
 
 export interface SubscriptionCrawl {
@@ -117,6 +124,14 @@ export function addSubscriptionLine(
   line: {
     accountCode: string; vendorName: string; vendorKey?: string; amount: number; statementAmount?: number
     isCurrent: boolean; tenantId: string
+    /**
+     * What this organisation's money is multiplied by to state it in the
+     * report's currency (subscription-fx). 1, or absent, for every
+     * single-organisation business and every organisation already in it.
+     * The write-through keeps the organisation's OWN figure: its history is
+     * its ledger's, not this report's presentation.
+     */
+    rate?: number
     /** The line's month, for a caller that asked for a window. */
     month?: string
     /**
@@ -129,7 +144,9 @@ export function addSubscriptionLine(
   const accountVendors = crawl.vendorData.get(line.accountCode)
   if (!accountVendors) return
   const vendorKey = line.vendorKey ?? createVendorKey(line.vendorName)
-  const stated = line.statementAmount ?? line.amount
+  const rate = line.rate ?? 1
+  const amount = line.amount * rate
+  const stated = (line.statementAmount ?? line.amount) * rate
   let existing = accountVendors.get(vendorKey)
   if (line.windowOnly) {
     if (!line.month) return
@@ -138,29 +155,35 @@ export function addSubscriptionLine(
       existing = { vendor_name: line.vendorName, actual: 0, prior_actual: 0, transaction_count: 0, statement_actual: 0, statement_prior_actual: 0 }
       accountVendors.set(vendorKey, existing)
     }
-    addToMonth(existing, line.month, line.amount, stated)
+    addToMonth(existing, line.month, amount, stated)
     return
   }
   if (existing) {
     if (line.isCurrent) {
-      existing.actual += line.amount
+      existing.actual += amount
       existing.statement_actual += stated
       existing.transaction_count += 1
     } else {
-      existing.prior_actual += line.amount
+      existing.prior_actual += amount
       existing.statement_prior_actual += stated
     }
   } else {
     accountVendors.set(vendorKey, {
       vendor_name: line.vendorName,
-      actual: line.isCurrent ? line.amount : 0,
-      prior_actual: line.isCurrent ? 0 : line.amount,
+      actual: line.isCurrent ? amount : 0,
+      prior_actual: line.isCurrent ? 0 : amount,
       transaction_count: line.isCurrent ? 1 : 0,
       statement_actual: line.isCurrent ? stated : 0,
       statement_prior_actual: line.isCurrent ? 0 : stated,
     })
   }
-  if (line.month) addToMonth(accountVendors.get(vendorKey)!, line.month, line.amount, stated)
+  if (line.month) addToMonth(accountVendors.get(vendorKey)!, line.month, amount, stated)
+  if (line.isCurrent) {
+    const vendor = accountVendors.get(vendorKey)!
+    vendor.by_tenant = vendor.by_tenant ?? {}
+    const forTenant = vendor.by_tenant[line.tenantId] ?? { actual: 0, statement_actual: 0 }
+    vendor.by_tenant[line.tenantId] = { actual: forTenant.actual + amount, statement_actual: forTenant.statement_actual + stated }
+  }
   if (line.isCurrent) {
     let perTenant = crawl.tenantMonthActuals.get(line.tenantId)
     if (!perTenant) { perTenant = new Map(); crawl.tenantMonthActuals.set(line.tenantId, perTenant) }
@@ -220,12 +243,35 @@ export function sumSubscriptionPlActuals(
     reportMonth: string
     priorMonth: string
     windowMonths: readonly string[]
+    /**
+     * The codes one organisation's rows may be read under — for a business
+     * whose organisations use different codes for the same account (Dragon's
+     * Virtual Contractors is 2300 and Easy Hail's 508). Absent: every code.
+     */
+    codesForTenant?: (tenantId: string) => readonly string[]
+    /**
+     * What an organisation's figures for a month are multiplied by to state
+     * them in the report's currency (subscription-fx). A null rate is a month
+     * that cannot be stated at all: the code is left out of `actuals`
+     * altogether and named in `untranslated`.
+     */
+    rateFor?: (tenantId: string, month: string) => number | null
   },
-): { actuals: Map<string, number>; priorActuals: Map<string, number>; windowActuals: Map<string, Record<string, number>> } {
-  const { accountCodes, accountNames, reportMonth, priorMonth, windowMonths } = opts
+): {
+  actuals: Map<string, number>
+  priorActuals: Map<string, number>
+  windowActuals: Map<string, Record<string, number>>
+  /** The report month per organisation, for a page that prints a column each. */
+  byTenant: Map<string, Record<string, number>>
+  /** Organisations whose months could not all be translated. */
+  untranslated: string[]
+} {
+  const { accountCodes, accountNames, reportMonth, priorMonth, windowMonths, codesForTenant, rateFor } = opts
   const actuals = new Map<string, number>()
   const priorActuals = new Map<string, number>()
   const windowActuals = new Map<string, Record<string, number>>()
+  const byTenant = new Map<string, Record<string, number>>()
+  const untranslated = new Set<string>()
   // The view is one row per LEDGER row: org × account_id × code × section.
   // A business with two orgs on the account (Dragon Roofing: 485
   // Subscriptions in both) has a row per org, and an org carries a row per
@@ -237,44 +283,74 @@ export function sumSubscriptionPlActuals(
   // So each org's rows are SUMMED — a superseded row adds only the months it
   // holds — then made absolute per org and added across orgs. The key leaves
   // out business_id only, so a row read once per id-space is counted once.
-  // Orgs in different currencies are summed as the vendor rows are; the
-  // response's statement_unavailable is what says so.
+  // Orgs in another currency are translated first (subscription-fx); where
+  // that is not possible the page prints nothing rather than two currencies
+  // added together.
   const perTenant = new Map<string, Map<string, Map<string, Record<string, number>>>>()
   for (const pl of plLines) {
-    const code = accountCodes.find(c => accountNames.get(c) === pl.account_name)
-    if (!code) continue
-    const byTenant = perTenant.get(code) ?? new Map<string, Map<string, Record<string, number>>>()
     const tenant = pl.tenant_id ?? ''
-    const ledgerRows = byTenant.get(tenant) ?? new Map<string, Record<string, number>>()
+    // The account this row belongs to: one of the codes this organisation
+    // reads whose name it carries. Where two of them share a name (the same
+    // account under a different code in each org), the row's own code decides.
+    const candidates = (codesForTenant ? codesForTenant(tenant) : accountCodes).filter((c) => accountNames.get(c) === pl.account_name)
+    const code = candidates.length > 1
+      ? candidates.find((c) => c === String(pl.account_code ?? '').trim()) ?? candidates[0]
+      : candidates[0]
+    if (!code) continue
+    const byTenantRows = perTenant.get(code) ?? new Map<string, Map<string, Record<string, number>>>()
+    const ledgerRows = byTenantRows.get(tenant) ?? new Map<string, Record<string, number>>()
     const ledgerKey = [pl.account_id, pl.account_code, pl.account_type, pl.section].map(v => v ?? '').join('|')
     ledgerRows.set(ledgerKey, pl.monthly_values || {})
-    byTenant.set(tenant, ledgerRows)
-    perTenant.set(code, byTenant)
+    byTenantRows.set(tenant, ledgerRows)
+    perTenant.set(code, byTenantRows)
   }
-  for (const [code, byTenant] of perTenant) {
+  const rateOf = (tenant: string, month: string) => (rateFor ? rateFor(tenant, month) : 1)
+  for (const [code, byTenantRows] of perTenant) {
     let actual = 0
     let prior = 0
     const window: Record<string, number> = {}
-    for (const ledgerRows of byTenant.values()) {
-      const month = (m: string) => Math.abs([...ledgerRows.values()].reduce((sum, values) => sum + (values[m] || 0), 0))
-      actual += month(reportMonth)
-      prior += month(priorMonth)
-      for (const m of windowMonths) window[m] = (window[m] ?? 0) + month(m)
+    const tenantActuals: Record<string, number> = {}
+    for (const [tenant, ledgerRows] of byTenantRows) {
+      const month = (m: string) => {
+        const rate = rateOf(tenant, m)
+        if (rate === null) { untranslated.add(tenant); return null }
+        return Math.abs([...ledgerRows.values()].reduce((sum, values) => sum + (values[m] || 0), 0) * rate)
+      }
+      const current = month(reportMonth)
+      if (current !== null) {
+        actual += current
+        tenantActuals[tenant] = Math.round(current * 100) / 100
+      }
+      prior += month(priorMonth) ?? 0
+      for (const m of windowMonths) window[m] = (window[m] ?? 0) + (month(m) ?? 0)
     }
     actuals.set(code, Math.round(actual * 100) / 100)
     priorActuals.set(code, Math.round(prior * 100) / 100)
+    byTenant.set(code, tenantActuals)
     if (windowMonths.length > 0) {
       for (const m of windowMonths) window[m] = Math.round(window[m] * 100) / 100
       windowActuals.set(code, window)
     }
   }
-  return { actuals, priorActuals, windowActuals }
+  return { actuals, priorActuals, windowActuals, byTenant, untranslated: [...untranslated] }
 }
 
 export interface SubscriptionAssembleInput {
   business_id: string
   report_month: string
   account_codes: string[]
+  /**
+   * The codes each organisation posts these accounts under, when they differ
+   * (Dragon's Virtual Contractors is 2300 and Easy Hail's 508 — DRG-29).
+   * Absent: every organisation is read on every code, as it always was.
+   */
+  account_codes_by_tenant?: Record<string, string[]>
+  /**
+   * The rates that state every organisation in one currency (subscription-fx).
+   * The route builds it once for the crawl; a caller without one (the preview
+   * harness) has it built here from the same connections and rates.
+   */
+  fx?: SubscriptionFx
   /**
    * Months to report each account and vendor across (contractor-page windowMonthKeys), for a
    * page that prints more than this month and last. Empty or absent: no
@@ -308,6 +384,39 @@ export async function assembleSubscriptionDetail(
   const { business_id, report_month, account_codes } = input
   const priorMonthKey = priorMonthKeyOf(report_month)
   const windowMonths = input.window_months ?? []
+  const monthsRead = [report_month, priorMonthKey, ...windowMonths]
+
+  // Every organisation in one currency, or the page cannot be produced
+  // (IICT-35). The route hands its own, built before the crawl; anyone else
+  // gets it from the same rows.
+  let fx = input.fx
+  if (!fx) {
+    try {
+      const { connections } = await resolveXeroConnections(supabase, business_id)
+      fx = await buildSubscriptionFx(supabase, connections ?? [], monthsRead)
+    } catch (err) {
+      Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: '[SubscriptionDetail] Failed to read the organisations\' currencies' } } as any)
+      fx = { orgs: [], translates: false, rateFor: () => 1, missing: [], untranslatable: [] }
+    }
+  }
+  if (fx.translates && fx.missing.length > 0) {
+    // Fail closed: a page of figures in two currencies at once is worse than
+    // no page. The caller prints the reason.
+    return {
+      data: {
+        ...emptySubscriptionDetail(report_month),
+        complete: false,
+        incomplete_reason: translationRefusal(fx),
+        translation_unavailable: { missing: fx.missing, organisations: fx.untranslatable },
+        tenants: fx.orgs.map((o) => ({ tenant_id: o.tenant_id, name: o.name })),
+      } as SubscriptionDetailData,
+      configuredSubscriptionCodes: [],
+    }
+  }
+  const multiOrg = fx.orgs.length > 1
+  const codesForTenant = input.account_codes_by_tenant
+    ? (tenantId: string) => input.account_codes_by_tenant![tenantId] ?? account_codes
+    : undefined
 
   // Fetch per-vendor budgets from subscription_budgets.
   // Need vendor_name + account_codes so we can backfill budget-only vendors
@@ -409,6 +518,8 @@ export async function assembleSubscriptionDetail(
   const plPriorActuals = new Map<string, number>()
   /** code → month → the ledger's figure, over the window (when one was asked for). */
   const plWindowActuals = new Map<string, Record<string, number>>()
+  /** code → organisation → the report month's figure, for the per-entity columns. */
+  const plByTenant = new Map<string, Record<string, number>>()
   try {
     const accountNames = account_codes
       .map(code => crawl.accountNames.get(code))
@@ -434,10 +545,13 @@ export async function assembleSubscriptionDetail(
         reportMonth: report_month,
         priorMonth: priorMonthKey,
         windowMonths,
+        codesForTenant,
+        rateFor: fx.translates ? fx.rateFor : undefined,
       })
       for (const [code, v] of totals.actuals) plActuals.set(code, v)
       for (const [code, v] of totals.priorActuals) plPriorActuals.set(code, v)
       for (const [code, v] of totals.windowActuals) plWindowActuals.set(code, v)
+      for (const [code, v] of totals.byTenant) plByTenant.set(code, v)
     }
   } catch (err) {
     Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch P&L actuals" } } as any)
@@ -744,6 +858,11 @@ export async function assembleSubscriptionDetail(
             variance: Math.round((budget - data.actual) * 100) / 100,
             transaction_count: data.transaction_count,
             category: categoryMap.get(vendorKey) ?? null,
+            // Only a business with more than one organisation has a split to
+            // print: every other client's row is the row it always was.
+            ...(multiOrg && data.by_tenant
+              ? { by_tenant: Object.fromEntries(Object.entries(data.by_tenant).map(([t, v]) => [t, Math.round(v.actual * 100) / 100])) }
+              : {}),
             ...(windowMonths.length > 0 ? { months: monthsOf(data.months) } : {}),
             // Additive: the default fields above are the gross figures every
             // client's page has always printed.
@@ -754,6 +873,9 @@ export async function assembleSubscriptionDetail(
                     actual: Math.round(data.statement_actual * 100) / 100,
                     variance: Math.round((budget - data.statement_actual) * 100) / 100,
                     ...(windowMonths.length > 0 ? { months: monthsOf(data.statement_months) } : {}),
+                    ...(multiOrg && data.by_tenant
+                      ? { by_tenant: Object.fromEntries(Object.entries(data.by_tenant).map(([t, v]) => [t, Math.round(v.statement_actual * 100) / 100])) }
+                      : {}),
                   },
                 }
               : {}),
@@ -811,6 +933,7 @@ export async function assembleSubscriptionDetail(
         account_code: code,
         account_name: crawl.accountNames.get(code) || code,
         vendors,
+        ...(multiOrg && plByTenant.has(code) ? { total_by_tenant: plByTenant.get(code)! } : {}),
         total_prior_month: Math.round(totalPrior * 100) / 100,
         total_actual: Math.round(totalActual * 100) / 100,
         total_budget: Math.round(totalBudget * 100) / 100,
@@ -883,6 +1006,7 @@ export async function assembleSubscriptionDetail(
       },
       report_month,
       leakage,
+      ...(multiOrg ? { tenants: fx.orgs.map((o) => ({ tenant_id: o.tenant_id, name: o.name })) } : {}),
       ...(onBudgetStore ? { pre_budget_store_grand_budget: Math.round(grandPreBudgetStoreBudget * 100) / 100 } : {}),
     } as SubscriptionDetailData,
     configuredSubscriptionCodes,

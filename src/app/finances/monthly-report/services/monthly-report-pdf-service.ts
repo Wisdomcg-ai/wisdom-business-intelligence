@@ -1425,6 +1425,19 @@ export class MonthlyReportPDFService {
    * The amber "couldn't check" card. A page that cannot be produced must still
    * be a page, and must say why in words the owner can act on.
    */
+  /**
+   * Why a vendor page has no figures: an organisation keeps its books in
+   * another currency and a month the page reads has no rate stored, so nothing
+   * on it can be stated in the report's currency (IICT-35). Printed instead of
+   * the table, never beside a total that added two currencies together.
+   */
+  private translationRefusalLine(
+    unavailable: { missing: { currency_pair: string; period: string }[]; organisations: string[] },
+  ): string {
+    const orgs = unavailable.organisations.length > 0 ? unavailable.organisations.join(' and ') : 'an organisation'
+    return `This page is not printed: ${describeMissingRates(unavailable.missing)}, so ${orgs} cannot be shown in Australian dollars.`
+  }
+
   private drawReasonCard(message: string): void {
     const width = this.pageWidth - this.margin * 2
     this.doc.setFontSize(10)
@@ -2282,7 +2295,13 @@ export class MonthlyReportPDFService {
     const report = this.options.subscriptionDetail!
     const parsed = parseSubscriptionPageConfig(widget?.config)
     if (parsed.config.layout === 'calxa') {
-      this.addSubscriptionSheetPage(report, parsed.config)
+      this.addSubscriptionSheetPage(report, parsed.config, widget?.titleOverride)
+      return
+    }
+    if (report.translation_unavailable) {
+      this.addPage('portrait')
+      this.drawPageTitle(`Subscription Analysis — ${this.formatMonth(this.report.report_month)}`)
+      this.drawReasonCard(this.translationRefusalLine(report.translation_unavailable))
       return
     }
     // The gross document amounts unless the placement asked for net: 'gross'
@@ -2403,29 +2422,41 @@ export class MonthlyReportPDFService {
   private addSubscriptionSheetPage(
     detail: SubscriptionDetailData,
     config: import('@/lib/monthly-report/subscription-page').SubscriptionPageConfig,
+    titleOverride?: string,
   ): void {
     this.addPage('portrait')
     const model = buildSubscriptionPageModel(detail, config)
-    this.drawPageTitle(`${model.title} — ${this.formatMonth(this.report.report_month)}`)
+    // The client's own sheet has its own name — IICT's is "Dues & Subscriptions
+    // Summary". Without this the page could only be titled after the account.
+    this.drawPageTitle(`${(titleOverride ?? '').trim() || model.title} — ${this.formatMonth(this.report.report_month)}`)
+    if (detail.translation_unavailable) {
+      this.drawReasonCard(this.translationRefusalLine(detail.translation_unavailable))
+      return
+    }
 
     const reportMonth = detail.report_month || this.report.report_month
     const kinds = model.rows.map((r) => r.kind)
     const noBudget = model.rows.map((r) => !!r.no_budget)
+    // Calxa p15 puts each organisation's actual before the total, under one
+    // "Actual" band: Dragon 4,729 · Easy Hail 1,786 · 6,515 (DRG-30).
+    const entities = model.entities ?? []
     const body = model.rows.map((r) => [
       r.label,
       this.fmtCurrency(r.prior_month),
       r.no_budget ? '—' : this.fmtCurrency(r.budget),
+      ...entities.map((_e, i) => this.fmtCurrency(r.by_tenant?.[i] ?? 0)),
       this.fmtCurrency(r.actual),
       r.no_budget ? '—' : this.fmtVariance(r.variance),
     ])
     const variances = model.rows.map((r) => r.variance)
+    const varianceCol = 4 + entities.length
 
     autoTable(this.doc, {
       startY: this.yPosition,
-      head: [['Name', 'Last Month', 'Budget', sheetMonthLabel(reportMonth), 'Variance']],
+      head: [['Name', 'Last Month', 'Budget', ...entities.map((e) => e.name), sheetMonthLabel(reportMonth), 'Variance']],
       body,
-      ...packTableStyles(9),
-      columnStyles: { 0: { cellWidth: 60 } },
+      ...packTableStyles(entities.length > 0 ? 8 : 9),
+      columnStyles: { 0: { cellWidth: entities.length > 0 ? 45 : 60 } },
       margin: { left: this.margin, right: this.margin },
       didParseCell: (data) => {
         const col = data.column.index
@@ -2450,7 +2481,7 @@ export class MonthlyReportPDFService {
           data.cell.styles.lineColor = [...RULE_STRONG] as RGB
         }
         // A dash is not a verdict: no fill, green or red.
-        if (col === 4 && !noBudget[data.row.index]) {
+        if (col === varianceCol && !noBudget[data.row.index]) {
           data.cell.styles.fillColor = [...(varianceFill(variances[data.row.index]) === 'unfavourable' ? SHEET_VARIANCE_RED : SHEET_VARIANCE_GREEN)] as RGB
         }
       },

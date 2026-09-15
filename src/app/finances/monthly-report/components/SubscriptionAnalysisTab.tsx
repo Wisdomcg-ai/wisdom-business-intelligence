@@ -57,6 +57,23 @@ export default function SubscriptionAnalysisTab({ data, isLoading, error, onOpen
     )
   }
 
+  // Could not be checked, not "nothing spent": an organisation keeps its books
+  // in another currency and a month this page reads has no rate stored, so
+  // nothing on it can be stated in Australian dollars (IICT-35).
+  if (data?.translation_unavailable) {
+    const { missing, organisations } = data.translation_unavailable
+    const months = [...new Set(missing.map((m) => m.period))].sort().join(', ')
+    const pairs = [...new Set(missing.map((m) => m.currency_pair))].join(', ')
+    return (
+      <div className="mb-6 p-4 bg-amber-50 rounded-lg border border-amber-200 max-w-3xl">
+        <p className="text-sm text-amber-900">
+          These subscriptions cannot be shown this month: no {pairs} exchange rate is stored for {months}, so{' '}
+          {organisations.join(' and ')} cannot be shown in Australian dollars. Load the rates under Admin, Consolidation.
+        </p>
+      </div>
+    )
+  }
+
   if (!data || data.accounts.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow-sm p-8 text-center max-w-3xl">
