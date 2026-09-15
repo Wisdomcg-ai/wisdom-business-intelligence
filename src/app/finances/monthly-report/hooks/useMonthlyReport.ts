@@ -21,7 +21,7 @@
  * BudgetVsActualTable already handles `has_budget: false` gracefully.
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type {
   GeneratedReport,
@@ -69,6 +69,11 @@ const CATEGORY_ORDER: ReportCategory[] = [
  * a clean reconciliation gate", and Finalise was enabled — for IICT while one
  * of its three Xero organisations had refused every sync since 10 Sep
  * (IICT-04, DRG-02). Absent is fail-closed: a draft.
+ *
+ * `consolidation_fx` is the response's own missing-rate list, so pre-flight
+ * checks the rates of these figures rather than of whichever per-entity report
+ * the page holds. A response without fx_context records nothing — never a
+ * clean list it did not see.
  *
  * Exported for unit tests.
  */
@@ -229,6 +234,15 @@ export function adaptConsolidatedToGeneratedReport(
     budget_forecast_id: null,
   }
 
+  const missingRates = consolidated?.fx_context?.missing_rates
+  const consolidationFx = Array.isArray(missingRates)
+    ? {
+        missing_rates: missingRates
+          .filter((r: any) => r && typeof r.currency_pair === 'string' && typeof r.period === 'string')
+          .map((r: any) => ({ currency_pair: r.currency_pair, period: r.period })),
+      }
+    : undefined
+
   return {
     business_id: businessId,
     report_month: reportMonth,
@@ -243,10 +257,26 @@ export function adaptConsolidatedToGeneratedReport(
     unreconciled_count: Math.max(0, Math.round(draft.unreconciledCount || 0)),
     has_budget: hasBudget,
     is_consolidation: true,
+    ...(consolidationFx ? { consolidation_fx: consolidationFx } : {}),
   }
 }
 
-export function useMonthlyReport(businessId: string) {
+export interface UseMonthlyReportOptions {
+  /**
+   * Receives the consolidated response a Generate adapted, with the month and
+   * fiscal year it was built for. The page primes its per-entity cache with it
+   * (useConsolidatedReport.prime), so the export prints that page from the
+   * same generation as the statements — and does not refuse on, or pass on,
+   * a report the cache held from an earlier month or an earlier Generate.
+   */
+  onConsolidatedReport?: (report: any, reportMonth: string, fiscalYear: number) => void
+}
+
+export function useMonthlyReport(businessId: string, options?: UseMonthlyReportOptions) {
+  // A ref, so a caller's inline callback does not give generateReport a new
+  // identity every render.
+  const onConsolidatedReportRef = useRef(options?.onConsolidatedReport)
+  onConsolidatedReportRef.current = options?.onConsolidatedReport
   const [report, setReport] = useState<GeneratedReport | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -362,6 +392,7 @@ export function useMonthlyReport(businessId: string) {
             { isDraft: forceDraft !== false, unreconciledCount: unreconciledCount ?? 0 },
           )
           setReport(adapted)
+          onConsolidatedReportRef.current?.(data.report, reportMonth, fiscalYear)
           return adapted
         }
 

@@ -42,7 +42,7 @@ import { getForecastFiscalYear } from '@/app/finances/forecast/utils/fiscal-year
 import { findPackForecast } from '@/lib/forecast/select-forecast'
 import { packLoadsCashflow } from '@/lib/monthly-report/pack-cashflow-gate'
 import { useMonthlyReport } from './hooks/useMonthlyReport'
-import { useConsolidatedReport } from './hooks/useConsolidatedReport'
+import { useConsolidatedReport, cachedConsolidatedFor } from './hooks/useConsolidatedReport'
 import { useFullYearReport } from './hooks/useFullYearReport'
 import { useSubscriptionDetail } from './hooks/useSubscriptionDetail'
 import { rollUpContractors, contractorLoadReason } from '@/lib/monthly-report/contractor-rollup'
@@ -255,7 +255,11 @@ export default function MonthlyReportPage() {
   // tenants. Drives the multi-currency redirect toast text so the operator
   // sees the actual currencies (e.g. "AUD + HKD") instead of a generic label.
   const [activeCurrencies, setActiveCurrencies] = useState<string[]>([])
+  // The same currencies for pre-flight, where "could not be read" (null) must
+  // not pass as "all AUD" the way the redirect's false does.
+  const [foreignCurrencies, setForeignCurrencies] = useState<string[] | null>(null)
   useEffect(() => {
+    setForeignCurrencies(null)
     if (!businessId) {
       setIsMultiCurrency(false)
       setActiveCurrencies([])
@@ -278,6 +282,7 @@ export default function MonthlyReportPage() {
         const fx = includedCurrencies.some((c: string) => c !== 'AUD')
         setIsMultiCurrency(fx)
         setActiveCurrencies(includedCurrencies)
+        setForeignCurrencies(includedCurrencies.filter((c: string) => c !== 'AUD'))
       })
       .catch(() => {
         if (!aborted) {
@@ -314,6 +319,10 @@ export default function MonthlyReportPage() {
   }, [isMultiCurrency, activeTab, businessId, activeCurrencies, userRole])
 
   // Hooks
+  // A consolidated Generate hands its response to the per-entity cache below
+  // (declared after this hook, hence the ref), so the export prints and
+  // pre-flights the generation the statements came from.
+  const primeConsolidatedRef = useRef<((report: any, reportMonth: string, fiscalYear: number) => void) | null>(null)
   const {
     report,
     isLoading: reportLoading,
@@ -326,7 +335,9 @@ export default function MonthlyReportPage() {
     dataQuality,
     perTenantQuality,
     qualityCheckFailed,
-  } = useMonthlyReport(businessId)
+  } = useMonthlyReport(businessId, {
+    onConsolidatedReport: (r, m, fy) => primeConsolidatedRef.current?.(r, m, fy),
+  })
 
   // Phase 34: consolidated-specific payload (per-entity columns + FX context).
   // `isConsolidationGroup` is the single source of truth — useMonthlyReport
@@ -334,11 +345,14 @@ export default function MonthlyReportPage() {
   // from the browser and agree on the value.
   const {
     report: consolidatedReport,
+    reportFor: consolidatedReportFor,
     isLoading: consolidatedLoading,
     error: consolidatedError,
     generateConsolidated,
+    prime: primeConsolidated,
     clear: clearConsolidated,
   } = useConsolidatedReport(businessId)
+  primeConsolidatedRef.current = primeConsolidated
 
   // Phase 34 Iteration 34.1 — consolidated Balance Sheet payload.
   // `isConsolidationGroup` in this hook agrees with the P&L hook above
@@ -1418,14 +1432,19 @@ export default function MonthlyReportPage() {
     }
 
     // WD.6 — per-entity consolidated report for consolidation parents. Reuses
-    // the tab's cache; the generator returns the report directly so the PDF
-    // never depends on the coach having opened the tab (the D-07 class).
+    // the tab's cache — only when it was built for the month being exported
+    // (it held July's under an August export, and pre-flight checked July's
+    // exchange rates); Generate primes it with its own response. The generator
+    // returns the report directly so the PDF never depends on the coach having
+    // opened the tab (the D-07 class).
     let consolidated: import('./utils/consolidated-rows').ConsolidatedReportVM | undefined
     if (isConsolidationGroup && userRole !== 'client') {
+      const consolidatedMonth = report?.report_month ?? selectedMonth
+      const consolidatedFY = report?.fiscal_year ?? fiscalYear
       try {
         consolidated =
-          (consolidatedReport as any) ||
-          ((await generateConsolidated(selectedMonth, fiscalYear)) as any) ||
+          cachedConsolidatedFor({ report: consolidatedReport, reportFor: consolidatedReportFor }, consolidatedMonth, consolidatedFY) ||
+          ((await generateConsolidated(consolidatedMonth, consolidatedFY)) as any) ||
           undefined
       } catch (err) {
         Sentry.captureException(err, { tags: { invariant: 'pdf-consolidated-load' } } as any)
@@ -1638,6 +1657,7 @@ export default function MonthlyReportPage() {
         cashflowReason: opts.cashflowReason ?? null,
         cashflowReasonModel: opts.cashflowReasonModel ?? null,
         consolidated: consolidatedForPreflight(opts.consolidated),
+        foreignCurrencies,
         unmappedCount: unmapped.length,
         dataQualityLevel: dataQuality,
         qualityCheckFailed,
@@ -1809,6 +1829,7 @@ export default function MonthlyReportPage() {
         cashflowReason: eager.cashflowReason ?? null,
         cashflowReasonModel: eager.cashflowReasonModel ?? null,
         consolidated: consolidatedForPreflight(eager.consolidated),
+        foreignCurrencies,
         unmappedCount: unmapped.length,
         dataQualityLevel: dataQuality,
         qualityCheckFailed,
