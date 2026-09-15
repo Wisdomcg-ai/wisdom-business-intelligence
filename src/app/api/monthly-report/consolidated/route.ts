@@ -48,6 +48,7 @@ import {
   translatePLAtMonthlyAverage,
 } from '@/lib/consolidation/fx'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { reportedFxMonths } from '@/lib/monthly-report/consolidated-fx'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
@@ -168,6 +169,13 @@ async function postHandler(request: Request) {
     // Presentation currency is always AUD for now. FX callback kicks in only
     // for tenants with non-AUD functional_currency (engine short-circuits AUD tenants).
     const presentationCurrency = 'AUD'
+    // The months this report prints from. Translation walks every month a line
+    // carries, but rates are loaded for the fiscal year only, so every month
+    // outside it came back "missing" — IICT's banner listed eighteen months,
+    // most of them with rates stored, when the August pack reads two (IICT-62).
+    // A missing rate is reported only for a month the report reads; values in
+    // the other months are never printed.
+    const reportedMonths = new Set(reportedFxMonths(fyMonths, report_month))
 
     stage = 'engine'
     const report = await buildConsolidation(supabase, {
@@ -189,7 +197,7 @@ async function postHandler(request: Request) {
         for (const [m, r] of rates.entries()) {
           ratesUsed[`${pair}::${m}`] = r
         }
-        return { translated, missing, ratesUsed }
+        return { translated, missing: missing.filter((m) => reportedMonths.has(m)), ratesUsed }
       },
     })
 

@@ -48,6 +48,8 @@ import {
   type CommentaryPlacement,
 } from './commentary-placement'
 import { buildConsolidatedRows } from '../utils/consolidated-rows'
+import { describeMissingRates, missingRatesForReport } from '@/lib/monthly-report/consolidated-fx'
+import { packPrintsCashflowPages } from '@/lib/monthly-report/pack-cashflow-gate'
 import { transformCashRunwayData } from '../components/charts/CashRunwayChart'
 import { transformCumulativeNetCashData } from '../components/charts/CumulativeNetCashChart'
 import { transformWorkingCapitalData } from '../components/charts/WorkingCapitalGapChart'
@@ -550,20 +552,28 @@ export class MonthlyReportPDFService {
     for (const series of this.options.externalMetrics ?? []) {
       if (series.values.length > 0) this.addExternalMetricPage(series)
     }
-    // WD.4 — Where Did Our Money Go. Default flow only when the derivation
-    // proved itself; an explicitly-placed widget shows the honest reason card.
-    if (this.options.moneyFlow?.comparable) {
+    // WD.4 — Where Did Our Money Go. A derivation that could not prove itself
+    // prints its reason, as the placed widget does: this page used to print
+    // only when comparable, so Dragon Roofing's — refused for having two Xero
+    // organisations — fell out of the pack without a word (DRG-49). A load
+    // that failed outright still has nothing to say and prints nothing.
+    if (this.options.moneyFlow) {
       this.addMoneyFlowPage()
     }
     // WD.6 — per-entity consolidated P&L for consolidation parents.
     if (this.options.consolidated && this.options.consolidated.byTenant.length > 0) {
       this.addConsolidatedPLPage()
     }
-    if (this.options.cashflowForecast && this.options.cashflowForecast.months.length > 0) {
-      this.addCashflowForecastPage()
-      this.addCashflowForecastChartPage()
-    } else if (this.options.cashflowReason) {
-      this.addCashflowForecastPage()
+    // Only when sections.cashflow is on (see pack-cashflow-gate). Before, the
+    // flag was never read here: a cashflow that built printed, so IICT's and
+    // Dragon's packs carried pages their settings had switched off.
+    if (packPrintsCashflowPages(sec, null)) {
+      if (this.options.cashflowForecast && this.options.cashflowForecast.months.length > 0) {
+        this.addCashflowForecastPage()
+        this.addCashflowForecastChartPage()
+      } else if (this.options.cashflowReason) {
+        this.addCashflowForecastPage()
+      }
     }
     if (this.options.fullYearReport) {
       this.addFullYearProjection()
@@ -1060,8 +1070,22 @@ export class MonthlyReportPDFService {
     )
     this.yPosition += 8
 
-    const { rows, isSingleMode } = buildConsolidatedRows(vm, this.report.report_month)
     const tenants = vm.byTenant
+    // An entity in another currency with no rate for a month this page reads
+    // is still in that currency: its figures would sit in AUD columns and add
+    // into the AUD total one-for-one. Refuse the page and name the months,
+    // rather than print the figures under a footnote claiming they were
+    // translated (IICT-05). Export is refused on the same test (pre-flight).
+    const translated = tenants.filter(t => t.functional_currency && t.functional_currency !== vm.business.presentation_currency)
+    const missingRates = translated.length > 0 ? missingRatesForReport(vm.fx_context?.missing_rates, this.report.report_month) : []
+    if (missingRates.length > 0) {
+      this.drawReasonCard(
+        `This page is not printed: ${describeMissingRates(missingRates)}, so ${translated.map(t => t.display_name).join(' and ')} cannot be shown in ${vm.business.presentation_currency}.`,
+      )
+      return
+    }
+
+    const { rows, isSingleMode } = buildConsolidatedRows(vm, this.report.report_month)
     const hasElims = rows.some(r => r.elim !== 0)
 
     // Header: Account | per tenant (Actual [Budget, Var]) | [Elim] | Group A/B/Var$/Var%
@@ -1115,8 +1139,8 @@ export class MonthlyReportPDFService {
     })
 
     // FX disclosure — a translated entity's columns are in the presentation
-    // currency; say so instead of leaving HKD figures to be misread.
-    const translated = tenants.filter(t => t.functional_currency && t.functional_currency !== vm.business.presentation_currency)
+    // currency; say so instead of leaving HKD figures to be misread. Reached
+    // only when every month the page reads had its rate (above).
     if (translated.length > 0) {
       // One clause per translated entity — IICT has three orgs — so this line
       // grows with the consolidation and has to wrap.

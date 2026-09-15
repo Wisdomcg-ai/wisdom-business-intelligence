@@ -5,7 +5,7 @@
  * bank account, plus the liabilities most likely to be mistaken for one.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { isBankRow, openingBalanceDate, parseBankAccountIds, totalBankAt, type BankRowInput } from '../opening-bank'
+import { isBankRow, openingBalanceDate, packCashflowV1Refusal, parseBankAccountIds, totalBankAt, type BankRowInput } from '../opening-bank'
 import { deriveMoneyFlow } from '../money-flow'
 
 const UR = '8519c134-ed81-4d9b-8f07-ce499d12b7ee'
@@ -317,5 +317,32 @@ describe('openingBalanceDate', () => {
   it('falls back to July when fiscal_year_start is not a month', () => {
     expect(openingBalanceDate('2026-08', 0)).toBe('2026-06-30')
     expect(openingBalanceDate('2026-08', NaN)).toBe('2026-06-30')
+  })
+})
+
+describe('packCashflowV1Refusal — the v1 cashflow is for one AUD organisation', () => {
+  it('builds for Urban Road: one organisation, AUD (or no currency recorded)', () => {
+    expect(packCashflowV1Refusal(AUD)).toBeNull()
+    expect(packCashflowV1Refusal([{ tenant_id: UR, currency: null }])).toBeNull()
+  })
+
+  it("refuses Dragon Roofing's two AUD organisations — v1 put $735,661 too much in the bank (DRG-45)", () => {
+    expect(packCashflowV1Refusal([
+      { tenant_id: 'dragon', currency: 'AUD' },
+      { tenant_id: 'easy-hail', currency: 'AUD' },
+    ])).toBe('This business has more than one Xero organisation, and the cashflow cannot yet be built for more than one.')
+  })
+
+  it('refuses a single organisation in a foreign currency', () => {
+    expect(packCashflowV1Refusal([{ tenant_id: 'igl', currency: 'HKD' }]))
+      .toBe('The Xero organisation reports in a foreign currency, which this cashflow cannot translate.')
+  })
+
+  it('counts an organisation listed under two business ids once', () => {
+    expect(packCashflowV1Refusal([{ tenant_id: UR, currency: 'AUD' }, { tenant_id: UR, currency: 'AUD' }])).toBeNull()
+  })
+
+  it('no organisation is not a refusal — the opening says unavailable, as before', () => {
+    expect(packCashflowV1Refusal([])).toBeNull()
   })
 })

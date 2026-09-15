@@ -8,6 +8,7 @@ import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/ut
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import { loadActiveTenants, multiOrgFallbackRefusal } from '@/lib/monthly-report/multi-org-fallback'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -233,7 +234,22 @@ async function postHandler(request: Request) {
         per_tenant_quality: composite.per_tenant_quality,
       }
     } else {
-      // Fallback: no active forecast → read raw Xero rows.
+      // Fallback: no active forecast → read raw Xero rows. Refused for more
+      // than one organisation — this read overwrites the accounts they share
+      // and has no exchange rates (IICT-18; see multi-org-fallback). A
+      // consolidation parent generates through /api/monthly-report/consolidated;
+      // this catches one whose organisations are not all included in it.
+      let refusal: string | null
+      try {
+        refusal = multiOrgFallbackRefusal(await loadActiveTenants(supabase, ids.all), fiscal_year)
+      } catch (tenantErr) {
+        Sentry.captureException(tenantErr, { tags: { route: 'monthly-report/generate' }, extra: { context: '[Report Generate] Error loading active Xero connections' } } as any)
+        return NextResponse.json({ error: 'Failed to load Xero connections' }, { status: 500 })
+      }
+      if (refusal) {
+        return NextResponse.json({ error: refusal, code: 'MULTI_ORG_NO_ACTIVE_FORECAST' }, { status: 422 })
+      }
+
       const { data: rawXeroLines, error: xeroErr } = await supabase
         .from('xero_pl_lines_wide_compat')
         .select('account_code, account_name, account_type, section, monthly_values')

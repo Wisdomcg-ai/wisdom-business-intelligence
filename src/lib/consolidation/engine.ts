@@ -342,11 +342,13 @@ export async function loadTenantBudgets(
   const ids = await resolveBusinessProfileIds(supabase, businessId)
 
   // 1. For each tenant, try to find a tenant-scoped forecast.
-  // Phase B (CFO-only clients): prefer ACTIVE forecasts and skip 0-line
-  // shells — the wizard's failed-seed trap left empty forecasts whose
-  // updated_at outranks the real one, and `.limit(1)` on updated_at alone
-  // silently picked those as the budget. We walk a small candidate list
-  // (active first, newest first) and take the first with materialized lines.
+  // Phase B (CFO-only clients): skip 0-line shells — the wizard's failed-seed
+  // trap left empty forecasts whose updated_at outranks the real one, and
+  // `.limit(1)` on updated_at alone silently picked those as the budget. We
+  // walk a small candidate list (newest first) and take the first with
+  // materialized lines. ACTIVE only: an inactive forecast is never a budget
+  // (IICT-09 — see loadSingleBusinessBudget), as resolveBudget and the Full
+  // Year page already require.
   for (const tenant of tenants) {
     const { data: forecasts, error } = await supabase
       .from('financial_forecasts')
@@ -354,8 +356,8 @@ export async function loadTenantBudgets(
       .in('business_id', ids.all)
       .eq('tenant_id', tenant.tenant_id)
       .eq('fiscal_year', fiscalYear)
+      .eq('is_active', true)
       .is('deleted_at', null)
-      .order('is_active', { ascending: false })
       .order('updated_at', { ascending: false })
       .limit(3)
     if (error) {
@@ -400,18 +402,24 @@ export async function loadSingleBusinessBudget(
 ): Promise<ForecastLineLike[] | null> {
   const ids = await resolveBusinessProfileIds(supabase, businessId)
 
-  // Phase B (CFO-only clients): prefer ACTIVE forecasts and skip 0-line
-  // shells (failed-seed wizard trap) — updated_at alone picked a freshly
-  // touched empty shell over the real budget. First candidate with
-  // materialized lines wins; candidates are active-first, newest-first.
+  // Phase B (CFO-only clients): skip 0-line shells (failed-seed wizard trap)
+  // — updated_at alone picked a freshly touched empty shell over the real
+  // budget. First candidate with materialized lines wins, newest first.
+  //
+  // ACTIVE only. This preferred an active forecast but did not require one,
+  // so IICT — whose FY2027 forecasts are both inactive — had inactive
+  // 88199866 as the budget on its statement pages while the Full Year and
+  // Subscriptions pages, which require an active forecast, said there was
+  // none: one pack, two budget rules (IICT-09). An inactive forecast is a
+  // draft or a superseded version, never a budget.
   const { data: forecasts, error } = await supabase
     .from('financial_forecasts')
     .select('id')
     .in('business_id', ids.all)
     .is('tenant_id', null)
     .eq('fiscal_year', fiscalYear)
+    .eq('is_active', true)
     .is('deleted_at', null)
-    .order('is_active', { ascending: false })
     .order('updated_at', { ascending: false })
     .limit(5)
   if (error) {

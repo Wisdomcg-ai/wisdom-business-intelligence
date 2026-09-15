@@ -33,7 +33,7 @@ vi.mock('@/lib/budgets/resolve-budget', async (importOriginal) => ({
 import { loadPayrollGrid, payrollMonthWindow } from '../payroll-grid-load'
 import { loadWagesDetail } from '../wages-detail-load'
 import { loadMoneyFlow } from '../money-flow-load'
-import { loadOpeningBank } from '../opening-bank-load'
+import { loadOpeningBank, loadPackCashflowOpening } from '../opening-bank-load'
 import { loadBankAccountIds } from '../bank-accounts-load'
 import { URBAN_ROAD_BS_JUL_AUG_2026, URBAN_ROAD_PL_AUG_2026, CBA_CHEQUE, BUS_ONLINE_SAVER, AMEX_PLATINUM } from './fixtures/urban-road-money-flow-2026-08'
 import { loadExternalMetricSeries } from '../external-metrics-load'
@@ -337,6 +337,56 @@ describe('opening-bank-load', () => {
     expect(opening).toMatchObject({ status: 'unavailable', reason: '1 of the 2 bank accounts chosen for this report is not in the synced balance sheet at 2026-06-30' })
     const idFilters = db.calls.flatMap((c) => c.filters).filter(([, col]) => col === 'account_id')
     expect(idFilters).toEqual([['in', 'account_id', [CBA_CHEQUE]]])
+  })
+})
+
+describe('loadPackCashflowOpening — the opening and the v1 verdict from one read', () => {
+  const bank = (tenant_id: string, balance: number) => ({
+    business_id: PROFILE, tenant_id, account_type: 'asset', section: 'Bank', balance_date: '2026-06-30', balance, basis: 'accruals',
+  })
+
+  it('one active AUD organisation: the opening, and no refusal', async () => {
+    const res = await loadPackCashflowOpening(fakeSupabase({
+      business_profiles: [{ id: PROFILE, fiscal_year_start: 7 }],
+      xero_connections: [
+        { business_id: BUSINESS, tenant_id: TENANT, functional_currency: 'AUD', is_active: true },
+        { business_id: BUSINESS, tenant_id: 'retired', functional_currency: 'AUD', is_active: false },
+      ],
+      xero_bs_lines: [bank(TENANT, 167629.81)],
+    }), BUSINESS, '2026-08')
+    expect(res).toEqual({ opening: { status: 'read', amount: 167629.81, asAt: '2026-06-30' }, v1Refusal: null })
+  })
+
+  it("Dragon Roofing's shape — two active AUD organisations — is refused though its opening reads", async () => {
+    const res = await loadPackCashflowOpening(fakeSupabase({
+      business_profiles: [{ id: PROFILE, fiscal_year_start: 7 }],
+      xero_connections: [
+        { business_id: BUSINESS, tenant_id: 'dragon', functional_currency: 'AUD', is_active: true },
+        { business_id: BUSINESS, tenant_id: 'easy-hail', functional_currency: 'AUD', is_active: true },
+      ],
+      xero_bs_lines: [bank('dragon', 41339.27), bank('easy-hail', 388767.43)],
+    }), BUSINESS, '2026-08')
+    expect(res.opening).toMatchObject({ status: 'read', amount: 430106.7 })
+    expect(res.v1Refusal).toContain('more than one Xero organisation')
+  })
+
+  it("IICT's shape — an HKD organisation among AUD ones — is refused", async () => {
+    const res = await loadPackCashflowOpening(fakeSupabase({
+      business_profiles: [{ id: PROFILE, fiscal_year_start: 7 }],
+      xero_connections: [
+        { business_id: BUSINESS, tenant_id: 'iap', functional_currency: 'AUD', is_active: true },
+        { business_id: PROFILE, tenant_id: 'igl', functional_currency: 'HKD', is_active: true },
+      ],
+      xero_bs_lines: [],
+    }), BUSINESS, '2026-08')
+    expect(res.v1Refusal).not.toBeNull()
+  })
+
+  it('a connection read that fails throws — never a silent "one organisation"', async () => {
+    await expect(loadPackCashflowOpening(fakeSupabase({
+      business_profiles: [{ id: PROFILE, fiscal_year_start: 7 }],
+      xero_connections: { error: { message: 'timeout' } },
+    }), BUSINESS, '2026-08')).rejects.toBeTruthy()
   })
 })
 

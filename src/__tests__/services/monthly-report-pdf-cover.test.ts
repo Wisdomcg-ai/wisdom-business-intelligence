@@ -282,12 +282,13 @@ describe("WD.4 — Where Did Our Money Go page (Calxa p26)", () => {
     expect(checked).toBeGreaterThan(0)
   })
 
-  it('a NOT-comparable flow adds no page in the default flow', () => {
+  it('a NOT-comparable flow prints its reason in the default flow too, rather than vanishing (DRG-49)', () => {
     const svc = new MonthlyReportPDFService(fixtureReport(), {
       moneyFlow: { ...comparableFlow, comparable: false, reason: 'multi-entity', sources: [], uses: [] },
     })
     const text = docText(svc.generate() as any)
-    expect(text).not.toContain('Where Did Our Money Go?')
+    expect(text).toContain('Where Did Our Money Go?')
+    expect(text).toContain('multi-entity')
   })
 
   it('a placed NOT-comparable flow prints its reason', () => {

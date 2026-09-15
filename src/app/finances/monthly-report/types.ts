@@ -314,6 +314,15 @@ export interface GeneratedReport {
    * blocking the snapshot path (Phase 35 will ship consolidated snapshots).
    */
   is_consolidation?: boolean
+  /**
+   * The exchange rates the consolidation behind THESE figures had no rate for
+   * (its fx_context.missing_rates), recorded at Generate and saved with the
+   * snapshot. Pre-flight refuses export on it (IICT-04). It is the report's
+   * own: the page's per-entity consolidated report can be another month's or
+   * another generation's, and is never loaded for a client. Undefined on a
+   * report saved before the field existed, and on a single-entity report.
+   */
+  consolidation_fx?: { missing_rates: Array<{ currency_pair: string; period: string }> }
 }
 
 // ============================================

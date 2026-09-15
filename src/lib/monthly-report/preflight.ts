@@ -11,6 +11,13 @@
  * and failures never BLOCK an export (warning-only house style — the coach
  * decides); they inform, and the run is persisted either way.
  *
+ * With one exception, marked `blocks`: a pack whose figures are known to be
+ * wrong in a way no reader could see. A consolidated month with no exchange
+ * rate adds Hong Kong dollars to Australian dollars one-for-one and prints the
+ * total as AUD — IICT's August income came out at 1,660,961 against Calxa's
+ * 324,881 — so export is refused until the rates are loaded (IICT-04). Nothing
+ * a coach reads on the panel makes that pack right to send.
+ *
  * Pure — the panel and the persistence route both consume this.
  */
 import type {
@@ -27,6 +34,7 @@ import { moneyFlowProof } from '@/lib/monthly-report/money-flow-rows'
 import { netProfitFromBuckets } from '@/lib/finance/net-profit'
 import { SUPERANNUATION } from '@/app/finances/forecast/constants'
 import { standingLineClaims } from '@/app/finances/monthly-report/services/commentary-placement'
+import { describeMissingRates, missingRatesForReport } from '@/lib/monthly-report/consolidated-fx'
 
 export type PreflightStatus = 'pass' | 'warn' | 'fail' | 'skip'
 
@@ -35,6 +43,8 @@ export interface PreflightResult {
   label: string
   status: PreflightStatus
   detail: string
+  /** A failure that refuses the export outright — see the header. Only ever on a 'fail'. */
+  blocks?: true
 }
 
 export interface PreflightInputs {
@@ -44,12 +54,27 @@ export interface PreflightInputs {
   subscriptionDetail?: SubscriptionDetailData | null
   externalMetrics?: ExternalMetricSeriesData[] | null
   moneyFlow?: MoneyFlow | null
-  /** From the consolidated diagnostics, when the business is a parent. */
+  /**
+   * The per-entity consolidated report going into the pack, when one was
+   * loaded (never for a client — the route is coach-only): its diagnostics,
+   * with fx_context.missing_rates beside them (see consolidatedForPreflight —
+   * the diagnostics alone never carry the rates) and the currencies it
+   * translated. The statements' own rates are `report.consolidation_fx`; this
+   * can only add a refusal for the page it prints.
+   */
   consolidated?: {
     tenants_loaded: number
     tenants_missing_currency?: string[]
     missing_rates?: Array<{ currency_pair: string; period: string }>
+    /** Its organisations' currencies other than the presentation currency. Undefined = not known. */
+    translated_currencies?: string[]
   } | null
+  /**
+   * The business's included Xero organisations' currencies other than AUD
+   * (/api/Xero/active-tenants), or null when they could not be read. Consulted
+   * only for a consolidated report saved before it recorded its own rates.
+   */
+  foreignCurrencies?: string[] | null
   unmappedCount?: number
   /** Read-path data-quality verdict (D-44.2 probe). undefined = not threaded. */
   dataQualityLevel?: 'verified' | 'partial' | 'failed' | 'no_sync' | 'stale' | null
@@ -81,6 +106,12 @@ export interface PreflightInputs {
    * 'skip', the same as a client that never turned v2 on.
    */
   cashflowReason?: string | null
+  /**
+   * Which cashflow `cashflowReason` is about. 'v1' is a refusal for the
+   * business's shape — more than one Xero organisation, or a foreign currency
+   * (packCashflowV1Refusal); absent is cash model v2, as before.
+   */
+  cashflowReasonModel?: 'v1' | 'v2' | null
   /** The budget forecast's superannuation_rate (null = unset → statutory default). */
   budgetSuperRate?: number | null
   /** The budget forecast's actual_end_month ('YYYY-MM') — months at or before
@@ -93,8 +124,8 @@ const r2 = (v: number) => Math.round(v * 100) / 100
 export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
   const { report } = inputs
   const results: PreflightResult[] = []
-  const push = (key: string, label: string, status: PreflightStatus, detail: string) =>
-    results.push({ key, label, status, detail })
+  const push = (key: string, label: string, status: PreflightStatus, detail: string, blocks?: true) =>
+    results.push(blocks ? { key, label, status, detail, blocks } : { key, label, status, detail })
 
   // 1. Freshness — the read-path quality probe (D-44.2).
   if (inputs.qualityCheckFailed) {
@@ -179,18 +210,60 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
     push('unmapped', 'Account mapping', 'pass', 'Every account is mapped.')
   }
 
-  // 7. Entity sum — consolidation diagnostics (parents only).
-  if (inputs.consolidated == null) {
-    push('entity_sum', 'Entity consolidation', 'skip', 'Single-entity business.')
-  } else {
-    const missingCcy = inputs.consolidated.tenants_missing_currency ?? []
-    const missingRates = inputs.consolidated.missing_rates ?? []
-    if (missingCcy.length > 0) {
-      push('entity_sum', 'Entity consolidation', 'fail', `${missingCcy.length} entity(ies) missing a functional currency — figures may be summed 1:1 across currencies.`)
-    } else if (missingRates.length > 0) {
-      push('entity_sum', 'Entity consolidation', 'warn', `${missingRates.length} FX rate(s) missing — affected months translate at no rate.`)
+  // 7. Entity sum — consolidation diagnostics (parents only), and the exchange
+  // rates of the figures going out.
+  {
+    const vm = inputs.consolidated ?? null
+    const reportFx = report.is_consolidation ? report.consolidation_fx : undefined
+    // The statements' own list, recorded at Generate, and the per-entity
+    // page's. Either one missing a month refuses. The report's is what its
+    // figures were built with: reading only the page's cached per-entity
+    // report passed an August pack on July's list, refused a regenerated one
+    // on a list from before the rates were loaded, and refused every client,
+    // for whom it is never loaded. Only the months this pack prints from
+    // count: a rate missing after the report month, or before its year,
+    // changes nothing on the page.
+    const missingRates = missingRatesForReport(
+      [...(reportFx?.missing_rates ?? []), ...(vm?.missing_rates ?? [])],
+      report.report_month,
+    )
+    // A consolidated report saved before it recorded its rates: today's rates
+    // do not vouch for figures built before them, so it turns on whether any
+    // organisation reports in a foreign currency — per the per-entity report
+    // when one loaded, else the business's organisations; null when neither
+    // could say.
+    const unrecorded = report.is_consolidation === true && !reportFx
+    const foreign = vm?.translated_currencies ?? inputs.foreignCurrencies ?? null
+    if (missingRates.length > 0) {
+      push(
+        'entity_sum',
+        'Entity consolidation',
+        'fail',
+        `Export refused — ${describeMissingRates(missingRates)}, so those months would add foreign-currency figures to AUD one-for-one. Load the rates (Admin → Consolidation), generate the report again, then export.`,
+        true,
+      )
+    } else if (unrecorded && foreign === null) {
+      push('entity_sum', 'Entity consolidation', 'warn', 'This consolidated report was saved before it recorded its exchange rates, and the business’s currencies could not be read, so its rates could not be checked. Generating the report again records them.')
+    } else if (unrecorded && (foreign ?? []).length > 0) {
+      push(
+        'entity_sum',
+        'Entity consolidation',
+        'fail',
+        `Export refused — this consolidated report was saved before it recorded its exchange rates, so nothing shows its ${[...new Set(foreign)].join(' and ')} figures were translated. It must be generated again before it is exported.`,
+        true,
+      )
+    } else if (vm == null) {
+      if (report.is_consolidation) {
+        push('entity_sum', 'Entity consolidation', 'pass', reportFx
+          ? 'Consolidated report; FX rates complete for the months it prints (no per-entity page in this pack).'
+          : 'Consolidated report; every organisation reports in AUD (no per-entity page in this pack).')
+      } else {
+        push('entity_sum', 'Entity consolidation', 'skip', 'Single-entity business.')
+      }
+    } else if ((vm.tenants_missing_currency ?? []).length > 0) {
+      push('entity_sum', 'Entity consolidation', 'fail', `${vm.tenants_missing_currency!.length} entity(ies) missing a functional currency — figures may be summed 1:1 across currencies.`)
     } else {
-      push('entity_sum', 'Entity consolidation', 'pass', `${inputs.consolidated.tenants_loaded} entities consolidated; FX rates complete.`)
+      push('entity_sum', 'Entity consolidation', 'pass', `${vm.tenants_loaded} entities consolidated; FX rates complete.`)
     }
   }
 
@@ -397,7 +470,12 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
   // must open on the bank the actuals close on.
   {
     const cf = inputs.cashflow
-    if (!cf && inputs.cashflowReason) {
+    if (!cf && inputs.cashflowReason && inputs.cashflowReasonModel === 'v1') {
+      // v1 refused for the business's shape (packCashflowV1Refusal) — the pack
+      // is right not to carry those figures, but the coach turned the page on
+      // and should know it prints a reason instead.
+      push('cash_model_ties', 'Cashflow ties to the bank', 'warn', `The cashflow pages print a reason instead of figures: ${inputs.cashflowReason.replace(/\.$/, '')}.`)
+    } else if (!cf && inputs.cashflowReason) {
       push('cash_model_ties', 'Cashflow ties to the bank', 'fail', `The cash model is on but could not be built, so the cash pages print a reason instead: ${inputs.cashflowReason.replace(/\.$/, '')}.`)
     } else if (!cf?.cash_model) {
       push('cash_model_ties', 'Cashflow ties to the bank', 'skip', 'The cashflow is not on cash model v2 — its banked months are estimated, not tied.')
@@ -444,6 +522,38 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
   }
 
   return results
+}
+
+/** The checks that refuse this export — empty when the coach may proceed. */
+export function exportRefusals(results: PreflightResult[]): PreflightResult[] {
+  return results.filter((r) => r.blocks === true && r.status === 'fail')
+}
+
+/**
+ * The consolidated report as pre-flight reads it: its diagnostics AND its
+ * fx_context.missing_rates. Both export paths handed pre-flight the
+ * diagnostics alone, which carry no rates, so a month with none always passed
+ * as "FX rates complete" (IICT-04). Also the currencies it translated, when
+ * its organisations are listed. Null when there is no consolidated report.
+ */
+export function consolidatedForPreflight(
+  vm: {
+    business?: { presentation_currency?: string } | null
+    byTenant?: Array<{ functional_currency?: string | null }> | null
+    diagnostics?: { tenants_loaded: number; tenants_missing_currency?: string[] } | null
+    fx_context?: { missing_rates?: Array<{ currency_pair: string; period: string }> } | null
+  } | null | undefined,
+): PreflightInputs['consolidated'] {
+  if (!vm?.diagnostics) return null
+  const presentation = vm.business?.presentation_currency || 'AUD'
+  const translated = Array.isArray(vm.byTenant)
+    ? [...new Set(vm.byTenant.map((t) => t?.functional_currency).filter((c): c is string => !!c && c !== presentation))]
+    : undefined
+  return {
+    ...vm.diagnostics,
+    missing_rates: vm.fx_context?.missing_rates ?? [],
+    ...(translated ? { translated_currencies: translated } : {}),
+  }
 }
 
 export function overallStatus(results: PreflightResult[]): 'pass' | 'warn' | 'fail' {

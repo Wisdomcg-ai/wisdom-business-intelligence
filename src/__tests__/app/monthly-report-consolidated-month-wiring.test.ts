@@ -30,9 +30,14 @@ describe('changing month', () => {
 })
 
 describe('the export', () => {
-  it("reuses the tab's consolidated report only when it is the selected month's", () => {
+  it("reuses the tab's consolidated report only when it is the exported month's", () => {
     const body = handlerBody('loadPdfSections')
-    expect(body).toMatch(/consolidatedReportFor\(selectedMonth, fiscalYear\)/)
+    // The month of the report being exported (the picker's month only when
+    // there is no report): a month change with no saved snapshot leaves the
+    // previous month's report on screen.
+    expect(body).toMatch(/const consolidatedMonth = report\?\.report_month \?\? selectedMonth/)
+    expect(body).toMatch(/const consolidatedFY = report\?\.fiscal_year \?\? fiscalYear/)
+    expect(body).toMatch(/consolidatedReportFor\(consolidatedMonth, consolidatedFY\)/)
     // The bare cache, which can hold a month viewed earlier in the visit.
     expect(body).not.toMatch(/\(consolidatedReport as any\)\s*\|\|/)
   })

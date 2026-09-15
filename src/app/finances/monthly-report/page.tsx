@@ -31,7 +31,7 @@ import CashflowTab from './components/CashflowTab'
 import ExternalDataTab from './components/ExternalDataTab'
 import MemoModal from './components/MemoModal'
 import PreflightPanel from './components/PreflightPanel'
-import { runPreflight, type PreflightResult } from '@/lib/monthly-report/preflight'
+import { runPreflight, exportRefusals, consolidatedForPreflight, type PreflightResult } from '@/lib/monthly-report/preflight'
 import ForecastService from '@/app/finances/forecast/services/forecast-service'
 // Phase 71 Plan 09 (S6) — one-time per-session toast on multi-currency redirect.
 import {
@@ -39,6 +39,8 @@ import {
   buildMultiCurrencyToastMessage,
 } from './utils/multi-currency-toast'
 import { getForecastFiscalYear } from '@/app/finances/forecast/utils/fiscal-year'
+import { findPackForecast } from '@/lib/forecast/select-forecast'
+import { packLoadsCashflow } from '@/lib/monthly-report/pack-cashflow-gate'
 import { useMonthlyReport } from './hooks/useMonthlyReport'
 import { useConsolidatedReport } from './hooks/useConsolidatedReport'
 import { useFullYearReport } from './hooks/useFullYearReport'
@@ -76,7 +78,7 @@ import ConsolidatedCashflowTab from './components/ConsolidatedCashflowTab'
 import FXRateMissingBanner from './components/FXRateMissingBanner'
 import { loadSettings, getCurrentFiscalYear, getDefaultReportMonth, getFiscalYearForMonth, defaultMonthForFiscalYear } from './services/monthly-report-service'
 import { MonthlyReportPDFService } from './services/monthly-report-pdf-service'
-import type { CashflowForecastData } from '@/app/finances/forecast/types'
+import type { CashflowForecastData, FinancialForecast } from '@/app/finances/forecast/types'
 import { usePDFLayout } from './hooks/usePDFLayout'
 import { loadPackEntityName } from '@/lib/monthly-report/pack-entity-name'
 import { loadPackPreparedOn } from '@/lib/monthly-report/pack-prepared-on'
@@ -103,12 +105,21 @@ const PDFLayoutEditorModal = dynamic(
   { ssr: false }
 )
 
+/** Why the v1 cashflow is refused when its organisations could not be checked. */
+const V1_GATE_LOOKUP_FAILED = 'The Xero organisations behind this cashflow could not be checked (a system error — nothing was changed).'
+
 /**
  * Total Bank on the day before the report's fiscal year starts, from the synced
- * balance-sheet mirror. Never throws: a failed lookup is 'unavailable', which
- * the cashflow basis line prints, rather than a $0 opening passed off as real.
+ * balance-sheet mirror, and whether the v1 cashflow may be built on this
+ * business at all (packCashflowV1Refusal). Never throws.
+ *
+ * A failed lookup is an 'unavailable' opening, which the basis line prints —
+ * AND a refusal, not a pass: the route is the only thing that knows whether
+ * the business has one AUD organisation, and a v1 cashflow built without
+ * knowing is how Dragon Roofing's pack put $735,661 too much in the bank.
  */
-async function loadOpeningBank(businessId: string, reportMonth: string): Promise<OpeningBank> {
+async function loadOpeningBank(businessId: string, reportMonth: string): Promise<{ opening: OpeningBank; v1Refusal: string | null }> {
+  const unreachable: OpeningBank = { status: 'unavailable', asAt: null, reason: 'the balance sheet could not be reached' }
   try {
     const res = await fetch(
       `/api/monthly-report/opening-bank?business_id=${encodeURIComponent(businessId)}&report_month=${encodeURIComponent(reportMonth)}`
@@ -116,14 +127,15 @@ async function loadOpeningBank(businessId: string, reportMonth: string): Promise
     if (res.ok) {
       const body = await res.json()
       if (body?.opening?.status === 'read' || body?.opening?.status === 'unavailable') {
-        return body.opening as OpeningBank
+        const v1Refusal = body.v1_refusal === null ? null : typeof body.v1_refusal === 'string' ? body.v1_refusal : V1_GATE_LOOKUP_FAILED
+        return { opening: body.opening as OpeningBank, v1Refusal }
       }
     }
-    console.warn(`[MonthlyReport] opening bank lookup failed (${res.status}) — the cashflow will say so`)
-    return { status: 'unavailable', asAt: null, reason: 'the balance sheet could not be reached' }
+    Sentry.captureMessage(`[MonthlyReport] opening bank lookup failed (${res.status}) — the cashflow is refused`, { tags: { route: 'monthly-report/opening-bank' } } as any)
+    return { opening: unreachable, v1Refusal: V1_GATE_LOOKUP_FAILED }
   } catch (err) {
     Sentry.captureException(err, { tags: { invariant: 'pack-opening-bank-load' } } as any)
-    return { status: 'unavailable', asAt: null, reason: 'the balance sheet could not be reached' }
+    return { opening: unreachable, v1Refusal: V1_GATE_LOOKUP_FAILED }
   }
 }
 
@@ -208,9 +220,10 @@ export default function MonthlyReportPage() {
   // already has a forecast: it sends them to rebuild something that exists.
   // CashflowTab already renders an `error` prop; nothing ever set it.
   const [cashflowError, setCashflowError] = useState<string | null>(null)
-  // Why a cash-model-v2 business has no cashflow, for the PDF built in the
-  // same pass (a setState is not visible to the pass that made it).
-  const cashflowReasonRef = useRef<string | null>(null)
+  // Why the business has no cashflow, for the PDF built in the same pass (a
+  // setState is not visible to the pass that made it): a cash-model-v2 model
+  // that could not be built, or a v1 cashflow refused for the business's shape.
+  const cashflowReasonRef = useRef<{ reason: string; model: 'v1' | 'v2' } | null>(null)
 
   // Viewer role. Hoisted ABOVE the tab effects below because they reference it
   // in their dependency arrays — leaving it at its old position (further down)
@@ -244,7 +257,11 @@ export default function MonthlyReportPage() {
   // tenants. Drives the multi-currency redirect toast text so the operator
   // sees the actual currencies (e.g. "AUD + HKD") instead of a generic label.
   const [activeCurrencies, setActiveCurrencies] = useState<string[]>([])
+  // The same currencies for pre-flight, where "could not be read" (null) must
+  // not pass as "all AUD" the way the redirect's false does.
+  const [foreignCurrencies, setForeignCurrencies] = useState<string[] | null>(null)
   useEffect(() => {
+    setForeignCurrencies(null)
     if (!businessId) {
       setIsMultiCurrency(false)
       setActiveCurrencies([])
@@ -267,6 +284,7 @@ export default function MonthlyReportPage() {
         const fx = includedCurrencies.some((c: string) => c !== 'AUD')
         setIsMultiCurrency(fx)
         setActiveCurrencies(includedCurrencies)
+        setForeignCurrencies(includedCurrencies.filter((c: string) => c !== 'AUD'))
       })
       .catch(() => {
         if (!aborted) {
@@ -303,6 +321,10 @@ export default function MonthlyReportPage() {
   }, [isMultiCurrency, activeTab, businessId, activeCurrencies, userRole])
 
   // Hooks
+  // A consolidated Generate hands its response to the per-entity cache below
+  // (declared after this hook, hence the ref), so the export prints and
+  // pre-flights the generation the statements came from.
+  const primeConsolidatedRef = useRef<((report: any, reportMonth: string, fiscalYear: number) => void) | null>(null)
   const {
     report,
     isLoading: reportLoading,
@@ -315,7 +337,9 @@ export default function MonthlyReportPage() {
     dataQuality,
     perTenantQuality,
     qualityCheckFailed,
-  } = useMonthlyReport(businessId)
+  } = useMonthlyReport(businessId, {
+    onConsolidatedReport: (r, m, fy) => primeConsolidatedRef.current?.(r, m, fy),
+  })
 
   // Phase 34: consolidated-specific payload (per-entity columns + FX context).
   // `isConsolidationGroup` is the single source of truth — useMonthlyReport
@@ -327,8 +351,10 @@ export default function MonthlyReportPage() {
     error: consolidatedError,
     generateConsolidated,
     reportFor: consolidatedReportFor,
+    prime: primeConsolidated,
     clear: clearConsolidated,
   } = useConsolidatedReport(businessId)
+  primeConsolidatedRef.current = primeConsolidated
 
   // Phase 34 Iteration 34.1 — consolidated Balance Sheet payload.
   // `isConsolidationGroup` in this hook agrees with the P&L hook above
@@ -495,31 +521,43 @@ export default function MonthlyReportPage() {
         } else {
           reason = cashModel.reason
         }
-        cashflowReasonRef.current = reason
+        cashflowReasonRef.current = { reason, model: 'v2' }
         setCashflowError(`The cashflow is not available: ${reason}`)
         return null
       }
 
+      // v1 is for one Xero organisation reporting in AUD. Asked BEFORE the
+      // forecast is looked up, so a refused business reads nothing more.
+      const month = reportMonth ?? selectedMonth
+      const { opening, v1Refusal } = await loadOpeningBank(businessId, month)
+      if (v1Refusal) {
+        cashflowReasonRef.current = { reason: v1Refusal, model: 'v1' }
+        setCashflowError(`The cashflow is not available: ${v1Refusal}`)
+        return null
+      }
+
+      // Read-only: ForecastService.getOrCreateForecast persisted a period
+      // correction (and could create a shell), so every export wrote to
+      // financial_forecasts (IICT-53, DRG-48). See findPackForecast.
       const forecastFY = getForecastFiscalYear()
-      const { forecast, error: forecastErr } = await ForecastService.getOrCreateForecast(businessId, userId, forecastFY)
+      const { forecast, error: forecastErr } = await findPackForecast<FinancialForecast>(createClient(), businessId, forecastFY)
       if (forecastErr) {
         // A lookup failure is not "no forecast exists".
         setCashflowError('Could not load your cashflow forecast. This is a system error, not a missing forecast — your data is unchanged.')
         return null
       }
       if (forecast?.id) {
-        const forecastLines = await ForecastService.loadPLLines(forecast.id)
-        const month = reportMonth ?? selectedMonth
         // Actuals for the months already banked, the approved budget for the
         // rest. Falls back to the forecast's own lines when the Full Year
-        // report is not to hand, which is what every caller did before.
+        // report is not to hand, which is what every caller did before — but
+        // only an ACTIVE forecast's: an inactive one is never a budget
+        // (IICT-09). The pick itself may still be inactive when nothing is
+        // active; its cash-timing assumptions are not a budget.
         // The composition is shared with scripts/preview-pack.ts — see
         // lib/monthly-report/pack-cashflow.
+        const forecastLines = forecast.is_active ? await ForecastService.loadPLLines(forecast.id) : []
         if (packCashflowPlLines(fullYear, month, forecastLines).length > 0) {
-          const [assumptionsRes, opening] = await Promise.all([
-            fetch(`/api/forecast/cashflow/assumptions?forecast_id=${forecast.id}`),
-            loadOpeningBank(businessId, month),
-          ])
+          const assumptionsRes = await fetch(`/api/forecast/cashflow/assumptions?forecast_id=${forecast.id}`)
           let savedAssumptions = null
           if (assumptionsRes.ok) {
             savedAssumptions = (await assumptionsRes.json()).data ?? null
@@ -938,7 +976,10 @@ export default function MonthlyReportPage() {
     const isDraft =
       forceDraft ||
       (reconciliation ? !reconciliation.is_clean || reconciliation.check_failed === true : true)
-    const result = await generateReport(selectedMonth, fiscalYear, isDraft)
+    // The count only from a check that completed: a failed one's count is
+    // whatever it reached before failing, and the cover would print it as fact.
+    const unreconciledCount = reconciliation && reconciliation.check_failed !== true ? reconciliation.unreconciled_count : 0
+    const result = await generateReport(selectedMonth, fiscalYear, isDraft, unreconciledCount)
 
     if (result && 'needsMappings' in result && result.needsMappings) {
       setActiveTab('mapping')
@@ -1143,6 +1184,7 @@ export default function MonthlyReportPage() {
     wagesDetail?: import('./types').WagesDetailData
     cashflowForecast?: CashflowForecastData
     cashflowReason?: string
+    cashflowReasonModel?: 'v1' | 'v2'
     externalMetrics?: import('./types').ExternalMetricSeriesData[]
     memo?: string
     moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
@@ -1307,10 +1349,16 @@ export default function MonthlyReportPage() {
       }
     }
 
-    let cfData: CashflowForecastData | undefined = cashflowForecast || undefined
-    if (!cfData && businessId) {
+    // Only for a pack that carries the cashflow: sections.cashflow on, or a
+    // layout placing a cash page or a chart drawn from it (pack-cashflow-gate).
+    // A business with the section off gets no cash pages, and no load — not
+    // even one reused from the Cashflow tab's state.
+    const wantsCashflow = packLoadsCashflow(settings?.sections, settings?.pdf_layout)
+    let cfData: CashflowForecastData | undefined = wantsCashflow ? (cashflowForecast || undefined) : undefined
+    if (wantsCashflow && !cfData && businessId) {
       cfData = (await loadCashflowForecast(fyReport ?? null, selectedMonth)) || undefined
     }
+    const cfReason = wantsCashflow && !cfData ? cashflowReasonRef.current : null
 
     // WE.1b — the entered external-data inserts. A fetch failure must not
     // block the PDF, but silently dropping pages from an emailed report is
@@ -1391,15 +1439,21 @@ export default function MonthlyReportPage() {
     }
 
     // WD.6 — per-entity consolidated report for consolidation parents. Reuses
-    // the tab's cache when it holds THIS month (DRG-16); the generator returns
-    // the report directly so the PDF never depends on the coach having opened
-    // the tab (the D-07 class).
+    // the tab's cache only when it holds the month being exported (DRG-16: it
+    // held July's under an August export, and pre-flight checked July's
+    // exchange rates); Generate primes it with its own response. The month is
+    // the exported report's — a month change with no saved snapshot leaves the
+    // previous month's report on screen, and its per-entity page must match
+    // it. The generator returns the report directly so the PDF never depends
+    // on the coach having opened the tab (the D-07 class).
     let consolidated: import('./utils/consolidated-rows').ConsolidatedReportVM | undefined
     if (isConsolidationGroup && userRole !== 'client') {
+      const consolidatedMonth = report?.report_month ?? selectedMonth
+      const consolidatedFY = report?.fiscal_year ?? fiscalYear
       try {
         consolidated =
-          (consolidatedReportFor(selectedMonth, fiscalYear) as any) ||
-          ((await generateConsolidated(selectedMonth, fiscalYear)) as any) ||
+          (consolidatedReportFor(consolidatedMonth, consolidatedFY) as any) ||
+          ((await generateConsolidated(consolidatedMonth, consolidatedFY)) as any) ||
           undefined
       } catch (err) {
         Sentry.captureException(err, { tags: { invariant: 'pdf-consolidated-load' } } as any)
@@ -1512,15 +1566,17 @@ export default function MonthlyReportPage() {
       // described the previous month's split. The opening is read off the
       // cashflow that will actually be printed, so the sentence and the
       // numbers beneath it cannot describe two different starting balances.
-      cashflowBasis: packCashflowBasisFor(fyReport, selectedMonth, cfData),
+      cashflowBasis: wantsCashflow ? packCashflowBasisFor(fyReport, selectedMonth, cfData) : null,
       payrollGrid: payroll,
       payrollGridReason: payrollReason,
       accountActuals,
       wagesDetail: wDetail || undefined,
       cashflowForecast: cfData,
-      // A cash-model-v2 business whose model could not be built: the cash
-      // pages print this reason instead of disappearing from the pack.
-      cashflowReason: cfData ? undefined : (cashflowReasonRef.current ?? undefined),
+      // A cash-model-v2 business whose model could not be built, or a v1
+      // cashflow refused for the business's shape: the cash pages print this
+      // reason instead of disappearing from the pack (or printing v1).
+      cashflowReason: cfReason?.reason,
+      cashflowReasonModel: cfReason?.model,
       externalMetrics: extMetrics,
       memo: memoText,
       moneyFlow,
@@ -1612,7 +1668,8 @@ export default function MonthlyReportPage() {
 
     // WF.1 — Approve & Send persists a pre-flight run too (no panel: this
     // flow already confirms). The emailed pack gets the same proof-of-state
-    // record as a download.
+    // record as a download — and is refused on the same checks a download is.
+    let refusals: PreflightResult[] = []
     try {
       const opts: any = pdfInput.options
       const t = collectCommentaryTriggers(report, balanceSheet, {
@@ -1627,7 +1684,9 @@ export default function MonthlyReportPage() {
         moneyFlow: opts.moneyFlow ?? null,
         cashflow: opts.cashflowForecast ?? null,
         cashflowReason: opts.cashflowReason ?? null,
-        consolidated: opts.consolidated?.diagnostics ?? null,
+        cashflowReasonModel: opts.cashflowReasonModel ?? null,
+        consolidated: consolidatedForPreflight(opts.consolidated),
+        foreignCurrencies,
         unmappedCount: unmapped.length,
         dataQualityLevel: dataQuality,
         qualityCheckFailed,
@@ -1643,8 +1702,12 @@ export default function MonthlyReportPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ business_id: businessId, report_month: report.report_month, context: 'approve_send', results }),
       }).catch(err => Sentry.captureException(err, { tags: { invariant: 'preflight-persist-client' } } as any))
+      refusals = exportRefusals(results)
     } catch (err) {
       Sentry.captureException(err, { tags: { invariant: 'preflight-approve-send' } } as any)
+    }
+    if (refusals.length > 0) {
+      throw { body: { error: refusals[0].detail } }
     }
     return {
       business_id: businessId,
@@ -1781,8 +1844,9 @@ export default function MonthlyReportPage() {
       const eager = await loadPdfSections()
 
       // WF.1 — pre-flight over exactly the data going into this PDF. The
-      // panel informs, never blocks; the run is persisted either way so the
-      // pack can prove later what was true when it went out.
+      // panel informs and blocks only on a refusal (a consolidated month with
+      // no exchange rate); the run is persisted either way so the pack can
+      // prove later what was true when it went out.
       const preflightResults = runPreflight({
         report,
         reconciliation,
@@ -1792,7 +1856,9 @@ export default function MonthlyReportPage() {
         moneyFlow: eager.moneyFlow ?? null,
         cashflow: eager.cashflowForecast ?? null,
         cashflowReason: eager.cashflowReason ?? null,
-        consolidated: (eager.consolidated as any)?.diagnostics ?? null,
+        cashflowReasonModel: eager.cashflowReasonModel ?? null,
+        consolidated: consolidatedForPreflight(eager.consolidated),
+        foreignCurrencies,
         unmappedCount: unmapped.length,
         dataQualityLevel: dataQuality,
         qualityCheckFailed,
@@ -1821,6 +1887,13 @@ export default function MonthlyReportPage() {
       }).catch(err => Sentry.captureException(err, { tags: { invariant: 'preflight-persist-client' } } as any))
       const proceed = await new Promise<boolean>(resolve => setPreflight({ results: preflightResults, resolve }))
       setPreflight(null)
+      // A refusal is not the coach's to overrule: the panel offers no export,
+      // and nothing reaching here builds the PDF either (see preflight.ts).
+      const refusals = exportRefusals(preflightResults)
+      if (refusals.length > 0) {
+        toast.error(refusals[0].detail, { duration: 12000 })
+        return
+      }
       if (!proceed) {
         toast.info('Export cancelled')
         return
