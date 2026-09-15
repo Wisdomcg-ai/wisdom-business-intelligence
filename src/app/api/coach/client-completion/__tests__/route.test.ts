@@ -13,7 +13,9 @@
  *      (ownerIds) — i.e. it does NOT shrink based on visibility filtering. This
  *      is the headline contract the prompt locks in (regression-pinned).
  *   E. Sentry fallback: when the ideas fetch errors, the route still returns 200
- *      with the breakdown zeroed for that client (degraded but non-broken).
+ *      (degraded but non-broken) with the breakdown NULL for that client — a
+ *      count that could not be taken is not zero ideas (was zeroed until the
+ *      could-not-check fix, Groups K-P).
  *   F. Pre-existing aggregates (modules.ideas presence, engagement, alerts)
  *      are NOT modified by this plan — regression-pinned.
  *   G. Zero-ideas client: returns { ideas_total: 0, ideas_private: 0,
@@ -40,7 +42,8 @@ vi.mock('@/lib/supabase/server', () => ({
   createRouteHandlerClient: (...args: unknown[]) => createRouteHandlerClientMock(...args),
 }))
 
-type TableResp = { data: unknown; error?: unknown }
+/** `throws` makes the awaited query reject instead of resolving (the exception path). */
+type TableResp = { data: unknown; error?: unknown; throws?: boolean }
 
 /**
  * Per-table responses. Routes mostly do .select().eq()/.in()/.or().order()
@@ -64,12 +67,13 @@ type MockOpts = {
 const selectCalls: Array<{ table: string; cols: string }> = []
 const inCalls: Array<{ table: string; col: string; vals: unknown[] }> = []
 const orCalls: Array<{ table: string; filter: string }> = []
+const eqCalls: Array<{ table: string; col: string; val: unknown }> = []
 
 function makeChainable(result: TableResp, table = ''): Record<string, any> {
   const b: Record<string, any> = {}
   const ret = () => b
   b.select = vi.fn((cols: string) => { selectCalls.push({ table, cols }); return b })
-  b.eq = vi.fn(ret)
+  b.eq = vi.fn((col: string, val: unknown) => { eqCalls.push({ table, col, val }); return b })
   b.in = vi.fn((col: string, vals: unknown[]) => { inCalls.push({ table, col, vals }); return b })
   b.or = vi.fn((filter: string) => { orCalls.push({ table, filter }); return b })
   b.order = vi.fn(ret)
@@ -77,6 +81,10 @@ function makeChainable(result: TableResp, table = ''): Record<string, any> {
   b.single = vi.fn(() => Promise.resolve(result))
   b.maybeSingle = vi.fn(() => Promise.resolve(result))
   ;(b as any).then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
+    if (result.throws) {
+      Promise.reject(new Error(`simulated ${table} network failure`)).then(resolve, reject)
+      return
+    }
     Promise.resolve(result).then(resolve, reject)
   }
   return b
@@ -136,6 +144,7 @@ beforeEach(() => {
   selectCalls.length = 0
   inCalls.length = 0
   orCalls.length = 0
+  eqCalls.length = 0
 })
 
 // ─── Group A — Pre-phase shape preserved ─────────────────────────────────────
@@ -279,7 +288,7 @@ describe('Group D — Headline total preservation', () => {
 // ─── Group E — Sentry fallback path ──────────────────────────────────────────
 
 describe('Group E — Sentry fallback when ideas fetch errors', () => {
-  it('returns 200 with zeroed breakdown and does not crash when the ideas query errors', async () => {
+  it('returns 200 with a NULL breakdown (not zeros) when the ideas query errors', async () => {
     createRouteHandlerClientMock.mockResolvedValueOnce(
       makeSupabase({ ideas_error: { message: 'simulated db error' } })
     )
@@ -289,10 +298,13 @@ describe('Group E — Sentry fallback when ideas fetch errors', () => {
     const body = await res.json()
     const client = body.clients[0]
 
-    expect(client.ideas_total).toBe(0)
-    expect(client.ideas_private).toBe(0)
-    expect(client.ideas_team_shared).toBe(0)
-    expect(client.ideas_breakdown).toEqual({ owned: 0, team_shared: 0, total: 0 })
+    // A count that could not be taken is not zero ideas. Group G pins the
+    // genuine zero, so the two outcomes stay distinguishable on the wire.
+    expect(client.ideas_total).toBeNull()
+    expect(client.ideas_private).toBeNull()
+    expect(client.ideas_team_shared).toBeNull()
+    expect(client.ideas_breakdown).toBeNull()
+    expect(client.modules.ideas).toBe('unknown')
   })
 })
 
@@ -484,5 +496,293 @@ describe('Group J — vision_mission module reads strategy_data (owner-keyed)', 
     createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase())
     res = await GET(new Request('http://localhost/api/coach/client-completion'))
     expect((await res.json()).clients[0].modules.visionMission).toBe('not_started')
+  })
+})
+
+// ─── Groups K-P — a failed lookup is "could not check", never an answer ──────
+//
+// safeQuery returns null when a read fails, and every consumer used to collapse
+// that into "no rows": a failed xero_connections read made every client
+// 'not_started' with a "Xero not connected" alert, a failed users read said
+// "Never logged in", and a failed session_actions read awarded the full 25
+// engagement points for "no open actions". The house rule (fail-open family,
+// PRES-09/10/11): a real value, a genuinely empty state and a failed check are
+// three distinct states, and a failure never inherits the empty state's call
+// to action. Everything below goes through the exported GET handler.
+
+const FAILED: TableResp = { data: null, error: { message: 'simulated outage' } }
+
+async function getFirstClient(opts: MockOpts = {}) {
+  createRouteHandlerClientMock.mockResolvedValueOnce(makeSupabase(opts))
+  const res = await GET(new Request('http://localhost/api/coach/client-completion'))
+  expect(res.status).toBe(200)
+  return (await res.json()).clients[0]
+}
+
+/** Every module the coach dashboard renders. */
+const ALL_MODULES = [
+  'businessProfile', 'assessment', 'xeroConnected',
+  'visionMission', 'swot', 'goals', 'onePagePlan', 'strategicInitiatives',
+  'forecast', 'monthlyReport', 'cashflow', 'kpiDashboard',
+  'weeklyReviews', 'quarterlyReview', 'issuesList', 'ideas', 'openLoops', 'stopDoing',
+  'orgChart', 'accountability', 'valueProposition', 'processes', 'sessionNotes', 'messages',
+]
+
+/** Every batched read, bar business_profiles and ideas (they have their own mock options). */
+const BATCH_TABLES = [
+  'assessments', 'strategy_data', 'xero_connections', 'swot_analyses', 'business_financial_goals',
+  'plan_snapshots', 'strategic_initiatives', 'financial_forecasts', 'weekly_metrics_snapshots',
+  'weekly_reviews', 'quarterly_reviews', 'issues_list', 'open_loops', 'stop_doing_items',
+  'team_data', 'process_diagrams', 'session_notes', 'messages', 'users', 'coaching_sessions',
+  'session_actions',
+]
+
+describe('Group K — a failed module lookup is unknown and raises no alert', () => {
+  it.each([
+    ['xero_connections', ['xeroConnected'], 'Xero not connected'],
+    ['assessments', ['assessment'], 'Assessment incomplete'],
+    ['business_financial_goals', ['goals'], 'No goals set'],
+    ['financial_forecasts', ['forecast', 'cashflow'], 'No forecast'],
+    ['weekly_reviews', ['weeklyReviews'], 'No weekly reviews'],
+  ])('%s failing → %j unknown, "%s" not raised', async (table, moduleKeys, alert) => {
+    // Control: the same client with the table genuinely EMPTY does get the
+    // empty state and its alert — so the absence below is the failure being
+    // handled, not a fixture that never alerts.
+    const empty = await getFirstClient()
+    for (const key of moduleKeys) expect(empty.modules[key], key).toBe('not_started')
+    expect(empty.alerts).toContain(alert)
+    expect(empty.alertsComplete).toBe(true)
+
+    const failed = await getFirstClient({ defaults: { [table]: FAILED } })
+    for (const key of moduleKeys) expect(failed.modules[key], key).toBe('unknown')
+    expect(failed.alerts).not.toContain(alert)
+    // …and the shorter list is not an all-clear.
+    expect(failed.alertsComplete).toBe(false)
+  })
+
+  it.each([
+    ['strategy_data', ['visionMission']],
+    ['swot_analyses', ['swot']],
+    ['plan_snapshots', ['onePagePlan']],
+    ['strategic_initiatives', ['strategicInitiatives', 'onePagePlan']],
+    ['weekly_metrics_snapshots', ['monthlyReport', 'kpiDashboard']],
+    ['quarterly_reviews', ['quarterlyReview']],
+    ['issues_list', ['issuesList']],
+    ['open_loops', ['openLoops']],
+    ['stop_doing_items', ['stopDoing']],
+    ['team_data', ['orgChart', 'accountability']],
+    ['process_diagrams', ['processes']],
+    ['session_notes', ['sessionNotes']],
+    ['messages', ['messages']],
+  ])('%s failing → %j unknown, not not_started', async (table, moduleKeys) => {
+    const client = await getFirstClient({ defaults: { [table]: FAILED } })
+    for (const key of moduleKeys) expect(client.modules[key], key).toBe('unknown')
+  })
+
+  it('one failed lookup leaves every other module and alert answering normally', async () => {
+    const client = await getFirstClient({ defaults: { xero_connections: FAILED } })
+    expect(client.modules.xeroConnected).toBe('unknown')
+    for (const key of ALL_MODULES.filter((k) => k !== 'xeroConnected')) {
+      expect(client.modules[key], key).not.toBe('unknown')
+    }
+    // Genuinely empty answers from the reads that DID run still alert.
+    expect(client.alerts).toEqual(
+      expect.arrayContaining(['Assessment incomplete', 'No goals set', 'No forecast', 'Never logged in'])
+    )
+  })
+
+  it('a query that throws (network error, not a PostgREST error) is unknown too', async () => {
+    const client = await getFirstClient({
+      defaults: { xero_connections: { data: null, throws: true } },
+    })
+    expect(client.modules.xeroConnected).toBe('unknown')
+    expect(client.alerts).not.toContain('Xero not connected')
+    expect(client.alertsComplete).toBe(false)
+  })
+})
+
+describe('Group L — a failed engagement lookup is unknown, not "never" or "none"', () => {
+  it('users failing: no "Never logged in", lastLogin unknown, no score', async () => {
+    const empty = await getFirstClient()
+    expect(empty.alerts).toContain('Never logged in')
+    expect(typeof empty.engagement.engagementScore).toBe('number')
+
+    const client = await getFirstClient({ defaults: { users: FAILED } })
+    expect(client.alerts).not.toContain('Never logged in')
+    expect(client.engagement.unknown).toContain('lastLogin')
+    expect(client.engagement.engagementScore).toBeNull()
+    expect(client.alertsComplete).toBe(false)
+  })
+
+  it('coaching_sessions failing: no "No sessions yet", daysSinceSession unknown, no score', async () => {
+    const empty = await getFirstClient()
+    expect(empty.alerts).toContain('No sessions yet')
+
+    const client = await getFirstClient({ defaults: { coaching_sessions: FAILED } })
+    expect(client.alerts).not.toContain('No sessions yet')
+    expect(client.engagement.unknown).toContain('daysSinceSession')
+    expect(client.engagement.engagementScore).toBeNull()
+    expect(client.alertsComplete).toBe(false)
+  })
+
+  it('session_actions failing does not award the "no open actions" points', async () => {
+    // Genuinely zero open actions is worth 25 — with every other signal
+    // empty, that is the whole score.
+    const empty = await getFirstClient()
+    expect(empty.engagement.engagementScore).toBe(25)
+
+    const client = await getFirstClient({ defaults: { session_actions: FAILED } })
+    expect(client.engagement.unknown).toContain('openActions')
+    expect(client.engagement.engagementScore).toBeNull()
+    expect(client.alertsComplete).toBe(false)
+  })
+
+  it('weekly_reviews failing: the streak is unknown, not a zero streak', async () => {
+    const client = await getFirstClient({ defaults: { weekly_reviews: FAILED } })
+    expect(client.engagement.unknown).toContain('weeklyReviewStreak')
+    expect(client.engagement.engagementScore).toBeNull()
+  })
+
+  it('messages failing: unread count unknown, but score and alerts are untouched (neither reads messages)', async () => {
+    const client = await getFirstClient({ defaults: { messages: FAILED } })
+    expect(client.modules.messages).toBe('unknown')
+    expect(client.engagement.unknown).toEqual(['unreadMessages'])
+    expect(client.engagement.engagementScore).toBe(25)
+    expect(client.alertsComplete).toBe(true)
+  })
+})
+
+describe('Group M — a failed profiles read makes profile-keyed modules unknown', () => {
+  // With business_profiles failed, the profile-keyed reads run against the nil
+  // uuid and "succeed" with nothing. That nothing is not the client having nothing.
+  const PROFILE_DEPENDENT = [
+    'businessProfile', 'valueProposition', 'xeroConnected', 'goals', 'onePagePlan',
+    'strategicInitiatives', 'forecast', 'cashflow', 'monthlyReport', 'kpiDashboard',
+    'weeklyReviews', 'quarterlyReview',
+  ]
+
+  it('every module that needs a profile id is unknown, though its own query returned []', async () => {
+    const client = await getFirstClient({ business_profiles: FAILED })
+    for (const key of PROFILE_DEPENDENT) expect(client.modules[key], key).toBe('unknown')
+    // Owner- and business-keyed modules never needed the profile id: still answered.
+    for (const key of ALL_MODULES.filter((k) => !PROFILE_DEPENDENT.includes(k))) {
+      expect(client.modules[key], key).toBe('not_started')
+    }
+  })
+
+  it('raises no alert from those modules, but still alerts from the reads that ran', async () => {
+    const client = await getFirstClient({ business_profiles: FAILED })
+    for (const alert of ['No forecast', 'Xero not connected', 'No goals set', 'No weekly reviews']) {
+      expect(client.alerts).not.toContain(alert)
+    }
+    expect(client.alerts).toContain('Assessment incomplete')
+    expect(client.alerts).toContain('Never logged in')
+    expect(client.engagement.unknown).toContain('weeklyReviewStreak')
+    expect(client.alertsComplete).toBe(false)
+  })
+})
+
+describe('Group N — a row that WAS seen still counts when part of its lookup failed', () => {
+  it('a goal under the owner is completed even with the profile-keyed half unread', async () => {
+    const client = await getFirstClient({
+      business_profiles: FAILED,
+      defaults: {
+        business_financial_goals: { data: [{ id: 'g1', business_id: 'prof-x', user_id: 'owner-1' }], error: null },
+      },
+    })
+    expect(client.modules.goals).toBe('completed')
+  })
+
+  it('an active Xero row under businesses.id is completed with profiles unread', async () => {
+    const client = await getFirstClient({
+      business_profiles: FAILED,
+      defaults: { xero_connections: { data: [{ id: 'x1', business_id: 'biz-1' }], error: null } },
+    })
+    expect(client.modules.xeroConnected).toBe('completed')
+    expect(client.alerts).not.toContain('Xero not connected')
+  })
+
+  it('a completed quarterly review under the owner is completed; an unfinished one is unknown, not in_progress', async () => {
+    let client = await getFirstClient({
+      business_profiles: FAILED,
+      defaults: { quarterly_reviews: { data: [{ id: 'q1', business_id: 'owner-1', status: 'completed' }], error: null } },
+    })
+    expect(client.modules.quarterlyReview).toBe('completed')
+
+    // A completed one could be sitting under the profile id we couldn't read.
+    client = await getFirstClient({
+      business_profiles: FAILED,
+      defaults: { quarterly_reviews: { data: [{ id: 'q1', business_id: 'owner-1', status: 'draft' }], error: null } },
+    })
+    expect(client.modules.quarterlyReview).toBe('unknown')
+  })
+
+  it('initiatives with the snapshot table unread: the plan is unknown, not in_progress', async () => {
+    const client = await getFirstClient({
+      defaults: {
+        plan_snapshots: FAILED,
+        strategic_initiatives: { data: [{ id: 's1', business_id: 'prof-1' }], error: null },
+      },
+    })
+    expect(client.modules.onePagePlan).toBe('unknown')
+    expect(client.modules.strategicInitiatives).toBe('completed')
+  })
+})
+
+describe('Group O — "Xero Connected" stays presence-based', () => {
+  it('any active xero_connections row reads completed', async () => {
+    const client = await getFirstClient({
+      defaults: { xero_connections: { data: [{ id: 'x1', business_id: 'biz-1' }], error: null } },
+    })
+    expect(client.modules.xeroConnected).toBe('completed')
+    expect(eqCalls).toContainEqual({ table: 'xero_connections', col: 'is_active', val: true })
+    // Presence, not health: no tokens, expiry or sync clocks are read here —
+    // connection health is the coach dashboard pill (/api/Xero/connection-health).
+    expect(selectCalls.find((c) => c.table === 'xero_connections')?.cols).toBe('id, business_id')
+  })
+
+  it('a row under the business_profiles id counts too', async () => {
+    const client = await getFirstClient({
+      defaults: { xero_connections: { data: [{ id: 'x1', business_id: 'prof-1' }], error: null } },
+    })
+    expect(client.modules.xeroConnected).toBe('completed')
+  })
+})
+
+describe('Group P — healthy vs total outage, and which read failed', () => {
+  it('healthy: nothing unknown, the alert list is complete, the score is a number', async () => {
+    const client = await getFirstClient()
+    for (const key of ALL_MODULES) expect(client.modules[key], key).not.toBe('unknown')
+    expect(client.engagement.unknown).toEqual([])
+    expect(client.alertsComplete).toBe(true)
+    expect(typeof client.engagement.engagementScore).toBe('number')
+  })
+
+  it('every read failing: still 200, every module unknown, no alerts, no score — nothing confident', async () => {
+    const client = await getFirstClient({
+      business_profiles: FAILED,
+      ideas_error: { message: 'simulated outage' },
+      defaults: Object.fromEntries(BATCH_TABLES.map((t) => [t, FAILED])),
+    })
+    for (const key of ALL_MODULES) expect(client.modules[key], key).toBe('unknown')
+    expect(client.alerts).toEqual([])
+    expect(client.alertsComplete).toBe(false)
+    expect(client.engagement.engagementScore).toBeNull()
+    expect([...client.engagement.unknown].sort()).toEqual(
+      ['daysSinceSession', 'lastLogin', 'openActions', 'unreadMessages', 'weeklyReviewStreak']
+    )
+    expect(client.ideas_breakdown).toBeNull()
+  })
+
+  it('tags the failed read with its table, so Sentry says WHICH check could not run', async () => {
+    await getFirstClient({ defaults: { xero_connections: FAILED } })
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1)
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      '[client-completion] query error: simulated outage',
+      expect.objectContaining({
+        level: 'warning',
+        tags: expect.objectContaining({ source: 'xero_connections', invariant: 'client-completion-load' }),
+      })
+    )
   })
 })
