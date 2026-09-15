@@ -399,7 +399,6 @@ async function getHandler() {
     const ownerOrProfileFilter = ownerIds.length > 0
       ? `user_id.in.(${q(ownerIds)}),business_id.in.(${q(idsOrNil(profileIds))})`
       : `business_id.in.(${q(idsOrNil(profileIds))})`
-    const qrIds = [...profileIds, ...ownerIds]
 
     // ── Row type aliases for safeQuery generics ──────────────────
     type R = Record<string, any>
@@ -519,12 +518,14 @@ async function getHandler() {
           .select('id, business_id, user_id, is_completed, week_start_date')
           .in('business_id', idsOrNil(profileIds))
       ),
-      // 14. Quarterly Reviews (uses business_id — either profileId or ownerIds)
+      // 14. Quarterly Reviews — keyed by businesses.id: the column is a foreign
+      // key to businesses.id, and the workshop stores resolveBusinessId's
+      // businesses.id. Read by profile id and owner user_id, it matched no row.
       safeQuery<R>('quarterly_reviews', () =>
         supabase
           .from('quarterly_reviews')
           .select('id, business_id, status')
-          .in('business_id', idsOrNil(qrIds))
+          .in('business_id', businessIds)
       ),
       // 15. Issues List (has both user_id and business_id)
       safeQuery<R>('issues_list', () =>
@@ -637,7 +638,7 @@ async function getHandler() {
       forecasts: forecastsResult !== null && profilesRead,
       metrics: metricsSnapshotsResult !== null && profilesRead,
       weeklyReviews: weeklyReviewsResult !== null && profilesRead,
-      quarterlyReviews: quarterlyReviewsResult !== null && profilesRead,
+      quarterlyReviews: quarterlyReviewsResult !== null,
       issues: issuesResult !== null,
       ideas: ideasResult !== null,
       openLoops: openLoopsResult !== null,
@@ -823,11 +824,9 @@ async function getHandler() {
         { status: 'in_progress', seen: completedReviews.length > 0, read: read.weeklyReviews }
       )
 
-      // 14. Quarterly Review (check both profileId and ownerId keys)
-      const qReviews = [
-        ...(profileId ? (quarterlyReviewsByBusiness.get(profileId) || []) : []),
-        ...(ownerId ? (quarterlyReviewsByBusiness.get(ownerId) || []) : []),
-      ]
+      // 14. Quarterly Review (keyed by businesses.id). Any row counts as started:
+      // the workshop inserts it, at not_started, when the client presses Start.
+      const qReviews = quarterlyReviewsByBusiness.get(biz.id) || []
       const hasCompletedQR = qReviews.some((r) => r.status === 'completed')
       modules['quarterly_review'] = resolveModule(
         { status: 'completed', seen: hasCompletedQR, read: read.quarterlyReviews },
