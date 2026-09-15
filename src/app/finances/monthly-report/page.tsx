@@ -1624,6 +1624,8 @@ export default function MonthlyReportPage() {
         triggeredAccounts: [...t.expense_lines, ...t.revenue_lines, ...t.favourable_expense_lines].map(l => l.account_name),
         activityAccounts: t.activity_lines.map(l => l.account_name),
         commentarySettingsProblems: commentaryPlacementProblems(settings?.pdf_layout).map(describeCommentaryPlacementProblem),
+        // The pack's size is not measured here: approveAndSend builds it, and
+        // refuses one too large to email before anything is posted.
         uploadedInserts: pdfInput.inserts.placements,
       })
       fetch('/api/monthly-report/preflight', {
@@ -1769,6 +1771,18 @@ export default function MonthlyReportPage() {
       const { insertSources, ...eager } = await loadPdfSections()
       // The uploaded pages, opened once for the pre-flight row and the pack.
       const inserts = await preparePackInserts(settings?.pdf_layout ?? null, insertSources)
+      const packOptions = {
+        commentary,
+        ...eager,
+        businessName: activeBusiness?.name ?? undefined,
+        sections: settings?.sections,
+        pdfLayout: settings?.pdf_layout ?? null,
+      }
+      // A pack with uploaded pages is built BEFORE the pre-flight: whether it
+      // can still be emailed is a fact about the finished file, and the coach
+      // should read it on this panel rather than meet it at Approve & Send.
+      // A pack without them is built after the panel, as it always was.
+      const builtEarly = inserts.placements.length > 0 ? await buildPackPdf(report, packOptions, inserts) : null
 
       // WF.1 — pre-flight over exactly the data going into this PDF. The
       // panel informs, never blocks; the run is persisted either way so the
@@ -1803,7 +1817,9 @@ export default function MonthlyReportPage() {
           }
         })(),
         commentarySettingsProblems: commentaryPlacementProblems(settings?.pdf_layout).map(describeCommentaryPlacementProblem),
-        uploadedInserts: inserts.placements,
+        // The built pack's placements: a file that would not merge says so here.
+        uploadedInserts: builtEarly?.inserts ?? inserts.placements,
+        uploadedPackBytes: builtEarly?.merged ? builtEarly.bytes.length : null,
       })
       fetch('/api/monthly-report/preflight', {
         method: 'POST',
@@ -1818,13 +1834,7 @@ export default function MonthlyReportPage() {
       }
 
       // The one pack builder — Approve & Send and the preview harness call it too.
-      const pack = await buildPackPdf(report, {
-        commentary,
-        ...eager,
-        businessName: activeBusiness?.name ?? undefined,
-        sections: settings?.sections,
-        pdfLayout: settings?.pdf_layout ?? null,
-      }, inserts)
+      const pack = builtEarly ?? await buildPackPdf(report, packOptions, inserts)
       const monthLabel = new Date(report.report_month + '-01')
         .toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })
         .replace(' ', '-')

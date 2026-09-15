@@ -21,20 +21,42 @@ import type { LayoutWidget, PDFLayout } from '@/app/finances/monthly-report/type
 export const REPORT_INSERTS_BUCKET = 'report-inserts'
 
 /**
+ * The largest pack file Approve & Send will email, in bytes.
+ *
+ * The send posts the whole PDF, base64, through a Vercel function whose
+ * request body is capped at 4.5 MB — over it the platform answers with a page
+ * the status bar cannot read. Base64 makes 3,000,000 bytes 4,000,000
+ * characters, which leaves the rest of the body for the snapshot riding with
+ * it. Approve & Send refuses a merged pack over this, and pre-flight measures
+ * the built pack against the same number, so the two cannot disagree.
+ */
+export const SENDABLE_PACK_BYTES = 3_000_000
+
+/**
  * The largest file the route accepts, in bytes.
  *
- * Not the storage bucket's 20 MB. A pack with an upload in it still has to be
- * EMAILED: Approve & Send posts the whole PDF, base64, through a Vercel
- * function whose request body is capped at 4.5 MB — so a 20 MB upload would
- * export fine and then fail to send. Base64 costs a third again, and the rest
- * of the pack and the snapshot ride in the same body; 3 MB is what leaves a
- * typical pack room to go. The Lumary, payroll and cash-vs-accruals pages this
- * exists for are a few hundred KB.
+ * Not the storage bucket's 20 MB, and not a promise that a pack with the file
+ * in it can be emailed: that depends on the pack's own pages, which run from a
+ * few hundred KB to over 2 MB (Distinct Directions' August 2026 export is
+2,144,349 bytes),
+ * so only the built file can say — pre-flight and Approve & Send measure it
+ * (packTooLargeToEmailReason). This limit refuses the file no email could
+ * carry in any pack: at 2 MB a lean pack's pages still fit beside it. The
+ * Lumary, payroll and cash-vs-accruals pages this exists for are a few
+ * hundred KB.
  */
-export const MAX_INSERT_BYTES = 3 * 1024 * 1024
+export const MAX_INSERT_BYTES = 2 * 1024 * 1024
+
+const MB = 1024 * 1024
 
 function megabytes(bytes: number): string {
-  return `${(bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, '')} MB`
+  return `${(bytes / MB).toFixed(1).replace(/\.0$/, '')} MB`
+}
+
+/** A file's size as a coach reads it: whole KB under a megabyte, else MB to one place. */
+function fileSize(bytes: number, round: 'nearest' | 'up' = 'nearest'): string {
+  if (bytes < MB) return `${round === 'up' ? Math.ceil(bytes / 1024) : Math.round(bytes / 1024)} KB`
+  return round === 'up' ? megabytes(Math.ceil(bytes / (MB / 10)) * (MB / 10)) : megabytes(bytes)
 }
 
 /** Why a file over MAX_INSERT_BYTES is refused. */
@@ -74,15 +96,17 @@ export function insertPlacements(layout: PDFLayout | null | undefined): InsertPl
 /**
  * What the pack knows about one placement's upload for the month.
  *
- * - ready: a readable PDF of `pageCount` pages; the export reserves that many
- *   pages at the placement and merges the file into them.
+ * - ready: a readable PDF of `pageCount` pages and `sizeBytes` bytes; the
+ *   export reserves that many pages at the placement and merges the file into
+ *   them.
  * - missing: nothing uploaded for this month. The page still prints — a card
  *   saying so — never a pack that is silently a page short.
- * - unavailable: could not check, or the file cannot be used; `reason` is
- *   printed on the page.
+ * - unavailable: could not check, or the file cannot be used. The page prints
+ *   that it couldn't be added; `reason` is for the coach (pre-flight, the
+ *   harness), never printed on the client's page.
  */
 export type PackInsertState =
-  | { status: 'ready'; pageCount: number; filename: string }
+  | { status: 'ready'; pageCount: number; filename: string; sizeBytes: number }
   | { status: 'missing' }
   | { status: 'unavailable'; reason: string }
 
@@ -152,7 +176,8 @@ export function isInsertsSchemaMissing(error: { code?: string; message?: string 
   return ['42P01', 'PGRST205', '42703', 'PGRST204'].includes(error?.code ?? '')
 }
 
-export const INSERTS_NOT_SET_UP_REASON = "uploaded pages aren't set up in the database yet (migration 20260916031500_monthly_report_inserts)"
+/** Migration 20260916031500_monthly_report_inserts creates the table and the bucket. */
+export const INSERTS_NOT_SET_UP_REASON = "uploaded pages aren't set up in the database yet"
 
 function monthName(reportMonth: string): string {
   const [y, m] = reportMonth.split('-').map(Number)
@@ -160,36 +185,76 @@ function monthName(reportMonth: string): string {
   return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-AU', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 }
 
-/** The card a placement prints when there is no file to merge. */
+/**
+ * The card a placement prints when there is no file to merge.
+ *
+ * The pack goes to the client, and a card must say why "in words the owner can
+ * act on" — the owner can act on neither a failed download nor a database not
+ * yet migrated. So the card says only what is true for them: the month's page
+ * wasn't uploaded, or couldn't be added to this pack. Why is the coach's to fix
+ * and reaches the coach: the pre-flight row, the upload panel, Sentry.
+ */
 export function insertCardMessage(label: string, reportMonth: string, state: Exclude<PackInsertState, { status: 'ready' }>): string {
   const month = monthName(reportMonth)
   if (state.status === 'missing') {
     return `The ${label} page for ${month} hasn't been uploaded.`
   }
-  return `The ${label} page for ${month} couldn't be added: ${state.reason.replace(/\.$/, '')}.`
+  return `The ${label} page for ${month} couldn't be added to this pack.`
+}
+
+function listed(items: string[]): string {
+  return items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
+}
+
+/**
+ * Why a pack with uploaded pages merged into it can't be emailed, or null when
+ * it can: the pack's size, and how much smaller its uploads have to be —
+ * rounded up, so making that cut is enough. Approve & Send refuses with it and
+ * pre-flight warns with it, from the same built file.
+ */
+export function packTooLargeToEmailReason(
+  packBytes: number,
+  placements: readonly (InsertPlacement & { state: PackInsertState })[],
+): string | null {
+  if (packBytes <= SENDABLE_PACK_BYTES) return null
+  const head = `the pack with its uploaded pages is ${megabytes(packBytes)}, too large to email`
+  const ready = placements.flatMap((p) => (p.state.status === 'ready' ? [{ label: p.label, sizeBytes: p.state.sizeBytes }] : []))
+  if (ready.length === 0) return head
+  const files = listed(ready.map((f) => `${f.label} (${fileSize(f.sizeBytes)})`))
+  const over = packBytes - SENDABLE_PACK_BYTES
+  if (over > ready.reduce((s, f) => s + f.sizeBytes, 0)) return `${head} even without ${files}`
+  return ready.length === 1
+    ? `${head}: ${files} has to be at least ${fileSize(over, 'up')} smaller`
+    : `${head}: ${files} have to be at least ${fileSize(over, 'up')} smaller between them`
 }
 
 /**
  * The pre-flight row, or null when the pack places no uploaded page — a check
  * about a page the pack does not have would be a new row on every other
  * client's panel.
+ *
+ * `packBytes` is the built pack's size when uploaded pages were merged into it
+ * (services/pack-pdf, `merged`): a pack Approve & Send would refuse to email
+ * warns here first. Absent, the size was not measured and the row speaks only
+ * to the files.
  */
 export function insertPreflightRow(
   placements: readonly (InsertPlacement & { state: PackInsertState })[] | null | undefined,
   reportMonth: string,
+  packBytes?: number | null,
 ): { key: string; label: string; status: 'pass' | 'warn'; detail: string } | null {
   if (!placements || placements.length === 0) return null
   const month = monthName(reportMonth)
   const missing = placements.filter((p) => p.state.status === 'missing')
   const unavailable = placements.filter((p) => p.state.status === 'unavailable')
+  const tooLarge = packBytes == null ? null : packTooLargeToEmailReason(packBytes, placements)
+  const refused = ' — Approve & Send will refuse it until then.'
   if (missing.length === 0 && unavailable.length === 0) {
     const pages = placements.reduce((s, p) => s + (p.state.status === 'ready' ? p.state.pageCount : 0), 0)
-    return {
-      key: 'uploaded_pages',
-      label: 'Uploaded pages',
-      status: 'pass',
-      detail: `${placements.length} uploaded page${placements.length === 1 ? '' : 's'} for ${month} (${pages} sheet${pages === 1 ? '' : 's'}) will be merged in.`,
-    }
+    const merged = `${placements.length} uploaded page${placements.length === 1 ? '' : 's'} for ${month} (${pages} sheet${pages === 1 ? '' : 's'}) will be merged in`
+    return tooLarge
+      ? { key: 'uploaded_pages', label: 'Uploaded pages', status: 'warn', detail: `${merged}, but ${tooLarge}${refused}` }
+      : { key: 'uploaded_pages', label: 'Uploaded pages', status: 'pass', detail: `${merged}.` }
   }
   const parts: string[] = []
   if (missing.length > 0) {
@@ -198,5 +263,6 @@ export function insertPreflightRow(
   for (const p of unavailable) {
     parts.push(`${p.label} can't be added: ${(p.state as { reason: string }).reason.replace(/\.$/, '')}.`)
   }
+  if (tooLarge) parts.push(`${tooLarge.charAt(0).toUpperCase()}${tooLarge.slice(1)}${refused}`)
   return { key: 'uploaded_pages', label: 'Uploaded pages', status: 'warn', detail: parts.join(' ') }
 }

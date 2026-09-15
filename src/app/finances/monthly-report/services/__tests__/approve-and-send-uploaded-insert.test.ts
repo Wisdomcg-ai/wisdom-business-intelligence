@@ -10,11 +10,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 vi.mock('@sentry/nextjs', () => ({ captureException: vi.fn(), captureMessage: vi.fn() }))
 
 import { approveAndSend, resendReport, type ApproveAndSendParams } from '../approve-and-send'
-import { buildPackPdf } from '../pack-pdf'
+import { buildPackPdf, preparePackInserts } from '../pack-pdf'
 import { fixtureReport } from './pdf-pack-fixture'
 import { uploadedPdf, readPages, A4, LETTER, LETTER_LANDSCAPE } from './pack-insert-test-pdf'
 import type { PDFLayout } from '../../types/pdf-layout'
-import type { PackInsertSources } from '@/lib/monthly-report/pack-inserts'
+import {
+  INSERTS_NOT_SET_UP_REASON,
+  MAX_INSERT_BYTES,
+  SENDABLE_PACK_BYTES,
+  packTooLargeToEmailReason,
+  type PackInsertSources,
+} from '@/lib/monthly-report/pack-inserts'
+import { inspectInsertPdf } from '@/lib/monthly-report/pack-insert-pdf'
+import { runPreflight } from '@/lib/monthly-report/preflight'
 
 const layout: PDFLayout = {
   version: 1,
@@ -102,21 +110,87 @@ describe.each([
   })
 })
 
-describe('a pack too large to email', () => {
-  it('is refused before posting, naming the uploaded page to shrink', async () => {
+/** An uncompressible one-page upload of about `size` bytes: random bytes in the page's content. */
+async function noisePdf(size: number): Promise<Uint8Array> {
+  const { PDFDocument, PDFName } = await import('pdf-lib')
+  const doc = await PDFDocument.create()
+  const noise = new Uint8Array(size)
+  for (let i = 0; i < noise.length; i += 65536) crypto.getRandomValues(noise.subarray(i, Math.min(i + 65536, noise.length)))
+  doc.addPage([612, 792]).node.set(PDFName.of('Noise'), doc.context.flateStream(noise))
+  return doc.save()
+}
+
+describe('the upload limit and the email agree', () => {
+  it('a file the upload check accepts, at the limit, goes out in a lean pack', async () => {
     const { p } = await params()
-    // An uncompressible upload: random bytes in the page content, just under the upload limit.
-    const { PDFDocument } = await import('pdf-lib')
     vi.mocked(Math.random).mockRestore()
-    const big = await PDFDocument.create()
-    const noise = new Uint8Array(2_900_000)
-    for (let i = 0; i < noise.length; i += 65536) crypto.getRandomValues(noise.subarray(i, Math.min(i + 65536, noise.length)))
-    const page = big.addPage([612, 792])
-    page.node.set((await import('pdf-lib')).PDFName.of('Noise'), big.context.flateStream(noise))
-    p.pdf_input.inserts = { payroll: { status: 'file', bytes: await big.save(), filename: 'huge.pdf' } }
+    const bytes = await noisePdf(MAX_INSERT_BYTES - 16_000)
+    expect(bytes.length).toBeLessThanOrEqual(MAX_INSERT_BYTES)
+    expect(bytes.length).toBeGreaterThan(MAX_INSERT_BYTES - 64_000)
+    expect((await inspectInsertPdf(bytes, { maxBytes: MAX_INSERT_BYTES })).ok).toBe(true)
+
+    p.pdf_input.inserts = { payroll: { status: 'file', bytes, filename: 'eh-payroll-aug.pdf' } }
+    const res = await approveAndSend(p)
+    expect(res.ok).toBe(true)
+    expect(posted).toHaveLength(1)
+  }, 30_000)
+})
+
+describe('a pack too large to email', () => {
+  // Dragon's shape: two uploaded pages, each within the upload limit, that
+  // together push the pack past what an email carries.
+  const twoUploads: PDFLayout = {
+    version: 1,
+    pages: [
+      layout.pages[0],
+      { id: 'p2', orientation: 'portrait', widgets: [{ id: 'cva', type: 'uploaded_insert', col: 0, row: 0, colSpan: 2, rowSpan: 3, titleOverride: 'Cash vs Accruals' }] },
+      { id: 'p3', orientation: 'portrait', widgets: [{ id: 'hub', type: 'uploaded_insert', col: 0, row: 0, colSpan: 2, rowSpan: 3, titleOverride: 'Hubstaff' }] },
+    ],
+  }
+
+  it('pre-flight warns with the cut to make, and Approve & Send refuses with the same words, before posting', async () => {
+    const { p } = await params()
+    vi.mocked(Math.random).mockRestore()
+    const sources: PackInsertSources = {
+      cva: { status: 'file', bytes: await noisePdf(1_600_000), filename: 'cva.pdf' },
+      hub: { status: 'file', bytes: await noisePdf(1_600_000), filename: 'hub.pdf' },
+    }
+    for (const s of Object.values(sources)) expect(s.status === 'file' && s.bytes.length <= MAX_INSERT_BYTES).toBe(true)
+
+    // What the Export PDF path does: open the files, build the pack, and hand
+    // the pre-flight the built file's size.
+    const prepared = await preparePackInserts(twoUploads, sources)
+    const pack = await buildPackPdf(fixtureReport(), { pdfLayout: twoUploads }, prepared)
+    expect(pack.merged).toBe(true)
+    expect(pack.bytes.length).toBeGreaterThan(SENDABLE_PACK_BYTES)
+    const reason = packTooLargeToEmailReason(pack.bytes.length, pack.inserts)!
+    expect(reason).toMatch(/^the pack with its uploaded pages is 3\.\d MB, too large to email: Cash vs Accruals \(1\.5 MB\) and Hubstaff \(1\.5 MB\) have to be at least \d+ KB smaller between them$/)
+    // Making the cut it states is enough.
+    const cut = Number(reason.match(/at least (\d+) KB/)![1]) * 1024
+    expect(pack.bytes.length - cut).toBeLessThanOrEqual(SENDABLE_PACK_BYTES)
+
+    const row = runPreflight({ report: fixtureReport(), uploadedInserts: pack.inserts, uploadedPackBytes: pack.bytes.length })
+      .find((r) => r.key === 'uploaded_pages')
+    expect(row?.status).toBe('warn')
+    expect(row?.detail).toContain(reason)
+
+    p.pdf_input = { ...p.pdf_input, options: { pdfLayout: twoUploads }, inserts: prepared }
     const res = await approveAndSend(p)
     expect(res).toMatchObject({ ok: false, httpStatus: 413, body: { errorCode: 'pdf_too_large' } })
-    expect(res.body.error).toMatch(/too large to email\. Upload a smaller PDF for Employment Hero Payroll/)
+    expect(res.body.error).toBe(`${reason}. Upload smaller PDFs on the External Data tab and send again.`)
     expect(posted).toHaveLength(0)
+  }, 30_000)
+})
+
+describe('an uploaded page that could not be added, in the emailed pack', () => {
+  it("before the migration is applied: the client's page says only that the page couldn't be added", async () => {
+    const { p } = await params()
+    p.pdf_input.inserts = { payroll: { status: 'unavailable', reason: INSERTS_NOT_SET_UP_REASON } }
+    const res = await approveAndSend(p)
+    expect(res.ok).toBe(true)
+    const pages = await readPages(decode(posted[0].pdf_base64))
+    const printed = pages.map((pg) => pg.text.replace(/\n/g, ' ')).join(' ')
+    expect(printed).toContain("The Employment Hero Payroll page for August 2026 couldn't be added to this pack.")
+    expect(printed).not.toMatch(/migration|database|20260916031500/)
   })
 })

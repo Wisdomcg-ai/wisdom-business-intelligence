@@ -93,6 +93,13 @@ export interface PreflightInputs {
    * none, and there is no row.
    */
   uploadedInserts?: readonly (InsertPlacement & { state: PackInsertState })[] | null
+  /**
+   * The built pack's size in bytes when uploaded pages were merged into it
+   * (services/pack-pdf buildPackPdf, `merged`). Over what Approve & Send can
+   * email, the uploaded-pages row warns with the cut to make. Absent: not
+   * measured.
+   */
+  uploadedPackBytes?: number | null
 }
 
 const r2 = (v: number) => Math.round(v * 100) / 100
@@ -451,10 +458,11 @@ export function runPreflight(inputs: PreflightInputs): PreflightResult[] {
   }
 
   // 19. Uploaded pages — each placement's file for the month is there and
-  // usable. Only for a pack that places one: a row about a page the pack does
-  // not have would be new on every other client's panel.
+  // usable, and the pack they make can still be emailed. Only for a pack that
+  // places one: a row about a page the pack does not have would be new on
+  // every other client's panel.
   {
-    const row = insertPreflightRow(inputs.uploadedInserts, report.report_month)
+    const row = insertPreflightRow(inputs.uploadedInserts, report.report_month, inputs.uploadedPackBytes)
     if (row) push(row.key, row.label, row.status, row.detail)
   }
 

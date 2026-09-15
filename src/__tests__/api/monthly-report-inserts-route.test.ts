@@ -171,7 +171,7 @@ describe('POST — uploading a month\'s PDF against a placement', () => {
     big.set(new TextEncoder().encode('%PDF-1.7\n'))
     const { status, body } = await upload(fields(), { bytes: big })
     expect(status).toBe(413)
-    expect(body.error).toMatch(/at most 3 MB/)
+    expect(body.error).toMatch(/at most 2 MB/)
     expect(fake.state.objects.size).toBe(0)
   })
 

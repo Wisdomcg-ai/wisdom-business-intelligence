@@ -129,7 +129,8 @@ export default function UploadedPagesPanel({ businessId, reportMonth, layout, ca
           </h3>
           <p className="text-sm text-gray-500">
             The PDF for each uploaded page in the pack layout. Its pages print where the layout puts them, numbered with
-            the rest. A PDF of up to {Math.round(MAX_INSERT_BYTES / (1024 * 1024))} MB; uploading again replaces the month&apos;s file.
+            the rest. A PDF of up to {Math.round(MAX_INSERT_BYTES / (1024 * 1024))} MB, and the pack with it has to fit in one
+            email — the export&apos;s pre-flight says if it won&apos;t. Uploading again replaces the month&apos;s file.
           </p>
         </div>
         <button

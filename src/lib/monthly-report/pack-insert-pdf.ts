@@ -21,7 +21,7 @@ export type InsertInspection =
   | {
       ok: false
       kind: 'empty' | 'too_large' | 'not_pdf' | 'encrypted' | 'unreadable' | 'no_pages' | 'too_many_pages'
-      /** Finishes "couldn't be added: …" and "the upload was refused: …". */
+      /** Finishes the coach's "can't be added: …" (pre-flight) and "the upload was refused: …". */
       reason: string
     }
 

@@ -4,7 +4,19 @@
 import { describe, it, expect } from 'vitest'
 import { PDFDocument, degrees } from 'pdf-lib'
 import { inspectInsertPdf, footerPlacement, mergePackInserts } from '../pack-insert-pdf'
-import { MAX_INSERT_BYTES, MAX_INSERT_PAGES, insertPlacements, latestInsertByWidget, insertPreflightRow, type PackInsertRecord } from '../pack-inserts'
+import {
+  INSERTS_NOT_LOADED_REASON,
+  INSERTS_NOT_SET_UP_REASON,
+  MAX_INSERT_BYTES,
+  MAX_INSERT_PAGES,
+  SENDABLE_PACK_BYTES,
+  insertCardMessage,
+  insertPlacements,
+  insertPreflightRow,
+  latestInsertByWidget,
+  packTooLargeToEmailReason,
+  type PackInsertRecord,
+} from '../pack-inserts'
 import { uploadedPdf, encryptedPdf, readPages, LETTER } from '@/app/finances/monthly-report/services/__tests__/pack-insert-test-pdf'
 
 describe('inspectInsertPdf', () => {
@@ -31,8 +43,52 @@ describe('inspectInsertPdf', () => {
     expect(r.ok ? 'ok' : r.kind).toBe('too_many_pages')
   })
 
-  it('the upload limit leaves room for the pack inside a 4.5 MB request, base64', () => {
-    expect(Math.ceil(MAX_INSERT_BYTES / 3) * 4).toBeLessThan(4.5 * 1024 * 1024)
+  it('the email carries a pack of SENDABLE_PACK_BYTES inside a 4.5 MB request, base64, with room for the snapshot', () => {
+    expect(Math.ceil(SENDABLE_PACK_BYTES / 3) * 4).toBeLessThanOrEqual(4_000_000)
+  })
+
+  it('a file at the upload limit is not one no email could carry: it leaves the pack its own pages', () => {
+    // A lean pack's own pages (the fixture pack with a placeholder sheet) are ~310 KB.
+    expect(MAX_INSERT_BYTES + 512 * 1024).toBeLessThanOrEqual(SENDABLE_PACK_BYTES)
+  })
+})
+
+describe('packTooLargeToEmailReason — the one size check pre-flight and Approve & Send share', () => {
+  const MB = 1024 * 1024
+  const ready = (label: string, sizeBytes: number) => ({ widgetId: label, label, state: { status: 'ready' as const, pageCount: 1, filename: `${label}.pdf`, sizeBytes } })
+
+  it('nothing to say at or under what an email carries', () => {
+    expect(packTooLargeToEmailReason(SENDABLE_PACK_BYTES, [ready('Payroll', 2 * MB)])).toBeNull()
+    expect(packTooLargeToEmailReason(1000, [])).toBeNull()
+  })
+
+  it('one upload: its size, and how much smaller it has to be — rounded UP, so doing it is enough', () => {
+    // The reviewer's pack: 3,364,983 bytes with a 3,052,627-byte upload.
+    const reason = packTooLargeToEmailReason(3_364_983, [ready('Employment Hero Payroll', 3_052_627)])
+    expect(reason).toBe('the pack with its uploaded pages is 3.2 MB, too large to email: Employment Hero Payroll (2.9 MB) has to be at least 357 KB smaller')
+    // 364,983 bytes over: 356 KB smaller would not be enough.
+    expect(357 * 1024).toBeGreaterThanOrEqual(3_364_983 - SENDABLE_PACK_BYTES)
+    expect(356 * 1024).toBeLessThan(3_364_983 - SENDABLE_PACK_BYTES)
+  })
+
+  it('over by a megabyte or more: said in MB, rounded up', () => {
+    expect(packTooLargeToEmailReason(SENDABLE_PACK_BYTES + 1_100_000, [ready('Payroll', 2_000_000)]))
+      .toBe('the pack with its uploaded pages is 3.9 MB, too large to email: Payroll (1.9 MB) has to be at least 1.1 MB smaller')
+  })
+
+  it('under a megabyte over: said in KB, rounded up', () => {
+    expect(packTooLargeToEmailReason(SENDABLE_PACK_BYTES + 40_000, [ready('Lumary', 900_000)]))
+      .toBe('the pack with its uploaded pages is 2.9 MB, too large to email: Lumary (879 KB) has to be at least 40 KB smaller')
+  })
+
+  it('two uploads: between them', () => {
+    expect(packTooLargeToEmailReason(3_500_000, [ready('Cash vs Accruals', 1_600_000), ready('Hubstaff', 1_600_000)]))
+      .toBe('the pack with its uploaded pages is 3.3 MB, too large to email: Cash vs Accruals (1.5 MB) and Hubstaff (1.5 MB) have to be at least 489 KB smaller between them')
+  })
+
+  it("a pack whose own pages don't fit says so, rather than ask for an impossible cut", () => {
+    expect(packTooLargeToEmailReason(3_400_000, [ready('Lumary', 100_000)]))
+      .toBe('the pack with its uploaded pages is 3.2 MB, too large to email even without Lumary (98 KB)')
   })
 })
 
@@ -133,7 +189,7 @@ describe('placements, rows and the pre-flight row', () => {
 
   it('no row for a pack with no uploaded page; pass when every file is ready; warn naming what is missing or unusable', () => {
     expect(insertPreflightRow([], '2026-08')).toBeNull()
-    expect(insertPreflightRow([{ widgetId: 'a', label: 'Lumary', state: { status: 'ready', pageCount: 2, filename: 'l.pdf' } }], '2026-08'))
+    expect(insertPreflightRow([{ widgetId: 'a', label: 'Lumary', state: { status: 'ready', pageCount: 2, filename: 'l.pdf', sizeBytes: 4000 } }], '2026-08'))
       .toMatchObject({ status: 'pass', detail: '1 uploaded page for August 2026 (2 sheets) will be merged in.' })
     const warn = insertPreflightRow([
       { widgetId: 'a', label: 'Cash vs Accruals', state: { status: 'missing' } },
@@ -141,5 +197,38 @@ describe('placements, rows and the pre-flight row', () => {
     ], '2026-08')
     expect(warn?.status).toBe('warn')
     expect(warn?.detail).toBe('Cash vs Accruals has not been uploaded for August 2026 — the pack prints a notice in its place. Upload on the External Data tab. Hubstaff can\'t be added: the PDF is encrypted.')
+  })
+
+  it('every file ready but the built pack too large to email: warn, with the cut Approve & Send will ask for', () => {
+    const placed = [{ widgetId: 'a', label: 'Employment Hero Payroll', state: { status: 'ready' as const, pageCount: 1, filename: 'eh.pdf', sizeBytes: 1_900_000 } }]
+    const over = insertPreflightRow(placed, '2026-08', SENDABLE_PACK_BYTES + 200_000)
+    expect(over?.status).toBe('warn')
+    expect(over?.detail).toBe(
+      `1 uploaded page for August 2026 (1 sheet) will be merged in, but ${packTooLargeToEmailReason(SENDABLE_PACK_BYTES + 200_000, placed)} — Approve & Send will refuse it until then.`,
+    )
+    // Measured and within what an email carries: pass, as before.
+    expect(insertPreflightRow(placed, '2026-08', SENDABLE_PACK_BYTES)?.status).toBe('pass')
+  })
+})
+
+describe("the card on the client's page", () => {
+  it('nothing uploaded: says so', () => {
+    expect(insertCardMessage('Lumary Income Analysis', '2026-08', { status: 'missing' })).toBe("The Lumary Income Analysis page for August 2026 hasn't been uploaded.")
+  })
+
+  it.each([
+    INSERTS_NOT_SET_UP_REASON,
+    INSERTS_NOT_LOADED_REASON,
+    'the uploaded file eh-payroll.pdf could not be downloaded',
+    'the PDF could not be read (Invalid PDF header)',
+    'the PDF is encrypted or password-protected — open it and print it to a new PDF, then upload that',
+  ])('could not be added (%s): one plain sentence — the reason is the coach\'s, not the client\'s', (reason) => {
+    const card = insertCardMessage('Lumary Income Analysis', '2026-08', { status: 'unavailable', reason })
+    expect(card).toBe("The Lumary Income Analysis page for August 2026 couldn't be added to this pack.")
+    expect(card).not.toMatch(/migration|database|download|export|PDF|upload/i)
+  })
+
+  it('the not-set-up reason the coach sees names no migration file either', () => {
+    expect(INSERTS_NOT_SET_UP_REASON).not.toMatch(/migration|\d{14}/)
   })
 })

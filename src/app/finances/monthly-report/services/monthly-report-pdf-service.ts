@@ -5211,7 +5211,8 @@ export class MonthlyReportPDFService {
    * unfinished rather than as a blank page in a client's pack.
    *
    * With no usable file the placement prints one sheet: its title and a card
-   * saying the month's file was not uploaded, or why it could not be used.
+   * saying the month's file was not uploaded, or could not be added. Why it
+   * could not is the coach's (pre-flight), not the client's page's.
    *
    * The upload replaces whole sheets, so it never shares one: a widget placed
    * above it on the same layout page keeps its sheet, and one below it is set

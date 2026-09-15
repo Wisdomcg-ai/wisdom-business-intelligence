@@ -9,8 +9,11 @@
  *   - DD's shape: cover, then the Lumary page as page 2;
  *   - a month with nothing uploaded prints a card saying so, in the page's
  *     place, and the pre-flight row warns;
- *   - an unreadable or encrypted file prints its reason and is reported to
- *     Sentry under an invariant tag;
+ *   - a placement that could not be added prints one plain sentence — the
+ *     reason (a file that would not open, a failed download, a database not
+ *     yet migrated) is the coach's, in pre-flight, never on the client's page;
+ *   - an unreadable or encrypted file is reported to Sentry under an
+ *     invariant tag;
  *   - a pack that places no uploaded page is byte-for-byte the file the
  *     service wrote before this existed.
  */
@@ -24,7 +27,7 @@ import { buildPackPdf, preparePackInserts } from '../pack-pdf'
 import { fixtureReport, pageContaining, textRuns } from './pdf-pack-fixture'
 import { uploadedPdf, encryptedPdf, readPages, A4, LETTER, LETTER_LANDSCAPE } from './pack-insert-test-pdf'
 import type { PDFLayout, LayoutWidget } from '../../types/pdf-layout'
-import { insertPreflightRow } from '@/lib/monthly-report/pack-inserts'
+import { INSERTS_NOT_LOADED_REASON, INSERTS_NOT_SET_UP_REASON, insertPreflightRow } from '@/lib/monthly-report/pack-inserts'
 
 const widget = (id: string, type: LayoutWidget['type'], extra: Partial<LayoutWidget> = {}): LayoutWidget => ({
   id, type, col: 0, row: 0, colSpan: 2, rowSpan: 3, ...extra,
@@ -43,6 +46,8 @@ function packLayout(): PDFLayout {
 }
 
 const MEMO = 'August was steady.'
+/** What the client's page says for a placement whose file could not be added, whatever the reason. */
+const NOT_ADDED = "The Lumary Income Analysis page for August 2026 couldn't be added to this pack."
 
 /** A jsPDF page's text as one line — a card's message wraps over several show-text runs. */
 const pageLine = (doc: any, page: number) => textRuns(doc, page).join(' ').replace(/\\([()])/g, '$1')
@@ -131,29 +136,47 @@ describe('nothing uploaded for the month', () => {
     expect(row?.detail).toContain('Lumary Income Analysis has not been uploaded for August 2026')
   })
 
-  it('an export that never loaded the uploads says so on the page, not a blank', async () => {
+  it('an export that never loaded the uploads still prints the page, not a blank — without saying why to the client', async () => {
     const pack = await buildPackPdf(fixtureReport(), { pdfLayout: packLayout(), memo: MEMO }, undefined)
-    expect(pageSaying(pack.doc, 'the uploaded pages were not loaded for this export')).toBe(2)
+    expect(pageSaying(pack.doc, NOT_ADDED)).toBe(2)
+    expect(pageSaying(pack.doc, INSERTS_NOT_LOADED_REASON)).toBe(-1)
+  })
+})
+
+describe("the client's page never carries the coach's reason", () => {
+  it.each([
+    INSERTS_NOT_SET_UP_REASON,
+    INSERTS_NOT_LOADED_REASON,
+    'the uploaded file lumary-aug.pdf could not be downloaded',
+  ])('unavailable (%s): the plain sentence, and none of the reason', async (reason) => {
+    const pack = await buildPackPdf(fixtureReport(), { pdfLayout: packLayout(), memo: MEMO }, { lumary: { status: 'unavailable', reason } })
+    expect(pageSaying(pack.doc, NOT_ADDED)).toBe(2)
+    expect(pageSaying(pack.doc, reason)).toBe(-1)
+    const all = Array.from({ length: (pack.doc as any).getNumberOfPages() }, (_, i) => pageLine(pack.doc, i + 1)).join(' ')
+    expect(all).not.toMatch(/migration|database|20260916031500/)
   })
 })
 
 describe('a file the pack cannot use', () => {
-  it('unreadable: the reason prints and Sentry hears it under an invariant tag', async () => {
+  it('unreadable: the page says it could not be added, the coach\'s pre-flight says why, and Sentry hears it under an invariant tag', async () => {
     const junk = new TextEncoder().encode('%PDF-1.4\nthis is not really a pdf at all')
-    const pack = await buildPackPdf(fixtureReport(), { pdfLayout: packLayout(), memo: MEMO }, {
-      lumary: { status: 'file', bytes: junk, filename: 'broken.pdf' },
-    })
+    const sources = { lumary: { status: 'file' as const, bytes: junk, filename: 'broken.pdf' } }
+    const pack = await buildPackPdf(fixtureReport(), { pdfLayout: packLayout(), memo: MEMO }, sources)
     expect(pack.merged).toBe(false)
-    expect(pageSaying(pack.doc, "The Lumary Income Analysis page for August 2026 couldn't be added: the PDF could not be read")).toBe(2)
+    expect(pageSaying(pack.doc, NOT_ADDED)).toBe(2)
+    expect(pageSaying(pack.doc, 'the PDF could not be read')).toBe(-1)
+    expect(insertPreflightRow(pack.inserts, '2026-08')?.detail).toContain("Lumary Income Analysis can't be added: the PDF could not be read")
     const tags = [...sentry.captureException.mock.calls, ...sentry.captureMessage.mock.calls].map((c: any[]) => c[1]?.tags?.invariant)
     expect(tags).toContain('pack-insert-unreadable')
   })
 
-  it('encrypted: refused with a reason the coach can act on', async () => {
+  it('encrypted: the reason the coach can act on is in pre-flight, not on the client\'s page', async () => {
     const pack = await buildPackPdf(fixtureReport(), { pdfLayout: packLayout(), memo: MEMO }, {
       lumary: { status: 'file', bytes: encryptedPdf(), filename: 'payroll.pdf' },
     })
-    expect(pageSaying(pack.doc, 'the PDF is encrypted or password-protected')).toBe(2)
+    expect(pageSaying(pack.doc, NOT_ADDED)).toBe(2)
+    expect(pageSaying(pack.doc, 'encrypted')).toBe(-1)
+    expect(insertPreflightRow(pack.inserts, '2026-08')?.detail).toContain('the PDF is encrypted or password-protected')
     const tags = [...sentry.captureException.mock.calls, ...sentry.captureMessage.mock.calls].map((c: any[]) => c[1]?.tags?.invariant)
     expect(tags).toContain('pack-insert-unreadable')
   })

@@ -701,6 +701,12 @@ async function main() {
   for (const placed of pack.inserts) {
     if (placed.state.status !== 'ready') warnings.push(`uploaded page "${placed.label}": ${placed.state.status === 'missing' ? 'nothing uploaded for this month — the pack prints a notice in its place' : `can't be added — ${placed.state.reason}`}`)
   }
+  {
+    // The check Approve & Send refuses on, over the same file.
+    const { packTooLargeToEmailReason } = await import('@/lib/monthly-report/pack-inserts')
+    const tooLarge = pack.merged ? packTooLargeToEmailReason(pack.bytes.length, pack.inserts) : null
+    if (tooLarge) warnings.push(`uploaded pages: ${tooLarge} — Approve & Send would refuse it`)
+  }
 
   // What the pack printed in place of a commentary setting it could not read,
   // the accounts a commentary block left off for want of any text, and the

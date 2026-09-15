@@ -11,7 +11,7 @@
 // through buildPackPdf, the one builder Export PDF and the preview harness
 // also call, so the attachment is the file Export saves, uploaded pages and all.
 import { buildPackPdf, type PackPdfOptions, type PreparedPackInserts } from './pack-pdf'
-import type { PackInsertSources } from '@/lib/monthly-report/pack-inserts'
+import { packTooLargeToEmailReason, type PackInsertSources } from '@/lib/monthly-report/pack-inserts'
 import type { GeneratedReport } from '../types'
 import { printedBalanceSheets } from '@/lib/monthly-report/balance-sheet-freeze'
 
@@ -58,30 +58,30 @@ function buildPdfFilename(business_name: string, period_month: string): string {
 /**
  * The send posts the pack base64 through a Vercel function, whose request body
  * is capped at 4.5 MB — over it the platform answers with a page the status bar
- * cannot read. Only a pack with an uploaded page gets near it, so only that
- * pack is checked, and the coach is told which fix is theirs to make.
+ * cannot read (SENDABLE_PACK_BYTES is the pack that still fits). Only a pack
+ * with an uploaded page gets near it, so only that pack is checked, and the
+ * coach is told the cut to make — in the words the export's pre-flight used
+ * for the same file.
  */
-const SENDABLE_PDF_BASE64_CHARS = 4_000_000
-
 async function generatePdfBase64(pdf_input: PdfInput): Promise<{ pdf_base64: string; refusal: ReportStatusApiResult | null }> {
   const pack = await buildPackPdf(pdf_input.report, pdf_input.options, pdf_input.inserts)
-  const pdf_base64 = arrayBufferToBase64(pack.bytes)
-  if (pack.merged && pdf_base64.length > SENDABLE_PDF_BASE64_CHARS) {
-    const mb = (pack.bytes.length / (1024 * 1024)).toFixed(1)
+  const tooLarge = pack.merged ? packTooLargeToEmailReason(pack.bytes.length, pack.inserts) : null
+  if (tooLarge) {
+    const several = pack.inserts.filter((i) => i.state.status === 'ready').length > 1
     return {
-      pdf_base64,
+      pdf_base64: '',
       refusal: {
         ok: false,
         httpStatus: 413,
         body: {
           success: false,
           errorCode: 'pdf_too_large',
-          error: `the pack with its uploaded pages is ${mb} MB, too large to email. Upload a smaller PDF for ${pack.inserts.filter((i) => i.state.status === 'ready').map((i) => i.label).join(', ')} and send again.`,
+          error: `${tooLarge}. Upload ${several ? 'smaller PDFs' : 'a smaller PDF'} on the External Data tab and send again.`,
         },
       },
     }
   }
-  return { pdf_base64, refusal: null }
+  return { pdf_base64: arrayBufferToBase64(pack.bytes), refusal: null }
 }
 
 export interface ApproveAndSendParams {

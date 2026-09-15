@@ -43,8 +43,9 @@ export interface PreparedPackInserts {
 
 /**
  * Open each placement's file and say what the pack will print for it. A file
- * that cannot be used prints its reason — and is reported, because a coach
- * uploaded it believing it would go out.
+ * that cannot be used prints that it couldn't be added, carries its reason for
+ * the coach's pre-flight — and is reported, because a coach uploaded it
+ * believing it would go out.
  */
 export async function preparePackInserts(
   layout: PDFLayout | null | undefined,
@@ -65,7 +66,10 @@ export async function preparePackInserts(
     const inspection = await inspectInsertPdf(source.bytes)
     if (inspection.ok) {
       docs.set(placement.widgetId, inspection.doc)
-      placements.push({ ...placement, state: { status: 'ready', pageCount: inspection.pageCount, filename: source.filename } })
+      placements.push({
+        ...placement,
+        state: { status: 'ready', pageCount: inspection.pageCount, filename: source.filename, sizeBytes: source.bytes.length },
+      })
     } else {
       Sentry.captureMessage(`[PDF] uploaded page "${placement.label}" can't be used: ${inspection.reason}`, {
         level: 'warning',
