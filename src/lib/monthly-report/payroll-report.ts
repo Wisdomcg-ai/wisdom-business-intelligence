@@ -15,7 +15,9 @@
  * by the one rule the Wages Analysis page also uses (wages-roster-budget) —
  * weekly salary × the weeks of the organisation's pay runs that fell inside
  * the person's employment. A month whose weeks cannot be counted has no roster
- * budget and says why; nothing is guessed.
+ * budget and says why, and neither has one whose roster leaves somebody paid
+ * without a salary; nothing is guessed, and no total is added over part of a
+ * team.
  *
  * WHICH BUDGET (decision 4). The Budget row is the approved wages budget by
  * default, so the payroll page and the statement print one number. A client
@@ -63,7 +65,7 @@ export interface PayrollReportTotals {
   /** payment_date → the run's total. */
   runs: Record<string, number>
   month_actual: number
-  /** The stated month budgets added; null when nobody under it has one. */
+  /** The month budgets added; null unless every row under it has one. */
   month_budget: number | null
   month_variance: number | null
 }
@@ -131,9 +133,15 @@ function fiscalYearOf(month: string, yearStartMonth: number): number {
   return yearStartMonth === 1 ? y : m >= yearStartMonth ? y + 1 : y
 }
 
+/** "A", "A and B", "A, B and C". */
+function nameList(names: readonly string[]): string {
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
 interface MonthRoster {
   budget: number | null
-  reason: keyof typeof REASONS | null
+  /** Why the budget could not be counted, as the page's sentence says it. */
+  reason: string | null
   weeks: number | null
   cycle: string | null
   /** Grid employee index → their budget for the month (null: no salary). */
@@ -149,8 +157,8 @@ function rosterForMonth(
   month: string,
   runDates: readonly string[],
 ): MonthRoster {
-  const empty = (reason: MonthRoster['reason']): MonthRoster => ({
-    budget: null, reason, weeks: null, cycle: null, byEmployee: new Map(), unpaid: new Map(), unchecked: [],
+  const empty = (reason: keyof typeof REASONS): MonthRoster => ({
+    budget: null, reason: REASONS[reason], weeks: null, cycle: null, byEmployee: new Map(), unpaid: new Map(), unchecked: [],
   })
   if (grid.records_unreadable) return empty('start_dates_unreadable')
   const slips = (grid.pay_periods ?? []).filter((p) => p.payment_date.slice(0, 7) === month)
@@ -175,12 +183,27 @@ function rosterForMonth(
   paid.forEach(({ index }, i) => byEmployee.set(index, result.employees[i].budget))
   const unpaid = new Map(result.unpaid.map((u) => [u.index, { name: u.name, budget: u.budget }]))
   const total = [...byEmployee.values()].reduce<number>((t, b) => t + (b ?? 0), 0) + result.unpaid.reduce((t, u) => t + u.budget, 0)
+
+  // A roster entry whose salary has not been typed in yet is not a budget of
+  // $0. Their own Month budget is a dash, and a month total that quietly left
+  // them out would read as an overspend on whatever area they stand in — so
+  // the month has no roster budget, and the page says whose figure is missing.
+  // Somebody paid who is on no roster entry at all is a different thing:
+  // nothing was budgeted for them, which is a real variance, and the page
+  // already names them ("listed last").
+  const match = rosterMatcher(roster)
+  const unsalaried = [...new Set(paid
+    .map(({ e }) => match(e))
+    .filter((i): i is number => i !== undefined && typeof roster[i].weekly_salary !== 'number'))]
+    .sort((a, b) => a - b)
+    .map((i) => cleanEmployeeName(roster[i].name))
+
   // The weeks are the organisation's, the same for everyone employed all month.
   const weeksPer = weeksPerPayPeriod(result.pay_cycle)
   const periods = new Set(slips.map((s) => (s.period_start && s.period_end ? `${s.period_start}|${s.period_end}` : `paid ${s.payment_date}`)))
   return {
-    budget: round2(total),
-    reason: null,
+    budget: unsalaried.length > 0 ? null : round2(total),
+    reason: unsalaried.length > 0 ? `the roster gives no salary for ${nameList(unsalaried)}` : null,
     weeks: weeksPer === null ? null : round2(periods.size * weeksPer),
     cycle: result.pay_cycle,
     byEmployee,
@@ -190,9 +213,14 @@ function rosterForMonth(
 }
 
 function totalsOf(employees: readonly PayrollReportEmployee[], runDates: readonly string[]): PayrollReportTotals {
-  const budgets = employees.map((e) => e.month_budget).filter((b): b is number => b !== null)
   const actual = round2(employees.reduce((t, e) => t + e.month_actual, 0))
-  const budget = budgets.length > 0 ? round2(budgets.reduce((t, b) => t + b, 0)) : null
+  // Only when every row under the heading has one — the rule the Weekly Salary
+  // (Budget) total beside it already keeps. A sum over the people who happen to
+  // have a budget, printed under a column that includes someone with a dash, is
+  // a smaller number under the same heading: it reads as an overspend.
+  const budget = employees.length > 0 && employees.every((e) => e.month_budget !== null)
+    ? round2(employees.reduce((t, e) => t + (e.month_budget as number), 0))
+    : null
   return {
     period_salary: employees.length > 0 && employees.every((e) => e.period_salary !== null)
       ? round2(employees.reduce((t, e) => t + (e.period_salary as number), 0))
@@ -328,7 +356,7 @@ export function buildPayrollReport(
       difference: budget === null ? null : round2(budget - m.total),
       budget_source: source,
       roster_budget: r.budget,
-      roster_reason: r.reason ? REASONS[r.reason] : null,
+      roster_reason: r.reason,
       weeks: r.weeks,
       pay_cycle: r.cycle,
     }

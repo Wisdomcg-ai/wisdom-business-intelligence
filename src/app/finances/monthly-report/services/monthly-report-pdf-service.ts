@@ -5481,7 +5481,12 @@ export class MonthlyReportPDFService {
     })
 
     this.yPosition = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 6
-    if (rostered.employees.some((e) => (units && e.standard_units === null) || e.weekly_salary === null)) {
+    // What was printed, row by row, not the raw roster: a fortnightly entry
+    // states its figure per fortnight and carries no weekly_salary at all, so a
+    // page read from the roster would send the coach looking for every one of
+    // them. The rostered-but-unpaid rows are only on the report's side too.
+    const printed = report.groups.flatMap((g) => g.employees)
+    if (printed.some((e) => (units && e.standard_units === null) || e.period_salary === null)) {
       this.drawNote(
         units
           ? `A dash under Standard Units or ${salaryHeading} is a figure not yet entered on this page's roster.`

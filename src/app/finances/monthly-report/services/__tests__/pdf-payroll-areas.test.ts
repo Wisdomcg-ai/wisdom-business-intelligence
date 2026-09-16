@@ -112,6 +112,17 @@ describe("Distinct Directions' August payrun, by area", () => {
     expect(plain).not.toContain(fillOp([253, 236, 200]))
   })
 
+  it('prints a dash, not a total over 34 of 35 people, when one salary has not been typed in', () => {
+    const roster = DD_ROSTER.map(({ weekly_salary, ...rest }) => (rest.name === 'Patrick Kelly' ? rest : { ...rest, weekly_salary }))
+    const doc = render({ ...DD, roster, budget_basis: 'roster' })
+    const text = payrollText(doc)
+    // 245,584 less Patrick's 8,848 — a figure the page must never print.
+    expect(text).not.toContain('(236,736)')
+    expect(text).not.toContain('(113,096)')
+    expect(text).toContain('(123,283)') // what was paid is unchanged
+    expect(docText(doc)).toContain('roster budget could not be counted: the roster gives no salary for Patrick Kelly')
+  })
+
   it("prints the coach's note under the table", () => {
     expect(docText(render(DD))).toContain('222 hours of annual leave on his final pay')
   })
@@ -128,26 +139,29 @@ describe("Distinct Directions' August payrun, by area", () => {
 })
 
 describe('an IICT-shaped fortnightly roster', () => {
+  const runs = ['2026-07-08', '2026-07-22', '2026-08-05', '2026-08-19', '2026-09-02', '2026-09-16', '2026-09-30']
+  const period = (d: string) => {
+    const end = new Date(`${d}T00:00:00Z`); end.setUTCDate(end.getUTCDate() - 1)
+    const start = new Date(end); start.setUTCDate(start.getUTCDate() - 13)
+    return { calendar_type: 'FORTNIGHTLY', period_start: start.toISOString().slice(0, 10), period_end: end.toISOString().slice(0, 10) }
+  }
+  const fortnightlyGrid = () => buildPayrollGrid(
+    runs.flatMap((d) => [
+      { employee_id: 'jm', employee_name: 'Jennifer Moore', payment_date: d, wages: 2546, super_amount: 0, ...period(d) },
+      { employee_id: 'jb', employee_name: 'Joelson Batista', payment_date: d, wages: 5000, super_amount: 0, ...period(d) },
+    ]),
+    [{ employee_id: 'jm', start_date: '2019-01-01' }, { employee_id: 'jb', start_date: '2019-01-01' }],
+    ['2026-07', '2026-08', '2026-09'],
+  )
+  const FORTNIGHTLY = {
+    layout: 'calxa', months: 3, salary_period: 'fortnight', budget_basis: 'roster',
+    roster: [{ name: 'Jennifer Moore', employee_id: 'jm', fortnightly_salary: 2707 }, { name: 'Joelson Batista', employee_id: 'jb', fortnightly_salary: 5352 }],
+  }
+  const fortnightlyDoc = (config: unknown = FORTNIGHTLY) =>
+    new MonthlyReportPDFService(fixtureReport({ report_month: '2026-09' }), { pdfLayout: layout(config), payrollGrid: fortnightlyGrid() }).generate() as any
+
   it("heads the salary column per fortnight and budgets September's three runs as six weeks", () => {
-    const runs = ['2026-07-08', '2026-07-22', '2026-08-05', '2026-08-19', '2026-09-02', '2026-09-16', '2026-09-30']
-    const period = (d: string) => {
-      const end = new Date(`${d}T00:00:00Z`); end.setUTCDate(end.getUTCDate() - 1)
-      const start = new Date(end); start.setUTCDate(start.getUTCDate() - 13)
-      return { calendar_type: 'FORTNIGHTLY', period_start: start.toISOString().slice(0, 10), period_end: end.toISOString().slice(0, 10) }
-    }
-    const grid = buildPayrollGrid(
-      runs.flatMap((d) => [
-        { employee_id: 'jm', employee_name: 'Jennifer Moore', payment_date: d, wages: 2546, super_amount: 0, ...period(d) },
-        { employee_id: 'jb', employee_name: 'Joelson Batista', payment_date: d, wages: 5000, super_amount: 0, ...period(d) },
-      ]),
-      [{ employee_id: 'jm', start_date: '2019-01-01' }, { employee_id: 'jb', start_date: '2019-01-01' }],
-      ['2026-07', '2026-08', '2026-09'],
-    )
-    const config = {
-      layout: 'calxa', months: 3, salary_period: 'fortnight', budget_basis: 'roster',
-      roster: [{ name: 'Jennifer Moore', employee_id: 'jm', fortnightly_salary: 2707 }, { name: 'Joelson Batista', employee_id: 'jb', fortnightly_salary: 5352 }],
-    }
-    const doc = new MonthlyReportPDFService(fixtureReport({ report_month: '2026-09' }), { pdfLayout: layout(config), payrollGrid: grid }).generate() as any
+    const doc = fortnightlyDoc()
     const text = payrollText(doc)
     expect(text).toContain('(Fortnightly)')
     expect(text).not.toContain('(Weekly)')
@@ -155,6 +169,24 @@ describe('an IICT-shaped fortnightly roster', () => {
     expect(text.match(/\(16,118\)/g)?.length).toBe(2) // July and August: two runs each
     expect(text).toContain('(24,177)') // September: three runs, six weeks
     expect(docText(doc)).toContain('Sep 2026: 3 fortnightly runs')
+  })
+
+  it('says nothing about figures not yet entered when every fortnightly salary is on the roster', () => {
+    // The salary column prints $2,707 and $5,352 with no dash anywhere: a
+    // fortnightly entry states its figure per fortnight, and a page that sent
+    // the coach looking for a blank would be sending them after nothing.
+    const doc = fortnightlyDoc({ ...FORTNIGHTLY, employee_month_columns: true, standard_units_column: false })
+    expect(payrollText(doc)).toContain('(2,707)')
+    expect(docText(doc)).not.toContain('not yet entered')
+  })
+
+  it('still says so when a fortnightly entry carries no salary at all', () => {
+    const doc = fortnightlyDoc({
+      ...FORTNIGHTLY,
+      standard_units_column: false,
+      roster: [FORTNIGHTLY.roster[0], { name: 'Joelson Batista', employee_id: 'jb' }],
+    })
+    expect(docText(doc)).toContain('A dash under Fortnightly Salary \\(Budget\\) is a figure not yet entered')
   })
 })
 

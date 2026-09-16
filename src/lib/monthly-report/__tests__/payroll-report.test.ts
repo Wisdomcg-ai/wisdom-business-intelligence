@@ -120,6 +120,55 @@ describe('Distinct Directions, August 2026 — roster areas', () => {
   })
 })
 
+describe('a roster entry whose salary has not been typed in yet', () => {
+  // The panel writes no salary key for a blank cell, so this is one keystroke
+  // away on the shipped DD config: a new starter the coach has not costed.
+  const blankFor = (...names: string[]) =>
+    DD_ROSTER.map(({ weekly_salary, ...rest }) => (names.includes(rest.name) ? rest : { ...rest, weekly_salary }))
+  const BLANK = blankFor('Patrick Kelly')
+
+  it('is a dash of its own, and no total under the same heading counts it as nothing', () => {
+    const r = buildPayrollReport(ddGrid(), config({ ...DD, roster: BLANK }))
+    const bathurst = r.groups.find((g) => g.area === 'Bathurst')!
+    expect(bathurst.employees.find((e) => e.name === 'Patrick Kelly')).toMatchObject({ month_budget: null, month_variance: null })
+    // Patrick's 8,848 is missing from every one of these, so none of them prints.
+    expect(bathurst.totals).toMatchObject({ month_budget: null, month_variance: null, period_salary: null })
+    expect(bathurst.totals.month_actual).toBe(123282.85)
+    expect(r.totals).toMatchObject({ month_budget: null, month_variance: null, period_salary: null })
+    // Every other area is whole, and still prints.
+    expect(round(r.groups.find((g) => g.area === 'Head Office')!.totals.month_budget)).toBe(45916)
+  })
+
+  it("the month's roster budget is not counted, and says whose salary is missing", () => {
+    const r = buildPayrollReport(ddGrid(), config({ ...DD, roster: BLANK }))
+    expect(r.months[0]).toMatchObject({ roster_budget: null, budget: DD_APPROVED_WAGES_AUG, budget_source: 'approved' })
+    expect(r.months[0].roster_reason).toBe('the roster gives no salary for Patrick Kelly')
+    expect(r.notes).toContain('Aug 2026’s roster budget could not be counted: the roster gives no salary for Patrick Kelly.')
+    // The sentence whose job is to flag the gap must not report near-agreement
+    // over 34 of 35 people: 236,736 against 237,711 is 975 apart, and false.
+    expect(r.notes.join(' ')).not.toContain('apart')
+  })
+
+  it('the roster basis prints a dash, never a total over part of the team', () => {
+    const r = buildPayrollReport(ddGrid(), config({ ...DD, roster: BLANK, budget_basis: 'roster' }))
+    expect(r.months[0]).toMatchObject({ budget: null, difference: null, budget_source: null })
+    expect(r.notes.join(' ')).toContain('could not be counted: the roster gives no salary for Patrick Kelly')
+  })
+
+  it('names everyone whose salary is missing', () => {
+    const r = buildPayrollReport(ddGrid(), config({ ...DD, roster: blankFor('Patrick Kelly', 'Annie Bell') }))
+    expect(r.months[0].roster_reason).toBe('the roster gives no salary for Patrick Kelly and Annie Bell')
+  })
+
+  it('someone paid who is not on the roster at all still leaves the roster’s own budget countable', () => {
+    // A budget nobody was rostered for is a real overrun, and the page already
+    // names them ("listed last"); a missing figure is not the same thing.
+    const r = buildPayrollReport(ddGrid(), config({ ...DD, roster: DD_ROSTER.filter((e) => e.name !== 'Jismi Joy'), budget_basis: 'roster' }))
+    expect(r.months[0]).toMatchObject({ budget: 245584 - 1822 * 4, roster_reason: null })
+    expect(r.not_on_roster).toEqual(['Jismi Joy'])
+  })
+})
+
 describe('a placement with none of the P10 options', () => {
   it('is the grid it was: one group, the approved budget, no notes', () => {
     const r = buildPayrollReport(ddGrid(), config({ layout: 'calxa', months: 1, roster: DD_ROSTER_WITHOUT_AREAS }))
