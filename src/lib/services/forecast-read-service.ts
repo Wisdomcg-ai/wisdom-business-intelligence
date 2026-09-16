@@ -64,6 +64,13 @@ const STRICT_INVARIANTS = process.env.FORECAST_INVARIANTS_STRICT === 'true'
  */
 const freshnessViolationSeen = new Set<string>()
 
+/**
+ * Dedupe key for `data_quality_unreadable` captures. Same rationale as
+ * `freshnessViolationSeen`: GET /api/Xero/pl-summary fires on every page load,
+ * and a persistently unreadable source would otherwise spam Sentry.
+ */
+const qualityReadFailureSeen = new Set<string>()
+
 export type AccountType =
   | 'revenue'
   | 'cogs'
@@ -82,6 +89,20 @@ export type AccountType =
  * (faded-with-overlay when not 'verified' per CONTEXT.md UX decision).
  */
 export type DataQuality = 'verified' | 'partial' | 'failed' | 'no_sync' | 'stale'
+
+/**
+ * Result of a data-quality computation.
+ *
+ * `quality_check_failed` is the fail-open guard: the three honest outcomes are
+ * a value, a genuinely empty source, and "we could not check". Without it a
+ * failed read of xero_connections or sync_jobs silently became 'no_sync' — a
+ * confident statement that the business has never synced.
+ */
+export interface QualityResult {
+  data_quality: DataQuality
+  per_tenant_quality: PerTenantQuality[]
+  quality_check_failed: boolean
+}
 
 export interface PerTenantQuality {
   tenant_id: string
@@ -152,6 +173,14 @@ export interface MonthlyComposite {
   data_quality: DataQuality
   /** D-44.2-04 — per-tenant breakdown for the 44.2-09 drawer. */
   per_tenant_quality: PerTenantQuality[]
+  /**
+   * The quality CHECK itself could not be run — a read behind `data_quality`
+   * errored, so the tier above is a default rather than a measurement. Third
+   * state, distinct from both 'verified' and any known-bad tier; consumers
+   * pass it to DataIntegrityBanner's `checkFailed`, which takes precedence
+   * over `quality`.
+   */
+  quality_check_failed: boolean
 }
 
 export interface CategorySubtotals {
@@ -317,6 +346,7 @@ export class ForecastReadService {
       assumptions_updated_at: assumptionsUpdatedAt,
       data_quality: quality.data_quality,
       per_tenant_quality: quality.per_tenant_quality,
+      quality_check_failed: quality.quality_check_failed,
     }
   }
 
@@ -331,8 +361,37 @@ export class ForecastReadService {
    */
   public async getDataQualityForBusiness(
     businessIds: string[],
-  ): Promise<{ data_quality: DataQuality; per_tenant_quality: PerTenantQuality[] }> {
+  ): Promise<QualityResult> {
     return this.computeDataQuality(businessIds)
+  }
+
+  /**
+   * A read behind the quality gate failed. Capture it — a swallowed read that
+   * still produces a confident tier is the bug class this guard exists for —
+   * but dedupe per (source, tenant, business set) within a warm instance so a
+   * persistently broken source cannot spam Sentry from a per-page-load route.
+   */
+  private captureQualityReadFailure(
+    source: 'xero_connections' | 'sync_jobs',
+    businessIds: string[],
+    error: unknown,
+    tenantId?: string,
+  ): void {
+    const key = `${source}:${tenantId ?? '-'}:${businessIds.join(',')}`
+    if (qualityReadFailureSeen.has(key)) return
+    qualityReadFailureSeen.add(key)
+    Sentry.captureMessage(
+      `[forecast-read-service] data_quality ${source} read failed — reporting "couldn't check"`,
+      {
+        level: 'warning',
+        tags: { invariant: 'data_quality_unreadable', source },
+        extra: {
+          business_ids: businessIds,
+          tenant_id: tenantId ?? null,
+          error: String((error as { message?: string })?.message ?? error),
+        },
+      } as Parameters<typeof Sentry.captureMessage>[1],
+    )
   }
 
   /**
@@ -346,15 +405,26 @@ export class ForecastReadService {
    */
   private async computeDataQuality(
     businessIds: string[],
-  ): Promise<{ data_quality: DataQuality; per_tenant_quality: PerTenantQuality[] }> {
+  ): Promise<QualityResult> {
+    // Set by any read below that FAILS (as opposed to returning no rows).
+    // An unreadable source cannot be reported as 'no_sync' — that is a claim
+    // about Xero ("nothing has ever synced"), not about our own read.
+    let checkFailed = false
     // 1. Active tenants for this business. Going through xero_connections
     //    rather than sync_jobs catches tenants that have never synced —
     //    those should report 'no_sync', not be silently absent.
-    const { data: connections } = await this.supabase
+    const { data: connections, error: connectionsError } = await this.supabase
       .from('xero_connections')
       .select('tenant_id, business_id')
       .in('business_id', businessIds)
       .eq('is_active', true)
+
+    if (connectionsError) {
+      // Without the tenant list there is nothing to check. Reporting 'no_sync'
+      // here would claim the business has no Xero at all.
+      checkFailed = true
+      this.captureQualityReadFailure('xero_connections', businessIds, connectionsError)
+    }
 
     const tenants = new Set<string>()
     for (const c of (connections ?? []) as Array<{ tenant_id: string | null }>) {
@@ -367,7 +437,7 @@ export class ForecastReadService {
     const perTenant: PerTenantQuality[] = []
 
     for (const tenantId of tenants) {
-      const { data: latest } = await this.supabase
+      const { data: latest, error: latestError } = await this.supabase
         .from('sync_jobs')
         .select('status, started_at, finished_at, reconciliation')
         .in('business_id', businessIds)
@@ -381,7 +451,13 @@ export class ForecastReadService {
       let lastSyncStatus: string | null = null
       let discrepancyCount = 0
 
-      if (!latest) {
+      if (latestError) {
+        // Distinguish "the read failed" from "this tenant has never synced".
+        // Both leave us without a row; only the second is news about Xero.
+        checkFailed = true
+        this.captureQualityReadFailure('sync_jobs', businessIds, latestError, tenantId)
+        quality = 'no_sync'
+      } else if (!latest) {
         quality = 'no_sync'
       } else {
         lastSyncAt = ((latest as any).started_at ?? null) as string | null
@@ -427,7 +503,11 @@ export class ForecastReadService {
       }
     }
 
-    return { data_quality: business, per_tenant_quality: perTenant }
+    return {
+      data_quality: business,
+      per_tenant_quality: perTenant,
+      quality_check_failed: checkFailed,
+    }
   }
 
   /**

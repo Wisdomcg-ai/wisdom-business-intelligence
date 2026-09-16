@@ -161,6 +161,10 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
   // D-44.2-03 read-path quality gate; surfaces in DataIntegrityBanner.
   const [dataQuality, setDataQuality] = useState<DataQuality>('verified')
   const [perTenantQuality, setPerTenantQuality] = useState<PerTenantQuality[]>([])
+  // Third state: the quality check could not be run. `dataQuality` is seeded to
+  // 'verified', so without this a failed fetch renders exactly like a clean
+  // bill of health.
+  const [qualityCheckFailed, setQualityCheckFailed] = useState(false)
 
   // Phase 67-04 — FX missing-rate signaling. Surfaced only when the engine
   // path returns fx_context.missing_rates (single-tenant / all-AUD businesses
@@ -224,6 +228,9 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
         if (Array.isArray(data.summary?.per_tenant_quality)) {
           setPerTenantQuality(data.summary.per_tenant_quality);
         }
+        // The route reached us, but a read behind the tier may still have
+        // failed — that tier is then a default, not a measurement.
+        setQualityCheckFailed(data.summary?.quality_check_failed === true);
         // Phase 67-04 — surface missing FX rates so the operator knows when
         // a foreign-currency tenant's month was left untranslated.
         const fxMissing = Array.isArray(data.summary?.fx_context?.missing_rates)
@@ -246,9 +253,14 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
             duration: 8000,
           });
         }
+      } else {
+        // Non-2xx: we have no quality reading at all. Saying nothing would
+        // render as a clean bill of health.
+        setQualityCheckFailed(true);
       }
     } catch (error) {
       console.error('Failed to load current YTD:', error);
+      setQualityCheckFailed(true);
     }
   };
 
@@ -1015,26 +1027,24 @@ export function Step2PriorYear({ state, actions, fiscalYear, businessId }: Step2
         onAddRate={() => { window.open('/admin/consolidation', '_blank'); }}
       />
       {/* D-44.2-02 — read-path data integrity banner. Renders nothing when verified.
-          Suppress 'no_sync' when actuals are already loaded — the API returns
-          'no_sync' if xero_connections.is_active is false or sync_jobs is in
-          'running'/unknown, but xero_pl_lines may still hold last-good data.
-          Telling the coach to "Connect Xero" when YTD is visibly populated is
-          contradictory; partial / failed / stale still fire correctly.
 
-          Issue B (hotfix step2-secondaries) — when pl-summary returns a
-          `lookup_error` (dual-id desync, see useState comment above), DO NOT
-          suppress no_sync. The cached YTD is stale relative to the live Xero
-          state because we couldn't talk to the connection at all; surfacing
-          the banner alongside the toast gives the operator a recovery path
-          (refresh / reconnect) instead of pretending everything is fine. */}
+          The 'no_sync'-when-actuals-are-loaded suppression that used to sit here
+          was compensating for a bug, not for a real product case: the sole
+          authenticated SELECT policy on sync_jobs compared the wrong id-space,
+          so this route's RLS-bound read returned zero rows for every business
+          and every tenant resolved to 'no_sync'. Rewriting that to 'verified'
+          meant a business whose last sync ERRORED rendered a clean bill of
+          health. The policy is fixed (20260916120000); 'no_sync' is now honest
+          and the tier is shown as measured.
+
+          Issue B (hotfix step2-secondaries) — a `lookup_error` (dual-id desync,
+          see useState comment above) means we could not talk to the connection
+          at all, so the tier is unmeasured: it maps to `checkFailed`, which
+          takes precedence over the tier and keeps the recovery path (refresh /
+          reconnect) visible alongside the toast. */}
       <DataIntegrityBanner
-        quality={
-          dataQuality === 'no_sync' &&
-          (currentYTD?.months_count ?? 0) > 0 &&
-          !lookupError
-            ? 'verified'
-            : dataQuality
-        }
+        quality={dataQuality}
+        checkFailed={qualityCheckFailed || !!lookupError}
         perTenantQuality={perTenantQuality}
         lastSyncAt={perTenantQuality[0]?.last_sync_at ?? null}
       />
