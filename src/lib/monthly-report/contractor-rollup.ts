@@ -156,13 +156,17 @@ export function rollUpContractors(
   const budget = round2(contractors.reduce((t, c) => t + c.budget, 0))
   const actual = round2(contractors.reduce((t, c) => t + c.actual, 0))
 
-  // The account's own figure per organisation, as the totals are the ledger's
-  // — never the contractor rows added up.
+  // Each organisation's column is the contractor rows above it added up — the
+  // same source as `actual` beside it, so the Total row foots both ways. The
+  // account's own figure per organisation (total_by_tenant) is the ledger's,
+  // and the ledger carries spend no contractor row can name: a journal, a bill
+  // the crawl could not page, the GST on a gross row. Taken from there, the
+  // columns would not add to the number printed next to them.
   const tenants = data.tenants ?? []
   const grandByTenant = tenants.length > 0
     ? Object.fromEntries(tenants.map((t) => [
         t.tenant_id,
-        round2((data.accounts ?? []).reduce((sum, a) => sum + (a.total_by_tenant?.[t.tenant_id] ?? 0), 0)),
+        round2(contractors.reduce((sum, c) => sum + (c.by_tenant?.[t.tenant_id] ?? 0), 0)),
       ]))
     : undefined
 
@@ -195,9 +199,16 @@ export function rollUpContractors(
  * when it has no rows.
  */
 export function contractorLoadReason(
-  data: (Pick<SubscriptionDetailData, 'complete' | 'incomplete_reason'> & { grand_total?: Pick<SubscriptionDetailData['grand_total'], 'actual'> }) | null | undefined,
+  data: (Pick<SubscriptionDetailData, 'complete' | 'incomplete_reason' | 'translation_unavailable'> & { grand_total?: Pick<SubscriptionDetailData['grand_total'], 'actual'> }) | null | undefined,
   rowCount: number,
 ): string | undefined {
+  // Xero was read; the exchange rate the report needs is not loaded, and that
+  // is the coach's to load (as the Subscriptions tab says). Blamed on Xero, a
+  // reader is sent to reconnect an organisation that is connected.
+  if (data?.translation_unavailable) {
+    const reason = data.incomplete_reason ?? 'an exchange rate this report needs is not stored'
+    return `${reason} — load the rates under Admin, Consolidation`
+  }
   if (data?.complete === false) {
     return data.incomplete_reason
       ? `the contractor figures could not be fully read from Xero (${data.incomplete_reason})`

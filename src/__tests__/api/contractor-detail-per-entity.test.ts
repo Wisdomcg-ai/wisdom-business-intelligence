@@ -167,6 +167,34 @@ describe('a code each: 2300 in Dragon, 508 in Easy Hail', () => {
     expect(rollup.grand_total.by_tenant).toEqual({ [DRG]: 15_558.76, [EHC]: 13_416.22 })
   })
 
+  it('the Total row foots when the ledger runs past the bills: its columns are the rows above them', async () => {
+    // A 441.24 journal on Dragon's Virtual Contractors, with no bill behind it:
+    // the ledger says 16,000 where the contractor rows add to 15,558.76. The
+    // Total's columns and the month beside them must come from one source, or
+    // the one row a coach checks contradicts itself.
+    const fixtures = dragonFixtures()
+    fixtures.xero_pl_lines_wide_compat.rows[0].monthly_values['2026-08'] = 16_000
+    tableFixtures = fixtures
+    const data = await run({
+      account_codes: ['2300', '508'],
+      account_codes_by_tenant: { [DRG]: ['2300'], [EHC]: ['508'] },
+    })
+    const rollup = rollUpContractors(data)
+    expect(rollup.grand_total.actual).toBeCloseTo(28_974.98, 2)
+    expect(rollup.grand_total.by_tenant).toEqual({ [DRG]: 15_558.76, [EHC]: 13_416.22 })
+    const columns = Object.values(rollup.grand_total.by_tenant!).reduce((t, n) => t + n, 0)
+    expect(columns).toBeCloseTo(rollup.grand_total.actual, 2)
+
+    const layout: PDFLayout = {
+      version: 1,
+      pages: [{ id: 'p', orientation: 'portrait', widgets: [{ id: 'w', type: 'contractor_detail', col: 0, row: 0, colSpan: 2, rowSpan: 3, config: { entity_columns: 'actuals' } }] }],
+    }
+    const doc: any = new MonthlyReportPDFService(fixtureReport(), { pdfLayout: layout, contractorDetail: rollup, contractorDetailReport: data } as never).generate()
+    const runs = textRuns(doc, pageContaining(doc, 'Office Hq'))
+    const total = runs.indexOf('Total')
+    expect(runs.slice(total + 4, total + 7)).toEqual(['15,559', '13,416', '28,975'])
+  })
+
   it('the page prints DRAGON | EHC | TOTAL when the placement asks for it', async () => {
     const data = await run({
       account_codes: ['2300', '508'],
