@@ -19,6 +19,7 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { forecastBelongsToBusiness } from '@/lib/budgets/owned-forecast'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -82,6 +83,29 @@ async function getHandler(request: NextRequest) {
     if (_sectionBlocked) return _sectionBlocked
 
     const ids = await resolveBusinessProfileIds(supabase, businessId)
+
+    // An explicit forecast_id in the query string is a capability, not a
+    // filter. getMonthlyComposite loads the forecast row and then reads THAT
+    // forecast's own business P&L on the service-role client, so a caller who
+    // has only proved access to their own business could name another tenant's
+    // forecast and be handed their numbers (audit F1). The auto-lookup branch
+    // below never needed this: it is already business-scoped by
+    // `.in('business_id', ids.all)`.
+    //
+    // A forecast that belongs to someone else and one that does not exist are
+    // refused identically, so the route cannot be used to test which forecast
+    // ids exist.
+    if (forecastId && !(await forecastBelongsToBusiness(supabase, forecastId, ids.all))) {
+      Sentry.captureMessage('[Xero Actuals] refused a forecast_id from another business', {
+        level: 'warning' as any,
+        tags: { route: 'forecast/cashflow/xero-actuals', invariant: 'forecast-id-not-owned' },
+        extra: { business_id: businessId, user_id: user.id, requestedForecastId: forecastId },
+      } as any)
+      return NextResponse.json(
+        { error: 'That forecast does not belong to this business', code: 'FORECAST_NOT_OWNED' },
+        { status: 403 },
+      )
+    }
 
     // If no explicit forecast_id, look up the active forecast for this business.
     if (!forecastId) {
