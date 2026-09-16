@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import * as Sentry from '@sentry/nextjs'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
@@ -48,8 +49,29 @@ const GetQuerySchema = z
 
 async function getHandler(request: NextRequest) {
   try {
-    const supabase = await createRouteHandlerClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // TWO clients, and the distinction is load-bearing.
+    //
+    // `authClient` is the caller's RLS-bound session — the only client that may
+    // answer "who is this, and what may they see". `requireSectionPermission`
+    // documents that it MUST NOT be given a service-role client.
+    //
+    // `admin` is service-role, and everything that touches xero_connections goes
+    // through it. Reading a budget looks read-only, but getValidAccessToken
+    // WRITES: it takes a refresh lock and persists Xero's rotated refresh token,
+    // both UPDATEs on xero_connections. That table's `rls_access` policy has an
+    // asymmetric pair — USING admits any active team member, WITH CHECK requires
+    // auth_can_manage_business(), which admits only role IN ('admin','member').
+    // So a caller who passes this route's own access checks (verifyBusinessAccess
+    // admits ANY active membership) could still be refused both writes: the lock
+    // silently fails to acquire (a 30s poll for a sibling that does not exist),
+    // then the unlocked refresh rotates the token at Xero and the save is refused
+    // three times — `xero_token_persist_failed`, and the stored refresh token is
+    // dead outside Xero's grace window. Every sibling Xero route already resolves
+    // connections and refreshes tokens on service-role; this one did not.
+    // Found 16 Sep 2026 in the verifyBusinessAccess caller audit (PR #545, F3).
+    const authClient = await createRouteHandlerClient()
+    const admin = createServiceRoleClient()
+    const { data: { user }, error: authError } = await authClient.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -69,11 +91,12 @@ async function getHandler(request: NextRequest) {
     if (!hasAccess) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
-    const _sectionVerdict = await requireSectionPermission(supabase, user.id, businessId, 'finances')
+    // auth-bound client; NEVER pass a service-role client here
+    const _sectionVerdict = await requireSectionPermission(authClient, user.id, businessId, 'finances')
     const _sectionBlocked = enforceSectionPermission(_sectionVerdict, 'finances', 'api/Xero/budgets', user.id, businessId)
     if (_sectionBlocked) return _sectionBlocked
 
-    const { connections } = await resolveXeroConnections(supabase, businessId)
+    const { connections } = await resolveXeroConnections(admin, businessId)
     const fyKeys = generateFiscalMonthKeys(fiscalYear, DEFAULT_YEAR_START_MONTH)
     // Ask Xero for Y1..Y3 so multi-year budgets show their full coverage.
     const window = { from: fyKeys[0], to: generateFiscalMonthKeys(fiscalYear + 2, DEFAULT_YEAR_START_MONTH)[11] }
@@ -89,7 +112,7 @@ async function getHandler(request: NextRequest) {
       }
       orgs.push(org)
       try {
-        const token = await getValidAccessToken(connection, supabase)
+        const token = await getValidAccessToken(connection, admin)
         if (!token.success || !token.accessToken) {
           org.state = 'error'
           org.error = token.shouldDeactivate ? 'requires_reconnect' : 'token_failed'
