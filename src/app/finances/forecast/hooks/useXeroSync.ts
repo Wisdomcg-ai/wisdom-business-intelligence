@@ -6,13 +6,14 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import ForecastService from '../services/forecast-service'
-import type { PLLine, XeroConnection } from '../types'
+import type { PLLine } from '../types'
 
 interface UseXeroSyncOptions {
   forecastId: string | undefined
   businessId: string
   onPlLinesUpdate: (lines: PLLine[]) => void
-  onXeroConnectionUpdate: (connection: XeroConnection | null) => void
+  /** Called with null once Xero has been disconnected — the only update this hook makes. */
+  onXeroConnectionUpdate: (connection: null) => void
   onForecastClear: () => void
 }
 

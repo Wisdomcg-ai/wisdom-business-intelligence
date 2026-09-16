@@ -52,6 +52,13 @@
  * until a sibling's next write, then connected again: a dead org hidden by write
  * order. Business-level surfaces call `classifyBusinessConnections`, which
  * classifies every org against its own data clock and reports the worst.
+ *
+ * The same was true of /api/Xero/status — the monthly-report banner, the forecast
+ * and cashflow pages, the integrations page and the token keepalive — which
+ * reported the lowest-id active row: "Connected to Xero: IICT Group Limited" while
+ * IICT Group Pty Ltd sat five days stale. It now classifies every org here too,
+ * and /api/Xero/reactivate uses `groupConnectionsByOrg` / `isRetiredOrg` to
+ * revive every org that has no live row.
  */
 
 /**
@@ -93,6 +100,13 @@ export const TOKEN_VERIFIED_WINDOW_MS = 12 * 60 * 60 * 1000;
  * so an owner is not alarmed by something their coach has not seen yet.
  */
 export const DATA_STALE_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * The owner's own surfaces tolerate one extra missed day before warning, so an
+ * owner is not alarmed by something their coach has not seen yet. Only the DATA
+ * threshold differs by audience; every other tier is identical.
+ */
+export const OWNER_DATA_STALE_MS = 72 * 60 * 60 * 1000;
 
 /**
  * Grace for a brand-new connection that has never synced: slightly more than one
@@ -338,6 +352,37 @@ function worstFirst(a: XeroOrgClassification, b: XeroOrgClassification): number 
   );
 }
 
+/**
+ * A business's connection rows grouped by Xero org (tenant_id, trimmed), in the
+ * order each org first appears. A blank tenant_id matches nothing, so that row
+ * stands alone as its own org. Both id forms of one org land in one group.
+ */
+export function groupConnectionsByOrg<R extends Pick<XeroConnectionStatusRow, 'id' | 'tenant_id'>>(
+  rows: readonly R[],
+): R[][] {
+  const rowsByOrg = new Map<string, R[]>();
+  for (const row of rows) {
+    const tenant = row.tenant_id?.trim();
+    const key = tenant ? `tenant:${tenant}` : `row:${row.id}`;
+    const group = rowsByOrg.get(key);
+    if (group) group.push(row);
+    else rowsByOrg.set(key, [row]);
+  }
+  return [...rowsByOrg.values()];
+}
+
+/**
+ * An org RETIRED on purpose: every row switched off AND excluded from
+ * consolidation — a pair only a person sets. `is_active=false` alone records no
+ * reason (the token manager writes it when Xero refuses), so it never retires an
+ * org by itself. See `classifyBusinessConnections`.
+ */
+export function isRetiredOrg(
+  orgRows: readonly Pick<XeroConnectionStatusRow, 'is_active' | 'include_in_consolidation'>[],
+): boolean {
+  return orgRows.length > 0 && orgRows.every((r) => r.is_active !== true && r.include_in_consolidation === false);
+}
+
 function classifyOrgRow(
   row: XeroConnectionStatusRow,
   syncClock: XeroSyncClock,
@@ -380,27 +425,16 @@ export function classifyBusinessConnections(
   nowMs: number = Date.now(),
   dataStaleMs: number = DATA_STALE_MS,
 ): XeroBusinessConnectionClassification {
-  const rowsByOrg = new Map<string, XeroConnectionStatusRow[]>();
-  for (const row of rows) {
-    // A blank tenant_id matches nothing, so that row stands alone as its own org.
-    const tenant = row.tenant_id?.trim();
-    const key = tenant ? `tenant:${tenant}` : `row:${row.id}`;
-    const group = rowsByOrg.get(key);
-    if (group) group.push(row);
-    else rowsByOrg.set(key, [row]);
-  }
-
   const counted: XeroOrgClassification[] = [];
   const retired: XeroOrgClassification[] = [];
-  for (const orgRows of rowsByOrg.values()) {
+  for (const orgRows of groupConnectionsByOrg(rows)) {
     const live = orgRows.filter((r) => r.is_active === true);
     const classified = (live.length > 0 ? live : orgRows).map((r) =>
       classifyOrgRow(r, syncClock, nowMs, dataStaleMs),
     );
     // Two live rows for one org (one per id form) are two live claims about it.
     classified.sort(worstFirst);
-    const isRetired = live.length === 0 && orgRows.every((r) => r.include_in_consolidation === false);
-    (isRetired ? retired : counted).push(classified[0]);
+    (isRetiredOrg(orgRows) ? retired : counted).push(classified[0]);
   }
   const orgs = counted.length > 0 ? counted : retired;
   const retiredOrgs = counted.length > 0 ? retired : [];
