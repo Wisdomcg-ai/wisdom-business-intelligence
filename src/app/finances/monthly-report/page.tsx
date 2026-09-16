@@ -1105,6 +1105,16 @@ export default function MonthlyReportPage() {
       (p.widgets ?? []).some(w => w.type === 'balance_sheet'),
     )
 
+  /**
+   * Bank Balances has no section flag — it is a placement only. There is no
+   * sensible default page for it: which accounts it prints is a saved list, so
+   * a business that has not placed it has not chosen one either.
+   */
+  const packWantsBankBalances = (): boolean =>
+    (settings?.pdf_layout?.pages ?? []).some(p =>
+      (p.widgets ?? []).some(w => w.type === 'bank_balances'),
+    )
+
   const handleSaveSnapshot = async (status: 'draft' | 'final' = 'draft') => {
     if (!report) return
     try {
@@ -1200,6 +1210,8 @@ export default function MonthlyReportPage() {
     moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
     consolidated?: import('./utils/consolidated-rows').ConsolidatedReportVM
     balanceSheets?: import('./utils/balance-sheet-pdf').BalanceSheetPdfSources
+    /** Bank Balances & Movement — `data: null` carries the reason the page prints. */
+    bankBalances?: { data: import('./types').BankBalancesData | null; reason?: string }
     budgetSuperRate?: number | null
     budgetActualEndMonth?: string | null
     budgetBackfilled?: boolean
@@ -1459,6 +1471,33 @@ export default function MonthlyReportPage() {
       }
     }
 
+    // Bank Balances & Movement (Calxa p17), from the stored BS mirror — only
+    // when a page asks for it, because it is three reads for a business with
+    // three organisations. The endpoint answers 422 with the sentence the page
+    // prints when it cannot produce one (no accounts chosen, a closing rate not
+    // stored), so the page always says why rather than going missing.
+    let bankBalances: { data: import('./types').BankBalancesData | null; reason?: string } | undefined
+    if (businessId && packWantsBankBalances()) {
+      try {
+        const res = await fetch(
+          `/api/monthly-report/bank-balances?business_id=${encodeURIComponent(businessId)}&period_month=${encodeURIComponent(selectedMonth)}`
+        )
+        const data = await res.json().catch(() => null)
+        bankBalances = res.ok
+          ? { data: data?.bank ?? null, reason: data?.bank ? undefined : 'the bank balances could not be loaded' }
+          : { data: null, reason: data?.error || `the bank balances could not be loaded (${res.status})` }
+        if (!res.ok && res.status !== 422) {
+          Sentry.captureMessage(
+            `[PDF] bank-balances load failed (${res.status}) — the page will print the reason`,
+            'warning' as any
+          )
+        }
+      } catch (err) {
+        Sentry.captureException(err, { tags: { invariant: 'pdf-bank-balances-load' } } as any)
+        bankBalances = { data: null, reason: 'the bank balances could not be loaded' }
+      }
+    }
+
     // WD.6 — per-entity consolidated report for consolidation parents. Reuses
     // the tab's cache only when it holds the month being exported (DRG-16: it
     // held July's under an August export, and pre-flight checked July's
@@ -1611,6 +1650,7 @@ export default function MonthlyReportPage() {
       moneyFlow,
       consolidated,
       balanceSheets,
+      bankBalances,
       budgetSuperRate,
       budgetActualEndMonth,
       budgetBackfilled,
@@ -1639,6 +1679,7 @@ export default function MonthlyReportPage() {
       moneyFlow?: import('@/lib/monthly-report/money-flow').MoneyFlow
       consolidated?: import('./utils/consolidated-rows').ConsolidatedReportVM
       balanceSheets?: import('./utils/balance-sheet-pdf').BalanceSheetPdfSources
+      bankBalances?: { data: import('./types').BankBalancesData | null; reason?: string }
       businessName?: string
       entityName?: string | null
       sections?: import('./types').ReportSections

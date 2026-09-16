@@ -1,0 +1,2576 @@
+{
+ "_provenance": "Read 16 Sep 2026 (read-only, GET-only client) from prod xero_bs_lines (basis accruals) and xero_accounts for Dragon Roofing (business c7df2983). The 31 Jul and 31 Aug 2026 balances are the mirror as synced 15 Sep 2026 (the audit's gap-checks dump, which the audit's figures and Calxa comparison use): since then a resync moved four Dragon Roofing Pty Ltd accounts (Accounts Payable +1,900.00, GST -172.71, Retained Earnings -272.73, Current Year Earnings -1,454.56), and those four are restored to their 15 Sep values here. display_order 1/2 is the set-up's (both are 0 in prod today).",
+ "business_id": "c7df2983-5711-4959-8ec8-a48030d62666",
+ "profile_id": "a1657c67-a12f-41e0-a312-ba90180e864b",
+ "connections": [
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "name": "Dragon Roofing Pty Ltd",
+   "functional_currency": "AUD",
+   "display_order": 1
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "name": "EASY HAIL CLAIM PTY LTD",
+   "functional_currency": "AUD",
+   "display_order": 2
+  }
+ ],
+ "rows": [
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "695e5366-ce4c-4f20-8eda-79a55a91913d",
+   "account_code": "610",
+   "account_name": "Accounts Receivable",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 53289.38
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "5e885966-52b6-41e7-a252-20f953c726dc",
+   "account_code": "730",
+   "account_name": "Loan - Director",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 184308.13
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "4475821b-678e-451e-aa7f-99ff048a748e",
+   "account_code": "740",
+   "account_name": "Loan Receivable - Dragon Roofing Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "568d3e70-7fef-4bd0-b1d4-0a5bb9c788c3",
+   "account_code": "750",
+   "account_name": "Loan Receivable - Dragon Roof Restoration Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "d562629c-e02c-4af3-b20b-6332e8373289",
+   "account_code": "760",
+   "account_name": "Loan Receivable - Trade VA Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 41257.55
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "fef459dd-6a04-499f-a322-e22edfad0577",
+   "account_code": null,
+   "account_name": "Easy Hail Claim",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": 126664.61
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "b31039c8-8f7b-4093-9f67-e4f87377201f",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-08-31",
+   "balance": -45437.89
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "ebb529a0-41fd-4539-a405-8176f2d5ef7b",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-08-31",
+   "balance": 100.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-08-31",
+   "balance": 90888.77
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "1e26d937-0e62-45e2-92a0-af01019895a3",
+   "account_code": "620",
+   "account_name": "Prepayments",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": -179.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "635d570a-25a6-4a65-b4da-c848118ef4ea",
+   "account_code": "755",
+   "account_name": "Loan - Bank",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 271367.64
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "86915883-1560-47c8-adcf-5f0144f284e9",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 6759.6
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "399c74e7-67d8-4127-a42e-007770f6d7d0",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 27701.12
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "4dba3c85-ab28-4797-acef-1864df76c245",
+   "account_code": "821",
+   "account_name": "ATO Activity Statement Account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": -132.13
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "401cd83e-bca7-4868-8257-f289caac52ce",
+   "account_code": "830",
+   "account_name": "Income Tax Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "6a080348-c17d-4f8c-a343-e7c2ea84e298",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 1.01
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "1f492a1d-a56d-4760-9c36-31e08bf45a1f",
+   "account_code": "882",
+   "account_name": "Insurance - Premium Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": -66.09
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "b0650bbb-51bc-4b1e-b3a8-32d5163d6231",
+   "account_code": "882.01",
+   "account_name": "Unexpired Interest - Premium Funding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": -93.74
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "1f81739d-81ef-4f59-805e-4858a3b85057",
+   "account_code": "906",
+   "account_name": "Loan Payable - Dragon Roofing Pty Ltd",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 54610.38
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "2b5cc586-b2f1-4687-98d3-1a875a1bc8ec",
+   "account_code": "907",
+   "account_name": "Loan Payable - Trade VA Pty Ltd",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "695e5366-ce4c-4f20-8eda-79a55a91913d",
+   "account_code": "610",
+   "account_name": "Accounts Receivable",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 64119.92
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "156659a0-c583-486d-bdb2-3aa23dfe8766",
+   "account_code": "640",
+   "account_name": "Borrowing Costs",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 14000.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "5e885966-52b6-41e7-a252-20f953c726dc",
+   "account_code": "730",
+   "account_name": "Loan - Director",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 712245.88
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "d562629c-e02c-4af3-b20b-6332e8373289",
+   "account_code": "760",
+   "account_name": "Loan Receivable - Trade VA Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 64578.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "fef459dd-6a04-499f-a322-e22edfad0577",
+   "account_code": null,
+   "account_name": "Easy Hail Claim",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": 388767.43
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "b31039c8-8f7b-4093-9f67-e4f87377201f",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-06-30",
+   "balance": -45437.89
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "ebb529a0-41fd-4539-a405-8176f2d5ef7b",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-06-30",
+   "balance": 100.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-06-30",
+   "balance": -193048.89
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "1e26d937-0e62-45e2-92a0-af01019895a3",
+   "account_code": "620",
+   "account_name": "Prepayments",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -179.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "635d570a-25a6-4a65-b4da-c848118ef4ea",
+   "account_code": "755",
+   "account_name": "Loan - Bank",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 219212.58
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "86915883-1560-47c8-adcf-5f0144f284e9",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 330506.09
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "399c74e7-67d8-4127-a42e-007770f6d7d0",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 21502.87
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "4dba3c85-ab28-4797-acef-1864df76c245",
+   "account_code": "821",
+   "account_name": "ATO Activity Statement Account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 22944.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "401cd83e-bca7-4868-8257-f289caac52ce",
+   "account_code": "830",
+   "account_name": "Income Tax Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -13755.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "6a080348-c17d-4f8c-a343-e7c2ea84e298",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 1.07
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "1f492a1d-a56d-4760-9c36-31e08bf45a1f",
+   "account_code": "882",
+   "account_name": "Insurance - Premium Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -148.18
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "b0650bbb-51bc-4b1e-b3a8-32d5163d6231",
+   "account_code": "882.01",
+   "account_name": "Unexpired Interest - Premium Funding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -1721.13
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "31d003ed-c7d7-494d-a300-d5dd99f75b79",
+   "account_code": "883",
+   "account_name": "Banjo Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 643895.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "871eb64a-daff-4f76-8efe-d9433eff86d8",
+   "account_code": "883.01",
+   "account_name": "Unexpired Interest - Banjo Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -311710.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "a11ffa2f-093a-41a7-bbf6-bf5c0e1d6f86",
+   "account_code": "884",
+   "account_name": "Prospa Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 139569.51
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "1f81739d-81ef-4f59-805e-4858a3b85057",
+   "account_code": "906",
+   "account_name": "Loan Payable - Dragon Roofing Pty Ltd",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 431980.2
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "695e5366-ce4c-4f20-8eda-79a55a91913d",
+   "account_code": "610",
+   "account_name": "Accounts Receivable",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 132174.88
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "156659a0-c583-486d-bdb2-3aa23dfe8766",
+   "account_code": "640",
+   "account_name": "Borrowing Costs",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 14000.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "5e885966-52b6-41e7-a252-20f953c726dc",
+   "account_code": "730",
+   "account_name": "Loan - Director",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 739660.88
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "d562629c-e02c-4af3-b20b-6332e8373289",
+   "account_code": "760",
+   "account_name": "Loan Receivable - Trade VA Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 64578.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "fef459dd-6a04-499f-a322-e22edfad0577",
+   "account_code": null,
+   "account_name": "Easy Hail Claim",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": 122945.26
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "b31039c8-8f7b-4093-9f67-e4f87377201f",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": -238486.78
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "ebb529a0-41fd-4539-a405-8176f2d5ef7b",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": 100.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": 84310.99
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "1e26d937-0e62-45e2-92a0-af01019895a3",
+   "account_code": "620",
+   "account_name": "Prepayments",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -179.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "635d570a-25a6-4a65-b4da-c848118ef4ea",
+   "account_code": "755",
+   "account_name": "Loan - Bank",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 219212.58
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "86915883-1560-47c8-adcf-5f0144f284e9",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 48844.91
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "399c74e7-67d8-4127-a42e-007770f6d7d0",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 39714.14
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "4dba3c85-ab28-4797-acef-1864df76c245",
+   "account_code": "821",
+   "account_name": "ATO Activity Statement Account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 20894.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "401cd83e-bca7-4868-8257-f289caac52ce",
+   "account_code": "830",
+   "account_name": "Income Tax Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -13755.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "56be43f2-10d3-4f29-8e92-3be12b58ffe5",
+   "account_code": "850",
+   "account_name": "Suspense",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -16140.28
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "6a080348-c17d-4f8c-a343-e7c2ea84e298",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 2.78
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "1f492a1d-a56d-4760-9c36-31e08bf45a1f",
+   "account_code": "882",
+   "account_name": "Insurance - Premium Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -148.18
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "b0650bbb-51bc-4b1e-b3a8-32d5163d6231",
+   "account_code": "882.01",
+   "account_name": "Unexpired Interest - Premium Funding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -1721.13
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "31d003ed-c7d7-494d-a300-d5dd99f75b79",
+   "account_code": "883",
+   "account_name": "Banjo Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 643895.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "871eb64a-daff-4f76-8efe-d9433eff86d8",
+   "account_code": "883.01",
+   "account_name": "Unexpired Interest - Banjo Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -311710.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "a11ffa2f-093a-41a7-bbf6-bf5c0e1d6f86",
+   "account_code": "884",
+   "account_name": "Prospa Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 139569.51
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "1f81739d-81ef-4f59-805e-4858a3b85057",
+   "account_code": "906",
+   "account_name": "Loan Payable - Dragon Roofing Pty Ltd",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 458955.48
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "695e5366-ce4c-4f20-8eda-79a55a91913d",
+   "account_code": "610",
+   "account_name": "Accounts Receivable",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 124766.06
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "156659a0-c583-486d-bdb2-3aa23dfe8766",
+   "account_code": "640",
+   "account_name": "Borrowing Costs",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 14000.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "5e885966-52b6-41e7-a252-20f953c726dc",
+   "account_code": "730",
+   "account_name": "Loan - Director",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 739660.88
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "d562629c-e02c-4af3-b20b-6332e8373289",
+   "account_code": "760",
+   "account_name": "Loan Receivable - Trade VA Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 64578.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "fef459dd-6a04-499f-a322-e22edfad0577",
+   "account_code": null,
+   "account_name": "Easy Hail Claim",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": 176360.7
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "b31039c8-8f7b-4093-9f67-e4f87377201f",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": -238486.78
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "ebb529a0-41fd-4539-a405-8176f2d5ef7b",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": 100.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": 130679.45
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "1e26d937-0e62-45e2-92a0-af01019895a3",
+   "account_code": "620",
+   "account_name": "Prepayments",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -179.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "635d570a-25a6-4a65-b4da-c848118ef4ea",
+   "account_code": "755",
+   "account_name": "Loan - Bank",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 213934.74
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "86915883-1560-47c8-adcf-5f0144f284e9",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 52282.61
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "399c74e7-67d8-4127-a42e-007770f6d7d0",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 31709.27
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "4dba3c85-ab28-4797-acef-1864df76c245",
+   "account_code": "821",
+   "account_name": "ATO Activity Statement Account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 18844.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "401cd83e-bca7-4868-8257-f289caac52ce",
+   "account_code": "830",
+   "account_name": "Income Tax Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -13755.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "56be43f2-10d3-4f29-8e92-3be12b58ffe5",
+   "account_code": "850",
+   "account_name": "Suspense",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -31225.63
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "6a080348-c17d-4f8c-a343-e7c2ea84e298",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 2.14
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "1f492a1d-a56d-4760-9c36-31e08bf45a1f",
+   "account_code": "882",
+   "account_name": "Insurance - Premium Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -148.18
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "b0650bbb-51bc-4b1e-b3a8-32d5163d6231",
+   "account_code": "882.01",
+   "account_name": "Unexpired Interest - Premium Funding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -1721.13
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "31d003ed-c7d7-494d-a300-d5dd99f75b79",
+   "account_code": "883",
+   "account_name": "Banjo Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 641350.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "871eb64a-daff-4f76-8efe-d9433eff86d8",
+   "account_code": "883.01",
+   "account_name": "Unexpired Interest - Banjo Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -311710.0
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "a11ffa2f-093a-41a7-bbf6-bf5c0e1d6f86",
+   "account_code": "884",
+   "account_name": "Prospa Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 139569.51
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "account_id": "1f81739d-81ef-4f59-805e-4858a3b85057",
+   "account_code": "906",
+   "account_name": "Loan Payable - Dragon Roofing Pty Ltd",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 488119.64
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "532dd680-a70d-4d6c-8812-7f685a66b600",
+   "account_code": "550.01",
+   "account_name": "Director Loan - Stephen Whittaker 2023",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "aea6b9a2-00d2-4199-acaa-4c7d5040b044",
+   "account_code": "550.02",
+   "account_name": "Director Loan - Stephen Whittaker 2024",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "ea875e39-9194-4aae-8eee-9f372e4f2157",
+   "account_code": "550.03",
+   "account_name": "Director Loan - Stephen Whittaker 2025",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 2709.49
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "e46ed28f-099a-45b1-b582-35a5f2395d1a",
+   "account_code": "610",
+   "account_name": "Accounts Receivable",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 102306.17
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "29911008-c232-45e6-8534-b7214dea37c5",
+   "account_code": "700",
+   "account_name": "Loan Receivable - Easy Hail Claim Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 54610.38
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "b5732ce2-bc8e-4425-96bd-566b8a8c9a27",
+   "account_code": "705",
+   "account_name": "Loan Receivable - Trade VA",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 18961.92
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "ed3a2bda-f832-4fa2-9c46-4bd8543c83a6",
+   "account_code": "706",
+   "account_name": "Loan - Trade VA International",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 11120.79
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "6b20288b-c8f7-489e-9d38-ba7d9d978454",
+   "account_code": "730",
+   "account_name": "Mini Cooper S - at cost",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2025-08-31",
+   "balance": 36086.72
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "89b61b21-4055-4a3a-89c4-0bd1f6288b60",
+   "account_code": "746",
+   "account_name": "Less Accumulated Depreciation - Mini Cooper S",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2025-08-31",
+   "balance": -10183.93
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "0935a602-7c12-4aea-9534-ca81c38a9244",
+   "account_code": "901",
+   "account_name": "Loan Receivable - Dragon Roof Restoration Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 1746.16
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "e1b2aa60-0b00-4171-87e9-0ca8455d81e6",
+   "account_code": "",
+   "account_name": "Dragon Roofing Main",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": 123417.55
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "871a2372-cd11-4a82-8f3a-91c12c1d0df8",
+   "account_code": null,
+   "account_name": "SUPA/ PAYG Savings",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": 9.14
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "81bc1650-cd47-4b57-82a8-c0d93fed6d46",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-08-31",
+   "balance": 36994.42
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "0c0ac8e4-3765-4071-844d-747b0da50be8",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-08-31",
+   "balance": 46000.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-08-31",
+   "balance": 112816.16
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "3a9ba96e-2bb6-4338-9d61-810cfcbf0d95",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 98487.68
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "834dace3-3383-4460-894f-54f8b2a892b7",
+   "account_code": "804",
+   "account_name": "Wages Payable - Payroll",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "c0e36733-1738-425f-b39c-4f47a089f400",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 8545.92
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "1f2bb2b9-c278-45d9-a5db-7f2237d661dd",
+   "account_code": "821",
+   "account_name": "GST Adjustment",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": -203.73
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "92a70c4e-08a6-4fae-a4d0-cb1f76e6c477",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 854.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "c6e1c2ab-4275-412f-8544-c00ba3be1df8",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 1316.64
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "5bc45dd6-9085-4bec-86f6-1f82d0b8953a",
+   "account_code": "830",
+   "account_name": "Income Tax Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "4bff29fd-09d9-4404-8802-9367fbf92fc2",
+   "account_code": "832",
+   "account_name": "ATO-Integrated Client account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 26099.51
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "4d6a81f7-23da-411c-95bb-531b0b1eedf5",
+   "account_code": "834",
+   "account_name": "ATO Superannuation Guarantee Account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 2.57
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "044a5a7a-7032-4f90-be9e-9f4af5e6826f",
+   "account_code": "842",
+   "account_name": "Hire Purchase - PF Insurance",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 11295.99
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "8ab013a3-7c67-4b31-baa9-efd74b51761b",
+   "account_code": "842.1",
+   "account_name": "Unexpired Interest - PF Insurance",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": -1424.1
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "6b8255b8-5951-4500-ba64-d8c9e52a7519",
+   "account_code": "855",
+   "account_name": "Loan Payable - Easy Hail Claim Pty Ltd",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "bcf44e3d-d7fa-4f1f-9b92-99dbcb3914f6",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": -0.67
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "ea875e39-9194-4aae-8eee-9f372e4f2157",
+   "account_code": "550.03",
+   "account_name": "Director Loan - Stephen Whittaker 2025",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": -67707.48
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "e46ed28f-099a-45b1-b582-35a5f2395d1a",
+   "account_code": "610",
+   "account_name": "Accounts Receivable",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 396522.07
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "29911008-c232-45e6-8534-b7214dea37c5",
+   "account_code": "700",
+   "account_name": "Loan Receivable - Easy Hail Claim Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 431980.2
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "b5732ce2-bc8e-4425-96bd-566b8a8c9a27",
+   "account_code": "705",
+   "account_name": "Loan Receivable - Trade VA",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 31871.92
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "ed3a2bda-f832-4fa2-9c46-4bd8543c83a6",
+   "account_code": "706",
+   "account_name": "Loan - Trade VA International",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 11602.54
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "497f8920-10f9-4138-ac54-c930a7f4e321",
+   "account_code": "720",
+   "account_name": "Computer Equipment",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-06-30",
+   "balance": 3630.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "dc40212a-821d-493a-b076-80fb34c21bc2",
+   "account_code": "721",
+   "account_name": "Less Accumulated Depreciation on Computer Equipment",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-06-30",
+   "balance": -156.16
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "6b20288b-c8f7-489e-9d38-ba7d9d978454",
+   "account_code": "730",
+   "account_name": "Mini Cooper S - at cost",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-06-30",
+   "balance": 36086.72
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "dd0a8a0b-d18d-4f95-912d-3ce0e94437e4",
+   "account_code": "745",
+   "account_name": "Motor Vehicles - At Cost",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-06-30",
+   "balance": 32850.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "a8622d41-c7df-4b38-a7cf-96a281a24543",
+   "account_code": "745.01",
+   "account_name": "Less: Accumulated Depreciation on Motor Vehicles",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-06-30",
+   "balance": -283.56
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "89b61b21-4055-4a3a-89c4-0bd1f6288b60",
+   "account_code": "746",
+   "account_name": "Less Accumulated Depreciation - Mini Cooper S",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-06-30",
+   "balance": -10183.93
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "0935a602-7c12-4aea-9534-ca81c38a9244",
+   "account_code": "901",
+   "account_name": "Loan Receivable - Dragon Roof Restoration Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 2680.65
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "e1b2aa60-0b00-4171-87e9-0ca8455d81e6",
+   "account_code": "",
+   "account_name": "Dragon Roofing Main",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": 40515.79
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "871a2372-cd11-4a82-8f3a-91c12c1d0df8",
+   "account_code": null,
+   "account_name": "SUPA/ PAYG Savings",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": 823.48
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "81bc1650-cd47-4b57-82a8-c0d93fed6d46",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-06-30",
+   "balance": 36994.42
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "0c0ac8e4-3765-4071-844d-747b0da50be8",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-06-30",
+   "balance": 46000.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-06-30",
+   "balance": 229573.23
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "3a9ba96e-2bb6-4338-9d61-810cfcbf0d95",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 529853.76
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "834dace3-3383-4460-894f-54f8b2a892b7",
+   "account_code": "804",
+   "account_name": "Wages Payable - Payroll",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "c0e36733-1738-425f-b39c-4f47a089f400",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 49688.28
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "1f2bb2b9-c278-45d9-a5db-7f2237d661dd",
+   "account_code": "821",
+   "account_name": "GST Adjustment",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -203.73
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "92a70c4e-08a6-4fae-a4d0-cb1f76e6c477",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 6296.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "c6e1c2ab-4275-412f-8544-c00ba3be1df8",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 6719.72
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "5bc45dd6-9085-4bec-86f6-1f82d0b8953a",
+   "account_code": "830",
+   "account_name": "Income Tax Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -4058.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "4bff29fd-09d9-4404-8802-9367fbf92fc2",
+   "account_code": "832",
+   "account_name": "ATO-Integrated Client account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 6444.45
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "4d6a81f7-23da-411c-95bb-531b0b1eedf5",
+   "account_code": "834",
+   "account_name": "ATO Superannuation Guarantee Account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 2.57
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "044a5a7a-7032-4f90-be9e-9f4af5e6826f",
+   "account_code": "842",
+   "account_name": "Hire Purchase - PF Insurance",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -1.5
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "8ab013a3-7c67-4b31-baa9-efd74b51761b",
+   "account_code": "842.1",
+   "account_name": "Unexpired Interest - PF Insurance",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -1424.1
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "7b9d2f15-9776-419a-a0f6-bcdd6e6a0c8a",
+   "account_code": "850",
+   "account_name": "Suspense",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 4546.3
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "bcf44e3d-d7fa-4f1f-9b92-99dbcb3914f6",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 0.84
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "79a783a7-1e03-4e98-ab99-5d6e2340ba1d",
+   "account_code": "900",
+   "account_name": "Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -200.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "ea875e39-9194-4aae-8eee-9f372e4f2157",
+   "account_code": "550.03",
+   "account_name": "Director Loan - Stephen Whittaker 2025",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": -49768.38
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "e46ed28f-099a-45b1-b582-35a5f2395d1a",
+   "account_code": "610",
+   "account_name": "Accounts Receivable",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 435005.18
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "29911008-c232-45e6-8534-b7214dea37c5",
+   "account_code": "700",
+   "account_name": "Loan Receivable - Easy Hail Claim Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 458955.48
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "b5732ce2-bc8e-4425-96bd-566b8a8c9a27",
+   "account_code": "705",
+   "account_name": "Loan Receivable - Trade VA",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 31871.92
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "ed3a2bda-f832-4fa2-9c46-4bd8543c83a6",
+   "account_code": "706",
+   "account_name": "Loan - Trade VA International",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 11602.54
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "497f8920-10f9-4138-ac54-c930a7f4e321",
+   "account_code": "720",
+   "account_name": "Computer Equipment",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-07-31",
+   "balance": 3630.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "dc40212a-821d-493a-b076-80fb34c21bc2",
+   "account_code": "721",
+   "account_name": "Less Accumulated Depreciation on Computer Equipment",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-07-31",
+   "balance": -156.16
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "6b20288b-c8f7-489e-9d38-ba7d9d978454",
+   "account_code": "730",
+   "account_name": "Mini Cooper S - at cost",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-07-31",
+   "balance": 36086.72
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "dd0a8a0b-d18d-4f95-912d-3ce0e94437e4",
+   "account_code": "745",
+   "account_name": "Motor Vehicles - At Cost",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-07-31",
+   "balance": 32850.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "a8622d41-c7df-4b38-a7cf-96a281a24543",
+   "account_code": "745.01",
+   "account_name": "Less: Accumulated Depreciation on Motor Vehicles",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-07-31",
+   "balance": -283.56
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "89b61b21-4055-4a3a-89c4-0bd1f6288b60",
+   "account_code": "746",
+   "account_name": "Less Accumulated Depreciation - Mini Cooper S",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-07-31",
+   "balance": -10183.93
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "0935a602-7c12-4aea-9534-ca81c38a9244",
+   "account_code": "901",
+   "account_name": "Loan Receivable - Dragon Roof Restoration Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 2758.15
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "e1b2aa60-0b00-4171-87e9-0ca8455d81e6",
+   "account_code": "",
+   "account_name": "Dragon Roofing Main",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": 63476.92
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "871a2372-cd11-4a82-8f3a-91c12c1d0df8",
+   "account_code": null,
+   "account_name": "SUPA/ PAYG Savings",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": 80823.75
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "81bc1650-cd47-4b57-82a8-c0d93fed6d46",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": 266840.38
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "0c0ac8e4-3765-4071-844d-747b0da50be8",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": 46000.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": 158316.68
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "3a9ba96e-2bb6-4338-9d61-810cfcbf0d95",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 536295.99
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "834dace3-3383-4460-894f-54f8b2a892b7",
+   "account_code": "804",
+   "account_name": "Wages Payable - Payroll",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 25.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "c0e36733-1738-425f-b39c-4f47a089f400",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 75264.12
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "1f2bb2b9-c278-45d9-a5db-7f2237d661dd",
+   "account_code": "821",
+   "account_name": "GST Adjustment",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -203.73
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "92a70c4e-08a6-4fae-a4d0-cb1f76e6c477",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 14066.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "c6e1c2ab-4275-412f-8544-c00ba3be1df8",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 1899.78
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "5bc45dd6-9085-4bec-86f6-1f82d0b8953a",
+   "account_code": "830",
+   "account_name": "Income Tax Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -4058.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "4bff29fd-09d9-4404-8802-9367fbf92fc2",
+   "account_code": "832",
+   "account_name": "ATO-Integrated Client account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 3844.45
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "4d6a81f7-23da-411c-95bb-531b0b1eedf5",
+   "account_code": "834",
+   "account_name": "ATO Superannuation Guarantee Account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 2.57
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "044a5a7a-7032-4f90-be9e-9f4af5e6826f",
+   "account_code": "842",
+   "account_name": "Hire Purchase - PF Insurance",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -1.5
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "8ab013a3-7c67-4b31-baa9-efd74b51761b",
+   "account_code": "842.1",
+   "account_name": "Unexpired Interest - PF Insurance",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -1424.1
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "bcf44e3d-d7fa-4f1f-9b92-99dbcb3914f6",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 0.99
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "79a783a7-1e03-4e98-ab99-5d6e2340ba1d",
+   "account_code": "900",
+   "account_name": "Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -200.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "ea875e39-9194-4aae-8eee-9f372e4f2157",
+   "account_code": "550.03",
+   "account_name": "Director Loan - Stephen Whittaker 2025",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": -48495.89
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "e46ed28f-099a-45b1-b582-35a5f2395d1a",
+   "account_code": "610",
+   "account_name": "Accounts Receivable",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 270080.88
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "29911008-c232-45e6-8534-b7214dea37c5",
+   "account_code": "700",
+   "account_name": "Loan Receivable - Easy Hail Claim Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 488119.64
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "b5732ce2-bc8e-4425-96bd-566b8a8c9a27",
+   "account_code": "705",
+   "account_name": "Loan Receivable - Trade VA",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 32994.92
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "ed3a2bda-f832-4fa2-9c46-4bd8543c83a6",
+   "account_code": "706",
+   "account_name": "Loan - Trade VA International",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 11602.54
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "497f8920-10f9-4138-ac54-c930a7f4e321",
+   "account_code": "720",
+   "account_name": "Computer Equipment",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-08-31",
+   "balance": 3630.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "dc40212a-821d-493a-b076-80fb34c21bc2",
+   "account_code": "721",
+   "account_name": "Less Accumulated Depreciation on Computer Equipment",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-08-31",
+   "balance": -156.16
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "6b20288b-c8f7-489e-9d38-ba7d9d978454",
+   "account_code": "730",
+   "account_name": "Mini Cooper S - at cost",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-08-31",
+   "balance": 36086.72
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "dd0a8a0b-d18d-4f95-912d-3ce0e94437e4",
+   "account_code": "745",
+   "account_name": "Motor Vehicles - At Cost",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-08-31",
+   "balance": 32850.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "a8622d41-c7df-4b38-a7cf-96a281a24543",
+   "account_code": "745.01",
+   "account_name": "Less: Accumulated Depreciation on Motor Vehicles",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-08-31",
+   "balance": -283.56
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "89b61b21-4055-4a3a-89c4-0bd1f6288b60",
+   "account_code": "746",
+   "account_name": "Less Accumulated Depreciation - Mini Cooper S",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-08-31",
+   "balance": -10183.93
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "0935a602-7c12-4aea-9534-ca81c38a9244",
+   "account_code": "901",
+   "account_name": "Loan Receivable - Dragon Roof Restoration Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 2836.15
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "e1b2aa60-0b00-4171-87e9-0ca8455d81e6",
+   "account_code": "",
+   "account_name": "Dragon Roofing Main",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": 91255.17
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "871a2372-cd11-4a82-8f3a-91c12c1d0df8",
+   "account_code": null,
+   "account_name": "SUPA/ PAYG Savings",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": 20832.97
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "81bc1650-cd47-4b57-82a8-c0d93fed6d46",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": 266840.38
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "0c0ac8e4-3765-4071-844d-747b0da50be8",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": 46000.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": 65389.65
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "3a9ba96e-2bb6-4338-9d61-810cfcbf0d95",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 532783.9
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "834dace3-3383-4460-894f-54f8b2a892b7",
+   "account_code": "804",
+   "account_name": "Wages Payable - Payroll",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 45.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "c0e36733-1738-425f-b39c-4f47a089f400",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 14778.04
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "1f2bb2b9-c278-45d9-a5db-7f2237d661dd",
+   "account_code": "821",
+   "account_name": "GST Adjustment",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -203.73
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "92a70c4e-08a6-4fae-a4d0-cb1f76e6c477",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 6216.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "c6e1c2ab-4275-412f-8544-c00ba3be1df8",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 5699.34
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "5bc45dd6-9085-4bec-86f6-1f82d0b8953a",
+   "account_code": "830",
+   "account_name": "Income Tax Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -4058.0
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "4bff29fd-09d9-4404-8802-9367fbf92fc2",
+   "account_code": "832",
+   "account_name": "ATO-Integrated Client account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 1244.45
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "4d6a81f7-23da-411c-95bb-531b0b1eedf5",
+   "account_code": "834",
+   "account_name": "ATO Superannuation Guarantee Account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 2.57
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "044a5a7a-7032-4f90-be9e-9f4af5e6826f",
+   "account_code": "842",
+   "account_name": "Hire Purchase - PF Insurance",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -1945.44
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "8ab013a3-7c67-4b31-baa9-efd74b51761b",
+   "account_code": "842.1",
+   "account_name": "Unexpired Interest - PF Insurance",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -1424.1
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "bcf44e3d-d7fa-4f1f-9b92-99dbcb3914f6",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 1.39
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "account_id": "79a783a7-1e03-4e98-ab99-5d6e2340ba1d",
+   "account_code": "900",
+   "account_name": "Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -200.0
+  }
+ ],
+ "accounts": [
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "695e5366-ce4c-4f20-8eda-79a55a91913d",
+   "account_code": "610",
+   "account_name": "Accounts Receivable",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "1e26d937-0e62-45e2-92a0-af01019895a3",
+   "account_code": "620",
+   "account_name": "Prepayments",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "156659a0-c583-486d-bdb2-3aa23dfe8766",
+   "account_code": "640",
+   "account_name": "Borrowing Costs",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "5e885966-52b6-41e7-a252-20f953c726dc",
+   "account_code": "730",
+   "account_name": "Loan - Director",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "4475821b-678e-451e-aa7f-99ff048a748e",
+   "account_code": "740",
+   "account_name": "Loan Receivable - Dragon Roofing Pty Ltd",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "568d3e70-7fef-4bd0-b1d4-0a5bb9c788c3",
+   "account_code": "750",
+   "account_name": "Loan Receivable - Dragon Roof Restoration Pty Ltd",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "635d570a-25a6-4a65-b4da-c848118ef4ea",
+   "account_code": "755",
+   "account_name": "Loan - Bank",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "d562629c-e02c-4af3-b20b-6332e8373289",
+   "account_code": "760",
+   "account_name": "Loan Receivable - Trade VA Pty Ltd",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "86915883-1560-47c8-adcf-5f0144f284e9",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "399c74e7-67d8-4127-a42e-007770f6d7d0",
+   "account_code": "820",
+   "account_name": "GST",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "4dba3c85-ab28-4797-acef-1864df76c245",
+   "account_code": "821",
+   "account_name": "ATO Activity Statement Account",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "401cd83e-bca7-4868-8257-f289caac52ce",
+   "account_code": "830",
+   "account_name": "Income Tax Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "56be43f2-10d3-4f29-8e92-3be12b58ffe5",
+   "account_code": "850",
+   "account_name": "Suspense",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "6a080348-c17d-4f8c-a343-e7c2ea84e298",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "1f492a1d-a56d-4760-9c36-31e08bf45a1f",
+   "account_code": "882",
+   "account_name": "Insurance - Premium Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "b0650bbb-51bc-4b1e-b3a8-32d5163d6231",
+   "account_code": "882.01",
+   "account_name": "Unexpired Interest - Premium Funding",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "31d003ed-c7d7-494d-a300-d5dd99f75b79",
+   "account_code": "883",
+   "account_name": "Banjo Loan",
+   "xero_type": "TERMLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "871eb64a-daff-4f76-8efe-d9433eff86d8",
+   "account_code": "883.01",
+   "account_name": "Unexpired Interest - Banjo Loan",
+   "xero_type": "TERMLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "a11ffa2f-093a-41a7-bbf6-bf5c0e1d6f86",
+   "account_code": "884",
+   "account_name": "Prospa Loan",
+   "xero_type": "TERMLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "1f81739d-81ef-4f59-805e-4858a3b85057",
+   "account_code": "906",
+   "account_name": "Loan Payable - Dragon Roofing Pty Ltd",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "2b5cc586-b2f1-4687-98d3-1a875a1bc8ec",
+   "account_code": "907",
+   "account_name": "Loan Payable - Trade VA Pty Ltd",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "b31039c8-8f7b-4093-9f67-e4f87377201f",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "ebb529a0-41fd-4539-a405-8176f2d5ef7b",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "3b67e5b6-780c-4158-831c-82293f34ca04",
+   "xero_account_id": "fef459dd-6a04-499f-a322-e22edfad0577",
+   "account_code": null,
+   "account_name": "Easy Hail Claim",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "532dd680-a70d-4d6c-8812-7f685a66b600",
+   "account_code": "550.01",
+   "account_name": "Director Loan - Stephen Whittaker 2023",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "aea6b9a2-00d2-4199-acaa-4c7d5040b044",
+   "account_code": "550.02",
+   "account_name": "Director Loan - Stephen Whittaker 2024",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "ea875e39-9194-4aae-8eee-9f372e4f2157",
+   "account_code": "550.03",
+   "account_name": "Director Loan - Stephen Whittaker 2025",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "e46ed28f-099a-45b1-b582-35a5f2395d1a",
+   "account_code": "610",
+   "account_name": "Accounts Receivable",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "29911008-c232-45e6-8534-b7214dea37c5",
+   "account_code": "700",
+   "account_name": "Loan Receivable - Easy Hail Claim Pty Ltd",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "b5732ce2-bc8e-4425-96bd-566b8a8c9a27",
+   "account_code": "705",
+   "account_name": "Loan Receivable - Trade VA",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "ed3a2bda-f832-4fa2-9c46-4bd8543c83a6",
+   "account_code": "706",
+   "account_name": "Loan - Trade VA International",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "497f8920-10f9-4138-ac54-c930a7f4e321",
+   "account_code": "720",
+   "account_name": "Computer Equipment",
+   "xero_type": "FIXED",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "dc40212a-821d-493a-b076-80fb34c21bc2",
+   "account_code": "721",
+   "account_name": "Less Accumulated Depreciation on Computer Equipment",
+   "xero_type": "FIXED",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "6b20288b-c8f7-489e-9d38-ba7d9d978454",
+   "account_code": "730",
+   "account_name": "Mini Cooper S - at cost",
+   "xero_type": "FIXED",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "dd0a8a0b-d18d-4f95-912d-3ce0e94437e4",
+   "account_code": "745",
+   "account_name": "Motor Vehicles - At Cost",
+   "xero_type": "FIXED",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "a8622d41-c7df-4b38-a7cf-96a281a24543",
+   "account_code": "745.01",
+   "account_name": "Less: Accumulated Depreciation on Motor Vehicles",
+   "xero_type": "FIXED",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "89b61b21-4055-4a3a-89c4-0bd1f6288b60",
+   "account_code": "746",
+   "account_name": "Less Accumulated Depreciation - Mini Cooper S",
+   "xero_type": "FIXED",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "3a9ba96e-2bb6-4338-9d61-810cfcbf0d95",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "834dace3-3383-4460-894f-54f8b2a892b7",
+   "account_code": "804",
+   "account_name": "Wages Payable - Payroll",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "c0e36733-1738-425f-b39c-4f47a089f400",
+   "account_code": "820",
+   "account_name": "GST",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "1f2bb2b9-c278-45d9-a5db-7f2237d661dd",
+   "account_code": "821",
+   "account_name": "GST Adjustment",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "92a70c4e-08a6-4fae-a4d0-cb1f76e6c477",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "c6e1c2ab-4275-412f-8544-c00ba3be1df8",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "5bc45dd6-9085-4bec-86f6-1f82d0b8953a",
+   "account_code": "830",
+   "account_name": "Income Tax Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "4bff29fd-09d9-4404-8802-9367fbf92fc2",
+   "account_code": "832",
+   "account_name": "ATO-Integrated Client account",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "4d6a81f7-23da-411c-95bb-531b0b1eedf5",
+   "account_code": "834",
+   "account_name": "ATO Superannuation Guarantee Account",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "044a5a7a-7032-4f90-be9e-9f4af5e6826f",
+   "account_code": "842",
+   "account_name": "Hire Purchase - PF Insurance",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "8ab013a3-7c67-4b31-baa9-efd74b51761b",
+   "account_code": "842.1",
+   "account_name": "Unexpired Interest - PF Insurance",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "7b9d2f15-9776-419a-a0f6-bcdd6e6a0c8a",
+   "account_code": "850",
+   "account_name": "Suspense",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "6b8255b8-5951-4500-ba64-d8c9e52a7519",
+   "account_code": "855",
+   "account_name": "Loan Payable - Easy Hail Claim Pty Ltd",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "bcf44e3d-d7fa-4f1f-9b92-99dbcb3914f6",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "79a783a7-1e03-4e98-ab99-5d6e2340ba1d",
+   "account_code": "900",
+   "account_name": "Loan",
+   "xero_type": "TERMLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "0935a602-7c12-4aea-9534-ca81c38a9244",
+   "account_code": "901",
+   "account_name": "Loan Receivable - Dragon Roof Restoration Pty Ltd",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "81bc1650-cd47-4b57-82a8-c0d93fed6d46",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "0c0ac8e4-3765-4071-844d-747b0da50be8",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "e1b2aa60-0b00-4171-87e9-0ca8455d81e6",
+   "account_code": "",
+   "account_name": "Dragon Roofing Main",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "42735fc3-21f2-4668-9783-93ce0f66f481",
+   "xero_account_id": "871a2372-cd11-4a82-8f3a-91c12c1d0df8",
+   "account_code": null,
+   "account_name": "SUPA/ PAYG Savings",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  }
+ ]
+}

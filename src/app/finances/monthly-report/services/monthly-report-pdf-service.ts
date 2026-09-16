@@ -140,7 +140,7 @@ import {
   forwardSeriesBasisNote,
 } from '../utils/full-year-basis'
 import { closingRowsBreak, keepWithNextStarts, lastPageWidowBreak, tablePageStarts } from '../utils/full-year-page-break'
-import type { BalanceSheetCompare, BalanceSheetData } from '../types'
+import type { BalanceSheetCompare, BalanceSheetData, BankBalancesData } from '../types'
 import { bsAmountText, bsPercentText } from '@/lib/monthly-report/balance-sheet-rows'
 import {
   parseSubscriptionPageConfig,
@@ -233,6 +233,12 @@ interface PDFOptions {
    * `reason`, and the page prints that reason instead of the table.
    */
   balanceSheets?: BalanceSheetPdfSources
+  /**
+   * Bank Balances & Movement (Calxa p17). `data: null` still carries a
+   * `reason`, and the page prints that reason instead of the table — never a
+   * blank page and never a confident $0.
+   */
+  bankBalances?: { data: BankBalancesData | null; reason?: string }
   /** WF.4 — true when this month's budget was back-filled from actuals: the
    *  cover must say so, because a ~0% variance is an echo, not performance. */
   budgetBackfilled?: boolean
@@ -1430,6 +1436,20 @@ export class MonthlyReportPDFService {
     // · % Variance is N/A…" — explained conventions the rest of the pack uses
     // without comment, in grey type a reader skips.
     this.renderBalanceSheetTable(verdict.data)
+
+    // Except on a group's sheet, whose notes are not conventions but what was
+    // done to the figures: a loan eliminated (decision 5, one line) and how a
+    // foreign organisation was translated (decision 7). A table ending near
+    // the foot of its page sends them to a new one, as the money-flow notes do.
+    const notes = verdict.data.consolidation?.notes ?? []
+    let y = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 5
+    for (const note of notes) {
+      if (y + this.noteHeight(note) > this.pageHeight - 16) {
+        this.addPage('portrait')
+        y = this.yPosition
+      }
+      y = this.drawNote(note, y) + 1
+    }
   }
 
   /**
@@ -1534,7 +1554,60 @@ export class MonthlyReportPDFService {
     return bottom
   }
 
-  private renderBalanceSheetTable(bs: BalanceSheetData): void {
+  // =====================================================================
+  // Bank Balances & Movement — Calxa page 17 (PORTRAIT)
+  // =====================================================================
+  // The same table as the balance sheet, over the chosen bank, cash-on-hand
+  // and credit-card accounts only, each Xero organisation under its own
+  // heading. Which accounts, which sign, how a foreign organisation is
+  // translated and what the page will not print are decided once, in
+  // lib/monthly-report/bank-balances.ts. This file decides only how they look.
+  private addBankBalancesPage(): void {
+    const entry = this.options.bankBalances
+    this.addPage('portrait')
+    this.drawPageTitle(`Bank Balances & Movement — ${packMonthYear(this.report.report_month)}`, { monthPrefix: false })
+    this.yPosition -= 1.5
+
+    if (!entry?.data) {
+      // The honest card, same shape as the balance sheet's. Never a table of
+      // zeros: a page that says "no bank accounts have been chosen" is worth
+      // more to the reader than a confident Total Bank of $0.
+      this.drawReasonCard(
+        `This page couldn't be produced: ${entry?.reason ?? 'the bank balances could not be loaded'}.`,
+      )
+      return
+    }
+    const bank = entry.data
+    if (bank.warnings.length > 0) this.drawWarningCard(bank.warnings.join(' '))
+
+    this.renderBalanceSheetTable(bank)
+
+    // What was done to the figures, under the table: how a foreign
+    // organisation was translated, why a card prints negative, and any chosen
+    // account this report does not cover.
+    let y = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 5
+    for (const note of bank.notes) {
+      if (y + this.noteHeight(note) > this.pageHeight - 16) {
+        this.addPage('portrait')
+        y = this.yPosition
+      }
+      y = this.drawNote(note, y) + 1
+    }
+  }
+
+  renderBankBalances(box: WidgetBoundingBox): void {
+    this.renderWithSkipPage(() => this.addBankBalancesPage(), box)
+  }
+
+  /**
+   * The five-column table both the balance sheet and Bank Balances print.
+   *
+   * Typed to what it actually reads — the rows and the two column labels — so
+   * the bank page can hand it its own rows without pretending to be a balance
+   * sheet, and so nobody adds a read of `balances` here and quietly makes the
+   * two pages different.
+   */
+  private renderBalanceSheetTable(bs: Pick<BalanceSheetData, 'rows' | 'current_label' | 'prior_label'>): void {
     // autoTable can't see row semantics, so carry them alongside: didParseCell
     // reads this by row index rather than sniffing the rendered label text.
     const rows = bs.rows
@@ -4651,6 +4724,11 @@ export class MonthlyReportPDFService {
         // comparison period, or whether the sheet failed to balance. The
         // renderer names the reason on the page instead. Returning false here
         // would silently swallow all three.
+        return true
+      case 'bank_balances':
+        // Always, for the same reason: the page names what stopped it — no
+        // accounts chosen, a closing rate not stored, an organisation that has
+        // not synced — and a dropped page names nothing.
         return true
       case 'uploaded_insert':
         // Always, and explicit: the page is the upload, or a card saying the
