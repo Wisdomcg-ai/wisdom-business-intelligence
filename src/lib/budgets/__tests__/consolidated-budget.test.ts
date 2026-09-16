@@ -173,6 +173,42 @@ describe('Dragon Roofing & Easy Hail — one approved FY27 version per organisat
     if (out.status === 'refused') expect(out.detail).toContain('Easy Hail Claim Pty Ltd')
   })
 
+  it('refuses a month the year-to-date and annual columns add up that only some organisations budget', async () => {
+    // Easy Hail's version imported a month after Dragon's — an ordinary
+    // sequence, because effective_from defaults past the finalised months. The
+    // report month resolved happily while July's group income budget printed
+    // 980,040 against Calxa's 1,230,584 and the year 9,380,040 against 9,630,584.
+    const state = dragonState()
+    state.budget_versions = state.budget_versions.map((v: any) => (v.tenant_id === EHC ? { ...v, effective_from: '2026-08' } : v))
+    const out = await resolveFor(state, DRAGON)
+    expect(out).toMatchObject({ status: 'refused', reason: 'tenant_without_budget' })
+    if (out.status === 'refused') {
+      expect(out.detail).toContain('Easy Hail Claim Pty Ltd')
+      expect(out.detail).toContain('Jul 2026')
+    }
+  })
+
+  it('a year that starts partway through for EVERY organisation is a span, not a gap', async () => {
+    const state = dragonState()
+    state.budget_versions = state.budget_versions.map((v: any) => ({ ...v, effective_from: '2026-10' }))
+    const out = await resolveFor(state, DRAGON, '2026-10')
+    expect(out.status).toBe('resolved')
+    if (out.status !== 'resolved') return
+    expect(aug(out.consolidated, 'revenue')).toBe(0)
+    const october = out.consolidated
+      .filter((l) => l.account_type === 'revenue')
+      .reduce((s, l) => s + (l.monthly_values['2026-10'] ?? 0), 0)
+    expect(Math.round(october)).toBe(1_000_000)
+  })
+
+  it('a locked version with no lines is not a budget in force for its organisation', async () => {
+    const state = dragonState()
+    state.budget_lines = state.budget_lines.filter((l: any) => l.tenant_id !== EHC)
+    const out = await resolveFor(state, DRAGON)
+    expect(out).toMatchObject({ status: 'refused', reason: 'tenant_without_budget' })
+    if (out.status === 'refused') expect(out.detail).toContain('Easy Hail Claim Pty Ltd')
+  })
+
   it('refuses a business-level version and per-organisation versions in force together', async () => {
     const state = dragonState()
     state.budget_versions.push({ ...state.budget_versions[0], id: 'bv-business', tenant_id: null })

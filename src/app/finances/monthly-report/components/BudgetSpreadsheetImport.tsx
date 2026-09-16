@@ -95,7 +95,11 @@ export default function BudgetSpreadsheetImport({
   const [choices, setChoices] = useState<Record<string, Choice>>({})
   const [preview, setPreview] = useState<PreviewResponse | null>(null)
   const [busy, setBusy] = useState<false | 'preview' | 'save'>(false)
-  const [saved, setSaved] = useState<Array<{ display_name: string; label: string; version_number: number; effective_from: string; line_count: number }> | null>(null)
+  const [saved, setSaved] = useState<{
+    versions: Array<{ display_name: string; label: string; version_number: number; effective_from: string; line_count: number }>
+    /** Organisations the sheet did not budget: they get no version, and the report refuses the group's budget until they have one. */
+    organisations_without_a_budget?: string[]
+  } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const accountsByOrg = useMemo(() => {
@@ -134,7 +138,7 @@ export default function BudgetSpreadsheetImport({
         setPreview(data as PreviewResponse)
         setSaved(null)
       } else {
-        setSaved(data.versions)
+        setSaved({ versions: data.versions, organisations_without_a_budget: data.organisations_without_a_budget })
         toast.success(`Imported ${data.versions.length} budget version${data.versions.length === 1 ? '' : 's'}`)
         onImported?.()
       }
@@ -243,12 +247,20 @@ export default function BudgetSpreadsheetImport({
             <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
               <p className="font-medium">Imported.</p>
               <ul className="mt-1 space-y-0.5 text-xs">
-                {saved.map((v) => (
+                {saved.versions.map((v) => (
                   <li key={`${v.display_name}-${v.version_number}`}>
                     {v.display_name}: {v.label} v{v.version_number}, effective {v.effective_from}, {v.line_count} lines
                   </li>
                 ))}
               </ul>
+              {(saved.organisations_without_a_budget?.length ?? 0) > 0 && (
+                <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                  {saved.organisations_without_a_budget!.join(', ')}{' '}
+                  {saved.organisations_without_a_budget!.length === 1 ? 'is' : 'are'} not budgeted by this sheet and{' '}
+                  {saved.organisations_without_a_budget!.length === 1 ? 'has' : 'have'} no approved budget. The report refuses the
+                  whole group’s budget until every organisation has one.
+                </p>
+              )}
               <p className="mt-2 text-xs">Set this client’s budget source to the approved budget to use it.</p>
             </div>
           )}

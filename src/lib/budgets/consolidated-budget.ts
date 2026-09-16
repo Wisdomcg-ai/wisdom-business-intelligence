@@ -31,10 +31,14 @@
  * The rest follows resolve-budget's rules, unchanged: only locked versions
  * count, a month is governed by the newest version effective by then, two
  * versions of one scope effective from the same month are refused for the
- * year. Two more refusals are the multi-organisation ones — an organisation
- * without a version in force for the report month (a consolidated budget
- * silently missing one organisation is a $0 no reader can see), and a business-
- * level version in force alongside per-organisation ones (a double count).
+ * year. The multi-organisation refusals are their own: an organisation without
+ * a version in force, or with one that carries no lines, for ANY month the year
+ * is read for — the pack reads four windows out of one budget (report month,
+ * year to date, annual total, next month) and a consolidated budget silently
+ * missing one organisation in any of them is a $0 no reader can see — and a
+ * business-level version in force alongside per-organisation ones (a double
+ * count). A month NO organisation budgets is not a gap: that is a year the
+ * budget starts partway through, exactly as for a single organisation.
  *
  * Never throws: a failed read is a refusal the page can state.
  */
@@ -400,6 +404,29 @@ export async function resolveApprovedBudgetForTenants(
           `${listNames(missing.map((t) => t.display_name))} ${missing.length === 1 ? 'has' : 'have'} no approved FY${fiscalYear} budget in force for ${monthLabel(reportMonth)}`,
         )
       }
+      // And every OTHER month of the year, because the pack reads four windows
+      // out of one budget — the report month, the year to date, the annual
+      // total and next month. Two organisations imported a month apart get
+      // different effective months (defaultEffectiveFrom moves past the
+      // finalised months), and July would then print a group budget short by
+      // one organisation in three columns out of four.
+      //
+      // A month NO organisation budgets is not a gap: that is a year the budget
+      // starts partway through, which monthsCovered states, exactly as it does
+      // for a single organisation.
+      const partial = fyMonths.filter((m) => {
+        const govern = ordered.filter((t) => governing.get(t.tenant_id)?.has(m)).length
+        return govern > 0 && govern < ordered.length
+      })
+      if (partial.length > 0) {
+        const who = ordered.filter((t) => partial.some((m) => !governing.get(t.tenant_id)?.has(m)))
+        return refuse(
+          'tenant_without_budget',
+          `${listNames(who.map((t) => t.display_name))} ${who.length === 1 ? 'has' : 'have'} no approved FY${fiscalYear} budget for `
+          + `${listNames(partial.slice(0, 3).map(monthLabel))}${partial.length > 3 ? ` and ${partial.length - 3} other month${partial.length - 3 === 1 ? '' : 's'}` : ''}, `
+          + 'which the year-to-date and annual budget columns add up',
+        )
+      }
     }
     const usedScopes = scopeKind === 'business' ? [''] : ordered.map((t) => t.tenant_id)
 
@@ -472,6 +499,19 @@ export async function resolveApprovedBudgetForTenants(
       line.monthly_values[row.month] = (line.monthly_values[row.month] ?? 0) + (Number(row.amount) || 0) * rate
     }
     if (linesByScope.size === 0) return refuse('version_has_no_lines')
+    // A version in force that yields no line at all is a budget for nobody. On
+    // the per-organisation branch that organisation's whole budget would be
+    // zero inside a group total that looks complete, so it is treated as the
+    // absence it is and named — the same refusal as having no version.
+    if (scopeKind === 'per_tenant') {
+      const silent = ordered.filter((t) => (linesByScope.get(t.tenant_id)?.size ?? 0) === 0)
+      if (silent.length > 0) {
+        return refuse(
+          'tenant_without_budget',
+          `${listNames(silent.map((t) => t.display_name))} ${silent.length === 1 ? 'has an approved FY' : 'have approved FY'}${fiscalYear} budget with no lines in it`,
+        )
+      }
+    }
 
     const aligned = alignApprovedBudget({
       scopes: usedScopes.map((scope) => ({ tenantId: scope || null, lines: [...(linesByScope.get(scope)?.values() ?? [])] })),

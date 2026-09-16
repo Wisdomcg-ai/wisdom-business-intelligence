@@ -150,6 +150,31 @@ describe('IICT Group — Full Year page with no active forecast (IICT-44)', () =
     expect(find(report, 'General Expenses')[0].months[2].approved_budget).toBe(15_000)
   })
 
+  it('refuses rather than dropping an organisation the consolidation does not include', async () => {
+    // The page decides to read the consolidation from the ACTIVE organisations
+    // and then reads only the CONSOLIDATION-INCLUDED ones. With IICT Group
+    // Limited — the HKD organisation, the bulk of the income — excluded, August
+    // revenue printed 32,516.53 instead of ~325k, with nothing to say why.
+    const s = state()
+    s.xero_connections = s.xero_connections.map((c: any) => (c.id === 'c-igl' ? { ...c, include_in_consolidation: false } : c))
+    const res = await loadFullYearReport(memorySupabase(s), { business_id: IICT, fiscal_year: 2027, report_month: '2026-08' })
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.refused).toBe(true)
+    expect(res.error).toContain('IICT Group Limited')
+    expect(res.error).toContain('Consolidation')
+  })
+
+  it('refuses rather than printing every figure as $0 when no organisation is in the consolidation', async () => {
+    const s = state()
+    s.xero_connections = s.xero_connections.map((c: any) => ({ ...c, include_in_consolidation: false }))
+    const res = await loadFullYearReport(memorySupabase(s), { business_id: IICT, fiscal_year: 2027, report_month: '2026-08' })
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.refused).toBe(true)
+    expect(res.error).toContain('IICT (Aust) Pty Ltd')
+  })
+
   it('refuses, naming the months, when a rate the page prints is missing', async () => {
     const res = await loadFullYearReport(memorySupabase(state({ priorYearRates: false })), { business_id: IICT, fiscal_year: 2027, report_month: '2026-08' })
     expect(res.ok).toBe(false)

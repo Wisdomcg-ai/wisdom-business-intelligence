@@ -93,4 +93,23 @@ describe('BudgetSpreadsheetImport', () => {
     expect((fetchMock.mock.calls[2][1].body as FormData).get('mode')).toBe('save')
     expect(screen.getByText(/FY27 Budget v1, effective 2026-07, 12 lines/)).toBeTruthy()
   })
+
+  it('names the organisation the sheet left without a budget, because the report then refuses the group’s', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ...blockedPreview, preview: { ...blockedPreview.preview, can_save: true, blocking: [] } }) })
+    open()
+    fireEvent.click(screen.getByText('Preview'))
+    await waitFor(() => expect((screen.getByText('Save budget') as HTMLButtonElement).disabled).toBe(false))
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        versions: [{ display_name: 'Dragon Roofing Pty Ltd', label: 'FY27 Budget', version_number: 1, effective_from: '2026-07', line_count: 12 }],
+        organisations_without_a_budget: ['Easy Hail Claim Pty Ltd'],
+      }),
+    })
+    fireEvent.click(screen.getByText('Save budget'))
+    await waitFor(() => expect(screen.getByText('Imported.')).toBeTruthy())
+    expect(screen.getByText(/Easy Hail Claim Pty Ltd is not budgeted by this sheet/)).toBeTruthy()
+  })
 })

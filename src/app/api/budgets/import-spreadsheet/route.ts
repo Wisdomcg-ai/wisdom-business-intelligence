@@ -12,8 +12,12 @@
  *                 the chart of accounts, so the coach can map a row (IICT's 210
  *                 → 200) or keep it budget-only. Writes nothing.
  *   mode=save     the same read, with the same choices, written as one LOCKED
- *                 version per organisation the sheet names (or one business-
- *                 level version), each with its lines.
+ *                 version per organisation the sheet BUDGETS (or one business-
+ *                 level version), each with its lines. An organisation the
+ *                 sheet leaves out gets no version at all — a locked version
+ *                 with no lines is a budget in force as far as the resolver is
+ *                 concerned, and the group's budget would then print short by
+ *                 that organisation — and the response names it.
  *
  * The rules the budget store already has, kept: never overwrite (a revision is
  * a new version_number, effective_from applies it prospectively), never a
@@ -260,7 +264,21 @@ async function postHandler(request: Request) {
       }, { status: 400 })
     }
 
-    const saving = preview.scopes.filter((s) => scopes.some((x) => x.tenantId === s.scope))
+    // An organisation the sheet does not budget gets NO version. A LOCKED
+    // version with no lines is a budget in force as far as the resolver is
+    // concerned — tenant_without_budget never fires — and the group's budget
+    // then prints short by that organisation with nothing on the page to say
+    // so. No version is the honest state: the report refuses, by name, until
+    // its sheet is imported too.
+    const budgets = (s: ScopePreview) => s.rows.some((r) => r.status === 'matched' || r.status === 'budget_only')
+    const chosen = preview.scopes.filter((s) => scopes.some((x) => x.tenantId === s.scope))
+    const saving = chosen.filter(budgets)
+    const unbudgeted = chosen.filter((s) => !budgets(s))
+    if (saving.length === 0) {
+      const reason = 'No row of this sheet would be saved.'
+      return NextResponse.json({ error: reason, code: 'PREVIEW_BLOCKED', blocking: [reason] }, { status: 400 })
+    }
+
     const clash = saving
       .map((s) => ({ scope: s, duplicate: locked.find((v) => (v.tenant_id ?? null) === s.scope && (v.effective_from === effectiveFrom || (v.notes ?? '').includes(fingerprintOf(s)))) }))
       .find((x) => x.duplicate)
@@ -367,9 +385,14 @@ async function postHandler(request: Request) {
         budget_only: v.scope.rows.filter((r) => r.status === 'budget_only').map((r) => ({ account_code: r.account_code, account_name: r.account_name })),
         skipped: v.scope.rows.filter((r) => r.status === 'skipped').map((r) => ({ row: r.row, account_name: r.account_name })),
       })),
+      organisations_without_a_budget: unbudgeted.map((s) => s.display_name),
       // Importing is not a switch-over: the report reads the store only once a
       // coach sets budget_source, one client at a time, at a period boundary.
-      note: 'Set the report’s budget source to the approved budget to use it.',
+      note: unbudgeted.length > 0
+        ? `${unbudgeted.map((s) => s.display_name).join(', ')} ${unbudgeted.length === 1 ? 'is' : 'are'} not budgeted by this sheet and `
+          + `${unbudgeted.length === 1 ? 'has' : 'have'} no approved budget: the report refuses the whole group’s budget until `
+          + `${unbudgeted.length === 1 ? 'it does' : 'they do'}. Set the report’s budget source to the approved budget to use it.`
+        : 'Set the report’s budget source to the approved budget to use it.',
     })
   } catch (error) {
     Sentry.captureException(error, { tags: { route: ROUTE } } as any)

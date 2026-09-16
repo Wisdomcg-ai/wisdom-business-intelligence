@@ -189,6 +189,39 @@ describe('save', () => {
     expect(writes).toEqual([])
   })
 
+  it('gives no version to an organisation the sheet does not budget', async () => {
+    // A locked version with no lines is a budget IN FORCE as far as the
+    // resolver is concerned, so the group's budget would print short by that
+    // organisation with nothing on the page to say so.
+    const dragonOnly = csv([
+      ['Business Unit Name', 'Account Number', 'Account Name', ...MONTH_HEADER],
+      ['Dragon Roofing Pty Ltd', '477', 'Wages and Salaries - Admin', ...FY.map(() => 26_023)],
+    ])
+    const { status, json } = await post(
+      { business_id: DRAGON, fiscal_year: '2027', mode: 'save', label: 'FY27 Budget' },
+      { name: 'FY27 Budget.csv', body: dragonOnly },
+    )
+    expect(status).toBe(200)
+    expect(json.versions.map((v: any) => v.tenant_id)).toEqual([DRG])
+    expect(json.organisations_without_a_budget).toEqual(['Easy Hail Claim Pty Ltd'])
+    expect(json.note).toContain('Easy Hail Claim Pty Ltd')
+    const written = writes.filter((w) => w.table === 'budget_versions' && w.rows).flatMap((w) => w.rows)
+    expect(written.map((r: any) => r.tenant_id)).toEqual([DRG])
+  })
+
+  it("leaves the other organisation's rows out when the import is for one organisation", async () => {
+    const { status, json } = await post(
+      { business_id: DRAGON, fiscal_year: '2027', mode: 'save', scope: DRG, choices, label: 'FY27 Budget' },
+      { name: 'FY27 Budget.csv', body: DRAGON_CSV },
+    )
+    expect(status).toBe(200)
+    const august = writes.filter((w) => w.table === 'budget_lines').flatMap((w) => w.rows).filter((l: any) => l.month === '2026-08')
+    // Easy Hail's 12,000 is NOT added to Dragon's admin wages through the 477
+    // both organisations use for different accounts.
+    expect(august).toEqual([expect.objectContaining({ account_code: '477', account_name: 'Wages and Salaries - Admin', amount: 26_023 })])
+    expect(json.versions.map((v: any) => v.tenant_id)).toEqual([DRG])
+  })
+
   it('refuses a business-level version while the organisations have their own', async () => {
     await post({ business_id: DRAGON, fiscal_year: '2027', mode: 'save', choices, label: 'FY27 Budget' }, { name: 'FY27 Budget.csv', body: DRAGON_CSV })
     writes.length = 0

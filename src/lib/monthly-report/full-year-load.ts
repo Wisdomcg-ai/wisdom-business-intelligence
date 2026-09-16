@@ -237,6 +237,11 @@ export async function loadFullYearReport(
     per_tenant_quality: [],
   }
 
+  // Read once, and used for both the branch below and the check inside it: the
+  // page must not choose the consolidated read from one set of organisations
+  // and then perform it over another.
+  const activeTenants = actualsForecast?.id ? [] : await loadActiveTenants(supabase, ids.all)
+
   if (actualsForecast?.id) {
     // D-13 path. D-18 invariant violations propagate to the outer catch.
     const composite = await createForecastReadService(supabase).getMonthlyComposite(actualsForecast.id)
@@ -255,18 +260,24 @@ export async function loadFullYearReport(
       data_quality: composite.data_quality,
       per_tenant_quality: composite.per_tenant_quality,
     }
-  } else if ((await loadActiveTenants(supabase, ids.all)).length > 1) {
+  } else if (activeTenants.length > 1) {
     // More than one organisation: the name-keyed read below would overwrite the
     // accounts they share and add a foreign currency to AUD one-for-one (see
     // multi-org-fallback). Read the consolidation instead — the engine the
     // statement uses, translated at each month's average rate — and refuse,
     // naming the months, when a rate the page prints is missing (IICT-44).
     // A read failure throws, as the connection read above does.
+    //
+    // `expect` is these same organisations: the consolidation loads its own set
+    // (businesses.id, include_in_consolidation) and a difference between the
+    // two is a page short by an organisation — or, when nothing is included, an
+    // empty universe and every figure $0 with no error at all.
     const consolidated = await loadConsolidatedFullYearActuals(supabase, {
       businessId: ids.businessId,
       fiscalYear: Number(fiscal_year),
       yearStartMonth,
       lastActualMonth,
+      expect: activeTenants,
     })
     if (!consolidated.ok) return { ok: false, error: consolidated.error, refused: true }
     xeroLines = consolidated.lines

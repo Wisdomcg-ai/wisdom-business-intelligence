@@ -23,6 +23,15 @@
  * in the preview, not a rule in here: the same sheet next year may need a
  * different one, and a rule nobody can see is a rule nobody can check.
  *
+ * The organisation column is read whenever the sheet has one, including when
+ * the coach is importing ONE organisation out of it. A row of another
+ * organisation is left out and named — never matched against this
+ * organisation's chart, which would put Easy Hail's 477 "Wages and Salaries"
+ * onto Dragon's 477 "Wages and Salaries - Admin" (26 of the 74 codes they share
+ * name different accounts) and write the two as one line. A business-level
+ * version is the exception: its one version budgets the group, however the
+ * sheet groups its rows.
+ *
  * Pure. The route does the reading and the writing.
  */
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
@@ -301,14 +310,30 @@ export function matchBudgetSheet(input: {
   const byTenant = new Map<string, CatalogEntry[]>()
   for (const entry of input.catalog) byTenant.set(entry.tenant_id, [...(byTenant.get(entry.tenant_id) ?? []), entry])
 
-  const scopeOf = (row: SheetRow): { scope: ImportScope | null; note: string | null } => {
-    if (!input.sheet.hasOrgColumn || input.scopes.length === 1) return { scope: input.scopes[0] ?? null, note: null }
+  const only = input.scopes.length === 1 ? input.scopes[0] : null
+
+  /**
+   * Which version a row belongs to. `elsewhere` is a row of a DIFFERENT
+   * organisation than the one this import is for: it is left out and named,
+   * never matched against this organisation's chart. Folding it in would put
+   * Easy Hail's 477 "Wages and Salaries" on Dragon's 477 "Wages and Salaries -
+   * Admin" — 26 of the 74 codes they share name different accounts — which is
+   * the DRG-20 failure this module exists to stop, at import time.
+   */
+  const scopeOf = (row: SheetRow): { scope: ImportScope | null; note: string | null; elsewhere?: string } => {
+    // No organisation column, or one business-level version — whose single
+    // version budgets the group however the sheet groups its rows.
+    if (!input.sheet.hasOrgColumn || (only && only.tenantId === null)) return { scope: input.scopes[0] ?? null, note: null }
     const wanted = (row.org ?? '').trim().toLowerCase()
-    if (!wanted) return { scope: null, note: 'This row names no organisation.' }
+    // A row naming no organisation, on an import for one: the coach already
+    // said which organisation the sheet is for.
+    if (!wanted) return only ? { scope: only, note: null } : { scope: null, note: 'This row names no organisation.' }
     const hit = input.scopes.find((s) =>
       s.displayName.toLowerCase().trim() === wanted
       || (input.orgNames?.[s.tenantId ?? ''] ?? []).some((n) => n.toLowerCase().trim() === wanted))
-    return hit ? { scope: hit, note: null } : { scope: null, note: `“${row.org}” is not one of this business’s Xero organisations.` }
+    if (hit) return { scope: hit, note: null }
+    if (only) return { scope: only, note: null, elsewhere: row.org ?? '' }
+    return { scope: null, note: `“${row.org}” is not one of this business’s Xero organisations.` }
   }
 
   const perScope = new Map<string | null, ScopePreview>()
@@ -322,6 +347,8 @@ export function matchBudgetSheet(input: {
     })
   }
   const unplaced: MatchedRow[] = []
+  /** Rows of another organisation than the one this import is for. */
+  const elsewhere: string[] = []
 
   for (const row of input.sheet.rows) {
     const choice = choices[String(row.row)]
@@ -338,7 +365,11 @@ export function matchBudgetSheet(input: {
     let note: string | null = placed.note
     let accountType: PLBucket | null = row.type
 
-    if (choice?.action === 'skip') {
+    if (placed.elsewhere !== undefined) {
+      status = 'skipped'
+      note = `Belongs to “${placed.elsewhere}”, not ${target!.displayName} — left out of this import.`
+      elsewhere.push(placed.elsewhere)
+    } else if (choice?.action === 'skip') {
       status = 'skipped'
       note = 'Left out of the import.'
     } else if (!target) {
@@ -413,6 +444,29 @@ export function matchBudgetSheet(input: {
     },
   }))
 
+  // Said once at the top, as well as row by row: a coach who does not scroll
+  // the table still has to be told which organisations this import leaves
+  // without a budget, because the report then refuses the whole group's.
+  const problems = [...input.sheet.problems]
+  if (elsewhere.length > 0 && only) {
+    const names = [...new Set(elsewhere)]
+    problems.push(
+      `${elsewhere.length} row${elsewhere.length === 1 ? '' : 's'} naming ${listOf(names.map((n) => `“${n}”`))} `
+      + `${elsewhere.length === 1 ? 'was' : 'were'} left out: this import is for ${only.displayName}. `
+      + 'Choose “Each organisation, from the sheet” to import them all.',
+    )
+  }
+  const budgets = (s: ScopePreview) => s.rows.some((r) => r.status === 'matched' || r.status === 'budget_only')
+  const unbudgeted = scopes.filter((s) => s.scope !== null && !budgets(s))
+  if (unbudgeted.length > 0 && unbudgeted.length < scopes.length) {
+    const one = unbudgeted.length === 1
+    problems.push(
+      `${listOf(unbudgeted.map((s) => s.display_name))} ${one ? 'is' : 'are'} not budgeted by this sheet, `
+      + `so ${one ? 'it gets' : 'they get'} no budget version. The report refuses the whole group’s budget `
+      + 'until every organisation has one.',
+    )
+  }
+
   const blocking: string[] = []
   for (const problem of input.sheet.problems) {
     if (problem.startsWith('The sheet has no column') || problem.startsWith('No header row')) blocking.push(problem)
@@ -441,10 +495,13 @@ export function matchBudgetSheet(input: {
         }]
       : scopes,
     blocking,
-    problems: input.sheet.problems,
+    problems,
     can_save: blocking.length === 0,
   }
 }
+
+const listOf = (names: readonly string[]): string =>
+  names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 
 /** The rows one version will be written with: one per account per month, merged. */
 export function budgetLinesFromPreview(scope: ScopePreview, fyMonths: readonly string[]): Array<{

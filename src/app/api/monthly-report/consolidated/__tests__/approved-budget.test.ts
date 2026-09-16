@@ -21,7 +21,7 @@ import { adaptConsolidatedToGeneratedReport } from '@/app/finances/monthly-repor
 import { MonthlyReportPDFService } from '@/app/finances/monthly-report/services/monthly-report-pdf-service'
 import { textRuns } from '@/app/finances/monthly-report/services/__tests__/pdf-pack-fixture'
 import { collectCommentaryTriggers } from '@/app/finances/monthly-report/utils/commentary-triggers'
-import { noBudgetNote } from '@/app/finances/monthly-report/utils/budget-yardstick'
+import { exportBudgetSourceRefusal, noBudgetNote } from '@/app/finances/monthly-report/utils/budget-yardstick'
 import type { PDFLayout } from '@/app/finances/monthly-report/types/pdf-layout'
 import {
   DRAGON, IICT, dragonState, iictState, memorySupabase,
@@ -176,6 +176,22 @@ describe('Dragon Roofing & Easy Hail — the FY27 Budget, one version per organi
       'No budget for this month — Budget and Variance columns are shown as “—” because Easy Hail Claim Pty Ltd has no approved FY2027 budget in force for Aug 2026.',
     )
     expect(accountLine(report, 'Sales - Insurance')[0].budget).toBe(0)
+  })
+
+  it('an organisation whose version has no lines is refused too, rather than printing the group short', async () => {
+    // The import used to lock an EMPTY version for an organisation its sheet
+    // never named. The resolver saw a version governing the report month, so
+    // tenant_without_budget never fired, and August income budget printed
+    // 796,402 against Calxa's 1,000,000 with no reason anywhere on the page.
+    const state = dragonState()
+    state.budget_lines = state.budget_lines.filter((l: any) => l.tenant_id !== 'tenant-easy-hail')
+    setup(DRAGON, state)
+    const { report } = await generate(DRAGON)
+    expect(report.has_budget).toBe(false)
+    expect(report.budget_source).toBe('none')
+    expect(report.no_budget_reason).toBe('tenant_without_budget')
+    expect(noBudgetNote(report)).toContain('Easy Hail Claim Pty Ltd')
+    expect(exportBudgetSourceRefusal('budget_version', report)).toContain('Easy Hail Claim Pty Ltd')
   })
 
   it('on the forecast, nothing changes: the forecast is the budget and the report names no source', async () => {

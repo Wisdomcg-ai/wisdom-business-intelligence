@@ -137,6 +137,44 @@ describe('matchBudgetSheet — Dragon, one version per organisation', () => {
     expect(dragon.totals.by_type).toMatchObject({ revenue: 673_565 * 12, opex: 26_023 * 12 })
   })
 
+  it("leaves another organisation's rows out of a one-organisation import rather than folding them in", () => {
+    // Picking "Dragon Roofing Pty Ltd" in the Belongs-to picker used to discard
+    // the sheet's organisation column: Easy Hail's 477 "Wages and Salaries"
+    // matched Dragon's 477 "Wages and Salaries - Admin" by the code the two
+    // organisations share for different accounts, and the two were written as
+    // one line of 38,023 — DRG-20 reintroduced at import time.
+    const preview = matchBudgetSheet({
+      sheet: parseBudgetSheet(DRAGON_SHEET, FY),
+      scopes: [scopes[0]],
+      catalog,
+      orgNames: { ehc: ['EASY HAIL CLAIM PTY LTD'] },
+    })
+    const dragon = preview.scopes[0]
+    expect(dragon.rows.map((r) => [r.row, r.status, r.account_name])).toEqual([
+      [3, 'matched', 'Sales - Insurance'],
+      [4, 'matched', 'Wages and Salaries - Admin'],
+      [5, 'skipped', 'Wages and Salaries'],
+      [6, 'skipped', 'Bank Fees'],
+    ])
+    expect(dragon.rows[2].note).toBe('Belongs to “EASY HAIL CLAIM PTY LTD”, not Dragon Roofing Pty Ltd — left out of this import.')
+    expect(preview.problems.some((p) => p.includes('EASY HAIL CLAIM PTY LTD'))).toBe(true)
+    expect(preview.can_save).toBe(true)
+    const august = budgetLinesFromPreview(dragon, FY).filter((l) => l.month === '2026-08')
+    expect(august.find((l) => l.account_code === '477')).toMatchObject({ account_name: 'Wages and Salaries - Admin', amount: 26_023 })
+  })
+
+  it('says which organisation the sheet leaves without a budget', () => {
+    const dragonOnly = DRAGON_SHEET.filter((row) => row[2] !== 'EASY HAIL CLAIM PTY LTD' && row[2] !== 'Not An Org')
+    const preview = matchBudgetSheet({
+      sheet: parseBudgetSheet(dragonOnly, FY),
+      scopes,
+      catalog,
+      orgNames: { ehc: ['EASY HAIL CLAIM PTY LTD'] },
+    })
+    expect(preview.can_save).toBe(true)
+    expect(preview.problems.some((p) => p.startsWith('Easy Hail Claim Pty Ltd is not budgeted by this sheet'))).toBe(true)
+  })
+
   it('refuses to save while a row names an organisation this business does not have', () => {
     const preview = matchBudgetSheet({
       sheet: parseBudgetSheet(DRAGON_SHEET, FY),
