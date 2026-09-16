@@ -21,6 +21,8 @@ type Client = { from: (table: string) => any }
 export interface ActiveTenant {
   tenant_id: string
   functional_currency: string | null
+  /** The organisation as the coach named it, for a sentence that has to say which one. */
+  display_name: string
 }
 
 /**
@@ -31,12 +33,16 @@ export interface ActiveTenant {
 export async function loadActiveTenants(supabase: Client, businessIds: readonly string[]): Promise<ActiveTenant[]> {
   const { data, error } = await supabase
     .from('xero_connections')
-    .select('tenant_id, functional_currency')
+    .select('tenant_id, functional_currency, display_name, tenant_name')
     .in('business_id', [...businessIds])
     .eq('is_active', true)
   if (error) throw error
-  const rows = (data ?? []) as Array<{ tenant_id: string | null; functional_currency: string | null }>
-  return [...new Map(rows.filter((r) => !!r.tenant_id).map((r) => [r.tenant_id as string, { tenant_id: r.tenant_id as string, functional_currency: r.functional_currency ?? null }])).values()]
+  const rows = (data ?? []) as Array<{ tenant_id: string | null; functional_currency: string | null; display_name?: string | null; tenant_name?: string | null }>
+  return [...new Map(rows.filter((r) => !!r.tenant_id).map((r) => [r.tenant_id as string, {
+    tenant_id: r.tenant_id as string,
+    functional_currency: r.functional_currency ?? null,
+    display_name: r.display_name || r.tenant_name || (r.tenant_id as string),
+  }])).values()]
 }
 
 /** Why the fallback must not run for these organisations, or null. */

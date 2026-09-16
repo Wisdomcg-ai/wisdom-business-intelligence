@@ -739,23 +739,48 @@ describe('subscription-detail — organisations in different currencies', () => 
     }))
   })
 
-  it('AUD and HKD orgs: no vendor claims a figure in one currency, the answer says why, and no invariant fires', async () => {
+  // Since P7 an HKD organisation is TRANSLATED at the month's average rate
+  // rather than left out of a figure (IICT-35). Without that rate the page
+  // has no figures at all — it never adds two currencies together.
+  it('AUD and HKD orgs with no rate stored: no figures, and the reason names the rate', async () => {
     tableFixtures['xero_connections'] = { rows: [AU, HK] }
+    tableFixtures['fx_rates'] = { rows: [] }
     tableFixtures['xero_pl_lines_wide_compat'] = { rows: [{ tenant_id: 't-au', account_name: 'IT Costs Software', monthly_values: { '2026-08': 430 } }] }
     const data = await run('2026-08', ['63700'])
-    const adobe = data.accounts[0].vendors[0]
-    expect(adobe.statement).toBeUndefined()
-    expect(data.statement_unavailable).toEqual({ reason: 'mixed_currencies', currencies: ['AUD', 'HKD'] })
+    expect(data.accounts).toEqual([])
+    expect(data.complete).toBe(false)
+    expect(data.translation_unavailable).toEqual({
+      missing: [{ currency_pair: 'HKD/AUD', period: '2026-07' }, { currency_pair: 'HKD/AUD', period: '2026-08' }],
+      organisations: ['IICT (HK) Ltd'],
+    })
+    expect(data.incomplete_reason).toContain('no HKD/AUD exchange rate is stored for Jul 2026 and Aug 2026')
     const breaches = vi.mocked(Sentry.captureMessage).mock.calls
       .filter(([, opts]: any[]) => opts?.tags?.invariant === 'subscription-vendors-exceed-account')
     expect(breaches).toHaveLength(0)
-    // The sheet refuses the vendor figures and says why — not "money this account did not post".
-    const model = buildSubscriptionPageModel(data, parseSubscriptionPageConfig({ layout: 'calxa' }).config)
-    expect(model.rows.filter((r) => r.kind === 'vendor' || r.kind === 'unallocated')).toEqual([])
-    const notes = model.notes.join(' ')
-    expect(notes).toContain('AUD and HKD')
-    expect(notes).not.toContain('did not post')
-    expect(notes).not.toContain('gross amounts')
+  })
+
+  it('AUD and HKD orgs with the rates stored: the HKD bill is quoted in AUD', async () => {
+    tableFixtures['xero_connections'] = { rows: [AU, HK] }
+    tableFixtures['fx_rates'] = {
+      rows: [
+        { currency_pair: 'HKD/AUD', rate_type: 'monthly_average', period: '2026-07-01', rate: 0.1830919 },
+        { currency_pair: 'HKD/AUD', rate_type: 'monthly_average', period: '2026-08-01', rate: 0.1795357 },
+      ],
+    }
+    tableFixtures['xero_pl_lines_wide_compat'] = {
+      rows: [
+        { tenant_id: 't-au', account_name: 'IT Costs Software', monthly_values: { '2026-08': 430 } },
+        { tenant_id: 't-hk', account_name: 'IT Costs Software', monthly_values: { '2026-08': 4730 } },
+      ],
+    }
+    const data = await run('2026-08', ['63700'])
+    expect(data.statement_unavailable).toBeUndefined()
+    // HKD 4,730 at August's average is $849.20; with the AUD org's $430 the
+    // account is $1,279.20 — not the $5,160 of two currencies added together.
+    expect(data.accounts[0].total_actual).toBeCloseTo(1_279.2, 2)
+    const adobe = data.accounts[0].vendors[0]
+    expect(adobe.actual).toBeCloseTo(1_279.2, 2)
+    expect(adobe.by_tenant['t-hk']).toBeCloseTo(849.2, 2)
   })
 
   it('several orgs, one with no recorded currency, cannot be vouched for either', async () => {

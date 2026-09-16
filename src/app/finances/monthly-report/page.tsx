@@ -54,8 +54,9 @@ import { useConsolidatedReport } from './hooks/useConsolidatedReport'
 import { useFullYearReport } from './hooks/useFullYearReport'
 import { useSubscriptionDetail } from './hooks/useSubscriptionDetail'
 import { rollUpContractors, contractorLoadReason } from '@/lib/monthly-report/contractor-rollup'
-import { contractorWindowForLayout } from '@/lib/monthly-report/contractor-page'
+import { contractorCodesByTenant, contractorWindowForLayout } from '@/lib/monthly-report/contractor-page'
 import { payrollWindowForLayout } from '@/lib/monthly-report/payroll-grid-config'
+import { externalMetricWindowForLayout } from '@/lib/monthly-report/external-metric-config'
 import { packPdfFilename } from '@/lib/monthly-report/pack-filename'
 import { parseRatioAnalysisConfig, requiredWindow } from '@/lib/monthly-report/ratio-table'
 import { buildPackCashflowForecast, packCashflowBasisFor, packCashflowPlLines } from '@/lib/monthly-report/pack-cashflow'
@@ -92,6 +93,7 @@ import type { CashflowForecastData, FinancialForecast } from '@/app/finances/for
 import { usePDFLayout } from './hooks/usePDFLayout'
 import { loadPackEntityName } from '@/lib/monthly-report/pack-entity-name'
 import { loadPackPreparedOn } from '@/lib/monthly-report/pack-prepared-on'
+import { exportBudgetSourceRefusal } from './utils/budget-yardstick'
 import { layoutWantsBadgeReconciliation, loadPackReconciliation, type PackReconciliation } from '@/lib/monthly-report/pack-reconciliation'
 import {
   balanceSheetsForExport,
@@ -1234,7 +1236,12 @@ export default function MonthlyReportPage() {
       // Months across the page: three for a Contractors Payment Summary
       // placement (contractor-page), and no `months` at all otherwise, so every
       // other client's request — and its two Xero months — is unchanged.
-      const contractorMonths = contractorWindowForLayout((settings?.pdf_layout?.pages ?? []).flatMap((p) => p.widgets ?? []))
+      const contractorWidgets = (settings?.pdf_layout?.pages ?? []).flatMap((p) => p.widgets ?? [])
+      const contractorMonths = contractorWindowForLayout(contractorWidgets)
+      // The codes each organisation posts them under, when they differ:
+      // Dragon's Virtual Contractors is 2300 and Easy Hail's 508 (DRG-29).
+      // Absent for every client whose organisations share their codes.
+      const codesByTenant = contractorCodesByTenant(contractorWidgets)
       try {
         const res = await fetch('/api/monthly-report/subscription-detail', {
           method: 'POST',
@@ -1243,6 +1250,7 @@ export default function MonthlyReportPage() {
             business_id: businessId,
             report_month: selectedMonth,
             account_codes: contractorCodes,
+            ...(codesByTenant ? { account_codes_by_tenant: codesByTenant } : {}),
             ...(contractorMonths > 2 ? { months: contractorMonths } : {}),
           }),
         })
@@ -1375,13 +1383,17 @@ export default function MonthlyReportPage() {
     let extMetrics: import('./types').ExternalMetricSeriesData[] | undefined
     if (businessId) {
       try {
+        // How many months of values the pack needs: the longest trend any
+        // placement prints, and one — this month — when none is placed (P10).
+        const extWidgets = (settings?.pdf_layout?.pages ?? []).flatMap((p) => p.widgets ?? [])
+        const extMonths = externalMetricWindowForLayout(extWidgets, selectedMonth)
         const res = await fetch(
-          `/api/monthly-report/external-metrics?business_id=${encodeURIComponent(businessId)}&period_month=${encodeURIComponent(selectedMonth)}`
+          `/api/monthly-report/external-metrics?business_id=${encodeURIComponent(businessId)}&period_month=${encodeURIComponent(selectedMonth)}&months=${extMonths}`
         )
         if (res.ok) {
           const data = await res.json()
           extMetrics = (data.series || []).filter(
-            (s: import('./types').ExternalMetricSeriesData) => (s.values || []).length > 0
+            (s: import('./types').ExternalMetricSeriesData) => (s.values || []).length > 0 || (s.history || []).length > 0
           )
         } else {
           Sentry.captureMessage(
@@ -1847,13 +1859,11 @@ export default function MonthlyReportPage() {
     //
     // Refusing is the only honest option. A warning would be read past, and
     // silently regenerating would discard whatever the coach has on screen.
-    const settingsSource = settings?.budget_source ?? 'forecast'
-    const reportSource = report.budget_source ?? null
-    if (settingsSource === 'budget_version' && reportSource !== 'budget_version') {
-      toast.error(
-        'This report was measured against the forecast, not the approved budget. Regenerate before exporting.',
-        { duration: 10000 },
-      )
+    // Two states, two sentences: a stale generate is fixed by regenerating, a
+    // budget the resolver REFUSED is not (exportBudgetSourceRefusal).
+    const budgetRefusal = exportBudgetSourceRefusal(settings?.budget_source, report)
+    if (budgetRefusal) {
+      toast.error(budgetRefusal, { duration: 10000 })
       return
     }
 

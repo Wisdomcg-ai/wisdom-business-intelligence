@@ -525,12 +525,15 @@ async function main() {
     eager.cashflowBasis = packCashflowBasisFor(eager.fullYearReport, reportMonth, eager.cashflowForecast)
   }
 
-  // External metrics
+  // External metrics — the month, plus the trend window any placement prints (P10).
   {
     const { loadExternalMetricSeries } = await import('@/lib/monthly-report/external-metrics-load')
-    const series = (await loadExternalMetricSeries(admin, bizId, reportMonth)).filter((s) => (s.values || []).length > 0)
+    const { externalMetricWindowForLayout } = await import('@/lib/monthly-report/external-metric-config')
+    const extMonths = externalMetricWindowForLayout((pdfLayout?.pages ?? []).flatMap((p) => p.widgets ?? []), reportMonth)
+    const series = (await loadExternalMetricSeries(admin, bizId, reportMonth, { months: extMonths }))
+      .filter((s) => (s.values || []).length > 0 || (s.history || []).length > 0)
     eager.externalMetrics = series
-    note('external', 'live-built', `external-metrics-load, ${series.length} series with values`)
+    note('external', 'live-built', `external-metrics-load, ${extMonths} month(s), ${series.length} series with values`)
   }
 
   // Memo
