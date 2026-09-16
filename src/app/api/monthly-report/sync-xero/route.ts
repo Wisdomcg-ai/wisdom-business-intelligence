@@ -175,8 +175,32 @@ async function postHandler(request: Request) {
       console.log(`[Sync Xero] Done: ${totalAccountsSynced} accounts synced across ${syncedTenantIds.length}/${connections.length} tenants`);
     }
 
+    // `success` means the P&L LANDED — not that the request ran to the end.
+    //
+    // It was hardcoded `true`, so a run where the orchestrator returned
+    // status 'error' still answered 200 {success: true}: every tenant errored,
+    // or the 44-05 single-flight guard refused a second concurrent run and no
+    // P&L was attempted at all. The detail sat in `errors`, which neither
+    // caller reads. /integrations branches on this field and announced
+    // "N/M Xero organisations synced"; the monthly-report hook toasted success
+    // and moved its own on-screen clock. The same lie the stamp above used to
+    // write to the database, told to the user's face instead.
+    //
+    // 'partial' stays a success: some tenant's numbers did land, and `errors`
+    // carries what did not. Only 'error' — nothing landed anywhere — is false.
+    // The status stays 200 either way: the BS mirror's work is real, the body
+    // says what happened, and a non-2xx would send both callers down their
+    // network-failure branch and throw the detail away.
+    const plLanded = plResult.status !== 'error';
+
     return NextResponse.json({
-      success: true,
+      success: plLanded,
+      // Surfaced so a caller can tell a clean run from a salvaged one without
+      // parsing `errors`, and so the two UIs can word themselves honestly.
+      pl_status: plResult.status,
+      // /integrations reads `data.error` when success is false; without it the
+      // alert degrades to a bare "Sync failed" that names no cause.
+      ...(plLanded ? {} : { error: plResult.error ?? 'Xero P&L sync failed' }),
       tenants_synced: syncedTenantIds.length,
       tenants_total: connections.length,
       accounts_synced: totalAccountsSynced,
