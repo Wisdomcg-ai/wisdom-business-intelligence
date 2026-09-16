@@ -964,5 +964,51 @@ export interface BalanceSheetData {
   prior_label: string        // e.g. "Mar 2025"
   rows: BalanceSheetRow[]
   balances: boolean          // true if Total Asset - Total Liability === Total Equity
+  /**
+   * Only on a sheet that combines several Xero organisations, built from the
+   * stored mirror (lib/monthly-report/consolidated-balance-sheet.ts). One
+   * organisation's sheet never carries it, so its page prints exactly as it
+   * did.
+   */
+  consolidation?: BalanceSheetConsolidation
+}
+
+/**
+ * Bank Balances & Movement (Calxa p17) — the same five columns as the balance
+ * sheet, over the chosen bank, cash-on-hand and credit-card accounts only, with
+ * each Xero organisation's under its own heading when there is more than one.
+ * Built by lib/monthly-report/bank-balances.ts.
+ */
+export interface BankBalancesData {
+  business_id: string
+  /** Last day of the report month, YYYY-MM-DD. */
+  report_date: string
+  /** Last day of the month before it — null when no organisation has a sheet then. */
+  prior_date: string | null
+  current_label: string      // e.g. "Aug 2026"
+  prior_label: string        // e.g. "Jul 2026"; '' when there is no comparison
+  rows: BalanceSheetRow[]
+  /** The organisations the page covers, in display order. */
+  organisations: { name: string; currency: string }[]
+  /** Printed under the table: how a foreign organisation was translated, and the credit-card convention. */
+  notes: string[]
+  /** Printed above the table: what the page could not check. */
+  warnings: string[]
+}
+
+export interface BalanceSheetConsolidation {
+  /** The organisations the sheet adds together, in display order. */
+  organisations: { name: string; currency: string }[]
+  /**
+   * One line each, printed under the table: what was eliminated, and how a
+   * foreign organisation was translated.
+   */
+  notes: string[]
+  /**
+   * Printed above the table, with the page's other warnings: what the sheet
+   * was asked to do and did not — an intercompany loan whose two sides do not
+   * agree is shown in full, not netted.
+   */
+  warnings: string[]
 }
 

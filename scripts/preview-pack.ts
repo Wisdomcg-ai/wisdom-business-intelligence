@@ -28,6 +28,10 @@
  *   external metrics     external-metrics-load
  *   memo                 the snapshot's coach_notes
  *   money flow           money-flow-load
+ *   bank balances        bank-balances-load (stored balance-sheet mirror)
+ *   balance sheet        consolidated-balance-sheet-load, for a business Xero holds as
+ *                        SEVERAL organisations — the app builds that one from the stored
+ *                        mirror too, and never from a live Xero report
  *   cover reconciliation pack-reconciliation (the CFO board's captured badge),
  *                        when a cover placement asks for it
  *   uploaded pages       pack-inserts-load (the month's newest upload per placement), each
@@ -42,10 +46,11 @@
  *                        (subscription_vendor_actuals) through the route's own
  *                        assembler — APPROXIMATE, see subscription-detail-persisted
  *   contractor_detail    skipped (nothing persisted), unless supplied
- *   balance_sheet        the sheets an Approve & Send printed, or a FINAL
- *                        month's copy frozen at Finalise, as the app prints
- *                        them; otherwise its "couldn't be produced" reason,
- *                        unless supplied
+ *   balance_sheet        ONE organisation's: the sheets an Approve & Send printed,
+ *                        or a FINAL month's copy frozen at Finalise, as the app
+ *                        prints them; otherwise its "couldn't be produced" reason,
+ *                        unless supplied. A business with several organisations is
+ *                        built from the mirror above, as the app builds it
  *
  * Any of the three can be supplied as the route's JSON response body (copy it
  * from the browser's network tab) in --payload-dir:
@@ -178,6 +183,7 @@ function sourceKeyFor(type: string, config: unknown): string {
     case 'external_metric': return 'external'
     case 'memo': return 'memo'
     case 'money_flow': return 'moneyFlow'
+    case 'bank_balances': return 'bankBalances'
     case 'consolidated_pl': return 'consolidated'
     case 'uploaded_insert': return 'inserts'
     case 'balance_sheet': {
@@ -633,17 +639,50 @@ async function main() {
     note('balanceSheet:mom', 'snapshot', 'frozen into the final snapshot at Finalise')
     note('balanceSheet:yoy', 'snapshot', 'frozen into the final snapshot at Finalise')
   } else if (wantsBalanceSheet) {
+    // A business Xero holds as SEVERAL organisations gets the consolidated
+    // sheet, which the app builds from the stored mirror and never from a live
+    // Xero report — so the harness builds the same one, through the same
+    // loader the route calls. One organisation still needs Xero, so it still
+    // needs a payload or prints the reason.
+    const { count: connCount } = await admin
+      .from('xero_connections')
+      .select('tenant_id', { count: 'exact', head: true })
+      .eq('business_id', bizId)
+      .eq('is_active', true)
+    const multiOrg = (connCount ?? 0) > 1
     eager.balanceSheets = {}
     for (const compare of ['mom', 'yoy'] as const) {
       const payload = readPayload(`balance-sheet-${compare}.json`)
       if (payload) {
         eager.balanceSheets[compare] = { data: payload }
         note(`balanceSheet:${compare}`, 'payload', `${payloadDir}/balance-sheet-${compare}.json`)
-      } else {
-        eager.balanceSheets[compare] = { data: null, reason: 'the preview harness does not call Xero — supply the balance sheet with --payload-dir' }
-        note(`balanceSheet:${compare}`, 'skipped', `needs a live Xero report — supply balance-sheet-${compare}.json via --payload-dir (the page prints the reason)`)
+        continue
       }
+      if (multiOrg) {
+        const { loadConsolidatedBalanceSheet } = await import('@/lib/monthly-report/consolidated-balance-sheet-load')
+        const built = await loadConsolidatedBalanceSheet(admin, bizId, reportMonth, compare)
+        eager.balanceSheets[compare] = built.ok ? { data: built.data } : { data: null, reason: built.reason }
+        note(`balanceSheet:${compare}`, 'live-built',
+          built.ok
+            ? `consolidated-balance-sheet-load (stored mirror, ${built.data.consolidation?.organisations.length ?? 0} organisations)`
+            : `consolidated-balance-sheet-load refused: ${built.reason}`)
+        continue
+      }
+      eager.balanceSheets[compare] = { data: null, reason: 'the preview harness does not call Xero — supply the balance sheet with --payload-dir' }
+      note(`balanceSheet:${compare}`, 'skipped', `needs a live Xero report — supply balance-sheet-${compare}.json via --payload-dir (the page prints the reason)`)
     }
+  }
+
+  // Bank Balances & Movement — a placement only; built from the stored mirror,
+  // so the harness builds exactly what the app's endpoint would.
+  if (layoutTypes.has('bank_balances')) {
+    const { loadBankBalances } = await import('@/lib/monthly-report/bank-balances-load')
+    const built = await loadBankBalances(admin, bizId, reportMonth)
+    eager.bankBalances = built.ok ? { data: built.data } : { data: null, reason: built.reason }
+    note('bankBalances', 'live-built',
+      built.ok
+        ? `bank-balances-load (stored mirror, ${built.data.organisations.length} organisation(s))`
+        : `bank-balances-load refused: ${built.reason}`)
   }
 
   // Budget provenance for the cover
