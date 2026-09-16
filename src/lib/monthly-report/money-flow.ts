@@ -42,7 +42,7 @@
 
 import { isBankRow, parseBankAccountIds } from './opening-bank'
 import { compareStatementLines } from './statement-order'
-import { consolidateBalanceRows, consolidateFlowRows, datesPresentIn, type ConsolidationOrg, type FxRateLike } from './multi-org-consolidate'
+import { consolidateBalanceRows, consolidateFlowRows, type ConsolidationOrg, type FxRateLike } from './multi-org-consolidate'
 
 export interface BsRowInput {
   /** The Xero AccountID — what a chosen bank account and a credit card are matched on. */
@@ -529,7 +529,12 @@ export function deriveConsolidatedMoneyFlow(
   }))
   const rates = opts.rates ?? []
 
-  const bs = consolidateBalanceRows(rows, consolidationOrgs, rates, datesPresentIn(rows), { prefixLabel: true })
+  // The two month-ends this page prints — never every date the mirror has
+  // ever carried: a business's oldest-synced organisation can carry years of
+  // history a sibling predates, and that history is not this report's
+  // concern (IICT-55/56). Both dates are already proven present for every
+  // organisation by the hasEnd/hasStart check above.
+  const bs = consolidateBalanceRows(rows, consolidationOrgs, rates, [startKey, endKey], { prefixLabel: true })
   if (!bs.ok) return notComparable(period, prior, bs.reason)
 
   let plRows: PlRowInput[] | undefined

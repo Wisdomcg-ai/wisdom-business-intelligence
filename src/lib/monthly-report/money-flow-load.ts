@@ -154,10 +154,18 @@ export async function loadMoneyFlow(
   )]
   let rates: FxRateLike[] = []
   if (foreignPairs.length > 0) {
+    // Bounded to the two month-ends this page actually compares — never an
+    // unfiltered read of the whole currency pair's history, which grows
+    // without bound and, unordered, PostgREST's cap can return the OLDEST
+    // rows first rather than the ones this report wants.
+    const start = endOfMonth(priorMonth(periodMonth))
+    const end = endOfMonth(periodMonth)
     const { data, error: rateErr } = await supabase
       .from('fx_rates')
       .select('currency_pair, rate_type, period, rate')
       .in('currency_pair', foreignPairs)
+      .gte('period', `${start.slice(0, 7)}-01`)
+      .lte('period', end)
       .limit(ROW_CAP)
     if (rateErr) throw rateErr
     rates = (data ?? []) as FxRateLike[]

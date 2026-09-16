@@ -130,12 +130,33 @@ describe('IICT (Aust) Pty Ltd + IICT Group Limited (HKD) — IICT-55, IICT-56', 
     // rate the audit's own tie-arithmetic stored (0.181785 Jul, 0.177902 Aug).
     expect(flow.bank.start).toBeCloseTo(3150.36 + 1303713.43 * 0.18178479899016947, 1)
     expect(flow.bank.end).toBeCloseTo(4145.74 + 1237808.62 * 0.17790200084322572, 1)
-    // Within a few dollars of Calxa's own (17,511) (p26) and P8's mirror
-    // ((17,510)) — the residual is IICT Group Pty Ltd's own small movement,
-    // which both of those included and this consolidation correctly does not:
-    // it is gone from the business (Matt confirmed, 16 Sep 2026).
+    // This is NOT Calxa's own (17,511) (p26) or P8's bank-balances mirror
+    // ((17,510)) — by design, not by a missing setting or a defect. Those two
+    // print "Total Bank" with a credit card netted in as a negative asset
+    // (bank-balances.ts, decision 6); "Where Did Our Money Go"'s own bank
+    // figure is deposit accounts only, by isBankRow's own rule
+    // (account_type === 'asset'), so a credit card's movement prints as its
+    // own separate, labelled source or use instead of being folded silently
+    // into "the bank moved" — see the reconciliation test below, which proves
+    // the two headline numbers using the SAME two fixtures.
     expect(flow.bank.delta).toBeGreaterThan(-16200)
     expect(flow.bank.delta).toBeLessThan(-15400)
+  })
+
+  it('reconciles to Calxa\'s and P8\'s own (17,511)/(17,510) once the Mastercard\'s own movement is added back — the gap is a presentation choice, not a missing setting (IICT-55)', () => {
+    // IAP's Altitude Business Gold Mastercard (a Current Liabilities row,
+    // never part of isBankRow's asset-only "bank") moved from 5,427.85 owed
+    // to 7,146.40 owed — a further 1,718.55 borrowed. Calxa and P8's own
+    // bank-balances widget both print "Total Bank" with a credit card netted
+    // in as a negative asset, so their headline is this page's own bank
+    // movement LESS that extra borrowing. IICT Group Pty Ltd, in both of
+    // those older three-organisation figures, moved its own bank by only
+    // about $2 (bank-balances.test.ts: 9,304 vs 9,306) — not the ~$1,720 gap
+    // an earlier reading of this page mistook it for.
+    const flow = deriveConsolidatedMoneyFlow(rows, '2026-08', orgs, { rates })
+    const mastercardMovement = 7146.4 - 5427.85
+    expect(flow.bank.delta - mastercardMovement).toBeGreaterThan(-17600)
+    expect(flow.bank.delta - mastercardMovement).toBeLessThan(-17400)
   })
 
   it('names IICT Group Limited\'s currency — the reader is told this figure was translated', () => {
@@ -148,6 +169,25 @@ describe('IICT (Aust) Pty Ltd + IICT Group Limited (HKD) — IICT-55, IICT-56', 
 
   it('still proves itself in a foreign currency: the identity holds to the cent after translation', () => {
     const flow = deriveConsolidatedMoneyFlow(rows, '2026-08', orgs, { rates })
+    expect(flow.continuity_residual).toBeCloseTo(0, 1)
+  })
+
+  it('extra balance-sheet history only IAP carries — from years before IGL existed or fx_rates began — never blocks the report (the real prod shape, IICT-55)', () => {
+    // Real prod: IAP's mirror (xero_bs_lines_wide_compat, unfiltered) goes
+    // back to 2024-07-31 — 9 months before IGL was even connected and 9
+    // months before HKD/AUD rates begin (2025-04-30). money-flow-load.ts
+    // hands deriveConsolidatedMoneyFlow every date the mirror has ever
+    // carried, for every account, not just the two this report compares. A
+    // caller that (as the old code did) required a rate for the union of
+    // every one of those dates would demand an HKD/AUD rate at 2024-07-31 —
+    // a date IICT Group Limited never reached and this report never asked
+    // for — and refuse a real, computable report.
+    const extraHistory: BsRowInput[] = [
+      { account_id: null, account_name: 'Old Suspense Account', account_type: 'asset', section: null, tenant_id: IICT_IAP, balances_by_date: { '2024-07-31': 500, '2024-08-31': 500, '2025-03-31': 500 } },
+    ]
+    const flow = deriveConsolidatedMoneyFlow([...rows, ...extraHistory], '2026-08', orgs, { rates })
+    expect(flow.comparable).toBe(true)
+    expect(Math.round(flow.bank.delta)).toBe(-15791)
     expect(flow.continuity_residual).toBeCloseTo(0, 1)
   })
 

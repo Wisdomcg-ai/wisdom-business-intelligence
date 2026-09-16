@@ -34,14 +34,13 @@ import { loadBankAccountIds } from './bank-accounts-load'
 import { loadCashModelConfig } from './cash-model-config-load'
 import { parseBankAccountIds } from './opening-bank'
 import type { CashModelConfig, ParsedCashModelConfig } from './cash-model-config'
-import type { CashModelInputs, CashModelPayRun } from './pack-cash-model'
+import { cashModelNeededBalanceSheetDates, type CashModelInputs, type CashModelPayRun } from './pack-cash-model'
 import { endOfMonth } from './money-flow'
 import {
   buildRateMaps,
   consolidateBalanceRows,
   consolidateFlowRows,
   currencyOf,
-  datesPresentIn,
   pairOf,
   type ConsolidationOrg,
   type FxRateLike,
@@ -80,6 +79,48 @@ function organisationsOf(rows: readonly ConnectionRow[]): ConsolidationOrg[] {
       name: c.display_name || c.tenant_name || (c.tenant_id as string),
       functional_currency: c.functional_currency,
     }))
+}
+
+/**
+ * wages_codes and super.expense_codes are Xero account CODES, matched
+ * (bookedTo, pack-cash-model.ts) across the WHOLE consolidated ledger with no
+ * tenant awareness at all — the one cash_model field that works this way,
+ * because a code can legitimately repeat across a coach's organisations for
+ * the same kind of account. It is not guaranteed to: DRG-40 found 26 of
+ * Dragon Roofing and Easy Hail Claim's 74 shared codes name different
+ * accounts. A code this business's own organisations disagree about — one
+ * calls it wages, another calls it something else entirely — is refused
+ * here, naming both, before anything is merged and the distinction is lost.
+ */
+export function payrollCodeCollisions(
+  accounts: readonly { tenant_id: string; account_code: string | null; account_name: string }[],
+  organisations: readonly ConsolidationOrg[],
+  codes: readonly { role: string; code: string }[],
+): string | null {
+  const norm = (s: string) => s.trim().toLowerCase()
+  const nameByTenant = new Map<string, Map<string, string>>()
+  for (const a of accounts) {
+    if (!a.account_code) continue
+    const code = norm(a.account_code)
+    if (!nameByTenant.has(code)) nameByTenant.set(code, new Map())
+    const byTenant = nameByTenant.get(code)!
+    if (!byTenant.has(a.tenant_id)) byTenant.set(a.tenant_id, norm(a.account_name))
+  }
+  const orgName = new Map(organisations.map((o) => [o.tenant_id, o.name]))
+  const problems: string[] = []
+  const seenCodes = new Set<string>()
+  for (const { role, code } of codes) {
+    const key = `${role}::${norm(code)}`
+    if (seenCodes.has(key)) continue
+    seenCodes.add(key)
+    const byTenant = nameByTenant.get(norm(code))
+    if (!byTenant || byTenant.size < 2) continue
+    if (new Set(byTenant.values()).size < 2) continue
+    const detail = [...byTenant.entries()].map(([t, name]) => `${orgName.get(t) ?? t} calls it "${name}"`).join(', ')
+    problems.push(`${role} ${code} names a different account in more than one organisation (${detail})`)
+  }
+  if (problems.length === 0) return null
+  return `the cash model's account codes are not safe to share across these organisations (${problems.join('; ')}) — list each organisation's own AccountID instead, or fix the code in Xero`
 }
 
 /**
@@ -228,19 +269,54 @@ async function loadMultiTenantInputs(
     .in('tenant_id', tenants)
   if (plErr) throw plErr
 
+  // tenant_id too: wages_codes and super.expense_codes match by Xero account
+  // CODE, not AccountID, across the whole consolidated ledger (bookedTo,
+  // pack-cash-model.ts) — the only cash_model fields that do. Two
+  // organisations can and do reuse a code for two different accounts (DRG-40:
+  // 26 of Dragon and Easy Hail's 74 shared codes name different accounts), so
+  // that has to be checked per organisation, before anything is merged onto
+  // one virtual tenant and the distinction is lost for good.
   const { data: accounts, error: accErr } = await supabase
     .from('xero_accounts')
-    .select('xero_account_id, account_code, account_name, tax_type, bank_account_type, xero_class, xero_type')
+    .select('tenant_id, xero_account_id, account_code, account_name, tax_type, bank_account_type, xero_class, xero_type')
     .in('tenant_id', tenants)
   if (accErr) throw accErr
+
+  const codeCollision = payrollCodeCollisions(
+    (accounts ?? []) as Array<{ tenant_id: string; account_code: string | null; account_name: string }>,
+    organisations,
+    [
+      ...config.wages_codes.map((code) => ({ role: 'wages_codes', code })),
+      ...config.super.expense_codes.map((code) => ({ role: 'super.expense_codes', code })),
+    ],
+  )
+  if (codeCollision) return { status: 'refused', reason: codeCollision }
+
+  // The exact dates this build reads — the fiscal-year window plus GST's own
+  // settled-end look-back (cashModelNeededBalanceSheetDates) — never every
+  // date any organisation's mirror has ever carried: an unfiltered
+  // xero_bs_lines_wide_compat read spans a business's whole synced history,
+  // which for one organisation can predate a same-currency sibling by years
+  // and a foreign one by longer than fx_rates itself goes back (IICT-50).
+  const neededDates = cashModelNeededBalanceSheetDates(reportMonth, fiscalYearStart, config)
 
   const foreignPairs = [...new Set(organisations.filter((o) => currencyOf(o) !== 'AUD').map((o) => pairOf(o)))]
   let rates: FxRateLike[] = []
   if (foreignPairs.length > 0) {
+    // Bounded to what this build could need: the balance-sheet dates above,
+    // and every pay run's own translation window (payRunFrom below) — never
+    // an unfiltered read of the whole currency pair's history, which grows
+    // without bound and, unordered, PostgREST's cap can return the OLDEST
+    // rows first rather than the ones this report actually wants.
+    const payRunFrom = `${Number(reportMonth.slice(0, 4)) - 1}-${reportMonth.slice(5, 7)}-01`
+    const rateFrom = payRunFrom < neededDates[0] ? payRunFrom : neededDates[0]
+    const rateTo = neededDates[neededDates.length - 1]
     const { data, error: rateErr } = await supabase
       .from('fx_rates')
       .select('currency_pair, rate_type, period, rate')
       .in('currency_pair', foreignPairs)
+      .gte('period', `${rateFrom.slice(0, 7)}-01`)
+      .lte('period', rateTo)
       .limit(ROW_CAP)
     if (rateErr) throw rateErr
     rates = (data ?? []) as FxRateLike[]
@@ -255,7 +331,21 @@ async function loadMultiTenantInputs(
     tenant_id: r.tenant_id,
     balances_by_date: r.balances_by_date ?? {},
   }))
-  const bsConsolidated = consolidateBalanceRows(bsMapped, organisations, rates, datesPresentIn(bsMapped))
+
+  // Every organisation needs its own balance sheet at every date this build
+  // reads before anything is merged: without this, an organisation whose
+  // sync stalled for one of those months vanishes into the combined ledger
+  // for that month alone, contributing a silent $0 with no sign anything was
+  // missing — the same trap money-flow.ts's own per-organisation check
+  // guards against for Where Did Our Money Go.
+  for (const org of organisations) {
+    for (const d of neededDates) {
+      const hasRow = bsMapped.some((r) => r.tenant_id === org.tenant_id && r.balances_by_date[d] !== undefined && r.balances_by_date[d] !== null)
+      if (!hasRow) return { status: 'refused', reason: `No stored balance sheet for ${org.name} at ${d} — sync may not have reached it.` }
+    }
+  }
+
+  const bsConsolidated = consolidateBalanceRows(bsMapped, organisations, rates, neededDates)
   if (!bsConsolidated.ok) return { status: 'refused', reason: bsConsolidated.reason }
 
   const plMapped = ((plRows ?? []) as any[]).map((r) => ({

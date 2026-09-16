@@ -113,9 +113,21 @@ function missingRateReason(missing: readonly string[], kind: 'closing' | 'averag
  * `dateKeys` translated at that date's closing rate, every row relabelled
  * onto CONSOLIDATED_TENANT_ID.
  *
- * `dateKeys` should be every date the caller's OWN rows actually carry, not a
- * theoretical range: a foreign organisation is never asked for a rate on a
- * date nothing has been synced to yet.
+ * `dateKeys` should be every date the CURRENT REPORT actually needs, never a
+ * blind inventory of every date anything has ever synced to (datesPresentIn
+ * over an unfiltered read is not that — see its own docstring): a business
+ * mirror can carry years of history one sibling organisation predates, and a
+ * caller that hands over that whole span here would be asking a foreign
+ * organisation for a rate on a date it never even reached, let alone one the
+ * report reads (IICT-55/56).
+ *
+ * Even so, the rate requirement below is scoped per ROW, not per date-key ×
+ * organisation: it only asks for a rate at a (foreign organisation, date)
+ * pair some row of that organisation actually carries a value for. A caller
+ * that passes a wider `dateKeys` than strictly necessary (the FY window a
+ * multi-month build reads, say) still only ever demands rates the data
+ * itself could need — the same discipline consolidateFlowRows already keeps
+ * for P&L rows below.
  */
 export function consolidateBalanceRows<
   T extends { tenant_id: string; account_name: string; balances_by_date: Record<string, number | string | null> },
@@ -134,16 +146,19 @@ export function consolidateBalanceRows<
     }
   }
   const { closing } = buildRateMaps(rates)
-  const foreign = orgs.filter((o) => currencyOf(o) !== PRESENTATION)
+  const byTenant = new Map(orgs.map((o) => [o.tenant_id, o]))
   const missing: string[] = []
-  for (const o of foreign) {
+  for (const r of rows) {
+    const org = byTenant.get(r.tenant_id)
+    if (!org || currencyOf(org) === PRESENTATION) continue
     for (const d of dateKeys) {
-      if (!closing.has(`${pairOf(o)}@${d}`)) missing.push(`${pairOf(o)}@${d}`)
+      const raw = r.balances_by_date[d]
+      if (raw === undefined || raw === null) continue
+      if (!closing.has(`${pairOf(org)}@${d}`)) missing.push(`${pairOf(org)}@${d}`)
     }
   }
   if (missing.length > 0) return { ok: false, reason: missingRateReason(missing, 'closing') }
 
-  const byTenant = new Map(orgs.map((o) => [o.tenant_id, o]))
   const multi = orgs.length > 1 && opts.prefixLabel
   const out: T[] = []
   for (const r of rows) {
@@ -218,7 +233,18 @@ export function consolidateFlowRows<T extends { tenant_id: string; monthly_value
   return { ok: true, rows: out }
 }
 
-/** Every date key at least one row actually carries — the safe, non-speculative `dateKeys` for consolidateBalanceRows. */
+/**
+ * Every date key at least one row actually carries. Safe as `dateKeys` for
+ * consolidateBalanceRows ONLY when `rows` is already scoped to the report's
+ * own dates: handed a business's whole synced history (an unfiltered
+ * `xero_bs_lines_wide_compat` read carries every month-end an account has
+ * ever had, not just the report's two), the union spans however far back the
+ * OLDEST-synced organisation's own history goes — including dates a sibling
+ * organisation never reached and the report never asked for. Callers building
+ * a period's dateKeys should compute the exact dates the report needs (the
+ * two month-ends for Where Did Our Money Go, the fiscal-year window for cash
+ * model v2 — cashModelNeededBalanceSheetDates) rather than reach for this.
+ */
 export function datesPresentIn(rows: readonly { balances_by_date: Record<string, unknown> }[]): string[] {
   const dates = new Set<string>()
   for (const r of rows) for (const d of Object.keys(r.balances_by_date)) dates.add(d)

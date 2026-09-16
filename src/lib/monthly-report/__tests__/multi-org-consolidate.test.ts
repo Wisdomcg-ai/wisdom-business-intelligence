@@ -85,6 +85,43 @@ describe('consolidateBalanceRows', () => {
     expect(result).toEqual({ ok: false, reason: 'no HKD/AUD closing rate is stored for 2026-06-30' })
   })
 
+  it('never requires a foreign rate for a date only a SIBLING organisation carries — the real IICT shape (IICT-55/56)', () => {
+    // IICT (Aust) Pty Ltd (AUD) has been synced since well before IICT Group
+    // Limited (HKD) was even connected, and fx_rates does not go back that
+    // far either. None of that is this report's business: dateKeys mirrors a
+    // caller that passed the union of every date ANY row carries (the exact
+    // bug — datesPresentIn over an unfiltered read), but IICT Group Limited
+    // never itself carries a value at the early AUD-only dates, so no rate
+    // should ever be demanded for them.
+    const AUD_EARLY: ConsolidationOrg = { tenant_id: 'aud-early', name: 'IICT (Aust) Pty Ltd', functional_currency: 'AUD' }
+    const rows: Array<{ tenant_id: string; account_name: string; balances_by_date: Record<string, number> }> = [
+      { tenant_id: 'aud-early', account_name: 'Bank', balances_by_date: { '2024-07-31': 10, '2025-07-31': 12, '2026-07-31': 14, '2026-08-31': 15 } },
+      { tenant_id: 'hkd-1', account_name: 'Bank', balances_by_date: { '2025-07-31': 100, '2026-07-31': 120, '2026-08-31': 130 } },
+    ]
+    const ratesWith2025: FxRateLike[] = [...RATES, { currency_pair: 'HKD/AUD', rate_type: 'closing_spot', period: '2025-07-31', rate: 0.198 }]
+    // The union of every date any row carries — no rate is stored for
+    // 2024-07-31 at all, for either currency.
+    const dateKeys = ['2024-07-31', '2025-07-31', '2026-07-31', '2026-08-31']
+    const result = consolidateBalanceRows(rows, [AUD_EARLY, HKD_ORG], ratesWith2025, dateKeys)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const hkdRow = result.rows.find((r) => r.account_name === 'Bank' && '2025-07-31' in r.balances_by_date && r.balances_by_date['2024-07-31'] === undefined)!
+    expect(hkdRow.balances_by_date['2025-07-31']).toBeCloseTo(100 * 0.198, 2)
+    expect(hkdRow.balances_by_date['2026-08-31']).toBeCloseTo(130 * 0.177902, 2)
+    // The AUD organisation's own early date is untouched — 2024 was always fine.
+    const audRow = result.rows.find((r) => r.tenant_id === CONSOLIDATED_TENANT_ID && r.balances_by_date['2024-07-31'] === 10)
+    expect(audRow).toBeDefined()
+  })
+
+  it('still refuses, naming the date, when the organisation that OWNS that date genuinely lacks a rate for it', () => {
+    const rows = [
+      { tenant_id: 'hkd-1', account_name: 'Bank', balances_by_date: { '2025-07-31': 100, '2026-07-31': 120, '2026-08-31': 130 } },
+    ]
+    // No 2025-07-31 rate this time — and the HKD row itself carries that date.
+    const result = consolidateBalanceRows(rows, [HKD_ORG], RATES, ['2025-07-31', '2026-07-31', '2026-08-31'])
+    expect(result).toEqual({ ok: false, reason: 'no HKD/AUD closing rate is stored for 2025-07-31' })
+  })
+
   it('a row for a tenant outside the organisation list is dropped, not guessed at', () => {
     const rows = [
       { tenant_id: 'aud-1', account_name: 'Bank', balances_by_date: { '2026-08-31': 10 } },
