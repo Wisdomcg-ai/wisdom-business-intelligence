@@ -428,19 +428,27 @@ export default function ForecastOverview({
 
   // Phase 58.3 — pull live cash balance from Xero. The Cash KPI card renders
   // a "—" placeholder until this resolves (or stays placeholder if the tenant
-  // has no bank accounts / no Xero connection). Errors are intentionally
-  // swallowed → cash card simply stays in placeholder state, never blocks
-  // the rest of the dashboard.
+  // has no bank accounts / no Xero connection). Never blocks the rest of the
+  // dashboard on failure.
+  //
+  // The route distinguishes genuine "not connected" (`code: 'NO_CONNECTION'`,
+  // or a 401 for an expired connection) from every other failure — a Xero
+  // rate limit, a Xero API error, an internal error. Only the former is
+  // something "Connect Xero" actually fixes; collapsing every failure into
+  // one state told a fully-connected tenant hit by a rate limit or outage to
+  // go "Connect Xero" — a false, wasted action.
   const [cashPosition, setCashPosition] = useState<number | null>(null)
   const [cashAsOf, setCashAsOf] = useState<string | null>(null)
   const [cashLoading, setCashLoading] = useState(true)
-  const [cashUnavailable, setCashUnavailable] = useState(false)
+  const [cashFailure, setCashFailure] = useState<'not_connected' | 'unavailable' | null>(null)
+  const [cashFailureReason, setCashFailureReason] = useState<string | null>(null)
 
   useEffect(() => {
     if (!businessId) return
     let cancelled = false
     setCashLoading(true)
-    setCashUnavailable(false)
+    setCashFailure(null)
+    setCashFailureReason(null)
 
     // Past-FY view → ask for cash AS OF the last day of that FY (30 June
     // for an AU FY25, etc.). Current and future FY keep today's balance.
@@ -454,7 +462,27 @@ export default function ForecastOverview({
     }
     fetch(url.toString())
       .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        if (!res.ok) {
+          // NO_CONNECTION is the route's name for the genuine "not connected"
+          // case; every other body (rate limit, Xero API error, internal
+          // error) is a transient failure, not a missing connection.
+          let code: string | undefined
+          let message: string | undefined
+          try {
+            const body = await res.json()
+            if (typeof body?.code === 'string') code = body.code
+            if (typeof body?.error === 'string') message = body.error
+          } catch {
+            // Non-JSON error body — fall through with status only.
+          }
+          const err = new Error(message ?? `HTTP ${res.status}`) as Error & {
+            status: number
+            code?: string
+          }
+          err.status = res.status
+          err.code = code
+          throw err
+        }
         return (await res.json()) as { cash: number | null; currency: string; as_of: string }
       })
       .then((json) => {
@@ -465,7 +493,11 @@ export default function ForecastOverview({
       .catch((err: unknown) => {
         if (cancelled) return
         console.warn('[ForecastOverview] cash position fetch failed', err)
-        setCashUnavailable(true)
+        const status = (err as { status?: number } | undefined)?.status
+        const code = (err as { code?: string } | undefined)?.code
+        const notConnected = code === 'NO_CONNECTION' || status === 401
+        setCashFailure(notConnected ? 'not_connected' : 'unavailable')
+        setCashFailureReason(notConnected || !(err instanceof Error) ? null : err.message)
       })
       .finally(() => {
         if (!cancelled) setCashLoading(false)
@@ -540,7 +572,8 @@ export default function ForecastOverview({
         cashPosition={cashPosition}
         cashAsOf={cashAsOf}
         cashLoading={cashLoading}
-        cashUnavailable={cashUnavailable}
+        cashFailure={cashFailure}
+        cashFailureReason={cashFailureReason}
         fyMode={fyMode}
       />
       <TrajectoryCard
@@ -617,8 +650,15 @@ interface KpiStripProps {
   cashPosition: number | null
   cashAsOf: string | null
   cashLoading: boolean
-  /** True when the BS endpoint errored (auth, no connection, etc). */
-  cashUnavailable: boolean
+  /**
+   * Set when the cash fetch errored. 'not_connected' is the genuine
+   * NO_CONNECTION / expired-401 case — "Connect Xero" actually fixes it.
+   * 'unavailable' is everything else (rate limit, Xero API error, internal
+   * error) — a transient failure that a reconnect CTA would misdiagnose.
+   */
+  cashFailure: 'not_connected' | 'unavailable' | null
+  /** Error text from the failed response, surfaced only for 'unavailable'. */
+  cashFailureReason: string | null
   /** Selected FY relationship to today — drives copy & status pill visibility. */
   fyMode: FYMode
 }
@@ -633,7 +673,8 @@ function KpiStrip({
   cashPosition,
   cashAsOf,
   cashLoading,
-  cashUnavailable,
+  cashFailure,
+  cashFailureReason,
   fyMode,
 }: KpiStripProps) {
   // KPI strip uses the data-driven cutoff (NOT the calendar floor) for YTD and
@@ -737,7 +778,8 @@ function KpiStrip({
       cashPosition,
       cashAsOf,
       cashLoading,
-      cashUnavailable,
+      cashFailure,
+      cashFailureReason,
       fyMode,
     },
   ]
@@ -788,7 +830,8 @@ type KpiCardProps =
       cashPosition: number | null
       cashAsOf: string | null
       cashLoading: boolean
-      cashUnavailable: boolean
+      cashFailure: 'not_connected' | 'unavailable' | null
+      cashFailureReason: string | null
       fyMode: FYMode
     }
 
@@ -990,7 +1033,7 @@ function KpiFutureCard(props: Extract<KpiCardProps, { kind: 'future' }>) {
 }
 
 function KpiCashCard(props: Extract<KpiCardProps, { kind: 'cash' }>) {
-  const { cashPosition, cashAsOf, cashLoading, cashUnavailable, fyMode } = props
+  const { cashPosition, cashAsOf, cashLoading, cashFailure, cashFailureReason, fyMode } = props
   const hasCash = cashPosition != null && Number.isFinite(cashPosition)
 
   // Future FY: no cash forecast available — render explicit "—" with note.
@@ -998,6 +1041,37 @@ function KpiCashCard(props: Extract<KpiCardProps, { kind: 'cash' }>) {
   // BS endpoint returns "as of today" which is correct context regardless of
   // which FY tab is selected (cash is a balance, not an FY-bound flow).
   const isFuture = fyMode === 'future'
+
+  // 'unavailable' (rate limit / Xero API error / internal error) is not a
+  // missing connection — "Connect Xero" would be a false, wasted action for a
+  // fully-connected tenant hit by a transient failure. Say so instead, with
+  // no CTA, in the same amber pill + note styling as KpiActualsUnavailableCard
+  // so the strip reads as one system. Future FY never shows a live figure
+  // regardless of fetch outcome, so it keeps its own copy below.
+  if (cashFailure === 'unavailable' && !isFuture) {
+    return (
+      <article className="bg-white border border-amber-200 rounded-xl p-5 flex flex-col gap-3.5">
+        <header className="flex items-start justify-between gap-2">
+          <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
+            {props.label}
+          </span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-100">
+            <AlertTriangle className="w-3 h-3" strokeWidth={2.5} />
+            Couldn&apos;t check
+          </span>
+        </header>
+        <div>
+          <div className="text-3xl font-semibold tabular-nums leading-none text-gray-300">—</div>
+          <div className="mt-1 text-xs text-gray-500">cash unavailable</div>
+        </div>
+        <div className="h-9" />
+        <p className="text-xs text-amber-700 pt-1 border-t border-gray-100 mt-1 pt-3">
+          Couldn&apos;t check your live cash position from Xero
+          {cashFailureReason ? ` — ${cashFailureReason}` : ''}.
+        </p>
+      </article>
+    )
+  }
 
   // Format the as-of date as "as of 7 May 2026" — falls back gracefully
   // when no date string is present.
@@ -1017,7 +1091,7 @@ function KpiCashCard(props: Extract<KpiCardProps, { kind: 'cash' }>) {
 
   const helperText = isFuture
     ? "Cash position depends on cashflow timing and isn't projected by this model."
-    : cashUnavailable
+    : cashFailure === 'not_connected'
     ? 'Connect Xero to see your live cash position.'
     : !hasCash && !cashLoading
     ? 'No bank accounts found in Xero.'
