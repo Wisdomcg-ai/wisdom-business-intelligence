@@ -207,6 +207,25 @@ export function subscriptionNoBudgetNotes(detail: SubscriptionDetailData): strin
       'so its total has no budget or variance. The vendor budgets are the vendors\' own.')
 }
 
+/**
+ * Money on these accounts that no total on the page carries: an organisation
+ * that posted to them and is no longer connected to WisdomBI (IICT Group Pty
+ * Ltd since 10 Sep 2026). Said without a figure — its currency went with its
+ * connection, and every figure here is in one currency. Null when nothing was
+ * left out, and on a response from before the route counted it.
+ */
+export function unconnectedOrganisationsNote(detail: SubscriptionDetailData): string | null {
+  const count = detail.unconnected_tenants?.length ?? 0
+  if (count === 0) return null
+  const one = count === 1
+  return (
+    `${one ? 'One Xero organisation' : `${count} Xero organisations`} posted to ` +
+    `${(detail.accounts ?? []).length === 1 ? 'this account' : 'these accounts'} in the months shown but ` +
+    `${one ? 'is' : 'are'} not connected to WisdomBI, so ${one ? 'its' : 'their'} figures are not included. ` +
+    `Reconnect in Settings, Integrations to include ${one ? 'it' : 'them'}.`
+  )
+}
+
 function unconvertedNote(lines: readonly SubscriptionUnconvertedLine[]): string | null {
   if (lines.length === 0) return null
   const parts = lines.map((l) =>
@@ -457,6 +476,9 @@ export function buildSubscriptionPageModel(report: SubscriptionDetailData, confi
       })
     }
   })
+
+  const unconnected = unconnectedOrganisationsNote(detail)
+  if (unconnected) notes.push(unconnected)
 
   // No accounts is the route's empty answer — no codes configured, no Xero
   // connection, or nothing billed or budgeted. It cannot tell those apart, so

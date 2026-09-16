@@ -256,6 +256,12 @@ export function sumSubscriptionPlActuals(
      * altogether and named in `untranslated`.
      */
     rateFor?: (tenantId: string, month: string) => number | null
+    /**
+     * The organisations the page covers — the business's active connections.
+     * A row from any other is left out and named in `unconnected`. Absent: every
+     * row is read, as a caller with no connections to go by can do no better.
+     */
+    tenantsRead?: ReadonlySet<string>
   },
 ): {
   actuals: Map<string, number>
@@ -265,13 +271,17 @@ export function sumSubscriptionPlActuals(
   byTenant: Map<string, Record<string, number>>
   /** Organisations whose months could not all be translated. */
   untranslated: string[]
+  /** Organisations with money in these months that the page does not cover. */
+  unconnected: string[]
 } {
-  const { accountCodes, accountNames, reportMonth, priorMonth, windowMonths, codesForTenant, rateFor } = opts
+  const { accountCodes, accountNames, reportMonth, priorMonth, windowMonths, codesForTenant, rateFor, tenantsRead } = opts
   const actuals = new Map<string, number>()
   const priorActuals = new Map<string, number>()
   const windowActuals = new Map<string, Record<string, number>>()
   const byTenant = new Map<string, Record<string, number>>()
   const untranslated = new Set<string>()
+  const unconnected = new Set<string>()
+  const monthsRead = [reportMonth, priorMonth, ...windowMonths]
   // The view is one row per LEDGER row: org × account_id × code × section.
   // A business with two orgs on the account (Dragon Roofing: 485
   // Subscriptions in both) has a row per org, and an org carries a row per
@@ -289,6 +299,20 @@ export function sumSubscriptionPlActuals(
   const perTenant = new Map<string, Map<string, Map<string, Record<string, number>>>>()
   for (const pl of plLines) {
     const tenant = pl.tenant_id ?? ''
+    // A row that NAMES an organisation the page does not cover: its Xero
+    // connection has lapsed (IICT Group Pty Ltd since 10 Sep 2026) and its rows
+    // are still in the mirror. Nothing left says which currency they are in and
+    // the crawl read no vendor rows for it, so adding them would be IICT-35
+    // again — HKD into AUD one-for-one, in a total with no column to tie it to.
+    // Left out, as the consolidated P&L leaves it out (engine.loadTenantSnapshots),
+    // and named so the page can say so.
+    // A row naming NO organisation is not another organisation's money — the
+    // mirror has none in prod, and a legacy row without one is the business's —
+    // so it is read as it always was.
+    if (tenantsRead && tenant && !tenantsRead.has(tenant)) {
+      if (monthsRead.some((m) => (pl.monthly_values?.[m] ?? 0) !== 0)) unconnected.add(tenant)
+      continue
+    }
     // The account this row belongs to: one of the codes this organisation
     // reads whose name it carries. Where two of them share a name (the same
     // account under a different code in each org), the row's own code decides.
@@ -332,7 +356,7 @@ export function sumSubscriptionPlActuals(
       windowActuals.set(code, window)
     }
   }
-  return { actuals, priorActuals, windowActuals, byTenant, untranslated: [...untranslated] }
+  return { actuals, priorActuals, windowActuals, byTenant, untranslated: [...untranslated], unconnected: [...unconnected] }
 }
 
 export interface SubscriptionAssembleInput {
@@ -520,6 +544,8 @@ export async function assembleSubscriptionDetail(
   const plWindowActuals = new Map<string, Record<string, number>>()
   /** code → organisation → the report month's figure, for the per-entity columns. */
   const plByTenant = new Map<string, Record<string, number>>()
+  /** Organisations with ledger rows on these accounts that the page does not cover. */
+  let unconnectedTenants: string[] = []
   try {
     const accountNames = account_codes
       .map(code => crawl.accountNames.get(code))
@@ -533,6 +559,11 @@ export async function assembleSubscriptionDetail(
       // silently fell through to the vendor-sum fallback below. The forecast
       // read further down already resolves both spaces; this one did not.
       const plIds = await resolveBusinessProfileIds(supabase, business_id)
+      // Every organisation's rows for these accounts, not only the ones the
+      // page covers: an organisation that is no longer connected is dropped
+      // below, where it can be counted and said, rather than filtered out in
+      // the query where nobody would know it was ever there. The read is
+      // already one business's rows on a handful of account names.
       const { data: plLines } = await supabase
         .from('xero_pl_lines_wide_compat')
         .select('tenant_id, account_id, account_code, account_type, section, account_name, monthly_values')
@@ -547,11 +578,13 @@ export async function assembleSubscriptionDetail(
         windowMonths,
         codesForTenant,
         rateFor: fx.translates ? fx.rateFor : undefined,
+        ...(fx.orgs.length > 0 ? { tenantsRead: new Set(fx.orgs.map((o) => o.tenant_id)) } : {}),
       })
       for (const [code, v] of totals.actuals) plActuals.set(code, v)
       for (const [code, v] of totals.priorActuals) plPriorActuals.set(code, v)
       for (const [code, v] of totals.windowActuals) plWindowActuals.set(code, v)
       for (const [code, v] of totals.byTenant) plByTenant.set(code, v)
+      unconnectedTenants = totals.unconnected
     }
   } catch (err) {
     Sentry.captureException(err, { tags: { route: 'monthly-report/subscription-detail' }, extra: { context: "[SubscriptionDetail] Failed to fetch P&L actuals" } } as any)
@@ -890,6 +923,21 @@ export async function assembleSubscriptionDetail(
 
       // Use authoritative totals for subtotals; fall back to vendor sums
       const totalActual = plActuals.has(code) ? plActuals.get(code)! : vendorActualSum
+      // The columns and the Actual beside them come from ONE place. Where the
+      // ledger has no row for this account — the read threw and was swallowed
+      // below, or this organisation's chart of accounts never named the code —
+      // the total is the vendor rows, so the split is the vendor rows' own.
+      // A $0 in a money column means "nothing was spent"; what happened here is
+      // that nothing could be read, and the two must not print the same.
+      const vendorSplit = (): Record<string, number> => {
+        const split: Record<string, number> = {}
+        for (const v of vendors) {
+          for (const [tenant, amount] of Object.entries(v.by_tenant ?? {})) {
+            split[tenant] = Math.round(((split[tenant] ?? 0) + amount) * 100) / 100
+          }
+        }
+        return split
+      }
       const totalPrior = plPriorActuals.has(code) ? plPriorActuals.get(code)! : vendorPriorSum
       const totalBudget = plBudgets.has(code) ? plBudgets.get(code)! : vendorBudgetSum
       const preBudgetStoreBudget = preBudgetStoreBudgets.has(code) ? preBudgetStoreBudgets.get(code)! : vendorBudgetSum
@@ -933,7 +981,7 @@ export async function assembleSubscriptionDetail(
         account_code: code,
         account_name: crawl.accountNames.get(code) || code,
         vendors,
-        ...(multiOrg && plByTenant.has(code) ? { total_by_tenant: plByTenant.get(code)! } : {}),
+        ...(multiOrg ? { total_by_tenant: plByTenant.get(code) ?? vendorSplit() } : {}),
         total_prior_month: Math.round(totalPrior * 100) / 100,
         total_actual: Math.round(totalActual * 100) / 100,
         total_budget: Math.round(totalBudget * 100) / 100,
@@ -1007,6 +1055,7 @@ export async function assembleSubscriptionDetail(
       report_month,
       leakage,
       ...(multiOrg ? { tenants: fx.orgs.map((o) => ({ tenant_id: o.tenant_id, name: o.name })) } : {}),
+      ...(unconnectedTenants.length > 0 ? { unconnected_tenants: unconnectedTenants } : {}),
       ...(onBudgetStore ? { pre_budget_store_grand_budget: Math.round(grandPreBudgetStoreBudget * 100) / 100 } : {}),
     } as SubscriptionDetailData,
     configuredSubscriptionCodes,

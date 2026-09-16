@@ -141,6 +141,7 @@ import {
   sheetMonthLabel,
   subscriptionDetailOnBasis,
   subscriptionDetailOnTotalBudget,
+  unconnectedOrganisationsNote,
   varianceFill,
 } from '@/lib/monthly-report/subscription-page'
 import {
@@ -2398,7 +2399,10 @@ export class MonthlyReportPDFService {
       },
     })
 
-    const noBudgetNotes = [...onTotal.notes, ...basisNotes]
+    // An organisation left out of the totals is said here too; the sheet
+    // layout carries it in its own notes (buildSubscriptionPageModel).
+    const unconnected = unconnectedOrganisationsNote(detail)
+    const noBudgetNotes = [...onTotal.notes, ...basisNotes, ...(unconnected ? [unconnected] : [])]
     if (noBudgetNotes.length > 0) {
       this.yPosition = ((this.doc as any).lastAutoTable?.finalY ?? this.yPosition) + 5
       for (const note of noBudgetNotes) {

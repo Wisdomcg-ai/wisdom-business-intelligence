@@ -219,6 +219,48 @@ describe('IICT — every organisation is translated before anything is added up'
   })
 })
 
+describe('IICT — an organisation whose Xero connection has lapsed', () => {
+  beforeEach(() => {
+    // IICT Group Limited drops off the way IICT Group Pty Ltd did on 10 Sep
+    // 2026: no connection, its August rows still in the mirror. Its books are
+    // in HKD, and with the connection gone nothing says so.
+    const fixtures = iictFixtures()
+    fixtures.xero_connections.rows = fixtures.xero_connections.rows.filter((c) => c.tenant_id !== IGL)
+    tableFixtures = fixtures
+    vi.stubGlobal('fetch', mockFetch(IICT_XERO))
+  })
+
+  it('leaves its ledger rows out of the total rather than add HKD to AUD one-for-one', async () => {
+    const data = await run('biz-iict', ['418'])
+    expect(data.accounts[0].total_actual).toBe(15_811.23)
+    expect(data.grand_total.actual).toBe(15_811.23)
+    expect(data.accounts[0].total_by_tenant).toEqual({ [IAP]: 15_647.59, [IGP]: 163.64 })
+    expect(data.unconnected_tenants).toEqual([IGL])
+  })
+
+  it('holds when only one organisation is left, where there are no columns to give the mismatch away', async () => {
+    const fixtures = iictFixtures()
+    fixtures.xero_connections.rows = fixtures.xero_connections.rows.filter((c) => c.tenant_id === IAP)
+    tableFixtures = fixtures
+    const data = await run('biz-iict', ['418'])
+    expect(data.accounts[0].total_actual).toBe(15_647.59)
+    expect(data.unconnected_tenants).toEqual([IGL, IGP])
+    // One organisation: no split to print, and none claimed.
+    expect(data.accounts[0].total_by_tenant).toBeUndefined()
+    expect(docText(sheet(data, { layout: 'calxa', total_budget: 'vendor_sum' }))).toContain('2 Xero organisations posted to')
+  })
+
+  it("the sheet's columns add to its TOTAL, and it says an organisation is missing", async () => {
+    const data = await run('biz-iict', ['418'])
+    const doc = sheet(data, { layout: 'calxa', entity_columns: 'actuals', total_budget: 'vendor_sum' })
+    const runs = textRuns(doc, pageContaining(doc, 'TOTAL'))
+    const at = runs.indexOf('TOTAL')
+    // Last month (14,000 + 150) | Budget | IICT (Aust) | IICT Group Pty Ltd | Aug-26 | Variance
+    expect(runs.slice(at + 1, at + 7)).toEqual(['14,150', '0', '15,648', '164', '15,811', '\\(15,811\\)'])
+    expect(docText(doc)).toContain('is not connected to WisdomBI')
+  })
+})
+
 describe('Dragon — a column per organisation on the sheet (Calxa p15)', () => {
   beforeEach(() => {
     tableFixtures = dragonFixtures()
@@ -248,6 +290,20 @@ describe('Dragon — a column per organisation on the sheet (Calxa p15)', () => 
     expect(runs.slice(at + 1, at + 7)).toEqual(['7,224', '2,000', '4,729', '1,786', '6,515', '\\(4,515\\)'])
     const zendesk = runs.indexOf('Zendesk')
     expect(runs.slice(zendesk + 1, zendesk + 7)).toEqual(['0', '2,000', '1,195', '745', '1,940', '60'])
+  })
+
+  it('splits the vendor rows when the ledger has no figure for the account, never a column of zeros', async () => {
+    // The P&L read came back with nothing for this account — it threw and was
+    // swallowed, or the account's name was never learned — so the Actual falls
+    // back to the vendor rows. The columns beside it fall back with it: a $0
+    // there means "we could not read it", which is a dash's job, not a figure's.
+    tableFixtures = { ...dragonFixtures(), xero_pl_lines_wide_compat: { rows: [] } }
+    const data = await run('biz-dragon', ['485'])
+    expect(data.accounts[0].total_actual).toBe(6_515.08)
+    expect(data.accounts[0].total_by_tenant).toEqual({ [DRG]: 4_729.08, [EHC]: 1_786 })
+    const runs = textRuns(sheet(data, { layout: 'calxa', entity_columns: 'actuals', total_budget: 'vendor_sum' }), 1)
+    const at = runs.indexOf('TOTAL')
+    expect(runs.slice(at + 1, at + 7)).toEqual(['0', '2,000', '4,729', '1,786', '6,515', '\\(4,515\\)'])
   })
 
   it('leaves the columns off when the placement does not ask for them', async () => {

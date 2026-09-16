@@ -666,7 +666,11 @@ export interface SubscriptionAccountGroup {
    * a client onto the store does not move this page unasked.
    */
   pre_budget_store_total?: { budget: number; variance: number; source: 'forecast' | 'vendor_sum' }
-  /** The account's report month per organisation, from the ledger, for the per-entity columns. */
+  /**
+   * The account's report month per organisation, for the per-entity columns:
+   * the ledger's figures, or the vendor rows' own split wherever `total_actual`
+   * falls back to them, so the columns always add to the total beside them.
+   */
   total_by_tenant?: Record<string, number>
   /** Lines left out of every vendor's `statement` figure because they could not be stated in the organisation's currency (the gross figures include them). */
   unconverted?: SubscriptionUnconvertedLine[]
@@ -757,6 +761,15 @@ export interface SubscriptionDetailData {
   translation_unavailable?: { missing: { currency_pair: string; period: string }[]; organisations: string[] }
   /** The organisations read, in the coach's display order, for the per-entity columns. */
   tenants?: { tenant_id: string; name: string }[]
+  /**
+   * Xero organisations that posted to these accounts in a month this report
+   * covers and are NOT connected any more (IICT Group Pty Ltd since 10 Sep
+   * 2026). Their ledger rows are in no total here — nothing left says which
+   * currency they are in, and the crawl read no vendor rows for them — and the
+   * page says so rather than drop the money silently. Absent: nothing was left
+   * out.
+   */
+  unconnected_tenants?: string[]
   /** A budget-store client only: grand_total.budget as it was before the store (see pre_budget_store_total). */
   pre_budget_store_grand_budget?: number
 }

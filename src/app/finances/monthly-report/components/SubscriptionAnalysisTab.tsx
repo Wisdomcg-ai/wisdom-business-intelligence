@@ -2,7 +2,7 @@
 
 import { Loader2, CreditCard, Settings, AlertTriangle, TrendingUp, PauseCircle } from 'lucide-react'
 import type { SubscriptionDetailData, SubscriptionLeakageSummary } from '../types'
-import { subscriptionDetailOnTotalBudget } from '@/lib/monthly-report/subscription-page'
+import { subscriptionDetailOnTotalBudget, unconnectedOrganisationsNote } from '@/lib/monthly-report/subscription-page'
 
 interface SubscriptionAnalysisTabProps {
   data: SubscriptionDetailData | null
@@ -102,8 +102,17 @@ export default function SubscriptionAnalysisTab({ data, isLoading, error, onOpen
   const currentMonthLabel = formatMonthLabel(data.report_month)
   const priorMonthLabel = formatPriorMonthLabel(data.report_month)
 
+  // Money on these accounts the totals below do not carry, because the
+  // organisation that posted it is no longer connected (subscription-page).
+  const unconnected = unconnectedOrganisationsNote(shown)
+
   return (
     <div className="max-w-3xl mx-auto">
+      {unconnected && (
+        <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+          <p className="text-sm text-amber-900">{unconnected}</p>
+        </div>
+      )}
       {data.leakage && <LeakageSummaryBanner leakage={data.leakage} />}
       <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200">
         <table className="w-full">
