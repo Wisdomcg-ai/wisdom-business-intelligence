@@ -180,14 +180,32 @@ export class QuarterlyReviewService {
     return updated;
   }
 
-  async completePreWork(id: string): Promise<QuarterlyReview> {
+  /**
+   * Stamp pre-work as done and advance to the next step.
+   *
+   * The next step is supplied by the caller because only the caller knows the
+   * active sequence (see getWorkshopSteps). It used to be hardcoded to '1.1',
+   * a step v2 retired — which left the workshop on a screen outside the
+   * sequence, with no Back button and a Continue that bounced back to pre-work.
+   *
+   * `stepsCompleted` is merged, not replaced. Replacing it wiped the navigation
+   * progress of anyone who went back and re-opened pre-work on a review that
+   * was already several steps in.
+   */
+  async completePreWork(
+    id: string,
+    nextStep: WorkshopStep,
+    stepsCompleted: WorkshopStep[] = []
+  ): Promise<QuarterlyReview> {
+    const merged = [...new Set<WorkshopStep>([...stepsCompleted, 'prework'])];
+
     const { data, error } = await this.getSupabase()
       .from('quarterly_reviews')
       .update({
         prework_completed_at: new Date().toISOString(),
         status: 'prework_complete',
-        current_step: '1.1',
-        steps_completed: ['prework']
+        current_step: nextStep,
+        steps_completed: merged
       })
       .eq('id', id)
       .select()
