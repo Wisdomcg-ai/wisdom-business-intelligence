@@ -6,12 +6,20 @@
  * notes — DD-19, DD-20, IICT-40, DRG-37, IICT-15, IICT-16, DD-22, DRG-38).
  *
  * The digests were taken from the service BEFORE those options existed
- * (feat/multi-client-pack-wave-1 a67a86eb), over every page's content stream:
- * Urban Road's Payroll Report as its placement is saved today, the grid page
- * with no config, the page a config it cannot read prints, the reason page, and
- * the external-data page placed with no config, narrowed to one series, and in
- * the default page order. A placement nobody has configured, or one whose new
- * keys all hold their defaults, must not move.
+ * (feat/multi-client-pack-wave-1 a67a86eb, on 16 September 2026), over every
+ * page's content stream: Urban Road's Payroll Report as its placement is saved
+ * today, the grid page with no config, the page a config it cannot read prints,
+ * the reason page, and the external-data page placed with no config, narrowed
+ * to one series, and in the default page order. A placement nobody has
+ * configured, or one whose new keys all hold their defaults, must not move.
+ *
+ * Every render pins `preparedOn`, because the default page order draws the
+ * cover and the cover prints "Prepared on <date>". Captured unpinned, these
+ * digests only held on the day of capture: the file went red on 17 September
+ * 2026 and stayed red, having passed CI on #557-#560 only because all four
+ * merged on the 16th. The pinned date is the capture date, so the digests below
+ * are the originals, unregenerated — they still assert what they were taken to
+ * assert. Same fix, same reason as pdf-presentation-options-golden.
  */
 import { createHash } from 'crypto'
 import { describe, it, expect, vi } from 'vitest'
@@ -131,8 +139,11 @@ function externalLayout(config?: unknown): PDFLayout {
   }
 }
 
+/** The day the digests were captured, so "Prepared on" is not the day the test runs. */
+const preparedOn = { at: '2026-09-16T01:22:18.913Z', basis: 'finalised' as const }
+
 const render = (options: Record<string, unknown>) =>
-  digest(new MonthlyReportPDFService(fixtureReport(), options as never).generate())
+  digest(new MonthlyReportPDFService(fixtureReport(), { preparedOn, ...options } as never).generate())
 
 const GOLDEN = {
   urbanRoad: '856ed153ff01aeda41c8856b1d0f608b3d3ecafcfcc05bd0215e4caba8cc96f5',
