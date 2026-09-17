@@ -114,6 +114,10 @@ import {
   NEGATIVE,
   shortPeriodMonth,
   packMonthYear,
+  packMonthLong,
+  packMonthYY,
+  packMonthAbbr,
+  packPriorMonth,
   packMoney,
   type RGB,
 } from './pack-style'
@@ -4089,8 +4093,7 @@ export class MonthlyReportPDFService {
     this.doc.setTextColor(107, 114, 128)
     for (let i = 0; i < months.length; i++) {
       const x = gridLeft + i * cellWidth + cellWidth / 2
-      const d = new Date(months[i] + '-01')
-      this.doc.text(d.toLocaleDateString('en-AU', { month: 'short' }), x, this.yPosition, { align: 'center' })
+      this.doc.text(packMonthAbbr(months[i]), x, this.yPosition, { align: 'center' })
     }
     this.yPosition += 4
 
@@ -5185,8 +5188,7 @@ export class MonthlyReportPDFService {
 
   /** "2026-08" → "2026-07". */
   private priorMonthOf(month: string): string {
-    const [y, m] = month.split('-').map(Number)
-    return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`
+    return packPriorMonth(month)
   }
 
   renderSubscriptionDetail(box: WidgetBoundingBox, widget?: import('../types/pdf-layout').LayoutWidget): void {
@@ -6600,25 +6602,22 @@ export class MonthlyReportPDFService {
     return `${rounded > 0 ? '+' : ''}${rounded.toFixed(1)}%`
   }
 
+  /**
+   * The month every page title and the cover print. Derived from the
+   * 'YYYY-MM' string, never from a Date — see monthParts in pack-style for
+   * what a UTC-midnight instant read by a local formatter did to these.
+   */
   private formatMonth(monthKey: string): string {
-    const date = new Date(monthKey + '-01')
-    return date.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
+    return packMonthLong(monthKey)
   }
 
   private formatShortMonth(monthKey: string): string {
     if (!monthKey) return 'Actual'
-    const d = new Date(monthKey + '-01')
-    const month = d.toLocaleDateString('en-AU', { month: 'short' })
-    const year = d.getFullYear().toString().slice(-2)
-    return `${month} ${year}`
+    return packMonthYY(monthKey)
   }
 
   private formatPriorShortMonth(monthKey: string): string {
     if (!monthKey) return 'Last Month'
-    const [y, m] = monthKey.split('-').map(Number)
-    const priorDate = new Date(y, m - 2, 1)
-    const month = priorDate.toLocaleDateString('en-AU', { month: 'short' })
-    const year = priorDate.getFullYear().toString().slice(-2)
-    return `${month} ${year}`
+    return packMonthYY(this.priorMonthOf(monthKey))
   }
 }
