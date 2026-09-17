@@ -1,24 +1,37 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileIds';
 import { captureReviewWriteFailure } from '../utils/capture-write-failure';
 import {
   UNKNOWN_READINESS,
+  DEFAULT_SESSION_MODE,
+  effectiveFoundationMode,
   isFoundationMode,
+  isOverridden,
   couldNotCheck,
+  toSessionModeOverride,
   type ReviewReadiness,
+  type SessionModeOverride,
   type Signal,
 } from '../utils/review-readiness';
 import { getPreviousQuarterOf, planQuarterKey, type QuarterNumber } from '../types';
 
 interface UseReviewReadinessResult extends ReviewReadiness {
   isLoading: boolean;
-  /** This client is starting from nothing — run the first-session flow. */
+  /** What actually runs — the coach's choice, or detection when they made none. */
   foundationMode: boolean;
+  /** What detection alone would have said. Shown next to the control. */
+  detectedFoundationMode: boolean;
+  /** The coach's standing choice for this client. */
+  sessionMode: SessionModeOverride;
+  /** True when the coach's choice, not the data, decided it. */
+  overridden: boolean;
   /** At least one signal could not be read. */
   couldNotCheck: boolean;
+  /** Set the coach's choice. Resolves false if the write was rejected. */
+  setSessionMode: (mode: SessionModeOverride) => Promise<boolean>;
 }
 
 /**
@@ -35,6 +48,7 @@ export function useReviewReadiness(
   review: { id: string; business_id: string; quarter: number; year: number } | null
 ): UseReviewReadinessResult {
   const [readiness, setReadiness] = useState<ReviewReadiness>(UNKNOWN_READINESS);
+  const [sessionMode, setSessionModeState] = useState<SessionModeOverride>(DEFAULT_SESSION_MODE);
   const [isLoading, setIsLoading] = useState(true);
 
   const businessesId = review?.business_id;
@@ -74,6 +88,21 @@ export function useReviewReadiness(
         if (error) throw error;
         return n ?? null;
       };
+
+      // The coach's standing choice, on businesses (same id-space as the review).
+      // A failed read leaves it at 'auto' so detection decides — never silently
+      // forces a mode the coach did not pick.
+      try {
+        const { data, error } = await supabase
+          .from('businesses')
+          .select('review_session_mode')
+          .eq('id', businessesId)
+          .maybeSingle();
+        if (error) throw error;
+        if (!cancelled) setSessionModeState(toSessionModeOverride(data?.review_session_mode));
+      } catch (err) {
+        captureReviewWriteFailure(err, 'readiness-session-mode', { reviewId, businessesId });
+      }
 
       // quarterly_reviews is keyed by businesses.id — NOT the profile id.
       const hasPriorReview = await probe('prior-review', () =>
@@ -123,10 +152,39 @@ export function useReviewReadiness(
     };
   }, [businessesId, reviewId, quarter, year]);
 
+  const setSessionMode = useCallback(
+    async (mode: SessionModeOverride): Promise<boolean> => {
+      if (!businessesId) return false;
+      const previous = sessionMode;
+      setSessionModeState(mode); // optimistic — the control must feel instant in a live session
+      try {
+        const supabase = createClient();
+        const { error } = await supabase
+          .from('businesses')
+          .update({ review_session_mode: mode })
+          .eq('id', businessesId);
+        if (error) throw error;
+        return true;
+      } catch (err) {
+        // Roll back rather than leave the screen claiming a mode the database
+        // never accepted — the RLS policy admits super_admin, the owner and the
+        // assigned coach, and Matt is frequently not the assigned coach.
+        setSessionModeState(previous);
+        captureReviewWriteFailure(err, 'set-session-mode', { reviewId, businessesId, mode });
+        return false;
+      }
+    },
+    [businessesId, reviewId, sessionMode]
+  );
+
   return {
     ...readiness,
     isLoading,
-    foundationMode: isFoundationMode(readiness),
+    foundationMode: effectiveFoundationMode(sessionMode, readiness),
+    detectedFoundationMode: isFoundationMode(readiness),
+    sessionMode,
+    overridden: isOverridden(sessionMode, readiness),
     couldNotCheck: couldNotCheck(readiness),
+    setSessionMode,
   };
 }
