@@ -55,6 +55,9 @@ function ReviewContent() {
     isSaving,
     isCompleting,
     hasUnsavedChanges,
+    saveError,
+    retrySave,
+    planSyncFailed,
     quarterLabel,
     currentStep,
     stepsCompleted,
@@ -336,6 +339,7 @@ function ReviewContent() {
         return (
           <WorkshopCompleteStep
             review={review}
+            planSyncFailed={planSyncFailed}
           />
         );
       default:
@@ -470,6 +474,8 @@ function ReviewContent() {
         isSaving={isSaving}
         isCompleting={isCompleting}
         hasUnsavedChanges={hasUnsavedChanges}
+        saveError={saveError}
+        onRetrySave={retrySave}
         reviewType={effectiveReviewType}
       />
     </div>

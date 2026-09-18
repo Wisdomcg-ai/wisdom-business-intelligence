@@ -869,6 +869,22 @@ export const getPlanningQuarter = (yearType: YearType = 'CY'): { quarter: Quarte
 export const remainingQuartersFor = (planningQuarter: number): number =>
   4 - planningQuarter + 1;
 
+/**
+ * The strategic-tables key for the plan a review produces — the SINGLE definition.
+ *
+ * `strategic_initiatives.step_type` and the sync service both address a quarter by
+ * `q1`..`q4`. A review is NAMED for the quarter being planned, so its plan is filed
+ * under that quarter: `q${review.quarter}`.
+ *
+ * This exists because three writers each derived it separately and disagreed —
+ * QuarterlyRocksStep wrote `q${review.quarter}`, the background sync wrote
+ * `q${clockQuarter + 1}` and the sync on complete wrote `q${clockQuarter}`. The
+ * clock-derived two were also simply wrong once a review was resumed in a later
+ * quarter than it was started in. Every caller reads this instead.
+ */
+export const planQuarterKey = (review: { quarter: QuarterNumber | number }): string =>
+  `q${review.quarter}`;
+
 /** Quarters already elapsed — the divisor for averaging YTD actuals. */
 export const completedQuartersFor = (planningQuarter: number): number =>
   planningQuarter - 1;
