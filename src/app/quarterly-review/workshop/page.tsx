@@ -6,6 +6,8 @@ import { useQuarterlyReview } from '../hooks/useQuarterlyReview';
 import { WorkshopProgress } from '../components/WorkshopProgress';
 import { WorkshopNav } from '../components/WorkshopNav';
 import { CoachNotesPanel } from '../components/CoachNotesPanel';
+import { FirstSessionNotice } from '../components/FirstSessionNotice';
+import { useReviewReadiness } from '../hooks/useReviewReadiness';
 import { QuarterNumber, ReviewType, YearType, getWorkshopSteps, getPlanningQuarter, getPreviousQuarterOf } from '../types';
 // Phase 73 v2 — year-end annual-reset gate (fires at the Part 3 → Part 4 transition).
 import { shouldRouteToAnnualReset } from '../utils/annual-reset-gate';
@@ -103,6 +105,11 @@ function ReviewContent() {
     updateAnnualInitiativePlan,
     updateCoachNotes,
   } = useQuarterlyReview({ reviewId, quarter, year, reviewType });
+
+  // What this client already has. Resolved once, in the right id-spaces, so a
+  // first-timer's session can capture a baseline and build a plan instead of
+  // opening on a wall of empty tables.
+  const readiness = useReviewReadiness(review);
 
   // Use the review's actual type (may differ from URL param if resuming existing review)
   const effectiveReviewType = activeReviewType || reviewType;
@@ -449,6 +456,14 @@ function ReviewContent() {
         {/* Main Content */}
         <main className="flex-1 min-w-0">
           <div className="bg-white rounded-2xl border border-gray-200 p-4 lg:p-6">
+            {currentStep !== 'complete' && (
+              <FirstSessionNotice
+                readiness={readiness}
+                foundationMode={readiness.foundationMode}
+                couldNotCheck={readiness.couldNotCheck}
+                isLoading={readiness.isLoading}
+              />
+            )}
             {renderStep()}
           </div>
           {/* Shared session notes — coach + client, autosaved. Hidden on the summary step. */}
