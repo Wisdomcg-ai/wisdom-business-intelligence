@@ -18,6 +18,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import {
   isFoundationMode,
+  effectiveFoundationMode,
+  isOverridden,
+  toSessionModeOverride,
   couldNotCheck,
   historyStepMode,
   planStepMode,
@@ -185,7 +188,15 @@ const paint = (props: Parameters<typeof FirstSessionNotice>[0]) =>
   renderToStaticMarkup(<FirstSessionNotice {...props} />);
 
 describe('the notice says which kind of session this is', () => {
-  const base = { isLoading: false, couldNotCheck: false };
+  const base = {
+    isLoading: false,
+    couldNotCheck: false,
+    detectedFoundationMode: false,
+    sessionMode: 'auto' as const,
+    overridden: false,
+    canOverride: false,
+    onSetSessionMode: async () => true,
+  };
 
   it('says nothing while the signals are still loading', () => {
     expect(
@@ -227,5 +238,81 @@ describe('the notice says which kind of session this is', () => {
     expect(html).toMatch(/couldn&#x27;t check|couldn't check/);
     // Crucially it does NOT claim this is a first session.
     expect(html).not.toContain('first session');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The coach's override.
+// ---------------------------------------------------------------------------
+describe("the coach's choice beats detection", () => {
+  it('forces a first session for a client who has data', () => {
+    // The case that prompted this: a half-set-up client who should still start
+    // fresh. Detection reads the data and would say "standard".
+    const hasSomeData = r();
+    expect(isFoundationMode(hasSomeData)).toBe(false);
+    expect(effectiveFoundationMode('first_session', hasSomeData)).toBe(true);
+  });
+
+  it('forces a standard review for a client who looks empty', () => {
+    const looksEmpty = r({ hasPriorReview: 'no', hasPlan: 'no' });
+    expect(isFoundationMode(looksEmpty)).toBe(true);
+    expect(effectiveFoundationMode('standard', looksEmpty)).toBe(false);
+  });
+
+  it('defers to detection on auto', () => {
+    expect(effectiveFoundationMode('auto', r({ hasPlan: 'no' }))).toBe(true);
+    expect(effectiveFoundationMode('auto', r())).toBe(false);
+  });
+
+  it('wins even when a signal could not be read', () => {
+    // isFoundationMode is cautious because a GUESS could be costly. A coach who
+    // ticked the box is not guessing, so an unknown signal must not veto them.
+    expect(effectiveFoundationMode('first_session', UNKNOWN_READINESS)).toBe(true);
+    expect(effectiveFoundationMode('standard', UNKNOWN_READINESS)).toBe(false);
+  });
+
+  it('reports when the choice, not the data, decided it', () => {
+    expect(isOverridden('first_session', r())).toBe(true);
+    // Choosing what detection already said is not an override.
+    expect(isOverridden('first_session', r({ hasPlan: 'no' }))).toBe(false);
+    expect(isOverridden('auto', r())).toBe(false);
+  });
+
+  it('reads an unrecognised stored value as auto', () => {
+    // An older row, or a value written by a future build.
+    expect(toSessionModeOverride(null)).toBe('auto');
+    expect(toSessionModeOverride(undefined)).toBe('auto');
+    expect(toSessionModeOverride('')).toBe('auto');
+    expect(toSessionModeOverride('foundation')).toBe('auto');
+    expect(toSessionModeOverride('first_session')).toBe('first_session');
+    expect(toSessionModeOverride('standard')).toBe('standard');
+  });
+});
+
+describe('one switch drives both halves of the flow', () => {
+  it('forcing a first session switches the history AND plan steps', () => {
+    const established = r();
+    expect(historyStepMode(established, 'first_session')).toBe('baseline');
+    expect(planStepMode(established, 'first_session')).toBe('build');
+  });
+
+  it('forcing standard leaves both alone even for an empty client', () => {
+    const empty = r({ hasPriorReview: 'no', hasPlan: 'no' });
+    expect(historyStepMode(empty, 'standard')).toBe('normal');
+    expect(planStepMode(empty, 'standard')).toBe('normal');
+  });
+
+  it('build mode does NOT imply the client has no plan', () => {
+    // The constraint F4 has to honour: a coach can force a first session for a
+    // client who already has a plan, so a build-mode plan step must UPSERT the
+    // existing business_financial_goals row, not insert a second one.
+    const hasPlan = r({ hasPlan: 'yes' });
+    expect(planStepMode(hasPlan, 'first_session')).toBe('build');
+    expect(hasPlan.hasPlan).toBe('yes');
+  });
+
+  it('defaults to auto when no override is passed', () => {
+    expect(historyStepMode(r({ hasPriorReview: 'no' }))).toBe('baseline');
+    expect(planStepMode(r({ hasPlan: 'no' }))).toBe('build');
   });
 });
