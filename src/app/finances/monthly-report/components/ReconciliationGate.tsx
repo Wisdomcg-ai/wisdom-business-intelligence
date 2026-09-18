@@ -2,6 +2,7 @@
 
 import { CheckCircle, AlertTriangle, ExternalLink } from 'lucide-react'
 import type { ReconciliationStatus } from '../types'
+import { packMonthLong } from '../services/pack-style'
 
 interface ReconciliationGateProps {
   reconciliation: ReconciliationStatus | null
@@ -26,10 +27,7 @@ export default function ReconciliationGate({
 
   if (!reconciliation) return null
 
-  const monthLabel = new Date(selectedMonth + '-01').toLocaleDateString('en-AU', {
-    month: 'long',
-    year: 'numeric',
-  })
+  const monthLabel = packMonthLong(selectedMonth)
 
   // FLEET-04: the check did not complete — never show a green tick for an
   // answer we do not have. This is what let Dragon and IICT (multi-org) finalise

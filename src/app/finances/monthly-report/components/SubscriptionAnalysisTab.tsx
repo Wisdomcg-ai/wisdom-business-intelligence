@@ -3,6 +3,7 @@
 import { Loader2, CreditCard, Settings, AlertTriangle, TrendingUp, PauseCircle } from 'lucide-react'
 import type { SubscriptionDetailData, SubscriptionLeakageSummary } from '../types'
 import { subscriptionDetailOnTotalBudget, unconnectedOrganisationsNote } from '@/lib/monthly-report/subscription-page'
+import { packMonthYY, packPriorMonth } from '../services/pack-style'
 
 interface SubscriptionAnalysisTabProps {
   data: SubscriptionDetailData | null
@@ -24,19 +25,12 @@ function varianceColor(variance: number): string {
 
 function formatMonthLabel(reportMonth: string): string {
   if (!reportMonth) return ''
-  const d = new Date(reportMonth + '-01')
-  const month = d.toLocaleDateString('en-AU', { month: 'short' })
-  const year = d.getFullYear().toString().slice(-2)
-  return `${month} ${year}`
+  return packMonthYY(reportMonth)
 }
 
 function formatPriorMonthLabel(reportMonth: string): string {
   if (!reportMonth) return 'Last Month'
-  const [y, m] = reportMonth.split('-').map(Number)
-  const priorDate = new Date(y, m - 2, 1)
-  const month = priorDate.toLocaleDateString('en-AU', { month: 'short' })
-  const year = priorDate.getFullYear().toString().slice(-2)
-  return `${month} ${year}`
+  return packMonthYY(packPriorMonth(reportMonth))
 }
 
 export default function SubscriptionAnalysisTab({ data, isLoading, error, onOpenSettings }: SubscriptionAnalysisTabProps) {
