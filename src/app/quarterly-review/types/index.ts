@@ -885,6 +885,36 @@ export const remainingQuartersFor = (planningQuarter: number): number =>
 export const planQuarterKey = (review: { quarter: QuarterNumber | number }): string =>
   `q${review.quarter}`;
 
+/**
+ * The quarter a review REFLECTS ON — the one whose actuals it records.
+ *
+ * A review is named for the quarter being PLANNED, so everything backward-looking
+ * belongs to the quarter before it: the Scorecard's actuals, the rocks being held
+ * to account, the retro. `planQuarterKey` covers the forward half; this is its
+ * mirror, and it exists because the absence of one is what let the two drift.
+ *
+ * Note this returns the YEAR as well. At the FY boundary a review of Q1 FY27
+ * reflects on Q4 FY26 — filing its actuals under `review.year` would be wrong by
+ * a year as well as a quarter.
+ */
+export const reviewedQuarterOf = (review: {
+  quarter: QuarterNumber | number;
+  year: number;
+}): { quarter: QuarterNumber; year: number } =>
+  getPreviousQuarterOf(review.quarter as QuarterNumber, review.year);
+
+/**
+ * The period label for data recorded ABOUT the reviewed quarter — actuals,
+ * snapshots, anything a later screen will read back as "what happened in Qn".
+ *
+ * `kpi_actuals.period_quarter` and `quarterly_snapshots.snapshot_quarter` store
+ * the upper-case form ('Q1'), unlike strategic_initiatives.step_type ('q1').
+ */
+export const reviewedQuarterLabel = (review: {
+  quarter: QuarterNumber | number;
+  year: number;
+}): string => `Q${reviewedQuarterOf(review).quarter}`;
+
 /** Quarters already elapsed — the divisor for averaging YTD actuals. */
 export const completedQuartersFor = (planningQuarter: number): number =>
   planningQuarter - 1;
