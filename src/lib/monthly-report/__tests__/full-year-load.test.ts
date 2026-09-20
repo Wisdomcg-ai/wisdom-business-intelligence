@@ -12,10 +12,11 @@ const BUSINESS = '28d41193-38ae-4071-a2b1-0dbea90a38fd'
 const PROFILE = 'aabd3c49-4dc8-4aa6-a9a6-75f62ab89ff5'
 const TENANT_ONE = '8519c134-ed81-4d9b-8f07-ce499d12b7ee'
 
-const { compositeMock, qualityMock, resolveBudgetMock } = vi.hoisted(() => ({
+const { compositeMock, qualityMock, resolveBudgetMock, consolidatedActualsMock } = vi.hoisted(() => ({
   compositeMock: vi.fn(),
   qualityMock: vi.fn(),
   resolveBudgetMock: vi.fn(),
+  consolidatedActualsMock: vi.fn(),
 }))
 
 vi.mock('@sentry/nextjs', () => ({ captureException: vi.fn(), captureMessage: vi.fn() }))
@@ -24,6 +25,9 @@ vi.mock('@/lib/business/resolveBusinessProfileIds', () => ({
 }))
 vi.mock('@/lib/services/forecast-read-service', () => ({
   createForecastReadService: () => ({ getMonthlyComposite: compositeMock, getDataQualityForBusiness: qualityMock }),
+}))
+vi.mock('@/lib/monthly-report/consolidated-full-year-actuals', () => ({
+  loadConsolidatedFullYearActuals: consolidatedActualsMock,
 }))
 vi.mock('@/lib/budgets/resolve-budget', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/budgets/resolve-budget')>()),
@@ -117,7 +121,10 @@ describe('loadFullYearReport', () => {
     expect(compositeMock).not.toHaveBeenCalled()
   })
 
-  it('refuses a business with more than one organisation and no active forecast, instead of overwriting shared accounts (IICT-18, IICT-44)', async () => {
+  it('never runs the overwriting name-keyed read for a business with more than one organisation and no active forecast (IICT-18, IICT-44)', async () => {
+    // It reads the consolidation instead (full-year-multi-org-budget.test.ts),
+    // and passes that read's refusal — a missing exchange rate — straight on.
+    consolidatedActualsMock.mockResolvedValue({ ok: false, error: 'This page combines 2 Xero organisations and no HKD/AUD exchange rate is stored for Aug 2026, …' })
     qualityMock.mockResolvedValue({ data_quality: 'no_sync', per_tenant_quality: [] })
     // IICT's shape: IGP's Membership income would overwrite IGL's HKD 1,628,444.86.
     const db = fakeSupabase(tables({
@@ -136,7 +143,8 @@ describe('loadFullYearReport', () => {
     expect(res.ok).toBe(false)
     if (res.ok) return
     expect(res.refused).toBe(true)
-    expect(res.error).toContain('2 Xero organisations and no active FY2027 forecast')
+    expect(res.error).toContain('no HKD/AUD exchange rate is stored for Aug 2026')
+    expect(consolidatedActualsMock).toHaveBeenCalledWith(db, expect.objectContaining({ businessId: BUSINESS, fiscalYear: 2027, lastActualMonth: '2026-08' }))
     expect(db.calls.some((c) => c.table === 'xero_pl_lines_wide_compat')).toBe(false)
   })
 

@@ -17,6 +17,8 @@
  * already synced.
  */
 
+import type { RosterEmployeeRecord, RosterPayslip } from './wages-roster-budget'
+
 export interface PayslipRow {
   employee_id: string | null
   employee_name: string
@@ -24,11 +26,24 @@ export interface PayslipRow {
   payment_date: string
   wages: number | null
   super_amount: number | null
+  /**
+   * The run's pay calendar (WEEKLY, FORTNIGHTLY…) and the period it paid. Only
+   * a roster budget reads them — a fortnightly run is two weeks of salary — so
+   * a row without them still builds the grid; the roster budget then says it
+   * cannot count the weeks.
+   */
+  calendar_type?: string | null
+  period_start?: string | null
+  period_end?: string | null
 }
 
 export interface EmployeeRow {
   employee_id: string | null
   start_date: string | null
+  /** Xero's termination date; absent or null while they are employed. */
+  termination_date?: string | null
+  /** First and last name. A record with a name can tell whether someone rostered but unpaid was employed. */
+  name?: string | null
 }
 
 export interface PayrollGridEmployee {
@@ -49,6 +64,8 @@ export interface PayrollGridEmployee {
   weekly: number | null
   /** payment_date → amount. Absent (not zero) when they were not in that run. */
   cells: Record<string, number | null>
+  /** Xero's termination date, when a record says they have left. */
+  termination_date?: string | null
 }
 
 export interface PayrollGridMonth {
@@ -66,6 +83,16 @@ export interface PayrollGrid {
   run_dates: string[]
   employees: PayrollGridEmployee[]
   grand_total: number
+  /**
+   * The window's pay runs as periods — one per distinct run and period, with
+   * its pay calendar — for the roster budget's week count (wages-roster-budget).
+   * Absent on a grid built before P10.
+   */
+  pay_periods?: RosterPayslip[]
+  /** Every stored Xero employee record with a name, paid in the window or not. */
+  employee_records?: RosterEmployeeRecord[]
+  /** The employee records could not be read, so no start or termination date is known. */
+  records_unreadable?: boolean
 }
 
 const round2 = (n: number): number => Math.round(n * 100) / 100
@@ -95,6 +122,7 @@ export function buildPayrollGrid(
   employees: readonly EmployeeRow[],
   months: readonly string[],
   budgets: Readonly<Record<string, number>> = {},
+  opts: { recordsUnreadable?: boolean } = {},
 ): PayrollGrid {
   const wanted = new Set(months)
   const inWindow = payslips.filter((p) => p.payment_date && wanted.has(monthOf(p.payment_date)))
@@ -105,8 +133,12 @@ export function buildPayrollGrid(
   const runDates = [...new Set(inWindow.map((p) => p.payment_date))].sort()
 
   const startDateOf = new Map<string, string | null>()
+  const terminationOf = new Map<string, string | null>()
   for (const e of employees) {
-    if (e.employee_id) startDateOf.set(e.employee_id, e.start_date ?? null)
+    if (e.employee_id) {
+      startDateOf.set(e.employee_id, e.start_date ?? null)
+      terminationOf.set(e.employee_id, e.termination_date ?? null)
+    }
   }
 
   // Keyed by employee_id where Xero gives one, by name otherwise — a payslip
@@ -136,6 +168,7 @@ export function buildPayrollGrid(
         start_date: row.id ? startDateOf.get(row.id) ?? null : null,
         weekly: allAgree ? round2(first) : null,
         cells,
+        termination_date: row.id ? terminationOf.get(row.id) ?? null : null,
       }
     })
     // Highest paid first, the way the reference grid runs. Ties fall back to
@@ -163,11 +196,29 @@ export function buildPayrollGrid(
     }
   })
 
+  // One period per distinct run: thirty-five payslips of one weekly run are
+  // one week, however many people it paid.
+  const periods = new Map<string, RosterPayslip>()
+  for (const p of inWindow) {
+    const period: RosterPayslip = {
+      payment_date: p.payment_date,
+      calendar_type: p.calendar_type ?? null,
+      period_start: p.period_start ?? null,
+      period_end: p.period_end ?? null,
+    }
+    periods.set(`${period.payment_date}|${period.calendar_type}|${period.period_start}|${period.period_end}`, period)
+  }
+
   return {
     months: monthRows,
     run_dates: runDates,
     employees: employeeRows,
     grand_total: round2(monthRows.reduce((t, m) => t + m.total, 0)),
+    pay_periods: [...periods.values()].sort((a, b) => a.payment_date.localeCompare(b.payment_date)),
+    employee_records: employees
+      .filter((e): e is EmployeeRow & { employee_id: string; name: string } => !!e.employee_id && !!e.name)
+      .map((e) => ({ employee_id: e.employee_id, name: e.name, start_date: e.start_date ?? null, termination_date: e.termination_date ?? null })),
+    ...(opts.recordsUnreadable ? { records_unreadable: true } : {}),
   }
 }
 

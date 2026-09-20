@@ -1,5 +1,6 @@
 import type { MonthlyReportSettings, DEFAULT_SECTIONS } from '../types'
 import { getCurrentFiscalYear as getCurrentFY, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
+import { packMonthLong } from './pack-style'
 
 const DEFAULT_SETTINGS: MonthlyReportSettings = {
   business_id: '',
@@ -96,7 +97,11 @@ export function getDefaultReportMonth(): string {
   return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`
 }
 
+/**
+ * 'YYYY-MM' → 'August 2026'. Derived from the string, never from a Date: a
+ * UTC-midnight instant read by a local formatter names the month before it
+ * west of Greenwich. packMonthLong is the pack's one table for this.
+ */
 export function formatMonthLabel(monthKey: string): string {
-  const date = new Date(monthKey + '-01')
-  return date.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
+  return packMonthLong(monthKey)
 }

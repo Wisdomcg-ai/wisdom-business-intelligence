@@ -116,6 +116,46 @@ describe('payroll-grid-load', () => {
       .toEqual({ data: null, reason: 'no payslips synced for this period' })
   })
 
+  it("carries each run's pay period and every named employee record, for the roster budget (P10)", async () => {
+    const db = fakeSupabase({
+      xero_payslip_lines: [
+        { ...slip('e1', 'Andrea Shinners', '2026-08-05', 5000), calendar_type: 'FORTNIGHTLY', period_start: '2026-07-22', period_end: '2026-08-04' },
+        { ...slip('e2', 'Lara Powell', '2026-08-05', 3800), calendar_type: 'FORTNIGHTLY', period_start: '2026-07-22', period_end: '2026-08-04' },
+        { ...slip('e1', 'Andrea Shinners', '2026-08-19', 5000), calendar_type: 'FORTNIGHTLY', period_start: '2026-08-05', period_end: '2026-08-18' },
+      ],
+      xero_employees: [
+        { tenant_id: TENANT, employee_id: 'e1', first_name: 'Andrea', last_name: 'Shinners', start_date: '2020-03-05', termination_date: null },
+        { tenant_id: TENANT, employee_id: 'e2', first_name: 'Lara', last_name: 'Powell', start_date: '2022-05-09', termination_date: '2026-08-10' },
+        { tenant_id: TENANT, employee_id: 'e3', first_name: 'On', last_name: 'Leave', start_date: '2021-01-01', termination_date: null },
+        { tenant_id: 'other-tenant', employee_id: 'x', first_name: 'Not', last_name: 'Ours', start_date: null, termination_date: null },
+      ],
+      monthly_report_settings: [],
+    })
+    const res = await loadPayrollGrid(db, { business_id: BUSINESS, report_month: '2026-08', fiscal_year: 2027, months: 1 })
+    expect(res.data!.pay_periods).toEqual([
+      { payment_date: '2026-08-05', calendar_type: 'FORTNIGHTLY', period_start: '2026-07-22', period_end: '2026-08-04' },
+      { payment_date: '2026-08-19', calendar_type: 'FORTNIGHTLY', period_start: '2026-08-05', period_end: '2026-08-18' },
+    ])
+    expect(res.data!.employee_records).toEqual([
+      { employee_id: 'e1', name: 'Andrea Shinners', start_date: '2020-03-05', termination_date: null },
+      { employee_id: 'e2', name: 'Lara Powell', start_date: '2022-05-09', termination_date: '2026-08-10' },
+      { employee_id: 'e3', name: 'On Leave', start_date: '2021-01-01', termination_date: null },
+    ])
+    expect(res.data!.employees.find((e) => e.employee_id === 'e2')!.termination_date).toBe('2026-08-10')
+    expect(res.data!.records_unreadable).toBeUndefined()
+  })
+
+  it('employee records that could not be read still build the grid, and say so — the roster budget cannot count weeks without them', async () => {
+    const db = fakeSupabase({
+      xero_payslip_lines: [slip('e1', 'Andrea Shinners', '2026-08-03', 2500)],
+      xero_employees: { error: { message: 'timeout' } },
+      monthly_report_settings: [],
+    })
+    const res = await loadPayrollGrid(db, { business_id: BUSINESS, report_month: '2026-08', fiscal_year: 2027, months: 1 })
+    expect(res.data!.grand_total).toBe(2500)
+    expect(res.data!.records_unreadable).toBe(true)
+  })
+
   it('a payslip read that fails is could-not-check, not "no payslips synced"', async () => {
     const res = await loadPayrollGrid(fakeSupabase({ xero_payslip_lines: { error: { message: 'canceling statement due to statement timeout' } } }), { business_id: BUSINESS, report_month: '2026-08', fiscal_year: 2027 })
     expect(res).toEqual({ data: null, reason: 'the payslips could not be read' })
@@ -405,6 +445,20 @@ describe('external-metrics-load', () => {
     expect(series).toHaveLength(1)
     expect(series[0].values).toEqual([expect.objectContaining({ value: 120 })])
     expect(series[0].tie).toBeNull()
+    expect(series[0].history).toBeUndefined()
+  })
+
+  it('a trend placement also gets the window, month by month, newest month included (P10)', async () => {
+    const values = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'].map((period_month, i) => ({
+      id: `v${i}`, series_id: 's1', business_id: BUSINESS, period_month, dimension_value: 'Shopify', measure_key: 'orders', scenario: 'actual', value: 100 + i,
+    }))
+    const series = await loadExternalMetricSeries(fakeSupabase({
+      external_metric_series: [{ id: 's1', business_id: BUSINESS, is_active: true, display_name: 'Orders by channel', reconciles_to_account_name: null }],
+      external_metric_values: values,
+    }), BUSINESS, '2026-08', { months: 3 })
+    expect(series[0].values.map((v: { value: number }) => v.value)).toEqual([104])
+    // June, July and August — not September, and not March.
+    expect(series[0].history.map((v: { period_month: string }) => v.period_month)).toEqual(['2026-06', '2026-07', '2026-08'])
   })
 })
 

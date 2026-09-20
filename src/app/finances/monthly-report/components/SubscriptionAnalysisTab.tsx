@@ -2,7 +2,8 @@
 
 import { Loader2, CreditCard, Settings, AlertTriangle, TrendingUp, PauseCircle } from 'lucide-react'
 import type { SubscriptionDetailData, SubscriptionLeakageSummary } from '../types'
-import { subscriptionDetailOnTotalBudget } from '@/lib/monthly-report/subscription-page'
+import { subscriptionDetailOnTotalBudget, unconnectedOrganisationsNote } from '@/lib/monthly-report/subscription-page'
+import { packMonthYY, packPriorMonth } from '../services/pack-style'
 
 interface SubscriptionAnalysisTabProps {
   data: SubscriptionDetailData | null
@@ -24,19 +25,12 @@ function varianceColor(variance: number): string {
 
 function formatMonthLabel(reportMonth: string): string {
   if (!reportMonth) return ''
-  const d = new Date(reportMonth + '-01')
-  const month = d.toLocaleDateString('en-AU', { month: 'short' })
-  const year = d.getFullYear().toString().slice(-2)
-  return `${month} ${year}`
+  return packMonthYY(reportMonth)
 }
 
 function formatPriorMonthLabel(reportMonth: string): string {
   if (!reportMonth) return 'Last Month'
-  const [y, m] = reportMonth.split('-').map(Number)
-  const priorDate = new Date(y, m - 2, 1)
-  const month = priorDate.toLocaleDateString('en-AU', { month: 'short' })
-  const year = priorDate.getFullYear().toString().slice(-2)
-  return `${month} ${year}`
+  return packMonthYY(packPriorMonth(reportMonth))
 }
 
 export default function SubscriptionAnalysisTab({ data, isLoading, error, onOpenSettings }: SubscriptionAnalysisTabProps) {
@@ -53,6 +47,23 @@ export default function SubscriptionAnalysisTab({ data, isLoading, error, onOpen
     return (
       <div className="mb-6 p-4 bg-red-50 rounded-lg border border-red-200 max-w-3xl">
         <p className="text-sm text-red-800">{error}</p>
+      </div>
+    )
+  }
+
+  // Could not be checked, not "nothing spent": an organisation keeps its books
+  // in another currency and a month this page reads has no rate stored, so
+  // nothing on it can be stated in Australian dollars (IICT-35).
+  if (data?.translation_unavailable) {
+    const { missing, organisations } = data.translation_unavailable
+    const months = [...new Set(missing.map((m) => m.period))].sort().join(', ')
+    const pairs = [...new Set(missing.map((m) => m.currency_pair))].join(', ')
+    return (
+      <div className="mb-6 p-4 bg-amber-50 rounded-lg border border-amber-200 max-w-3xl">
+        <p className="text-sm text-amber-900">
+          These subscriptions cannot be shown this month: no {pairs} exchange rate is stored for {months}, so{' '}
+          {organisations.join(' and ')} cannot be shown in Australian dollars. Load the rates under Admin, Consolidation.
+        </p>
       </div>
     )
   }
@@ -85,8 +96,17 @@ export default function SubscriptionAnalysisTab({ data, isLoading, error, onOpen
   const currentMonthLabel = formatMonthLabel(data.report_month)
   const priorMonthLabel = formatPriorMonthLabel(data.report_month)
 
+  // Money on these accounts the totals below do not carry, because the
+  // organisation that posted it is no longer connected (subscription-page).
+  const unconnected = unconnectedOrganisationsNote(shown)
+
   return (
     <div className="max-w-3xl mx-auto">
+      {unconnected && (
+        <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+          <p className="text-sm text-amber-900">{unconnected}</p>
+        </div>
+      )}
       {data.leakage && <LeakageSummaryBanner leakage={data.leakage} />}
       <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200">
         <table className="w-full">
