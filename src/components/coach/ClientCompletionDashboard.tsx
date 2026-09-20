@@ -18,9 +18,11 @@ import {
   BarChart3,
   ArrowUpRight,
   Activity,
+  HelpCircle,
 } from 'lucide-react'
 import Tooltip from '@/components/ui/Tooltip'
 import { Skeleton } from '@/components/ui/Skeleton'
+import type { EngagementSignal, ModuleStatus } from '@/lib/coach/client-completion'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,16 +30,22 @@ export interface ClientCompletion {
   businessId: string
   businessName: string
   ownerId: string | null
-  modules: Record<string, 'completed' | 'in_progress' | 'not_started'>
+  /** 'unknown' = the lookup failed. Never draw it as done or as not started. */
+  modules: Record<string, ModuleStatus>
   engagement: {
     lastLogin: string | null
     weeklyReviewStreak: number
     daysSinceSession: number | null
     openActions: number
     unreadMessages: number
-    engagementScore: number
+    /** null = couldn't be scored, because a lookup it reads failed */
+    engagementScore: number | null
+    /** Signals whose lookup failed — their values above are not answers. */
+    unknown: EngagementSignal[]
   }
   alerts: string[]
+  /** false = some alert rules couldn't run, so no alerts is not "all clear" */
+  alertsComplete: boolean
 }
 
 export interface ClientCompletionDashboardProps {
@@ -123,10 +131,19 @@ const MODULE_LABELS: Record<string, string> = {
   messages: 'Messages',
 }
 
-const STATUS_LABELS: Record<string, string> = {
+const STATUS_LABELS: Record<ModuleStatus, string> = {
   completed: 'Completed',
   in_progress: 'In Progress',
   not_started: 'Not Started',
+  unknown: "Couldn't check",
+}
+
+/** The engagement signals this dashboard shows, in the order it shows them. */
+const SIGNAL_LABELS: Partial<Record<EngagementSignal, string>> = {
+  lastLogin: 'Last Login',
+  weeklyReviewStreak: 'Weekly Streak',
+  daysSinceSession: 'Days Since Session',
+  openActions: 'Open Actions',
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -139,12 +156,24 @@ function getAllModuleKeys(): string[] {
   return MODULE_GROUPS.flatMap((g) => g.keys)
 }
 
-function getCompletionPercent(modules: Record<string, string>): number {
+/** A module the response didn't mention is a missing answer, not "not started". */
+function moduleStatus(modules: Record<string, ModuleStatus>, key: string): ModuleStatus {
+  return modules[key] ?? 'unknown'
+}
+
+/**
+ * Completion % over every module. A module that couldn't be checked counts as
+ * not completed, so with any unchecked the % is a floor ("at least"), and the
+ * caller must say so rather than grade it.
+ */
+function getCompletion(modules: Record<string, ModuleStatus>): {
+  completionPercent: number
+  uncheckedModules: number
+} {
   const keys = getAllModuleKeys()
-  const present = keys.filter((k) => modules[k] !== undefined)
-  if (present.length === 0) return 0
-  const completed = present.filter((k) => modules[k] === 'completed').length
-  return Math.round((completed / present.length) * 100)
+  const completed = keys.filter((k) => moduleStatus(modules, k) === 'completed').length
+  const uncheckedModules = keys.filter((k) => moduleStatus(modules, k) === 'unknown').length
+  return { completionPercent: Math.round((completed / keys.length) * 100), uncheckedModules }
 }
 
 function getEngagementColor(score: number): string {
@@ -173,16 +202,30 @@ function formatDate(dateStr: string | null): string {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatusDot({ status, moduleKey }: { status: 'completed' | 'in_progress' | 'not_started'; moduleKey: string }) {
+function StatusDot({ status, moduleKey }: { status: ModuleStatus; moduleKey: string }) {
+  const label = MODULE_LABELS[moduleKey] || moduleKey
+  const statusText = STATUS_LABELS[status] || status
+
+  // A failed lookup gets a question mark, not a dot, so it can't be read as
+  // done (green), started (amber) or not started (grey).
+  if (status === 'unknown') {
+    return (
+      <Tooltip content={`${label}: couldn't check just now, so this is not "Not Started". Refresh to try again.`}>
+        <HelpCircle
+          role="img"
+          className="w-3.5 h-3.5 text-amber-600 transition-transform hover:scale-125"
+          aria-label={`${label} - ${statusText}`}
+        />
+      </Tooltip>
+    )
+  }
+
   const dotClass =
     status === 'completed'
       ? 'bg-green-500'
       : status === 'in_progress'
         ? 'bg-amber-400'
         : 'bg-gray-300'
-
-  const label = MODULE_LABELS[moduleKey] || moduleKey
-  const statusText = STATUS_LABELS[status] || status
 
   return (
     <Tooltip content={`${label}: ${statusText}`}>
@@ -194,7 +237,23 @@ function StatusDot({ status, moduleKey }: { status: 'completed' | 'in_progress' 
   )
 }
 
-function EngagementBadge({ score }: { score: number }) {
+function CouldNotCheck() {
+  return <span className="text-amber-600">Couldn&apos;t check</span>
+}
+
+function EngagementBadge({ score }: { score: number | null }) {
+  if (score === null) {
+    return (
+      <Tooltip content="Engagement couldn't be scored: one of the lookups it needs failed. Refresh to try again.">
+        <span
+          className="inline-flex items-center justify-center min-w-[2rem] px-1.5 py-0.5 rounded-full text-xs font-bold border border-amber-300 bg-amber-50 text-amber-700"
+          aria-label="Engagement score - Couldn't check"
+        >
+          ?
+        </span>
+      </Tooltip>
+    )
+  }
   return (
     <span
       className={`inline-flex items-center justify-center min-w-[2rem] px-1.5 py-0.5 rounded-full text-xs font-bold ${getEngagementColor(score)}`}
@@ -267,8 +326,21 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
   const clientsWithCompletion = useMemo(() => {
     return clients.map((c) => ({
       ...c,
-      completionPercent: getCompletionPercent(c.modules),
+      ...getCompletion(c.modules),
     }))
+  }, [clients])
+
+  // Everything that couldn't be checked for at least one client, for the notice
+  const uncheckedLabels = useMemo(() => {
+    const labels = getAllModuleKeys()
+      .filter((key) => clients.some((c) => moduleStatus(c.modules, key) === 'unknown'))
+      .map((key) => MODULE_LABELS[key] || key)
+    for (const [signal, label] of Object.entries(SIGNAL_LABELS)) {
+      if (clients.some((c) => c.engagement.unknown.includes(signal as EngagementSignal))) {
+        labels.push(label)
+      }
+    }
+    return labels
   }, [clients])
 
   // Filter
@@ -283,7 +355,8 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
     if (alertFilter === 'needs-attention') {
       result = result.filter((c) => c.alerts.length > 0)
     } else if (alertFilter === 'on-track') {
-      result = result.filter((c) => c.alerts.length === 0)
+      // "On track" is a verdict: a client whose alert checks didn't all run can't be given it.
+      result = result.filter((c) => c.alerts.length === 0 && c.alertsComplete)
     }
 
     return result
@@ -301,9 +374,16 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
         case 'completion':
           cmp = a.completionPercent - b.completionPercent
           break
-        case 'engagement':
-          cmp = a.engagement.engagementScore - b.engagement.engagementScore
+        case 'engagement': {
+          const scoreA = a.engagement.engagementScore
+          const scoreB = b.engagement.engagementScore
+          // An unscored client has no place on the scale: after the scored ones, either direction.
+          if (scoreA === null || scoreB === null) {
+            return scoreA === scoreB ? 0 : scoreA === null ? 1 : -1
+          }
+          cmp = scoreA - scoreB
           break
+        }
         case 'alerts':
           cmp = a.alerts.length - b.alerts.length
           break
@@ -323,14 +403,20 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
               clientsWithCompletion.length
           )
         : 0
+    // With any module unchecked the average is a floor, like each client's %.
+    const avgCompletionIsFloor = clientsWithCompletion.some((c) => c.uncheckedModules > 0)
     const needingAttention = clients.filter((c) => c.alerts.length > 0).length
+    // One unscored client makes the fleet average a number the data doesn't support.
+    const scores = clients
+      .map((c) => c.engagement.engagementScore)
+      .filter((s): s is number => s !== null)
     const avgEngagement =
-      clients.length > 0
-        ? Math.round(
-            clients.reduce((sum, c) => sum + c.engagement.engagementScore, 0) / clients.length
-          )
-        : 0
-    return { total, avgCompletion, needingAttention, avgEngagement }
+      clients.length === 0
+        ? 0
+        : scores.length < clients.length
+          ? null
+          : Math.round(scores.reduce((sum, s) => sum + s, 0) / scores.length)
+    return { total, avgCompletion, avgCompletionIsFloor, needingAttention, avgEngagement }
   }, [clients, clientsWithCompletion])
 
   // Visible module keys (accounting for collapsed groups)
@@ -428,7 +514,13 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
               <div className="text-xs text-gray-500 uppercase tracking-wide">Clients</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-brand-teal">{stats.avgCompletion}%</div>
+              {stats.avgCompletionIsFloor ? (
+                <Tooltip content="At least this much: some modules couldn't be checked, so the real average may be higher.">
+                  <span className="text-2xl font-bold text-amber-600">&ge;{stats.avgCompletion}%</span>
+                </Tooltip>
+              ) : (
+                <div className="text-2xl font-bold text-brand-teal">{stats.avgCompletion}%</div>
+              )}
               <div className="text-xs text-gray-500 uppercase tracking-wide">Avg Completion</div>
             </div>
             {stats.needingAttention > 0 && (
@@ -438,13 +530,33 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
               </div>
             )}
             <div className="text-center">
-              <div className={`text-2xl font-bold ${getEngagementTextColor(stats.avgEngagement)}`}>
-                {stats.avgEngagement}
-              </div>
+              {stats.avgEngagement === null ? (
+                <Tooltip content="Some clients' engagement couldn't be scored, so there is no average to show. Refresh to try again.">
+                  <span className="text-2xl font-bold text-amber-600" aria-label="Avg engagement - Couldn't check">
+                    &mdash;
+                  </span>
+                </Tooltip>
+              ) : (
+                <div className={`text-2xl font-bold ${getEngagementTextColor(stats.avgEngagement)}`}>
+                  {stats.avgEngagement}
+                </div>
+              )}
               <div className="text-xs text-gray-500 uppercase tracking-wide">Avg Engagement</div>
             </div>
           </div>
         </div>
+
+        {/* ── Could-not-check notice ───────────────────────────────────────────── */}
+        {uncheckedLabels.length > 0 && (
+          <div role="status" className="mt-4 px-4 py-3 bg-amber-50 rounded-lg border border-amber-200 flex items-start gap-3">
+            <HelpCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-amber-800">
+              Couldn&apos;t check {uncheckedLabels.join(', ')} just now. Those are marked
+              &quot;couldn&apos;t check&quot; below rather than Not Started, and they raise no
+              alerts. Refresh to try again.
+            </p>
+          </div>
+        )}
 
         {/* ── Filter bar ───────────────────────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row gap-3 mt-4">
@@ -599,7 +711,7 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
                         group.keys.map((key) => (
                           <td key={key} className="px-1 py-3 text-center border-r border-gray-200 last:border-r-0">
                             <StatusDot
-                              status={client.modules[key] || 'not_started'}
+                              status={moduleStatus(client.modules, key)}
                               moduleKey={key}
                             />
                           </td>
@@ -607,19 +719,31 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
                       )
                     )}
 
-                    {/* Completion % */}
+                    {/* Completion % — a floor, not a grade, while any module is unchecked */}
                     <td className="px-3 py-3 text-center">
-                      <span
-                        className={`text-sm font-semibold ${
-                          client.completionPercent >= 70
-                            ? 'text-green-600'
-                            : client.completionPercent >= 40
-                              ? 'text-amber-600'
-                              : 'text-red-600'
-                        }`}
-                      >
-                        {client.completionPercent}%
-                      </span>
+                      {client.uncheckedModules > 0 ? (
+                        <Tooltip
+                          content={`At least ${client.completionPercent}%: ${client.uncheckedModules} module${
+                            client.uncheckedModules === 1 ? '' : 's'
+                          } couldn't be checked, so the real figure may be higher.`}
+                        >
+                          <span className="text-sm font-semibold text-amber-600">
+                            &ge;{client.completionPercent}%
+                          </span>
+                        </Tooltip>
+                      ) : (
+                        <span
+                          className={`text-sm font-semibold ${
+                            client.completionPercent >= 70
+                              ? 'text-green-600'
+                              : client.completionPercent >= 40
+                                ? 'text-amber-600'
+                                : 'text-red-600'
+                          }`}
+                        >
+                          {client.completionPercent}%
+                        </span>
+                      )}
                     </td>
 
                     {/* Alerts count */}
@@ -628,8 +752,16 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
                         <span className="inline-flex items-center justify-center min-w-[1.25rem] px-1.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
                           {client.alerts.length}
                         </span>
+                      ) : client.alertsComplete ? (
+                        <CheckCircle2 role="img" className="w-4 h-4 text-green-400 mx-auto" aria-label="No alerts" />
                       ) : (
-                        <CheckCircle2 className="w-4 h-4 text-green-400 mx-auto" />
+                        <Tooltip content="No alerts from the checks that ran, but some couldn't run, so this client isn't confirmed on track. Refresh to try again.">
+                          <HelpCircle
+                            role="img"
+                            className="w-4 h-4 text-amber-600 mx-auto"
+                            aria-label="Alerts - Couldn't check"
+                          />
+                        </Tooltip>
                       )}
                     </td>
                   </tr>
@@ -653,7 +785,11 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
                                 <div>
                                   <div className="text-gray-500 text-xs">Last Login</div>
                                   <div className="font-medium text-gray-900">
-                                    {formatDate(client.engagement.lastLogin)}
+                                    {client.engagement.unknown.includes('lastLogin') ? (
+                                      <CouldNotCheck />
+                                    ) : (
+                                      formatDate(client.engagement.lastLogin)
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -662,7 +798,11 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
                                 <div>
                                   <div className="text-gray-500 text-xs">Weekly Streak</div>
                                   <div className="font-medium text-gray-900">
-                                    {client.engagement.weeklyReviewStreak} weeks
+                                    {client.engagement.unknown.includes('weeklyReviewStreak') ? (
+                                      <CouldNotCheck />
+                                    ) : (
+                                      `${client.engagement.weeklyReviewStreak} weeks`
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -671,9 +811,13 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
                                 <div>
                                   <div className="text-gray-500 text-xs">Days Since Session</div>
                                   <div className="font-medium text-gray-900">
-                                    {client.engagement.daysSinceSession !== null
-                                      ? `${client.engagement.daysSinceSession}d`
-                                      : 'No sessions'}
+                                    {client.engagement.unknown.includes('daysSinceSession') ? (
+                                      <CouldNotCheck />
+                                    ) : client.engagement.daysSinceSession !== null ? (
+                                      `${client.engagement.daysSinceSession}d`
+                                    ) : (
+                                      'No sessions'
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -682,7 +826,11 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
                                 <div>
                                   <div className="text-gray-500 text-xs">Open Actions</div>
                                   <div className="font-medium text-gray-900">
-                                    {client.engagement.openActions}
+                                    {client.engagement.unknown.includes('openActions') ? (
+                                      <CouldNotCheck />
+                                    ) : (
+                                      client.engagement.openActions
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -690,9 +838,15 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
                                 <Activity className="w-4 h-4 text-brand-teal flex-shrink-0" />
                                 <div>
                                   <div className="text-gray-500 text-xs">Engagement Score</div>
-                                  <div className={`font-bold ${getEngagementTextColor(client.engagement.engagementScore)}`}>
-                                    {client.engagement.engagementScore}/100
-                                  </div>
+                                  {client.engagement.engagementScore === null ? (
+                                    <div className="font-bold">
+                                      <CouldNotCheck />
+                                    </div>
+                                  ) : (
+                                    <div className={`font-bold ${getEngagementTextColor(client.engagement.engagementScore)}`}>
+                                      {client.engagement.engagementScore}/100
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -770,7 +924,7 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
       {/* Footer with legend */}
       <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-gray-500">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span className="flex items-center gap-1.5">
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500" />
               Completed
@@ -782,6 +936,10 @@ export function ClientCompletionDashboard({ clients, isLoading = false }: Client
             <span className="flex items-center gap-1.5">
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-gray-300" />
               Not Started
+            </span>
+            <span className="flex items-center gap-1.5">
+              <HelpCircle className="w-3 h-3 text-amber-600" />
+              Couldn&apos;t check
             </span>
           </div>
           <span>

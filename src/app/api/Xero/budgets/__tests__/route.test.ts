@@ -7,13 +7,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 vi.mock('@sentry/nextjs', () => ({ captureException: vi.fn(), captureMessage: vi.fn(), addBreadcrumb: vi.fn() }))
-const getUserMock = vi.fn()
-vi.mock('@/lib/supabase/server', () => ({
-  createRouteHandlerClient: vi.fn(async () => ({ auth: { getUser: getUserMock }, from: vi.fn() })),
-}))
+// Two distinguishable clients, so a test can say WHICH one a callee received.
+// AUTH_CLIENT is the caller's RLS-bound session; ADMIN_CLIENT is service-role.
+const AUTH_CLIENT = { __client: 'auth' as const, auth: { getUser: vi.fn() }, from: vi.fn() }
+const ADMIN_CLIENT = { __client: 'admin' as const, from: vi.fn() }
+const getUserMock = AUTH_CLIENT.auth.getUser
+vi.mock('@/lib/supabase/server', () => ({ createRouteHandlerClient: vi.fn(async () => AUTH_CLIENT) }))
+vi.mock('@/lib/supabase/admin', () => ({ createServiceRoleClient: vi.fn(() => ADMIN_CLIENT) }))
 const verifyAccessMock = vi.fn()
 vi.mock('@/lib/utils/verify-business-access', () => ({ verifyBusinessAccess: (...a: unknown[]) => verifyAccessMock(...a) }))
-vi.mock('@/lib/permissions/requireSectionPermission', () => ({ requireSectionPermission: vi.fn(async () => ({ allowed: true })) }))
+const sectionPermissionMock = vi.fn(async () => ({ allowed: true }))
+vi.mock('@/lib/permissions/requireSectionPermission', () => ({ requireSectionPermission: (...a: unknown[]) => sectionPermissionMock(...(a as [])) }))
 vi.mock('@/lib/permissions/sectionPermissionConfig', () => ({ enforceSectionPermission: vi.fn(() => null) }))
 const resolveConnectionsMock = vi.fn()
 vi.mock('@/lib/business/resolveXeroBusinessId', () => ({ resolveXeroConnections: (...a: unknown[]) => resolveConnectionsMock(...a) }))
@@ -36,6 +40,7 @@ const conn = (tenantId: string, name = tenantId) => ({ id: `c-${tenantId}`, tena
 beforeEach(() => {
   getUserMock.mockReset().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
   verifyAccessMock.mockReset().mockResolvedValue(true)
+  sectionPermissionMock.mockClear()
   resolveConnectionsMock.mockReset()
   tokenMock.mockReset().mockResolvedValue({ success: true, accessToken: 'tok' })
   listMock.mockReset()
@@ -140,5 +145,32 @@ describe('GET /api/Xero/budgets', () => {
     expect(body.state).toBe('error')
     expect(body.orgs[0]).toMatchObject({ state: 'error', error: 'requires_reconnect' })
     expect(body.orgs[1]).toMatchObject({ state: 'error', error: 'xero_error' })
+  })
+
+  it('refreshes the token on the SERVICE-ROLE client, never the caller\'s session', async () => {
+    // getValidAccessToken is a WRITER: it takes the refresh lock and persists
+    // Xero's rotated refresh token, both UPDATEs on xero_connections. Its
+    // `rls_access` WITH CHECK is auth_can_manage_business(), which admits only
+    // role IN ('admin','member') — while this route's own gate
+    // (verifyBusinessAccess) admits ANY active membership, and the policy's
+    // USING clause lets those same callers READ the row. Hand the token manager
+    // the caller's session and a co-owner/viewer silently fails to take the
+    // lock, then rotates the token at Xero and cannot save it: a dead refresh
+    // token on a live connection. Pin the client, not just the behaviour.
+    resolveConnectionsMock.mockResolvedValue({ connectionBusinessId: 'biz-1', connections: [conn('t-1'), conn('t-2')] })
+    listMock.mockResolvedValue([])
+
+    expect((await GET(req())).status).toBe(200)
+
+    expect(tokenMock).toHaveBeenCalledTimes(2)
+    for (const call of tokenMock.mock.calls) {
+      expect(call[1]).toBe(ADMIN_CLIENT)
+      expect(call[1]).not.toBe(AUTH_CLIENT)
+    }
+    // Connection resolution is the same write-path row, so it takes the same client.
+    expect(resolveConnectionsMock).toHaveBeenCalledWith(ADMIN_CLIENT, 'biz-1')
+    // ...and the permission check keeps the auth-bound session: a service-role
+    // client there would answer for the SERVICE, not the user.
+    expect(sectionPermissionMock).toHaveBeenCalledWith(AUTH_CLIENT, 'user-1', 'biz-1', 'finances')
   })
 })

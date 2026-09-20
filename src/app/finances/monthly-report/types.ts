@@ -296,6 +296,17 @@ export interface GeneratedReport {
   /** budget_versions.id when budget_source is 'budget_version'. */
   budget_version_id?: string | null
   /**
+   * Every version a consolidated report's budget was read from — one per Xero
+   * organisation for Dragon Roofing & Easy Hail. budget_version_id is the first.
+   */
+  budget_version_ids?: string[]
+  /**
+   * The specifics behind no_budget_reason, when the reason alone cannot name
+   * them: which organisation has no version, which months have no exchange
+   * rate. Emitted by the consolidated route; absent elsewhere.
+   */
+  no_budget_detail?: string | null
+  /**
    * Why there is no budget, when the client is on the budget store — emitted by
    * generate/route.ts straight off the resolver. Undefined on a snapshot frozen
    * before the field existed, and null on the forecast path (the resolver only
@@ -601,7 +612,14 @@ export interface SubscriptionVendorLine {
    * Variance is still against `budget`, the gross vendor budget. Absent on the
    * stored history (the harness) and on responses from before it existed.
    */
-  statement?: { prior_month_actual: number; actual: number; variance: number; months?: Record<string, number> }
+  statement?: { prior_month_actual: number; actual: number; variance: number; months?: Record<string, number>; by_tenant?: Record<string, number> }
+  /**
+   * The report month per Xero organisation, for a page that prints a column
+   * each (Calxa's Dragon · Easy Hail — DRG-30). In the same money as `actual`,
+   * every organisation stated in the report's currency. Absent on a
+   * single-organisation business, the stored history, and older responses.
+   */
+  by_tenant?: Record<string, number>
   /**
    * The vendor month by month, gross, over the window the caller asked for
    * (`months` on the route; the Contractors Payment Summary's three) — a month
@@ -648,6 +666,12 @@ export interface SubscriptionAccountGroup {
    * a client onto the store does not move this page unasked.
    */
   pre_budget_store_total?: { budget: number; variance: number; source: 'forecast' | 'vendor_sum' }
+  /**
+   * The account's report month per organisation, for the per-entity columns:
+   * the ledger's figures, or the vendor rows' own split wherever `total_actual`
+   * falls back to them, so the columns always add to the total beside them.
+   */
+  total_by_tenant?: Record<string, number>
   /** Lines left out of every vendor's `statement` figure because they could not be stated in the organisation's currency (the gross figures include them). */
   unconverted?: SubscriptionUnconvertedLine[]
   /** The account over the window the caller asked for. Absent when none was. */
@@ -727,6 +751,25 @@ export interface SubscriptionDetailData {
    * printing vendor figures.
    */
   statement_unavailable?: { reason: 'mixed_currencies'; currencies: (string | null)[] }
+  /**
+   * The page could not be produced at all: an organisation keeps its books in
+   * another currency and a month it reads has no rate stored, so nothing can
+   * be stated in the report's currency (IICT-35). `accounts` is empty and the
+   * page prints this reason instead of figures — never a total that is two
+   * currencies added together.
+   */
+  translation_unavailable?: { missing: { currency_pair: string; period: string }[]; organisations: string[] }
+  /** The organisations read, in the coach's display order, for the per-entity columns. */
+  tenants?: { tenant_id: string; name: string }[]
+  /**
+   * Xero organisations that posted to these accounts in a month this report
+   * covers and are NOT connected any more (IICT Group Pty Ltd since 10 Sep
+   * 2026). Their ledger rows are in no total here — nothing left says which
+   * currency they are in, and the crawl read no vendor rows for them — and the
+   * page says so rather than drop the money silently. Absent: nothing was left
+   * out.
+   */
+  unconnected_tenants?: string[]
   /** A budget-store client only: grand_total.budget as it was before the store (see pre_budget_store_total). */
   pre_budget_store_grand_budget?: number
 }
@@ -787,6 +830,12 @@ export interface ExternalMetricSeriesData {
   reconciles_to_account_name?: string | null
   reconcile_measure_key?: string | null
   values: { dimension_value: string; measure_key: string; scenario: 'actual' | 'budget'; value: number }[]
+  /**
+   * The trend window's values, month by month — loaded only when a placement
+   * asks for a trend (P10, external-metric-config). Absent otherwise, and on
+   * responses from before it existed.
+   */
+  history?: { period_month: string; dimension_value: string; measure_key: string; scenario: 'actual' | 'budget'; value: number }[]
   tie?: {
     series_total: number
     account_actual: number
@@ -915,5 +964,51 @@ export interface BalanceSheetData {
   prior_label: string        // e.g. "Mar 2025"
   rows: BalanceSheetRow[]
   balances: boolean          // true if Total Asset - Total Liability === Total Equity
+  /**
+   * Only on a sheet that combines several Xero organisations, built from the
+   * stored mirror (lib/monthly-report/consolidated-balance-sheet.ts). One
+   * organisation's sheet never carries it, so its page prints exactly as it
+   * did.
+   */
+  consolidation?: BalanceSheetConsolidation
+}
+
+/**
+ * Bank Balances & Movement (Calxa p17) — the same five columns as the balance
+ * sheet, over the chosen bank, cash-on-hand and credit-card accounts only, with
+ * each Xero organisation's under its own heading when there is more than one.
+ * Built by lib/monthly-report/bank-balances.ts.
+ */
+export interface BankBalancesData {
+  business_id: string
+  /** Last day of the report month, YYYY-MM-DD. */
+  report_date: string
+  /** Last day of the month before it — null when no organisation has a sheet then. */
+  prior_date: string | null
+  current_label: string      // e.g. "Aug 2026"
+  prior_label: string        // e.g. "Jul 2026"; '' when there is no comparison
+  rows: BalanceSheetRow[]
+  /** The organisations the page covers, in display order. */
+  organisations: { name: string; currency: string }[]
+  /** Printed under the table: how a foreign organisation was translated, and the credit-card convention. */
+  notes: string[]
+  /** Printed above the table: what the page could not check. */
+  warnings: string[]
+}
+
+export interface BalanceSheetConsolidation {
+  /** The organisations the sheet adds together, in display order. */
+  organisations: { name: string; currency: string }[]
+  /**
+   * One line each, printed under the table: what was eliminated, and how a
+   * foreign organisation was translated.
+   */
+  notes: string[]
+  /**
+   * Printed above the table, with the page's other warnings: what the sheet
+   * was asked to do and did not — an intercompany loan whose two sides do not
+   * agree is shown in full, not netted.
+   */
+  warnings: string[]
 }
 

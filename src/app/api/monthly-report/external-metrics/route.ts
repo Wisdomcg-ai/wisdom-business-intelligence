@@ -20,7 +20,10 @@ export const dynamic = 'force-dynamic'
 /**
  * WE.1 — external metrics: the one write path behind every hand-built insert.
  *
- * GET  ?business_id&period_month           → series + the month's values + EXT-TIES
+ * GET  ?business_id&period_month[&months]   → series + the month's values +
+ *                                            EXT-TIES; `months` (2-13) also
+ *                                            returns the trend window a placed
+ *                                            page prints (external-metric-config)
  * POST { action: 'define_series', ... }    → create/update a series definition
  * POST { action: 'upsert_values', ... }    → write a batch of values (idempotent
  *                                            on the natural key)
@@ -36,6 +39,7 @@ export const dynamic = 'force-dynamic'
 const ExternalMetricsGetSchema = z.object({
   business_id: z.string().optional(),
   period_month: z.string().optional(),
+  months: z.string().optional(),
 })
 
 const ExternalMetricsPostSchema = z.object({
@@ -92,14 +96,22 @@ async function getHandler(request: Request) {
         { status: 400 },
       )
     }
+    // How many months a placed trend prints, ending at period_month. Refused
+    // rather than clamped: a caller asking for a window this page cannot print
+    // should hear about it, not be handed a different one.
+    const monthsParam = searchParams.get('months')
+    const months = monthsParam === null ? 1 : Number(monthsParam)
+    if (!Number.isInteger(months) || months < 1 || months > 13) {
+      return NextResponse.json({ error: 'months must be a whole number from 1 to 13' }, { status: 400 })
+    }
 
     const auth = await authorize(businessId)
     if ('block' in auth) return auth.block
 
     // Shared with scripts/preview-pack.ts — see external-metrics-load.
-    const series = await loadExternalMetricSeries(supabase, businessId, periodMonth)
+    const series = await loadExternalMetricSeries(supabase, businessId, periodMonth, { months })
 
-    return NextResponse.json({ success: true, period_month: periodMonth, series })
+    return NextResponse.json({ success: true, period_month: periodMonth, months, series })
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'monthly-report/external-metrics' }, extra: { context: '[ExternalMetrics] GET error' } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

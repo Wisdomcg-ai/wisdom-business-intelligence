@@ -81,15 +81,23 @@ describe('loadPackCashModel', () => {
     expect(r.status).toBe('refused')
   })
 
-  it('refuses two Xero organisations, and a foreign currency — never pooled', async () => {
+  it('a single organisation reporting in a foreign currency still refuses — never pooled at 1:1', async () => {
+    const hkd = fakeSupabase(tables({ xero_connections: [{ business_id: BUSINESS, tenant_id: UR_TENANT, functional_currency: 'HKD', is_active: true }] }))
+    expect((await loadPackCashModel(hkd, BUSINESS, '2026-08'))).toMatchObject({ status: 'refused', reason: expect.stringContaining('foreign currency') })
+  })
+
+  it('P9: two organisations no longer refuse outright — a missing rate for the foreign one does, naming it', async () => {
     const two = fakeSupabase(tables({ xero_connections: [
       { business_id: BUSINESS, tenant_id: UR_TENANT, functional_currency: 'AUD', is_active: true },
       { business_id: BUSINESS, tenant_id: 'hk', functional_currency: 'HKD', is_active: true },
     ] }))
     const r2 = await loadPackCashModel(two, BUSINESS, '2026-08')
-    expect(r2).toMatchObject({ status: 'refused', reason: expect.stringContaining('multiple Xero organisations') })
-    const hkd = fakeSupabase(tables({ xero_connections: [{ business_id: BUSINESS, tenant_id: UR_TENANT, functional_currency: 'HKD', is_active: true }] }))
-    expect((await loadPackCashModel(hkd, BUSINESS, '2026-08')).status).toBe('refused')
+    // 'hk' has no fx_rates row in this fixture at all, so the second
+    // organisation's own balance-sheet rows (none exist here) or, failing
+    // that, the missing HKD/AUD rate is what stops it — never a blanket
+    // "multiple Xero organisations" refusal, and never HKD pooled untranslated.
+    expect(r2.status).toBe('refused')
+    expect(r2).not.toMatchObject({ reason: expect.stringContaining('multiple Xero organisations') })
   })
 
   it('reads this business\'s org only — tax types by tenant, posted pay runs, the chosen bank set — and ties the year', async () => {

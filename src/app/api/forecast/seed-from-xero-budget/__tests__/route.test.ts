@@ -33,7 +33,9 @@ const convertMock = vi.fn((..._args: unknown[]) => [
 vi.mock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({ convertAssumptionsToPLLines: (...a: unknown[]) => convertMock(...a) }))
 const createClientMock = vi.fn()
 vi.mock('@/lib/supabase/server', () => ({ createRouteHandlerClient: (...a: unknown[]) => createClientMock(...a) }))
-vi.mock('@/lib/supabase/admin', () => ({ createServiceRoleClient: vi.fn(() => ({ from: vi.fn() })) }))
+// A stable sentinel, so a test can say WHICH client a callee received.
+const ADMIN_CLIENT = { __client: 'admin' as const, from: vi.fn() }
+vi.mock('@/lib/supabase/admin', () => ({ createServiceRoleClient: vi.fn(() => ADMIN_CLIENT) }))
 
 import { POST } from '../route'
 import { BudgetsScopeMissingError } from '@/lib/xero/budgets'
@@ -125,6 +127,31 @@ describe('auth and validation', () => {
     const res = await POST(request())
     expect(res.status).toBe(403)
     expect(getBudgetMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('client wiring', () => {
+  it('refreshes the token on the SERVICE-ROLE client, never the caller\'s session', async () => {
+    // getValidAccessToken is a WRITER: it takes the refresh lock and persists
+    // Xero's rotated refresh token, both UPDATEs on xero_connections. That
+    // table's `rls_access` WITH CHECK is auth_can_manage_business(), admitting
+    // only role IN ('admin','member'), while its USING clause lets any active
+    // member READ the row — and this route's own gate admits ANY active
+    // membership. Hand the token manager the caller's session and a co-owner or
+    // viewer silently fails to take the lock, then rotates the token at Xero and
+    // cannot save it: a dead refresh token on a live connection.
+    const authClient = makeSupabase()
+    createClientMock.mockResolvedValue(authClient)
+
+    expect((await POST(request())).status).toBe(200)
+
+    expect(tokenMock).toHaveBeenCalledTimes(1)
+    expect(tokenMock.mock.calls[0][1]).toBe(ADMIN_CLIENT)
+    expect(tokenMock.mock.calls[0][1]).not.toBe(authClient)
+    // Connection RESOLUTION deliberately stays on the caller's client: it backs
+    // the tenant-ownership 403 above and is already pinned to a business whose
+    // access the route proved. Only the write path moves to service-role.
+    expect(resolveConnectionsMock).toHaveBeenCalledWith(authClient, 'biz-1')
   })
 })
 
