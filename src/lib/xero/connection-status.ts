@@ -430,3 +430,126 @@ export function classifyBusinessConnections(
   const moreOrgsNeedingAttention = orgs.filter((o) => o.status !== worst.status && needsAttention(o.status)).length;
   return { ...worst, orgs, retiredOrgs, worstOrgCount, statusScope, moreOrgsNeedingAttention };
 }
+
+/** One counted org's data clock, as a business-level "Last synced" shows it. */
+export interface XeroOrgDataClock {
+  tenantName: string | null;
+  /** Last successful data sync on this org's own tenant clock; null = never synced. */
+  lastSyncAt: string | null;
+}
+
+/** A tenant whose mirror rows a page drew, and when the newest of those rows was written. */
+export interface XeroTenantShown {
+  tenantId: string | null;
+  /** The drawn rows' newest updated_at. The sync orchestrator stamps it on every row it writes. */
+  lastWrittenAt: string | null;
+}
+
+/**
+ * How current the Xero figures on a page are — the KPI dashboard charts'
+ * "Last synced" — as one clock: the STALEST clock of every org behind them.
+ *
+ * Never the headline org's clock. A total is only as current as the org that
+ * synced longest ago, and the headline org is picked by status: an auth_stale or
+ * dead org that synced an hour ago would otherwise speak for a sibling three
+ * weeks behind.
+ *
+ * The orgs behind the figures are two sets, and the clock needs both:
+ *   - the orgs `classifyBusinessConnections` counts — a connected org whose
+ *     figures are not in yet is exactly what "not yet" means;
+ *   - every tenant whose mirror rows the page drew (`shown`). Disconnecting
+ *     deletes the connection rows but keeps the mirror rows, and a retired org's
+ *     rows stay too, so a page can draw figures from an org that no longer
+ *     counts. On 16 Sep 2026 IICT Group's charts still summed 540 rows of IICT
+ *     Group Pty Ltd, last written 10 Sep, with no connection row for it.
+ *
+ * Each org's clock is its evidence of a sync — `dataClockFor` for a counted org
+ * (the one definition); for an org that no longer counts, the same over any
+ * connection row left for its tenant — and, when the page drew its figures,
+ * NEVER LATER than those figures were last written. The evidence alone can run
+ * ahead of the figures: sync_jobs is keyed by tenant, not business, so a sync of
+ * the same Xero org under another business record counts, and `last_synced_at`
+ * has had writers that stamp without writing a row. Figures on the page with no
+ * evidence (outside the sync lookup's window, or a reconnect not yet synced) are
+ * dated by their last write alone: figures exist, so the org has synced.
+ *
+ *   none          no org counts and no figures were drawn: nothing to date
+ *   unknown       the clock could not be established — the sync_jobs lookup
+ *                 failed; an org or a drawn row has no tenant_id (the data-axis
+ *                 reasons `classifyXeroConnection` answers unknown); or drawn
+ *                 figures carry no write time. Never a date.
+ *   never_synced  a counted org with no figures on the page has never synced
+ *   synced        every org has a clock; `lastSyncAt` is the oldest of them
+ *
+ * `orgs` is every org's clock, stalest first, so a surface can say whose clock
+ * it is when the orgs disagree.
+ */
+export type XeroBusinessDataClock =
+  | { status: 'none' }
+  | { status: 'unknown' }
+  | { status: 'never_synced'; orgs: XeroOrgDataClock[] }
+  | { status: 'synced'; lastSyncAt: string; orgs: XeroOrgDataClock[] };
+
+export function businessDataClock(
+  rows: readonly XeroConnectionStatusRow[],
+  syncClock: XeroSyncClock,
+  shown: readonly XeroTenantShown[],
+): XeroBusinessDataClock {
+  const { orgs } = classifyBusinessConnections(rows, syncClock);
+
+  // Each drawn tenant's newest write; null when none of its drawn rows has one.
+  const drawn = new Map<string, number | null>();
+  let blankShown = false;
+  for (const s of shown) {
+    const tenant = s.tenantId?.trim();
+    if (!tenant) {
+      blankShown = true;
+      continue;
+    }
+    const written = parseMs(s.lastWrittenAt);
+    const known = drawn.get(tenant) ?? null;
+    drawn.set(tenant, written === null ? known : Math.max(known ?? written, written));
+  }
+  const countedTenants = new Set(orgs.map((o) => o.tenantId));
+  const uncounted = [...drawn.keys()].filter((tenant) => !countedTenants.has(tenant));
+
+  if (orgs.length === 0 && drawn.size === 0 && !blankShown) return { status: 'none' };
+  if (!syncClock.ok || blankShown || orgs.some((o) => o.tenantId === null)) return { status: 'unknown' };
+
+  const clocks: XeroOrgDataClock[] = [];
+  const add = (tenant: string, tenantName: string | null, evidenceMs: number | null): boolean => {
+    let lastSyncMs = evidenceMs;
+    if (drawn.has(tenant)) {
+      const written = drawn.get(tenant) ?? null;
+      if (written === null) return false;
+      lastSyncMs = evidenceMs === null ? written : Math.min(evidenceMs, written);
+    }
+    clocks.push({ tenantName, lastSyncAt: lastSyncMs === null ? null : new Date(lastSyncMs).toISOString() });
+    return true;
+  };
+
+  for (const o of orgs) {
+    if (!add(o.tenantId as string, o.tenantName, parseMs(o.lastSyncAt))) return { status: 'unknown' };
+  }
+  for (const tenant of uncounted) {
+    const orgRows = rows.filter((r) => r.tenant_id?.trim() === tenant);
+    const evidenceMs = Math.max(
+      0,
+      ...orgRows.map((r) => dataClockFor(r, syncClock).lastSyncMs ?? 0),
+      dataClockFor({ tenant_id: tenant, last_synced_at: null }, syncClock).lastSyncMs ?? 0,
+    );
+    // A leftover row's name, from the newest row that has one, so a renamed org reads the same on every load.
+    const named = orgRows
+      .filter((r) => r.tenant_name?.trim())
+      .sort((a, b) => compareInstants(b.created_at, a.created_at) || compareText(a.id, b.id));
+    if (!add(tenant, named[0]?.tenant_name?.trim() ?? null, evidenceMs > 0 ? evidenceMs : null)) {
+      return { status: 'unknown' };
+    }
+  }
+
+  clocks.sort((a, b) => compareInstants(a.lastSyncAt, b.lastSyncAt) || compareText(a.tenantName, b.tenantName));
+  const stalest = clocks[0].lastSyncAt;
+  return stalest === null
+    ? { status: 'never_synced', orgs: clocks }
+    : { status: 'synced', lastSyncAt: stalest, orgs: clocks };
+}
