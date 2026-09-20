@@ -197,13 +197,21 @@ async function postHandler(request: Request) {
       );
     }
 
-    // Trigger initial sync per tenant in the background
-    for (const t of selectedTenants) {
-      triggerInitialSync(pending.business_id, accessToken, t.tenantId).catch((err) =>
-        Sentry.captureException(err, { tags: { route: 'Xero/complete-connection' }, extra: { context: "[Xero Complete] Initial sync failed for ${t.tenantName}" } } as any),
-      );
-    }
-
+    // No sync runs here, and nothing here writes last_synced_at — the data clock
+    // every connection-health surface classifies, which only a real per-tenant
+    // sync success moves (sync-orchestrator.ts). This route used to fire an
+    // "initial sync" per org after responding: a BankSummary URL Xero does not
+    // have, a financial_metrics upsert that errored on a second same-day call,
+    // then last_synced_at = now on EVERY connection of the business, whatever
+    // Xero answered. Connecting one org made its siblings — including one Xero
+    // refuses — read current for 48h, and new orgs skipped pending_first_sync.
+    //
+    // Nor does it start a real one: every org here holds the SAME refresh token,
+    // so their syncs must never refresh in parallel; work left running after the
+    // response is not reliable on Vercel; and a sync here would hold the
+    // business's single-flight lock against the one the landing page runs on
+    // ?syncing=true. That page, a Sync press or the next 6-hourly cron (stalest
+    // connections first) does the first real sync.
     return NextResponse.json({
       success: true,
       tenant_count: selectedTenants.length,
@@ -217,54 +225,3 @@ async function postHandler(request: Request) {
 }
 
 export const POST = withSchema('Xero/complete-connection', CompleteConnectionPostSchema, postHandler);
-
-/**
- * Trigger an initial sync after connection.
- * Simplified version — syncs bank summary and current month P&L.
- */
-async function triggerInitialSync(businessId: string, accessToken: string, tenantId: string) {
-  try {
-    const bankResponse = await fetch('https://api.xero.com/api.xro/2.0/BankSummary', {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'xero-tenant-id': tenantId,
-        'Accept': 'application/json'
-      }
-    });
-
-    const bankData = bankResponse.ok ? await bankResponse.json() : null;
-    let totalCash = 0;
-    if (bankData?.BankSummary) {
-      bankData.BankSummary.forEach((account: { ClosingBalance?: number }) => {
-        totalCash += account.ClosingBalance || 0;
-      });
-    }
-
-    await supabaseAdmin
-      .from('financial_metrics')
-      .upsert({
-        business_id: businessId,
-        metric_date: new Date().toISOString().split('T')[0],
-        // FLEET-02 (26 Aug 2026): this value is ALWAYS 0. The fetch above calls
-        // api.xro/2.0/BankSummary, but Xero's BankSummary is a REPORT
-        // (/api.xro/2.0/Reports/BankSummary) returning { Reports: [{ Rows }] },
-        // so `bankData.BankSummary` never exists and totalCash keeps its
-        // initialiser. Writing 0 asserted "this client holds no cash" — /cfo
-        // rendered it as fact for every client. Cash is now derived from the
-        // xero_bs_lines mirror (lib/xero/derive-cash-from-bs-mirror.ts); store
-        // null here so the column says "unknown" instead of a false zero.
-        total_cash: null,
-      });
-
-    await supabaseAdmin
-      .from('xero_connections')
-      .update({ last_synced_at: new Date().toISOString() })
-      .eq('business_id', businessId);
-
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[Xero Complete] Initial sync done, cash:', totalCash);
-    }
-  } catch (error) {
-    Sentry.captureException(error, { tags: { route: 'Xero/complete-connection' }, extra: { context: "[Xero Complete] Sync error" } } as any);
-  }
-}
