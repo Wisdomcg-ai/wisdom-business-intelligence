@@ -195,6 +195,13 @@ export default function BalanceSheetTab({
   // must not disagree about whether a sheet balances either.
   const isImbalanced = canComputeResidual && Math.abs(residual) > BS_EQUATION_TOLERANCE
 
+  // A group's sheet carries what was done to its figures: which organisations
+  // were added, a loan eliminated or left in full, how a foreign organisation
+  // was translated. One organisation's sheet carries none of it and these are
+  // empty. The pack prints exactly these two arrays; so does this tab.
+  const consolidationNotes = balanceSheet.consolidation?.notes ?? []
+  const consolidationWarnings = balanceSheet.consolidation?.warnings ?? []
+
   return (
     <div className="space-y-4">
       {/* S5: Equation residual banner — louder than the amber `balances` badge
@@ -260,6 +267,21 @@ export default function BalanceSheetTab({
         </div>
       )}
 
+      {/* A group's sheet: what was NOT done to its figures. The pack prints
+          these in its own warning card (assessBalanceSheetForPdf pushes
+          consolidation.warnings into it), so the tab prints them too — a coach
+          reviewing IICT on screen was shown both sides of an unreconciled
+          intercompany loan and told nothing. */}
+      {consolidationWarnings.map((warning, i) => (
+        <div
+          key={i}
+          className="flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700"
+        >
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{warning}</span>
+        </div>
+      ))}
+
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <table className="w-full">
@@ -302,6 +324,20 @@ export default function BalanceSheetTab({
           </tbody>
         </table>
       </div>
+
+      {/* Under the table, where the pack draws them (addBalanceSheetPage). Not
+          conventions but what was done to the figures: the organisations
+          added, a loan eliminated (decision 5), how a foreign organisation was
+          translated (decision 7, IAS 21). */}
+      {consolidationNotes.length > 0 && (
+        <div className="space-y-1.5">
+          {consolidationNotes.map((note, i) => (
+            <p key={i} className="text-xs text-gray-500 leading-relaxed">
+              {note}
+            </p>
+          ))}
+        </div>
+      )}
 
       <p className="text-xs text-gray-400">
         Data sourced from Xero · Negatives shown as (brackets) in red · % Variance shows N/A when prior period is zero

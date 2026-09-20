@@ -48,6 +48,12 @@ export type WidgetType =
   // which comparison column Xero fills — the grouping, subtotals and sign
   // conventions are identical, and WC.1 config exists precisely for this.
   | 'balance_sheet'
+  // Bank Balances & Movement, Calxa page 17: the chosen bank, cash-on-hand and
+  // credit-card accounts at the end of the month and the month before, per Xero
+  // organisation, foreign ones translated at each date's closing rate. Takes no
+  // config — the accounts are the business's saved list, not a placement's, so
+  // two placements could not disagree about what the bank is.
+  | 'bank_balances'
   // An uploaded page: the month's PDF, uploaded by the coach against this
   // placement and merged into the pack at its position (see
   // lib/monthly-report/pack-inserts). The route for the pages audit §5 says

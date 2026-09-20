@@ -27,6 +27,8 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import * as Sentry from '@sentry/nextjs'
+import { mapTypeToCategory } from '@/lib/monthly-report/shared'
+import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 
 /**
  * One budget line, in the shape generate/route.ts already consumes.
@@ -97,6 +99,15 @@ export type NoBudgetReason =
   | 'version_has_no_lines'
   | 'budget_read_failed'
   | 'invalid_report_month'
+  // A business with more than one Xero organisation (consolidated-budget.ts):
+  /** Some organisations have a version in force for the report month and some do not. */
+  | 'tenant_without_budget'
+  /** A foreign-currency version has a month with no stored monthly average rate. */
+  | 'budget_fx_rate_missing'
+  /** Nothing says which currency a version is in, and the organisations' currencies differ. */
+  | 'budget_currency_unknown'
+  /** A business-level version and per-organisation versions govern the same month. */
+  | 'mixed_budget_scopes'
 
 export interface ResolvedBudget {
   /**
@@ -237,7 +248,7 @@ export async function resolveBudget(
   // design exists to get away from, so every miss ends at 'none' carrying a
   // reason the banner can state.
   if (budgetSource === 'budget_version') {
-    return await resolveInForceVersion(supabase, businessId, fiscalYear, reportMonth, months)
+    return await resolveInForceVersion(supabase, businessId, profileId, fiscalYear, reportMonth, months)
   }
 
   // ── Tier F1: the pinned forecast ───────────────────────────────────────────
@@ -349,11 +360,13 @@ export async function resolveBudget(
  * missing relation reads as "could not read the budget", not a 500 on every
  * client's report.
  */
-interface BudgetLineRow {
+export interface BudgetLineRow {
   id: string
   account_code: string | null
   account_name: string
   category: string | null
+  /** The 5-bucket PLBucket stored at import, or null. */
+  account_type?: string | null
   month: string
   amount: number | string
   budget_version_id: string
@@ -374,7 +387,7 @@ interface BudgetLineRow {
  * Never throws — a caller that has already decided to fail closed needs an
  * answer, not an exception — so a failed page comes back as `failed`.
  */
-async function fetchAllBudgetLines(
+export async function fetchAllBudgetLines(
   supabase: SupabaseClient,
   versionIds: string[],
 ): Promise<{ rows: BudgetLineRow[]; failed: boolean }> {
@@ -384,7 +397,7 @@ async function fetchAllBudgetLines(
   while (true) {
     const { data, error } = await supabase
       .from('budget_lines')
-      .select('id, account_code, account_name, category, month, amount, budget_version_id')
+      .select('id, account_code, account_name, category, account_type, month, amount, budget_version_id')
       .in('budget_version_id', versionIds)
       // Ordered so the pages partition the rows instead of overlapping them:
       // without a total order PostgREST may return the same row on two pages
@@ -403,6 +416,7 @@ async function fetchAllBudgetLines(
 async function resolveInForceVersion(
   supabase: SupabaseClient,
   businessId: string,
+  profileId: string | null,
   fiscalYear: number | string,
   reportMonth: string,
   months?: readonly string[],
@@ -435,6 +449,24 @@ async function resolveInForceVersion(
     }>
 
     if (all.length === 0) return noneBecause('no_version_in_force')
+
+    // ── More than one Xero organisation ──────────────────────────────────────
+    // Decided by the BUSINESS, not by the versions: Dragon with only Dragon
+    // Roofing's version imported has one tenant among its versions, and the
+    // single-organisation answer below would be that one organisation's budget
+    // printed as the group's. The consolidated resolver aligns each
+    // organisation's lines to its own accounts, sums them in one currency, and
+    // refuses — with the reason — what it cannot answer.
+    const { count: orgCount, error: orgError } = await supabase
+      .from('xero_connections')
+      .select('id', { count: 'exact', head: true })
+      .eq('business_id', businessId)
+      .eq('is_active', true)
+      .eq('include_in_consolidation', true)
+    if (orgError) return noneBecause('budget_read_failed')
+    if ((orgCount ?? 0) >= 2) {
+      return await resolveForConsolidation(supabase, businessId, profileId, fiscalYear, reportMonth, wanted)
+    }
 
     // ── Which version governs each month ─────────────────────────────────────
     const versionForMonth = new Map<string, string>()
@@ -472,9 +504,10 @@ async function resolveInForceVersion(
     // with its own answer, and it is not "fall back to the forecast".
     if (!versionForMonth.has(reportMonth)) return noneBecause('version_not_yet_effective')
 
-    // Summing two Xero orgs' budgets would need an FX rule this does not have,
-    // and the settings flip already refuses multi-org businesses. Belt and
-    // braces, because the flip guard lives in a different route.
+    // Versions from two organisations on a business that is not consolidating
+    // both (one excluded from the consolidation, or inactive): which of them is
+    // "the" budget is not a question this path can answer. A consolidated
+    // business never reaches here — see resolveForConsolidation above.
     const tenants = new Set(Array.from(chosen.values()).map((v) => v.tenant_id ?? ''))
     if (tenants.size > 1) {
       Sentry.captureMessage('[Report Generate] Budget versions span more than one Xero org — refusing to sum', {
@@ -538,5 +571,62 @@ async function resolveInForceVersion(
     }
   } catch {
     return noneBecause('budget_read_failed')
+  }
+}
+
+/**
+ * The budget of a business with more than one Xero organisation, in the shape
+ * every resolveBudget caller consumes: one line per CONSOLIDATED account — the
+ * statement's account list — with its month map in the presentation currency.
+ *
+ * Ids are synthetic and unique per line, which is all the callers key on (see
+ * ResolvedBudgetLine.id). Codes survive only where the resolver kept one: a
+ * code two merged accounts share identifies neither.
+ *
+ * The year's months come from the business's own fiscal year, not just the
+ * months asked for: effective-dating decides month by month, and a page that
+ * asks for one month must get the same answer the statement got for it.
+ */
+async function resolveForConsolidation(
+  supabase: SupabaseClient,
+  businessId: string,
+  profileId: string | null,
+  fiscalYear: number | string,
+  reportMonth: string,
+  wanted: readonly string[],
+): Promise<ResolvedBudget> {
+  let yearStartMonth = DEFAULT_YEAR_START_MONTH
+  if (profileId) {
+    const { data: profile } = await supabase
+      .from('business_profiles')
+      .select('fiscal_year_start')
+      .eq('id', profileId)
+      .maybeSingle()
+    if (profile?.fiscal_year_start) yearStartMonth = Number(profile.fiscal_year_start)
+  }
+  const fyMonths = [...new Set([...generateFiscalMonthKeys(Number(fiscalYear), yearStartMonth), ...wanted])].sort()
+
+  // Imported when needed: consolidated-budget imports this module.
+  const { resolveConsolidatedApprovedBudget } = await import('./consolidated-budget')
+  const outcome = await resolveConsolidatedApprovedBudget(supabase, { businessId, fiscalYear, reportMonth, fyMonths })
+  if (outcome.status === 'refused') return noneBecause(outcome.reason)
+
+  const lines: ResolvedBudgetLine[] = outcome.consolidated.map((line, i) => ({
+    id: `consolidated:${i}:${line.account_type}::${line.account_name.toLowerCase().trim()}`,
+    account_code: line.account_code,
+    account_name: line.account_name,
+    category: mapTypeToCategory(line.account_type),
+    forecast_months: { ...line.monthly_values },
+  }))
+  if (lines.length === 0) return noneBecause('version_has_no_lines')
+
+  return {
+    source: 'budget_version',
+    versionId: outcome.versionId,
+    forecastId: null,
+    label: outcome.label,
+    lines,
+    monthsCovered: countMonths(lines),
+    noBudgetReason: null,
   }
 }
