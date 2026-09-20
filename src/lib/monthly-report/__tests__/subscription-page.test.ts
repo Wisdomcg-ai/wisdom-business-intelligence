@@ -26,14 +26,14 @@ describe('parseSubscriptionPageConfig', () => {
   it('no config is today\'s page, and every option is off with it', () => {
     expect(parseSubscriptionPageConfig(undefined)).toEqual({
       ok: true,
-      config: { layout: 'accounts', unallocated_row: false, vendors: 'all', total_budget: 'pre_budget_store', basis: 'gross', always_show: [], labels: {} },
+      config: { layout: 'accounts', unallocated_row: false, vendors: 'all', total_budget: 'pre_budget_store', basis: 'gross', always_show: [], labels: {}, entity_columns: 'none' },
     })
   })
 
   it('the standard layout takes total_budget: approved when it is asked for, and only that — vendor_sum is still the calxa sheet\'s', () => {
     expect(parseSubscriptionPageConfig({ total_budget: 'approved' })).toEqual({
       ok: true,
-      config: { layout: 'accounts', unallocated_row: false, vendors: 'all', total_budget: 'approved', basis: 'gross', always_show: [], labels: {} },
+      config: { layout: 'accounts', unallocated_row: false, vendors: 'all', total_budget: 'approved', basis: 'gross', always_show: [], labels: {}, entity_columns: 'none' },
     })
     const sum = parseSubscriptionPageConfig({ total_budget: 'vendor_sum' })
     expect(!sum.ok && sum.reason).toBe('total_budget vendor_sum applies only to layout calxa')

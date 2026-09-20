@@ -35,7 +35,25 @@ export interface MaybeEmptyLine {
   ytd_budget?: number | null
   budget_annual_total?: number | null
   budget_next_month?: number | null
-  prior_year_actual?: number | null
+  /**
+   * The same month a year earlier — `prior_year`, the name the generate route
+   * writes. This read `prior_year_actual` until Sep 2026, a field nothing has
+   * ever emitted, so every account whose only money was last year's was
+   * dropped while the section total kept it: Distinct Directions' August pack
+   * printed Total Other Income 9,484 under one visible row of 3.
+   */
+  prior_year?: number | null
+}
+
+export interface SilentLineOptions {
+  /**
+   * Whether the table prints the prior-year column. A figure no column shows
+   * cannot earn a row, so with the column off an account whose only money is
+   * last year's stays out, exactly as before; with it on, that figure is part
+   * of the total beneath and the row must be there for the column to add up.
+   * Omitted = the prior year counts.
+   */
+  priorYear?: boolean
 }
 
 /**
@@ -52,7 +70,7 @@ function isZero(v: number | null | undefined): boolean {
 }
 
 /** True when every figure the pack could print for this line is zero. */
-export function isSilentLine(line: MaybeEmptyLine): boolean {
+export function isSilentLine(line: MaybeEmptyLine, options: SilentLineOptions = {}): boolean {
   return (
     isZero(line.actual) &&
     isZero(line.budget) &&
@@ -63,7 +81,7 @@ export function isSilentLine(line: MaybeEmptyLine): boolean {
     // Prior year earns a row on its own: an account that carried real money
     // last year and none this year is a change worth seeing, and it is the one
     // column that makes "we stopped doing this" visible.
-    isZero(line.prior_year_actual)
+    (options.priorYear === false || isZero(line.prior_year))
   )
 }
 
@@ -75,8 +93,11 @@ export function isSilentLine(line: MaybeEmptyLine): boolean {
  * says that better than a vanished section does. Returning the original array
  * keeps the reader looking at something they can reason about.
  */
-export function withoutSilentLines<T extends MaybeEmptyLine>(lines: readonly T[]): T[] {
-  const kept = lines.filter(l => !isSilentLine(l))
+export function withoutSilentLines<T extends MaybeEmptyLine>(
+  lines: readonly T[],
+  options: SilentLineOptions = {},
+): T[] {
+  const kept = lines.filter(l => !isSilentLine(l, options))
   return kept.length > 0 ? kept : [...lines]
 }
 

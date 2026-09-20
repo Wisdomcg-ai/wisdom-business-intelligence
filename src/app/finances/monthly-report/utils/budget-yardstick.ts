@@ -287,20 +287,36 @@ export function packWagesEmployeeYardstick(
 export function absentSentence(
   reason: NoBudgetReason | null | undefined,
   fiscalYear: number | string | null | undefined,
+  detail?: string | null,
 ): string {
-  return `No budget for this month — Budget and Variance columns are shown as “—” because ${noBudgetBecause(reason, fiscalYear)}.`
+  return `No budget for this month — Budget and Variance columns are shown as “—” because ${noBudgetBecause(reason, fiscalYear, detail)}.`
 }
 
 /**
  * The "because" clause of absentSentence on its own, for a page whose columns
  * are not the statement's (the Subscription page's TOTAL row).
+ *
+ * `detail` is the consolidated resolver's own clause — "Easy Hail Claim Pty Ltd
+ * has no approved FY2027 budget in force for Aug 2026", "no HKD/AUD exchange
+ * rate is stored for Jun 2027" — and wins when there is one, because the reason
+ * alone cannot say which organisation or which months.
  */
 export function noBudgetBecause(
   reason: NoBudgetReason | null | undefined,
   fiscalYear: number | string | null | undefined,
+  detail?: string | null,
 ): string {
   const fy = fiscalYear ? `FY${fiscalYear}` : 'this fiscal year'
+  if (reason && detail && detail.trim()) return detail.trim()
   switch (reason) {
+    case 'tenant_without_budget':
+      return `not every Xero organisation has an approved ${fy} budget in force`
+    case 'budget_fx_rate_missing':
+      return 'an approved budget in a foreign currency has months with no stored exchange rate'
+    case 'budget_currency_unknown':
+      return 'an approved budget does not record its currency and the organisations’ currencies differ'
+    case 'mixed_budget_scopes':
+      return 'a business-level approved budget and per-organisation budgets are in force together, so none was applied'
     case 'no_version_in_force':
       return `no approved budget version is locked for ${fy}`
     case 'version_not_yet_effective':
@@ -327,8 +343,35 @@ export function noBudgetBecause(
  * is a no-budget report here too.
  */
 export function noBudgetNote(
-  report: Pick<GeneratedReport, 'has_budget' | 'no_budget_reason' | 'fiscal_year'>,
+  report: Pick<GeneratedReport, 'has_budget' | 'no_budget_reason' | 'fiscal_year' | 'no_budget_detail'>,
 ): string | null {
   if (report.has_budget) return null
-  return absentSentence(report.no_budget_reason, report.fiscal_year)
+  return absentSentence(report.no_budget_reason, report.fiscal_year, report.no_budget_detail)
+}
+
+/**
+ * Why an export must not go out, when the client is on the budget store and the
+ * report on screen is not.
+ *
+ * Two different states, and the page used to print one sentence for both. A
+ * report measured against the FORECAST is a stale generate: regenerating fixes
+ * it. A report whose budget was REFUSED — an organisation with no version in
+ * force, a month with no exchange rate (a business with more than one Xero
+ * organisation, DRG-03) — has no budget at all, and regenerating produces the
+ * same pack again. Telling a coach to regenerate then sends them round a loop
+ * with nothing to show for it; the reason is what they can act on.
+ *
+ * Null when there is nothing to refuse.
+ */
+export function exportBudgetSourceRefusal(
+  settingsSource: string | null | undefined,
+  report: Pick<GeneratedReport, 'budget_source' | 'no_budget_reason' | 'no_budget_detail' | 'fiscal_year'>,
+): string | null {
+  if ((settingsSource ?? 'forecast') !== 'budget_version') return null
+  if (report.budget_source === 'budget_version') return null
+  if (report.budget_source === 'none') {
+    return `This client is held to an approved budget, and this report has none: ${noBudgetBecause(report.no_budget_reason, report.fiscal_year, report.no_budget_detail)}. `
+      + 'Fix that and generate the report again before exporting.'
+  }
+  return 'This report was measured against the forecast, not the approved budget. Regenerate before exporting.'
 }

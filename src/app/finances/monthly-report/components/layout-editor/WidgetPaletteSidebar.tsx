@@ -61,7 +61,7 @@ export default function WidgetPaletteSidebar({
                   <PaletteWidgetCard
                     key={w.type}
                     definition={w}
-                    isPlaced={placedWidgetTypes.has(w.type)}
+                    isPlaced={!w.repeatable && placedWidgetTypes.has(w.type)}
                     isAvailable={isDataAvailable(w.dataDependency)}
                   />
                 ))}

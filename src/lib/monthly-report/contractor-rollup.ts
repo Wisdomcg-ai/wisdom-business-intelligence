@@ -32,6 +32,12 @@ export interface ContractorLine {
   budget: number
   /** Budget − actual: an overrun is negative, as everywhere else in the pack. */
   variance: number
+  /**
+   * The month per Xero organisation, for a page that prints a column each
+   * (Calxa's DRAGON | EHC | TOTAL — DRG-29). Absent on a single-organisation
+   * business and on a response from before the route carried it.
+   */
+  by_tenant?: Record<string, number>
 }
 
 export interface ContractorCategoryGroup {
@@ -44,7 +50,9 @@ export interface ContractorCategoryGroup {
 export interface ContractorRollup {
   contractors: ContractorLine[]
   categories: ContractorCategoryGroup[]
-  grand_total: { prior_month: number; budget: number; actual: number; variance: number }
+  grand_total: { prior_month: number; budget: number; actual: number; variance: number; by_tenant?: Record<string, number> }
+  /** The organisations the columns run in, in the coach's display order. */
+  tenants?: { tenant_id: string; name: string }[]
 }
 
 const round2 = (n: number): number => Math.round(n * 100) / 100
@@ -69,6 +77,14 @@ function flattenVendors(data: SubscriptionDetailData): Map<string, SubscriptionV
       existing.budget += v.budget
       existing.variance = existing.budget - existing.actual
       existing.transaction_count += v.transaction_count
+      // One contractor paid out of both organisations' accounts is one row,
+      // with each organisation's own figure kept for the columns.
+      if (v.by_tenant) {
+        existing.by_tenant = { ...(existing.by_tenant ?? {}) }
+        for (const [tenant, amount] of Object.entries(v.by_tenant)) {
+          existing.by_tenant[tenant] = (existing.by_tenant[tenant] ?? 0) + amount
+        }
+      }
       // The first account that names a department wins; a second account that
       // says nothing must not blank it.
       existing.category = existing.category ?? v.category ?? null
@@ -105,6 +121,7 @@ export function rollUpContractors(
       actual: round2(v.actual),
       budget: round2(v.budget),
       variance: round2(v.budget - v.actual),
+      ...(v.by_tenant ? { by_tenant: Object.fromEntries(Object.entries(v.by_tenant).map(([t, a]) => [t, round2(a)])) } : {}),
     }))
     // The name is what a coach scans for, and the sheet this replaces is
     // alphabetical. Sorting by spend would move a contractor every month.
@@ -139,6 +156,20 @@ export function rollUpContractors(
   const budget = round2(contractors.reduce((t, c) => t + c.budget, 0))
   const actual = round2(contractors.reduce((t, c) => t + c.actual, 0))
 
+  // Each organisation's column is the contractor rows above it added up — the
+  // same source as `actual` beside it, so the Total row foots both ways. The
+  // account's own figure per organisation (total_by_tenant) is the ledger's,
+  // and the ledger carries spend no contractor row can name: a journal, a bill
+  // the crawl could not page, the GST on a gross row. Taken from there, the
+  // columns would not add to the number printed next to them.
+  const tenants = data.tenants ?? []
+  const grandByTenant = tenants.length > 0
+    ? Object.fromEntries(tenants.map((t) => [
+        t.tenant_id,
+        round2(contractors.reduce((sum, c) => sum + (c.by_tenant?.[t.tenant_id] ?? 0), 0)),
+      ]))
+    : undefined
+
   return {
     contractors,
     categories,
@@ -147,7 +178,9 @@ export function rollUpContractors(
       budget,
       actual,
       variance: round2(budget - actual),
+      ...(grandByTenant ? { by_tenant: grandByTenant } : {}),
     },
+    ...(tenants.length > 0 ? { tenants: [...tenants] } : {}),
   }
 }
 
@@ -166,9 +199,16 @@ export function rollUpContractors(
  * when it has no rows.
  */
 export function contractorLoadReason(
-  data: (Pick<SubscriptionDetailData, 'complete' | 'incomplete_reason'> & { grand_total?: Pick<SubscriptionDetailData['grand_total'], 'actual'> }) | null | undefined,
+  data: (Pick<SubscriptionDetailData, 'complete' | 'incomplete_reason' | 'translation_unavailable'> & { grand_total?: Pick<SubscriptionDetailData['grand_total'], 'actual'> }) | null | undefined,
   rowCount: number,
 ): string | undefined {
+  // Xero was read; the exchange rate the report needs is not loaded, and that
+  // is the coach's to load (as the Subscriptions tab says). Blamed on Xero, a
+  // reader is sent to reconnect an organisation that is connected.
+  if (data?.translation_unavailable) {
+    const reason = data.incomplete_reason ?? 'an exchange rate this report needs is not stored'
+    return `${reason} — load the rates under Admin, Consolidation`
+  }
   if (data?.complete === false) {
     return data.incomplete_reason
       ? `the contractor figures could not be fully read from Xero (${data.incomplete_reason})`

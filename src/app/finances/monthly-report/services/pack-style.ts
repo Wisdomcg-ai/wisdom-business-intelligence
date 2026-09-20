@@ -218,16 +218,61 @@ const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'S
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 /**
- * 'YYYY-MM' → 'Aug 2026', from a fixed table.
+ * 'YYYY-MM' → { year: '2026', idx: 7 }, or null if it is not a month key.
  *
- * Never toLocaleDateString: en-AU's short September is "Sept", which put
- * "Sept 2026" beside Calxa's "Sep 2026" on the pages that are meant to be
- * indistinguishable from it. Anything unparseable comes back as it went in.
+ * Every month label the pack prints comes from here and the two tables above,
+ * never from a Date. Two reasons, and the pack has been bitten by both:
+ *
+ *   1. Timezone. `new Date('2026-08-01')` is UTC midnight, so a local-time
+ *      formatter prints the month BEFORE it anywhere west of Greenwich — the
+ *      cover of an August pack rendered in Los Angeles read "July 2026", and
+ *      in January it lost the year too ("2026-01" → "Dec 25"). Vercel runs UTC
+ *      and every coach is in Australia (a positive offset, which does not
+ *      shift a UTC midnight backwards), so no client ever saw it; a month
+ *      label that depends on where the pack is rendered is still wrong.
+ *   2. Wording. en-AU's short September is "Sept", which put "Sept 2026"
+ *      beside Calxa's "Sep 2026" on the pages meant to be indistinguishable
+ *      from it.
+ *
+ * A 'YYYY-MM' string already carries the month; deriving it needs no instant.
+ * Anything unparseable comes back from these formatters as it went in.
  */
-export function packMonthYear(monthKey: string): string {
+function monthParts(monthKey: string): { year: string; idx: number } | null {
   const m = /^(\d{4})-(\d{2})/.exec(monthKey ?? '')
   const idx = m ? Number(m[2]) - 1 : -1
-  return m && idx >= 0 && idx < 12 ? `${MONTHS_SHORT[idx]} ${m[1]}` : monthKey
+  return m && idx >= 0 && idx < 12 ? { year: m[1], idx } : null
+}
+
+/** 'YYYY-MM' → 'Aug 2026'. */
+export function packMonthYear(monthKey: string): string {
+  const p = monthParts(monthKey)
+  return p ? `${MONTHS_SHORT[p.idx]} ${p.year}` : monthKey
+}
+
+/** 'YYYY-MM' → 'August 2026' — the words a page title and the cover print. */
+export function packMonthLong(monthKey: string): string {
+  const p = monthParts(monthKey)
+  return p ? `${MONTHS_LONG[p.idx]} ${p.year}` : monthKey
+}
+
+/** 'YYYY-MM' → 'Aug 26' — narrow enough for a figure column's heading. */
+export function packMonthYY(monthKey: string): string {
+  const p = monthParts(monthKey)
+  return p ? `${MONTHS_SHORT[p.idx]} ${p.year.slice(2)}` : monthKey
+}
+
+/** 'YYYY-MM' → 'Aug' — a grid heading, where the year is already overhead. */
+export function packMonthAbbr(monthKey: string): string {
+  const p = monthParts(monthKey)
+  return p ? MONTHS_SHORT[p.idx] : monthKey
+}
+
+/** '2026-08' → '2026-07', wrapping the year in January. Unparseable passes through. */
+export function packPriorMonth(monthKey: string): string {
+  const p = monthParts(monthKey)
+  if (!p) return monthKey
+  const y = Number(p.year)
+  return p.idx === 0 ? `${y - 1}-12` : `${p.year}-${String(p.idx).padStart(2, '0')}`
 }
 
 /**

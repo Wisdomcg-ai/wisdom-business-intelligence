@@ -104,6 +104,45 @@ describe('WE.1 — IDOR hard-gate', () => {
   })
 })
 
+describe('P10 — the trend window a placement asks for', () => {
+  it('reads only the month by default, and the window when months is asked for', async () => {
+    const seen: { table: string; calls: Record<string, unknown[]> }[] = []
+    mockAdminFrom.mockImplementation((table: string) => {
+      const calls: Record<string, unknown[]> = {}
+      seen.push({ table, calls })
+      const q: any = {}
+      for (const m of ['select', 'eq', 'in', 'order', 'gte', 'lte', 'range', 'maybeSingle', 'single']) {
+        q[m] = vi.fn((...args: unknown[]) => { calls[m] = args; return q })
+      }
+      q.then = (resolve: any) => resolve({
+        data: table === 'external_metric_series'
+          ? [{ id: 's1', series_key: 'hubspot_memberships', measures: [], reconciles_to_account_name: null }]
+          : [],
+        error: null,
+      })
+      return q
+    })
+
+    await GET(getReq(`business_id=${BIZ}&period_month=2026-08`))
+    expect(seen.filter((c) => c.table === 'external_metric_values')).toHaveLength(1)
+    expect(seen.find((c) => c.table === 'external_metric_values')!.calls.gte).toBeUndefined()
+
+    seen.length = 0
+    await GET(getReq(`business_id=${BIZ}&period_month=2026-08&months=8`))
+    const windowed = seen.filter((c) => c.table === 'external_metric_values')
+    expect(windowed).toHaveLength(2)
+    expect(windowed[1].calls.gte).toEqual(['period_month', '2026-01'])
+    expect(windowed[1].calls.lte).toEqual(['period_month', '2026-08'])
+    expect(windowed[1].calls.order).toEqual(['id'])
+  })
+
+  it('refuses a months that is not a window this page prints', async () => {
+    const res = await GET(getReq(`business_id=${BIZ}&period_month=2026-08&months=99`))
+    expect(res.status).toBe(400)
+    expect(mockAdminFrom).not.toHaveBeenCalled()
+  })
+})
+
 describe('WE.1 — self-enforced contract (withSchema is observe-mode)', () => {
   it('GET without a valid YYYY-MM month → 400 before auth or queries', async () => {
     const res = await GET(getReq(`business_id=${BIZ}&period_month=July`))

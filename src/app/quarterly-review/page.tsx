@@ -15,6 +15,7 @@ import {
   BarChart3,
   Target,
   History,
+  ClipboardCheck,
   Pencil,
   Loader2
 } from 'lucide-react';
@@ -151,15 +152,27 @@ export default function QuarterlyReviewPage() {
         subtitle="A guided 4-hour process to reflect, analyze, and plan for the next quarter"
         icon={Calendar}
         actions={
-          (pastReviews.length > 0 || currentQuarterReview?.status === 'completed') && (
-            <Link
-              href={getPath('/quarterly-review/history')}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
-            >
-              <History className="w-4 h-4" />
-              View Timeline
-            </Link>
-          )
+          <div className="flex items-center gap-2">
+            {/* Coaches and admins only — a client has no fleet to be ready. */}
+            {(currentUser?.role === 'coach' || currentUser?.role === 'admin') && (
+              <Link
+                href="/quarterly-review/readiness"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                <ClipboardCheck className="w-4 h-4" />
+                Workshop readiness
+              </Link>
+            )}
+            {(pastReviews.length > 0 || currentQuarterReview?.status === 'completed') && (
+              <Link
+                href={getPath('/quarterly-review/history')}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                <History className="w-4 h-4" />
+                View Timeline
+              </Link>
+            )}
+          </div>
         }
       />
 

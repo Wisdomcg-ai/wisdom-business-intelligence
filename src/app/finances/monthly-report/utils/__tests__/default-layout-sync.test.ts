@@ -219,3 +219,23 @@ describe('ratio_analysis — placed by a coach, never managed by a section toggl
     expect(types).not.toContain('ratio_analysis')
   })
 })
+
+describe('uploaded_insert — placed by a coach, never managed by a section toggle', () => {
+  it('is registered as a repeatable full-page table with a renderer and no data dependency', () => {
+    const def = WIDGET_DEFINITIONS.uploaded_insert
+    expect(def).toMatchObject({ category: 'tables', fullRow: true, repeatable: true, minRowSpan: 3, maxRowSpan: 3 })
+    expect(def.dataDependency).toBeUndefined()
+    expect(WIDGET_METHOD_MAP.uploaded_insert).toBe('renderUploadedInsert')
+  })
+
+  it('both placements survive a settings sync with every section off, names intact', () => {
+    const layout = layoutWith(['executive_summary', 'uploaded_insert', 'uploaded_insert'])
+    layout.pages[0].widgets[1].titleOverride = 'Cash vs Accruals'
+    layout.pages[0].widgets[2].titleOverride = 'Hubstaff'
+    const { layout: synced, removed, added } = syncLayoutWithSettings(layout, allOff)
+    expect(removed).not.toContain('uploaded_insert')
+    expect(added).not.toContain('uploaded_insert')
+    const placed = synced.pages.flatMap((p) => p.widgets).filter((w) => w.type === 'uploaded_insert')
+    expect(placed.map((w) => w.titleOverride)).toEqual(['Cash vs Accruals', 'Hubstaff'])
+  })
+})
