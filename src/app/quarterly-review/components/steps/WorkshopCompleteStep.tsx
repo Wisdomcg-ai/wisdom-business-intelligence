@@ -27,9 +27,15 @@ interface WorkshopCompleteStepProps {
   review: QuarterlyReview;
   /** The review finished but its plan never reached the strategic tables. */
   planSyncFailed?: boolean;
+  /** The review finished but its actuals / snapshot were not recorded. */
+  historyWriteFailed?: boolean;
 }
 
-export function WorkshopCompleteStep({ review, planSyncFailed = false }: WorkshopCompleteStepProps) {
+export function WorkshopCompleteStep({
+  review,
+  planSyncFailed = false,
+  historyWriteFailed = false,
+}: WorkshopCompleteStepProps) {
   const router = useRouter();
   const { getPath } = useCoachView();
 
@@ -68,18 +74,34 @@ export function WorkshopCompleteStep({ review, planSyncFailed = false }: Worksho
         </p>
       </div>
 
-      {/* The plan did not reach the strategic tables. Say so — a completed review
-          whose plan never landed must not read as an unqualified success. */}
-      {planSyncFailed && (
+      {/* Something didn't land. Say so — a completed review that recorded nothing
+          must not read as an unqualified success. */}
+      {(planSyncFailed || historyWriteFailed) && (
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-8 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold text-amber-900">Your plan hasn&apos;t reached your strategic tools yet</p>
+            <p className="font-semibold text-amber-900">
+              Some of this review didn&apos;t save
+            </p>
             <p className="text-sm text-amber-800 mt-1">
-              Everything you entered in this review is saved. The step that copies your targets,
-              initiatives and rocks across to your plan didn&apos;t complete — so the dashboard and
-              90-day sprint may not show them yet. Re-open this review and press Complete again,
-              or let your coach know.
+              Everything you typed into the review itself is saved. These parts didn&apos;t:
+            </p>
+            <ul className="text-sm text-amber-800 mt-2 space-y-1 list-disc pl-5">
+              {planSyncFailed && (
+                <li>
+                  Copying your targets, initiatives and rocks across to your plan — so the
+                  dashboard and 90-day sprint may not show them yet.
+                </li>
+              )}
+              {historyWriteFailed && (
+                <li>
+                  Recording this quarter&apos;s numbers — so next quarter won&apos;t have them
+                  to compare against.
+                </li>
+              )}
+            </ul>
+            <p className="text-sm text-amber-800 mt-2">
+              Re-open this review and press Complete again, or let your coach know.
             </p>
           </div>
         </div>
