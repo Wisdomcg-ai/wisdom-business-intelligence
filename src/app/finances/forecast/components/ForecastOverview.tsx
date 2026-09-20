@@ -565,6 +565,8 @@ export default function ForecastOverview({
       <KpiStrip
         totals={totals}
         xeroMonths={xeroMonths}
+        xeroActualsLoading={xeroActualsLoading}
+        xeroActualsError={xeroActualsError}
         lastClosedIndex={expectedLastActualIndex}
         revenuePlan={revenuePlan}
         grossPlan={grossPlan}
@@ -637,6 +639,14 @@ interface KpiStripProps {
    * "this month" (see utils/dashboard-actual-series).
    */
   xeroMonths: DashboardActualsMonth[] | null
+  /** True while the dashboard-actuals request is in flight. */
+  xeroActualsLoading: boolean
+  /**
+   * Set when the dashboard-actuals request failed. The strip has no second
+   * source of actuals to fall back to, so it must say so rather than print the
+   * plan as though it were performance — see the fail-closed note in KpiStrip.
+   */
+  xeroActualsError: string | null
   /**
    * Last month whose calendar month-end has passed. Xero carries the month in
    * progress; counting a part month as an actual understates YTD against a
@@ -666,6 +676,8 @@ interface KpiStripProps {
 function KpiStrip({
   totals,
   xeroMonths,
+  xeroActualsLoading,
+  xeroActualsError,
   lastClosedIndex,
   revenuePlan,
   grossPlan,
@@ -683,10 +695,36 @@ function KpiStrip({
   // for the monthly trend table / trajectory chart where the column label
   // ("Apr 26") needs to read as actual even when data hasn't synced yet.
   // Actuals come from Xero when available, falling back to whatever the stored
-  // lines carry — so a failed fetch degrades to the old behaviour, never to $0.
+  // lines carry (the Phase 65 estimated / prior-FY paths put real actuals in
+  // actual_months; a wizard-built forecast has had none since Phase 44).
   // Capped at the last CLOSED month: the month in progress is not an actual.
   const series = deriveActualSeries(totals, xeroMonths, lastClosedIndex)
   const dataIdx = series.dataLastActualIndex
+
+  /**
+   * Fail closed when the actuals could not be loaded.
+   *
+   * The old comment here said a failed fetch "degrades to the old behaviour,
+   * never to $0" — but for any wizard-built forecast the old behaviour IS $0:
+   * actual_months has been empty since Phase 44, so the fallback has nothing
+   * in it. On a 500 the strip printed "On track · $495k this month · YTD $0"
+   * in September, where $495k was JULY'S PLAN. Every one of those is a claim
+   * about actuals that no data supports.
+   *
+   * So: a failure the fallback cannot cover gets its own amber card, and the
+   * window before the request resolves gets a neutral one. When the fallback
+   * DOES carry actuals (dataIdx >= 0) the strip still has a real answer and
+   * keeps rendering it — that is what failing open was meant to protect.
+   * A future FY has no actuals by definition and is never in either state.
+   */
+  const actualsState: 'ready' | 'pending' | 'unavailable' =
+    dataIdx >= 0 || fyMode === 'future'
+      ? 'ready'
+      : xeroActualsError
+        ? 'unavailable'
+        : xeroActualsLoading
+          ? 'pending'
+          : 'ready'
   const monthsElapsed = dataIdx + 1 // number of months with actuals so far
   const ytdProrate = (annualPlan: number) =>
     monthsElapsed > 0 ? Math.round((annualPlan / 12) * monthsElapsed) : 0
@@ -722,6 +760,8 @@ function KpiStrip({
    *   - prior   → "Final" pill, year-end actual is the big number
    *   - current → today's logic (this-month big number, YTD vs prorated plan)
    *   - future  → "Plan" pill, monthly plan big number, plan-only sub-rows
+   * Short-circuits to the pending / unavailable card when there are no
+   * actuals to report and the reason is the fetch, not the data.
    */
   const buildKpiCard = (
     label: string,
@@ -729,6 +769,12 @@ function KpiStrip({
     annualPlan: number,
     accent: 'navy' | 'teal' | 'orange',
   ): KpiCardProps => {
+    // No actuals and no way to get them → say so. The plan is still a fact,
+    // so it stays on the card; "this month", YTD, year-end and the
+    // ahead/behind pill are not, so they go.
+    if (actualsState !== 'ready') {
+      return { kind: actualsState, label, accent, annualPlan, reason: xeroActualsError }
+    }
     const yearEnd = yearTotal(series)
     if (fyMode === 'prior') {
       return {
@@ -824,6 +870,23 @@ type KpiCardProps =
       accent: 'navy' | 'teal' | 'orange'
     }
   | {
+      /** The actuals request failed and the stored lines carry none either. */
+      kind: 'unavailable'
+      label: string
+      annualPlan: number
+      /** Why the fetch failed, echoed so a support call has something to go on. */
+      reason: string | null
+      accent: 'navy' | 'teal' | 'orange'
+    }
+  | {
+      /** The actuals request is still in flight and nothing is known yet. */
+      kind: 'pending'
+      label: string
+      annualPlan: number
+      reason: string | null
+      accent: 'navy' | 'teal' | 'orange'
+    }
+  | {
       kind: 'cash'
       label: string
       accent: 'navy' | 'teal' | 'orange'
@@ -848,6 +911,8 @@ const ACCENT_FILL: Record<'navy' | 'teal' | 'orange', string> = {
 
 function KpiCard(props: KpiCardProps) {
   if (props.kind === 'cash') return <KpiCashCard {...props} />
+  if (props.kind === 'unavailable') return <KpiActualsUnavailableCard {...props} />
+  if (props.kind === 'pending') return <KpiActualsPendingCard {...props} />
   if (props.kind === 'prior') return <KpiPriorCard {...props} />
   if (props.kind === 'future') return <KpiFutureCard {...props} />
   return <KpiCurrentCard {...props} />
@@ -1028,6 +1093,95 @@ function KpiFutureCard(props: Extract<KpiCardProps, { kind: 'future' }>) {
           </dd>
         </div>
       </dl>
+    </article>
+  )
+}
+
+/**
+ * The actuals could not be loaded.
+ *
+ * Amber, and deliberately empty where a number would be a lie: no big figure,
+ * no "this month", no YTD, no ahead/behind pill, no sparkline. The annual plan
+ * stays because it is still true — it comes from the forecast, not from Xero.
+ */
+function KpiActualsUnavailableCard(props: Extract<KpiCardProps, { kind: 'unavailable' }>) {
+  const { label, annualPlan, reason } = props
+
+  return (
+    <article className="bg-white border border-amber-200 rounded-xl p-5 flex flex-col gap-3.5">
+      <header className="flex items-start justify-between gap-2">
+        <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
+          {label}
+        </span>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-100">
+          <AlertTriangle className="w-3 h-3" strokeWidth={2.5} />
+          Couldn&apos;t load
+        </span>
+      </header>
+
+      <div>
+        <div className="text-3xl font-semibold tabular-nums leading-none text-gray-300">—</div>
+        <div className="mt-1 text-xs text-gray-500">actuals unavailable</div>
+      </div>
+
+      <div className="h-9" />
+
+      <dl className="text-xs space-y-1.5 pt-1 border-t border-gray-100 mt-1">
+        <div className="flex items-baseline justify-between gap-2 pt-2">
+          <dt className="text-gray-500">Annual plan</dt>
+          <dd className="text-gray-700 tabular-nums">
+            {annualPlan > 0 ? fmtMoney(annualPlan, { compact: true }) : '—'}
+          </dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-2">
+          <dt className="text-gray-500">Year to date</dt>
+          <dd className="text-amber-700">couldn&apos;t check</dd>
+        </div>
+      </dl>
+
+      <p className="text-xs text-amber-700">
+        Couldn&apos;t load actuals from Xero{reason ? ` — ${reason}` : ''}. Showing the plan only.
+      </p>
+    </article>
+  )
+}
+
+/** Same shape as the unavailable card, but neutral: the answer is still coming. */
+function KpiActualsPendingCard(props: Extract<KpiCardProps, { kind: 'pending' }>) {
+  const { label, annualPlan } = props
+
+  return (
+    <article className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-3.5">
+      <header className="flex items-start justify-between gap-2">
+        <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
+          {label}
+        </span>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200">
+          Loading
+        </span>
+      </header>
+
+      <div>
+        <div className="text-3xl font-semibold tabular-nums leading-none text-gray-300">…</div>
+        <div className="mt-1 text-xs text-gray-500">loading actuals…</div>
+      </div>
+
+      <div className="h-9" />
+
+      <dl className="text-xs space-y-1.5 pt-1 border-t border-gray-100 mt-1">
+        <div className="flex items-baseline justify-between gap-2 pt-2">
+          <dt className="text-gray-500">Annual plan</dt>
+          <dd className="text-gray-700 tabular-nums">
+            {annualPlan > 0 ? fmtMoney(annualPlan, { compact: true }) : '—'}
+          </dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-2">
+          <dt className="text-gray-500">Year to date</dt>
+          <dd className="text-gray-400">…</dd>
+        </div>
+      </dl>
+
+      <p className="text-xs text-gray-400">Checking Xero for this year&apos;s actuals.</p>
     </article>
   )
 }

@@ -145,19 +145,31 @@ async function postHandler(request: Request) {
       });
     }
 
-    // Stamp the DATA freshness clock here, where it is earned: this request ran
-    // BOTH the P&L orchestrator and the BS mirror. The shared BS module must not
-    // stamp it — the daily BS-only cron calls the same function, and a BS-only
-    // refresh marking a connection "fresh" would mask broken P&L syncs from
-    // connection-health and the daily health report.
-    stage = 'stamp_last_synced';
-    for (const connection of connections) {
-      if (!bsResult.syncedTenantIds.includes(connection.tenant_id)) continue;
-      await supabaseAdmin
-        .from('xero_connections')
-        .update({ last_synced_at: new Date().toISOString() })
-        .eq('id', connection.id);
-    }
+    // The DATA freshness clock is NOT stamped here, and must not be.
+    //
+    // `xero_connections.last_synced_at` is half of dataClockFor()
+    // (lib/xero/connection-status.ts) — the clock behind the coach
+    // connection-health pill, /cfo, /api/Xero/status, the daily health report
+    // and the dashboard's "Last synced" line — so it may only move for an org
+    // whose data actually landed.
+    //
+    // This stage used to stamp every connection in bsResult.syncedTenantIds:
+    // the BALANCE SHEET mirror syncing was enough to move the clock, and
+    // plResult was never consulted. An org whose P&L failed — or was never
+    // reached, because the orchestrator refuses a second concurrent run — but
+    // whose BS synced then read fresh for the whole 48h window, hiding the
+    // failure from every surface above. The old comment called the stamp
+    // "earned" because the request ran both the P&L orchestrator and the BS
+    // mirror. Running is not succeeding.
+    //
+    // syncBusinessXeroPL is the ONE writer. It stamps per tenant, inside the
+    // try, only for a tenant that finished 'success' or 'partial', never from
+    // the catch (sync-orchestrator.ts). It iterates the SAME connection set
+    // selected above — business_id in ids.all, is_active — so dropping this
+    // loop drops no legitimate stamp: every tenant it could have stamped
+    // truthfully, the orchestrator has already stamped. An orchestrator stamp
+    // that fails to write is covered too, because that tenant's success/partial
+    // sync_jobs row is the other half of the max() in dataClockFor.
 
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[Sync Xero] Done: ${totalAccountsSynced} accounts synced across ${syncedTenantIds.length}/${connections.length} tenants`);

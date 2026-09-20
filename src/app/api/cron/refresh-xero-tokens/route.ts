@@ -62,7 +62,7 @@ const CRON_PATH = '/api/cron/refresh-xero-tokens'
  * Auth: Vercel sets `Authorization: Bearer ${CRON_SECRET}` automatically.
  * Fail-closed (returns 401 if CRON_SECRET is unset OR header mismatch) —
  * SEC-02 standard, mirrors the pattern in
- * src/app/api/Xero/sync-all/route.ts:46-50. DO NOT use the looser
+ * src/app/api/cron/sync-all-xero/route.ts. DO NOT use the looser
  * `auth !== \`Bearer ${process.env.CRON_SECRET}\`` form: when CRON_SECRET
  * is undefined that comparison passes when the header is also undefined.
  *
@@ -125,10 +125,11 @@ function safeSentryCapture(err: unknown, tags: Record<string, string | undefined
 }
 
 async function getHandler(req: NextRequest) {
-  // Fail-closed auth gate (SEC-02). Mirrors src/app/api/Xero/sync-all/route.ts:46-50.
+  // Fail-closed auth gate (SEC-02). Mirrors src/app/api/cron/sync-all-xero/route.ts.
   // The looser form `auth !== \`Bearer ${process.env.CRON_SECRET}\`` passes
-  // when both sides are undefined — see SEC-02 regression test
-  // src/__tests__/api/xero-sync-all-cron-auth.test.ts.
+  // when both sides are undefined — see the SEC-02 regression tests
+  // src/__tests__/api/cron-refresh-xero-tokens.test.ts (this route) and
+  // src/__tests__/api/cron-sync-all.test.ts (the fleet cron).
   const cronSecret = process.env.CRON_SECRET
   const authHeader = req.headers.get('authorization')
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {

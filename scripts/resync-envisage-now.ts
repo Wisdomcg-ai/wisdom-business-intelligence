@@ -1,8 +1,10 @@
 /**
  * One-shot: re-sync Envisage's Xero P&L using the new multi-window logic.
- * Mirrors src/app/api/Xero/sync-all/route.ts syncConnection() but scoped to
- * Envisage's active connection. Use this to verify the new sync works
- * without waiting for the 2am cron.
+ * Written to mirror the then-current syncConnection() in the since-retired
+ * /api/Xero/sync-all route, but scoped to Envisage's active connection. That
+ * logic now lives in src/lib/xero/sync-orchestrator.ts, which this script
+ * predates and does not track. Use it to verify a sync without waiting for
+ * the scheduled /api/cron/sync-all-xero run.
  */
 import { config } from 'dotenv'
 import path from 'path'

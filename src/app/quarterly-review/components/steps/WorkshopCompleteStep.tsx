@@ -17,27 +17,27 @@ import {
   TrendingUp,
   ClipboardList,
   MessageSquare,
-  Zap
+  Zap,
+  AlertTriangle
 } from 'lucide-react';
 import Link from 'next/link';
 import { useCoachView } from '@/hooks/useCoachView';
 
 interface WorkshopCompleteStepProps {
   review: QuarterlyReview;
+  /** The review finished but its plan never reached the strategic tables. */
+  planSyncFailed?: boolean;
 }
 
-export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
+export function WorkshopCompleteStep({ review, planSyncFailed = false }: WorkshopCompleteStepProps) {
   const router = useRouter();
   const { getPath } = useCoachView();
 
-  const getNextQuarter = () => {
-    if (review.quarter === 4) {
-      return { quarter: 1, year: review.year + 1 };
-    }
-    return { quarter: review.quarter + 1, year: review.year };
-  };
-
-  const nextQ = getNextQuarter();
+  // The review is NAMED for the quarter being planned, so the targets and rocks
+  // just built belong to review.quarter itself — QuarterlyRocksStep writes them
+  // as q${review.quarter}. This used to add 1, a leftover from the old
+  // "review = the quarter that just ended" model, so a Q2 plan printed as Q3.
+  const planQ = { quarter: review.quarter, year: review.year };
 
   const formatCurrency = (value: number) => {
     const formatted = new Intl.NumberFormat('en-AU', {
@@ -64,9 +64,26 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
           Review Complete!
         </h1>
         <p className="text-gray-600">
-          Congratulations! You've completed your Q{review.quarter} {review.year} Quarterly Review.
+          Congratulations! You&apos;ve completed your Q{review.quarter} {review.year} Quarterly Review.
         </p>
       </div>
+
+      {/* The plan did not reach the strategic tables. Say so — a completed review
+          whose plan never landed must not read as an unqualified success. */}
+      {planSyncFailed && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-8 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-amber-900">Your plan hasn&apos;t reached your strategic tools yet</p>
+            <p className="text-sm text-amber-800 mt-1">
+              Everything you entered in this review is saved. The step that copies your targets,
+              initiatives and rocks across to your plan didn&apos;t complete — so the dashboard and
+              90-day sprint may not show them yet. Re-open this review and press Complete again,
+              or let your coach know.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Key Outcomes */}
       <div className="grid md:grid-cols-2 gap-6 mb-8">
@@ -76,7 +93,7 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
             <div className="flex items-center gap-2 mb-4">
               <DollarSign className="w-5 h-5 text-gray-600" />
               <h3 className="font-semibold text-gray-900">
-                Q{nextQ.quarter} {nextQ.year} Targets
+                Q{planQ.quarter} {planQ.year} Targets
               </h3>
             </div>
             <div className="space-y-3">
@@ -128,7 +145,7 @@ export function WorkshopCompleteStep({ review }: WorkshopCompleteStepProps) {
         <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mb-8">
           <div className="flex items-center gap-2 mb-4">
             <Mountain className="w-5 h-5 text-gray-600" />
-            <h3 className="font-semibold text-gray-900">Q{nextQ.quarter} Rocks</h3>
+            <h3 className="font-semibold text-gray-900">Q{planQ.quarter} Rocks</h3>
           </div>
           <div className="space-y-3">
             {rocks.map((rock, index) => (

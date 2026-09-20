@@ -9,8 +9,8 @@
  * builder as current and prior, that either call failing fails the sheet
  * rather than printing a half-sheet, that the account catalogue (code and
  * Class) decides order and placement but its failure costs only those, not the
- * page, and that a business Xero holds as several organisations is refused
- * rather than printed as one of them.
+ * page, and that a business Xero holds as several organisations is never
+ * printed as one of them (route.consolidated.test.ts has the sheet it gets).
  *
  * The Xero answer is a real capture (the JDS fixtures, 30 April and 31 March
  * 2026) — but captured through scripts/capture-bs-fixture.ts, which asks with
@@ -59,6 +59,14 @@ vi.mock('@supabase/supabase-js', () => ({
         select: () => chain,
         eq: (column: string, value: unknown) => (filters.push({ table, op: 'eq', column, value }), chain),
         in: (column: string, value: unknown) => (filters.push({ table, op: 'in', column, value }), chain),
+        // The consolidated path ranges its dates and pages its reads. Without
+        // these the chain threw, and every multi-organisation answer was the
+        // route's 502 catch-all, which says nothing about the sheet.
+        gte: (column: string, value: unknown) => (filters.push({ table, op: 'gte', column, value }), chain),
+        lte: (column: string, value: unknown) => (filters.push({ table, op: 'lte', column, value }), chain),
+        order: () => chain,
+        limit: () => chain,
+        maybeSingle: () => Promise.resolve(tables[table] ?? { data: null, error: null }),
         then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
           Promise.resolve(tables[table] ?? { data: null, error: null }).then(resolve, reject),
       }
@@ -272,9 +280,16 @@ describe('GET /api/Xero/balance-sheet — the full sheet', () => {
     )
   })
 
-  it('refuses to print one organisation as the whole business when Xero holds it as several', async () => {
+  it('never prints one organisation as the whole business when Xero holds it as several', async () => {
     // Dragon Roofing is two orgs, IICT three. The page used to print whichever
-    // connection the query returned first, and say nothing.
+    // connection the query returned first, and say nothing; then it refused
+    // (409 MULTI_ORG). It now answers with the consolidated sheet from the
+    // stored mirror — route.consolidated.test.ts has that sheet, over a client
+    // that applies filters. With nothing in the mirror this stub gets the
+    // sheet's OWN refusal, which is what this file guards: a 422 naming the
+    // organisations and the date, and no live Xero call for any of them. The
+    // assertions this replaces — status not 200, Xero not called — were all
+    // true of the 409 as well, so the file guarded nothing new.
     tables.xero_connections = {
       data: [
         { id: 'c-1', business_id: 'biz-1', tenant_id: 't-1', tenant_name: 'EASY HAIL CLAIM PTY LTD', functional_currency: 'AUD', is_active: true },
@@ -283,13 +298,12 @@ describe('GET /api/Xero/balance-sheet — the full sheet', () => {
       error: null,
     }
     const res = await GET(req())
-    expect(res.status).toBe(409)
+    expect(res.status).toBe(422)
     const body = await res.json()
-    expect(body.code).toBe('MULTI_ORG')
+    expect(body.code).toBe('CONSOLIDATED_BS_REFUSED')
     // The pack prints this after "This page couldn't be produced: ".
     expect(body.error).toBe(
-      'Xero holds this business as 2 organisations (EASY HAIL CLAIM PTY LTD, Dragon Roofing Pty Ltd), ' +
-      'and this page can show only one of them — the consolidated balance sheet covers them together',
+      'no balance sheet has been synced for EASY HAIL CLAIM PTY LTD and Dragon Roofing Pty Ltd at 30 Apr 2026',
     )
     expect(body.rows).toBeUndefined()
     expect(tokenMock).not.toHaveBeenCalled()

@@ -91,7 +91,12 @@ async function checkErrorRate(supabase: ReturnType<typeof createServiceRoleClien
   }
 }
 
-type SyncClockLookup = { ok: boolean; byTenant: Map<string, number> };
+type SyncClockLookup = {
+  ok: boolean;
+  byTenant: Map<string, number>;
+  /** Why the lookup failed, so a caller can name the cause; null when it answered. */
+  error: string | null;
+};
 
 /** The database function behind the lookup (migration 20260915050000). */
 const SYNC_CLOCK_RPC = "last_xero_sync_by_tenant";
@@ -143,11 +148,26 @@ const FALLBACK_MAX_PAGES = 50;
 export async function getLastSyncByTenant(
   supabase: ReturnType<typeof createServiceRoleClient>,
   windowDays = 7,
+): Promise<{ ok: boolean; byTenant: Map<string, number> }> {
+  return getLastSyncByTenantSince(supabase, Date.now() - windowDays * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * The same lookup from an explicit instant instead of `windowDays` back from
+ * now: each tenant's latest success/partial finish at or after `sinceMs`. For a
+ * caller that measures its window from its own clock — sync coverage takes
+ * `nowMs`. A failed lookup also carries `error`, so that caller can report why.
+ */
+export async function getLastSyncByTenantSince(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  sinceMs: number,
 ): Promise<SyncClockLookup> {
-  const sinceIso = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+  const sinceIso = new Date(sinceMs).toISOString();
   const { data, error } = await supabase.rpc(SYNC_CLOCK_RPC, { p_since: sinceIso });
   if (!error) return syncClockFromRpc(data);
-  if (error.code !== "PGRST202" && error.code !== "42883") return failedLookup();
+  if (error.code !== "PGRST202" && error.code !== "42883") {
+    return failedLookup(`${SYNC_CLOCK_RPC}: ${error.message}`);
+  }
 
   // Correct, but many requests where one would do — and a migration left
   // unapplied would otherwise go unnoticed, because the pills stay right.
@@ -159,22 +179,26 @@ export async function getLastSyncByTenant(
   return readSyncClockByPages(supabase, sinceIso);
 }
 
-function failedLookup(): SyncClockLookup {
-  return { ok: false, byTenant: new Map() };
+function failedLookup(error: string): SyncClockLookup {
+  return { ok: false, byTenant: new Map(), error };
 }
 
 /** The function's reply: one object of tenant_id → ISO finished_at, or the lookup failed. */
 function syncClockFromRpc(data: unknown): SyncClockLookup {
   // null (the function is STRICT), an array or a scalar is not the object it returns.
-  if (data === null || typeof data !== "object" || Array.isArray(data)) return failedLookup();
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    return failedLookup(`${SYNC_CLOCK_RPC}: the reply is not a {tenant_id: finished_at} object`);
+  }
   const byTenant = new Map<string, number>();
   for (const [tenantId, finishedAt] of Object.entries(data)) {
     const ts = typeof finishedAt === "string" ? new Date(finishedAt).getTime() : NaN;
     // Skipping an unreadable entry would leave that tenant looking unsynced.
-    if (!tenantId || !Number.isFinite(ts)) return failedLookup();
+    if (!tenantId || !Number.isFinite(ts)) {
+      return failedLookup(`${SYNC_CLOCK_RPC}: unreadable entry for tenant "${tenantId}"`);
+    }
     byTenant.set(tenantId, ts);
   }
-  return { ok: true, byTenant };
+  return { ok: true, byTenant, error: null };
 }
 
 /**
@@ -202,9 +226,11 @@ async function readSyncClockByPages(
       .order("id", { ascending: true })
       .range(offset, offset + FALLBACK_PAGE_ROWS - 1);
     // The pages already read are only part of the window.
-    if (error || !Array.isArray(data)) return failedLookup();
+    if (error || !Array.isArray(data)) {
+      return failedLookup(`sync_jobs page ${page + 1}: ${error?.message ?? "no rows array in the reply"}`);
+    }
     // Only an EMPTY page ends the read: a short one can be PostgREST's row cap.
-    if (data.length === 0) return { ok: true, byTenant };
+    if (data.length === 0) return { ok: true, byTenant, error: null };
     for (const row of data as Array<{ tenant_id: string | null; finished_at: string | null }>) {
       // tenant_id '' is the outer per-business row, which names no org.
       if (!row.tenant_id || !row.finished_at) continue;
@@ -214,7 +240,7 @@ async function readSyncClockByPages(
     }
     offset += data.length;
   }
-  return failedLookup();
+  return failedLookup(`sync_jobs: the window did not end within ${FALLBACK_MAX_PAGES} pages`);
 }
 
 async function checkXero(supabase: ReturnType<typeof createServiceRoleClient>): Promise<CheckResult> {
