@@ -62,3 +62,53 @@ export function forecastPeriodsFor(
   const needsUpdate = FORECAST_PERIOD_FIELDS.some((k) => forecast[k] !== (periods as ForecastRow)[k])
   return { periods, needsUpdate }
 }
+
+/**
+ * The forecast the monthly pack's v1 cashflow runs on — found, never written.
+ *
+ * The page used ForecastService.getOrCreateForecast, which PERSISTS the period
+ * correction above (and creates an empty shell when there is nothing to pick).
+ * Exporting a pack therefore rewrote financial_forecasts: IICT's inactive
+ * forecast 88199866 had actual_end_month moved from 2026-04 to 2026-08 on every
+ * load, Dragon Roofing's 7b90633d from 2026-07 to 2026-08 (IICT-53, DRG-48).
+ * Here the same forecast is picked from the same ids (the businesses id and its
+ * profile's, as the service looks) and the correction is applied to the row in
+ * memory only — the cashflow is built on the periods the service would have
+ * saved, and the forecast page, which owns those columns, still saves them.
+ * No forecast is `forecast: null`: the pack has no cashflow, and no shell is
+ * made for it.
+ *
+ * Shared by the monthly-report page and scripts/preview-pack.ts.
+ */
+export async function findPackForecast<T extends ForecastRow = ForecastRow>(
+  supabase: { from: (table: string) => any },
+  businessId: string,
+  fiscalYear: number,
+): Promise<{ forecast: T | null; error: string | null }> {
+  const { data: profile, error: profileError } = await supabase
+    .from('business_profiles')
+    .select('id')
+    .eq('business_id', businessId)
+    .maybeSingle()
+  if (profileError) return { forecast: null, error: profileError.message ?? 'business profile lookup failed' }
+  const ids = [...new Set([businessId, profile?.id].filter((id): id is string => typeof id === 'string' && id !== ''))]
+
+  const { data: rows, error } = await supabase
+    .from('financial_forecasts')
+    .select('*')
+    .in('business_id', ids)
+    .eq('fiscal_year', fiscalYear)
+    .order('updated_at', { ascending: false })
+    .limit(10)
+  if (error) return { forecast: null, error: error.message ?? 'forecast lookup failed' }
+
+  const forecast = pickForecast(rows as T[] | null)
+  if (!forecast) return { forecast: null, error: null }
+  const { periods, needsUpdate } = forecastPeriodsFor(forecast, fiscalYear)
+  if (needsUpdate) {
+    const row = forecast as ForecastRow
+    row.fiscal_year = fiscalYear
+    for (const k of FORECAST_PERIOD_FIELDS) row[k] = (periods as ForecastRow)[k]
+  }
+  return { forecast, error: null }
+}

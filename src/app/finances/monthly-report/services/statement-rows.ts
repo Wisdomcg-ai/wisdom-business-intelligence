@@ -183,14 +183,22 @@ export type DetailRow =
  * Dormant accounts (nothing actual, nothing budgeted, anywhere) are left out,
  * as they have been since #497. A section with no groups is the flat list it
  * always was, one indent under its heading.
+ *
+ * `priorYear` is whether the table prints the prior-year column. The section
+ * total below the rows carries every line's prior year, so with the column on
+ * an account whose only money is last year's must keep its row or the column
+ * does not add up (Distinct Directions, August 2026: Total Other Income 9,484
+ * over one visible row of 3). Required, so a new table decides it.
  */
 export function sectionDetailRows(
   section: ReportSection,
   groupOrder: readonly string[] | null | undefined,
+  options: { priorYear: boolean },
 ): DetailRow[] {
   const label = sectionDisplayLabel(section.category)
   const rows: DetailRow[] = [{ kind: 'section', label }]
-  for (const g of withoutHeadingEcho(groupExpenseLines(withoutSilentLines(section.lines), groupOrder, section.category), label)) {
+  const lines = withoutSilentLines(section.lines, { priorYear: options.priorYear })
+  for (const g of withoutHeadingEcho(groupExpenseLines(lines, groupOrder, section.category), label)) {
     // The group row IS the subtotal. Printing an empty heading and then a
     // "Total Employment Expense" row nine lines later added a row per group —
     // nine on Urban Road's expense page, which is what pushed it from Calxa's

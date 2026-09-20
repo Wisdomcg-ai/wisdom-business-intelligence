@@ -146,6 +146,21 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     // a placement that can't be produced renders the stated reason (see
     // assessBalanceSheetForPdf) rather than a grey "Data not available" box.
   },
+  bank_balances: {
+    type: 'bank_balances',
+    label: 'Bank Balances & Movement',
+    category: 'tables',
+    fullRow: true,
+    icon: 'DollarSign',
+    // The same five columns as the balance sheet, over a short list of
+    // accounts — portrait, and the same sizes.
+    defaultColSpan: 2, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+    // No dataDependency, for the reason balance_sheet has none: a placement
+    // that cannot be produced prints the stated reason (no accounts chosen, a
+    // missing closing rate, an organisation that has not synced) rather than a
+    // grey "Data not available" box.
+  },
   money_flow: {
     type: 'money_flow',
     label: 'Where Did Our Money Go',
@@ -177,6 +192,19 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     // No dataDependency: the palette can't know per-business series, and a
     // placed widget with no data for the month renders a placeholder page,
     // same as every other data-gated widget.
+  },
+  uploaded_insert: {
+    type: 'uploaded_insert',
+    label: 'Uploaded Page (PDF)',
+    category: 'tables',
+    fullRow: true,
+    // One placement per insert: Dragon has two, IICT two.
+    repeatable: true,
+    icon: 'FileUp',
+    // A whole sheet — the uploaded file's pages replace it — so it fills the grid.
+    defaultColSpan: 3, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 3, maxRowSpan: 3,
+    // No dataDependency: the file is per month, uploaded on the External Data tab.
   },
 
   // ─── P&L Charts ─────────────────────────────────────────────────

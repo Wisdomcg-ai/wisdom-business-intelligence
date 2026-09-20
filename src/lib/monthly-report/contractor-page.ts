@@ -73,6 +73,21 @@ const configSchema = z.object({
   unallocated_row: z.boolean().optional(),
   /** What a contractor with no department is filed under. Defaults "Uncategorised". */
   uncategorised_label: z.string().trim().min(1).max(40).optional(),
+  /**
+   * 'actuals' adds a column per Xero organisation before the month's total, as
+   * Calxa's Virtual Contractors table has DRAGON | EHC | TOTAL (DRG-29). The
+   * standard layout's; the Contractors Payment Summary is already a table of
+   * months.
+   */
+  entity_columns: z.enum(['none', 'actuals']).optional(),
+  /**
+   * The codes each organisation posts these accounts under, when they differ:
+   * Dragon's Virtual Contractors is 2300 and Easy Hail's 508, the same account
+   * under a different code, and contractor_account_codes has no organisation
+   * dimension (DRG-29). Read by the export when it asks the route for the
+   * figures — never by this page.
+   */
+  account_codes_by_tenant: z.record(z.string(), z.array(z.string().min(1)).min(1)).optional(),
 }).strict()
 
 export interface ContractorPageConfig {
@@ -82,6 +97,9 @@ export interface ContractorPageConfig {
   subtotal_variance: boolean
   unallocated_row: boolean
   uncategorised_label: string
+  /** The standard layout's columns per organisation. */
+  entity_columns: 'none' | 'actuals'
+  account_codes_by_tenant?: Record<string, string[]>
 }
 
 export type ParsedContractorPageConfig =
@@ -90,7 +108,7 @@ export type ParsedContractorPageConfig =
   | { ok: false; config: ContractorPageConfig; reason: string }
 
 const DEFAULT_CONFIG: ContractorPageConfig = {
-  layout: 'rollup', months: 2, basis: 'gross', subtotal_variance: false, unallocated_row: false, uncategorised_label: 'Uncategorised',
+  layout: 'rollup', months: 2, basis: 'gross', subtotal_variance: false, unallocated_row: false, uncategorised_label: 'Uncategorised', entity_columns: 'none',
 }
 
 const CALXA_ONLY_KEYS = ['months', 'basis', 'subtotal_variance', 'unallocated_row', 'uncategorised_label'] as const
@@ -121,16 +139,26 @@ export function parseContractorPageConfig(raw: unknown): ParsedContractorPageCon
     return { ok: false, config: { ...DEFAULT_CONFIG }, reason }
   }
   const c = result.data
+  // The organisation columns and the per-organisation codes are the standard
+  // page's: the Contractors Payment Summary is already a table of months.
+  const perEntity = {
+    entity_columns: c.entity_columns ?? 'none',
+    ...(c.account_codes_by_tenant ? { account_codes_by_tenant: c.account_codes_by_tenant } : {}),
+  }
   if (c.layout !== 'calxa') {
     const inert = raw == null ? [] : CALXA_ONLY_KEYS.filter((key) => Object.prototype.hasOwnProperty.call(raw, key))
     if (inert.length > 0) {
       return { ok: false, config: { ...DEFAULT_CONFIG }, reason: `${inert.join(', ')} ${inert.length === 1 ? 'applies' : 'apply'} only to layout calxa` }
     }
-    return { ok: true, config: { ...DEFAULT_CONFIG } }
+    return { ok: true, config: { ...DEFAULT_CONFIG, ...perEntity } }
+  }
+  if (c.entity_columns && c.entity_columns !== 'none') {
+    return { ok: false, config: { ...DEFAULT_CONFIG, ...perEntity }, reason: 'entity_columns applies only to the standard layout' }
   }
   return {
     ok: true,
     config: {
+      ...perEntity,
       layout: 'calxa',
       months: c.months ?? 3,
       basis: c.basis ?? 'net',
@@ -146,6 +174,22 @@ export function parseContractorPageConfig(raw: unknown): ParsedContractorPageCon
  * the widest placement wins; with no 'calxa' placement it is the two months the
  * route has always read, and the request does not change.
  */
+/**
+ * The codes each organisation posts the contractor accounts under, off the
+ * placed page — undefined when no placement names them, which is every client
+ * whose organisations share their codes (and every single-org client).
+ */
+export function contractorCodesByTenant(
+  widgets: readonly { type: string; config?: unknown }[],
+): Record<string, string[]> | undefined {
+  for (const widget of widgets) {
+    if (widget.type !== 'contractor_detail') continue
+    const map = parseContractorPageConfig(widget.config).config.account_codes_by_tenant
+    if (map && Object.keys(map).length > 0) return map
+  }
+  return undefined
+}
+
 export function contractorWindowForLayout(widgets: readonly { type: string; config?: unknown }[]): number {
   const sizes = widgets
     .filter((w) => w.type === 'contractor_detail')

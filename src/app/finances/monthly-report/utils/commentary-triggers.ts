@@ -3,7 +3,7 @@
  *
  * Collects the 4 trigger types that should fire a commentary row:
  *
- *   1. Expense over-budget        — variance_amount ≤ -$500              (existing rule, preserved)
+ *   1. Expense over-budget        — over by MORE than $500 (variance_amount < -$500, in cents)
  *   2. Revenue under-budget       — shortfall ≥ $500 OR ≥ 10% of budget  (whichever fires)
  *   3. Favourable expense swing   — variance ≥ $500 AND ≥ 20% of budget  (both required)
  *   4. Balance-sheet movement     — |MoM change| ≥ $5,000 OR ≥ 10% of opening
@@ -69,7 +69,7 @@ export interface TriggerPayload {
 
 // ─── Thresholds (locked per CONTEXT D-S1) ──────────────────────────────────
 
-const EXPENSE_OVER_DOLLAR = 500            // existing rule — unchanged
+const EXPENSE_OVER_DOLLAR = 500            // strictly more than — see (1) below
 const REVENUE_SHORTFALL_DOLLAR = 500
 const REVENUE_SHORTFALL_PCT = 0.10
 const FAVOURABLE_EXPENSE_DOLLAR = 500
@@ -148,8 +148,12 @@ export function collectCommentaryTriggers(
         // WD.3 house rule: FX never fires commentary.
         if (isFxAccount(line.account_name)) continue
 
-        // (1) Expense over-budget — existing trigger, unchanged
-        if (line.variance_amount <= -EXPENSE_OVER_DOLLAR) {
+        // (1) Expense over-budget — actual − budget > $500, the house rule in
+        // every client's monthly-report skill ("≤$500 overs are not noted").
+        // This fired at ≤ −500, so a line exactly $500 over was commented on
+        // (DRG-28). Compared in whole cents, so float residue on an exact $500
+        // (1,500.10 − 1,000.10 = 499.99999…) does not decide it either way.
+        if (Math.round(line.variance_amount * 100) < -EXPENSE_OVER_DOLLAR * 100) {
           expense_lines.push(toTriggerLine(line, 'expense_over_budget_dollar', hasBudget))
           continue // mutually exclusive with favourable on the same row
         }

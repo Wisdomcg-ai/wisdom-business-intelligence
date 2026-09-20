@@ -1,6 +1,7 @@
 /**
- * The read half of external metrics: active series, the month's values, and
- * the EXT-TIES reconciliation per series that declares a target.
+ * The read half of external metrics: active series, the month's values, the
+ * trend window a placement asks for, and the EXT-TIES reconciliation per series
+ * that declares a target.
  *
  * Shared by GET /api/monthly-report/external-metrics and
  * scripts/preview-pack.ts. Reads only; the caller supplies the client and is
@@ -8,10 +9,24 @@
  */
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { computeExternalTie, sumReconcileMeasure } from './external-metrics'
+import { trendMonths } from './external-metric-config'
 
 type Client = any
 
-export async function loadExternalMetricSeries(supabase: Client, businessId: string, periodMonth: string): Promise<any[]> {
+/** PostgREST answers at most 1,000 rows, and an unordered capped read is systematically the OLDEST. */
+const PAGE = 1000
+
+/**
+ * @param months how many months a trend placement prints, ending at
+ *   periodMonth (external-metric-config). One — the default — reads only the
+ *   month, exactly as this loader always has.
+ */
+export async function loadExternalMetricSeries(
+  supabase: Client,
+  businessId: string,
+  periodMonth: string,
+  opts: { months?: number } = {},
+): Promise<any[]> {
   const { data: seriesRows, error: sErr } = await supabase
     .from('external_metric_series')
     .select('*')
@@ -29,6 +44,28 @@ export async function loadExternalMetricSeries(supabase: Client, businessId: str
         .eq('period_month', periodMonth)
     : { data: [], error: null }
   if (vErr) throw vErr
+
+  // The trend window, month by month. Read in pages ordered by id: a capped
+  // read of an unordered query would drop the newest months, which are the
+  // ones the page prints on the left.
+  const months = opts.months ?? 1
+  const window = trendMonths(periodMonth, Math.max(1, months))
+  const historyRows: any[] = []
+  if (months > 1 && seriesIds.length > 0) {
+    for (let from = 0; ; from += PAGE) {
+      const { data: page, error: hErr } = await supabase
+        .from('external_metric_values')
+        .select('series_id, period_month, dimension_value, measure_key, scenario, value')
+        .in('series_id', seriesIds)
+        .gte('period_month', window[window.length - 1])
+        .lte('period_month', window[0])
+        .order('id')
+        .range(from, from + PAGE - 1)
+      if (hErr) throw hErr
+      historyRows.push(...(page ?? []))
+      if ((page ?? []).length < PAGE) break
+    }
+  }
 
   // EXT-TIES per series that declares a reconciliation target. The account
   // side reads the same wide-compat view every report page uses.
@@ -62,6 +99,9 @@ export async function loadExternalMetricSeries(supabase: Client, businessId: str
         tolerance: Number(s.reconcile_tolerance ?? 1),
       })
     }
-    return { ...s, values, tie }
+    const history = months > 1
+      ? (historyRows.filter((v: any) => v.series_id === s.id) as any[])
+      : undefined
+    return { ...s, values, ...(history ? { history } : {}), tie }
   })
 }

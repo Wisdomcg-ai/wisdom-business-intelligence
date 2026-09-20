@@ -4,6 +4,8 @@ import {
   parsePayrollGridConfig,
   payrollWindowForLayout,
   payrollWindowSize,
+  weeklySalaryOf,
+  isP10Default,
 } from '../payroll-grid-config'
 
 /** Urban Road's placement once the Calxa page is turned on (roster names and ids as Xero holds them). */
@@ -28,7 +30,12 @@ describe('parsePayrollGridConfig', () => {
     // it had: two months, the grid layout, highest paid first, no fills.
     const parsed = parsePayrollGridConfig(undefined)
     expect(parsed.ok).toBe(true)
-    expect(parsed.config).toEqual({ layout: 'grid', window: 'fixed', months: 2, roster: [], difference_fills: false })
+    expect(parsed.config).toEqual({
+      layout: 'grid', window: 'fixed', months: 2, roster: [], difference_fills: false,
+      // P10 — each at the page as it printed before it existed.
+      budget_basis: 'approved', earlier_months: 'dash', salary_period: 'week', employee_month_columns: false,
+      pay_fills: false, fill_tolerance: 1, standard_units_column: true, notes: [],
+    })
     expect(parsePayrollGridConfig({}).config).toEqual(DEFAULT_PAYROLL_GRID_CONFIG)
   })
 
@@ -90,5 +97,61 @@ describe('payrollWindowSize', () => {
     expect(payrollWindowForLayout([{ type: 'payroll_grid', config: URBAN_ROAD }], '2027-03')).toBe(3)
     // A placement whose config does not parse loads the default window.
     expect(payrollWindowForLayout([{ type: 'payroll_grid', config: { months: 'three' } }], '2027-03')).toBe(2)
+  })
+})
+
+describe('P10 — areas, a fortnightly roster, and the budget basis', () => {
+  it("reads Distinct Directions' placement: areas on the roster, the roster budget, month columns and shaded pays", () => {
+    const parsed = parsePayrollGridConfig({
+      layout: 'calxa',
+      months: 1,
+      difference_fills: true,
+      budget_basis: 'roster',
+      employee_month_columns: true,
+      pay_fills: true,
+      standard_units_column: false,
+      notes: ['Adam Davey was paid 222 hours of annual leave on his final pay.'],
+      roster: [
+        { name: 'Daniel Jarvis', employee_id: '06fd2ce1-4076-4347-a7ed-a9ce67e437e8', area: 'Head Office', weekly_salary: 3185 },
+        { name: 'James Baker', employee_id: '84a87517-afe8-458b-9af9-015ba4e56365', area: 'Bathurst', weekly_salary: 2314 },
+      ],
+    })
+    expect(parsed.ok).toBe(true)
+    expect(parsed.config.roster.map((r) => r.area)).toEqual(['Head Office', 'Bathurst'])
+    expect(parsed.config).toMatchObject({ budget_basis: 'roster', employee_month_columns: true, pay_fills: true, standard_units_column: false })
+    expect(parsed.config.notes).toHaveLength(1)
+  })
+
+  it("an IICT-shaped roster states each salary per fortnight; the weekly equivalent is half", () => {
+    const parsed = parsePayrollGridConfig({
+      layout: 'calxa', months: 3, salary_period: 'fortnight',
+      roster: [{ name: 'Jennifer Moore', fortnightly_salary: 2707 }, { name: 'Joelson Batista', weekly_salary: 2676 }],
+    })
+    expect(parsed.ok).toBe(true)
+    expect(parsed.config.roster.map(weeklySalaryOf)).toEqual([1353.5, 2676])
+  })
+
+  it('an entry may state a weekly or a fortnightly salary, never both — two figures that disagree would print one', () => {
+    const both = parsePayrollGridConfig({ roster: [{ name: 'A', weekly_salary: 1000, fortnightly_salary: 2100 }] })
+    expect(both.ok).toBe(false)
+    expect(both.ok ? '' : both.reason).toContain('roster.0')
+    expect(weeklySalaryOf({})).toBeNull()
+    expect(weeklySalaryOf({ weekly_salary: null })).toBeNull()
+  })
+
+  it('an unknown basis or a tolerance past $100 is a stated reason, not a silent default', () => {
+    const basis = parsePayrollGridConfig({ budget_basis: 'forecast' })
+    expect(basis.ok ? '' : basis.reason).toContain('budget_basis')
+    const tolerance = parsePayrollGridConfig({ fill_tolerance: 500 })
+    expect(tolerance.ok ? '' : tolerance.reason).toContain('fill_tolerance')
+  })
+
+  it('knows when a placement uses nothing P10 added', () => {
+    expect(isP10Default(DEFAULT_PAYROLL_GRID_CONFIG)).toBe(true)
+    expect(isP10Default(parsePayrollGridConfig(URBAN_ROAD).config)).toBe(true)
+    expect(isP10Default(parsePayrollGridConfig({ roster: [{ name: 'A', area: 'Orange' }] }).config)).toBe(false)
+    expect(isP10Default(parsePayrollGridConfig({ roster: [{ name: 'A', fortnightly_salary: 2000 }] }).config)).toBe(false)
+    expect(isP10Default(parsePayrollGridConfig({ budget_basis: 'roster' }).config)).toBe(false)
+    expect(isP10Default(parsePayrollGridConfig({ notes: ['x'] }).config)).toBe(false)
   })
 })

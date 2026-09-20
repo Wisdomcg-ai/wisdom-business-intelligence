@@ -21,24 +21,24 @@ const flow = deriveMoneyFlow(URBAN_ROAD_BS_JUL_AUG_2026, '2026-08', {
 })
 
 /** Whole dollars, the way the page prints each row. */
-const DEFAULT: MoneyFlowConfig = { last_line: 'reconciliation', summary_codes: 'plain' }
-const CALXA: MoneyFlowConfig = { last_line: 'reconciliation', summary_codes: 'calxa' }
+const DEFAULT: MoneyFlowConfig = { last_line: 'reconciliation', summary_codes: 'plain', bank_rows: 'all' }
+const CALXA: MoneyFlowConfig = { last_line: 'reconciliation', summary_codes: 'calxa', bank_rows: 'all' }
 
 const printed = (rows: ReturnType<typeof moneyFlowRows>['rows']) =>
   rows.map((r) => (r.type === 'section' ? `# ${r.label}` : `${r.label} ${Math.round(r.movement)}`))
 
 describe('parseMoneyFlowConfig', () => {
-  it("defaults to the reconciliation and plain labels; each asks for Calxa's by name", () => {
-    expect(parseMoneyFlowConfig(undefined)).toEqual({ ok: true, config: { last_line: 'reconciliation', summary_codes: 'plain' } })
-    expect(parseMoneyFlowConfig(null)).toEqual({ ok: true, config: { last_line: 'reconciliation', summary_codes: 'plain' } })
-    expect(parseMoneyFlowConfig({ last_line: 'surplus', summary_codes: 'calxa' }))
-      .toEqual({ ok: true, config: { last_line: 'surplus', summary_codes: 'calxa' } })
+  it("defaults to the reconciliation, plain labels and every bank account; each asks for Calxa's by name", () => {
+    expect(parseMoneyFlowConfig(undefined)).toEqual({ ok: true, config: DEFAULT })
+    expect(parseMoneyFlowConfig(null)).toEqual({ ok: true, config: DEFAULT })
+    expect(parseMoneyFlowConfig({ last_line: 'surplus', summary_codes: 'calxa', bank_rows: 'moved' }))
+      .toEqual({ ok: true, config: { last_line: 'surplus', summary_codes: 'calxa', bank_rows: 'moved' } })
   })
 
   it('a typo is a reason for the page, never the default in disguise', () => {
     // No UI writes this config; it is typed by hand in SQL. 'Surplus' quietly
     // printing the reconciliation is a mistake nobody would ever see.
-    for (const bad of [{ last_line: 'bogus' }, { last_line: 'Surplus' }, { lastLine: 'surplus' }, { summary_codes: 'numbers' }]) {
+    for (const bad of [{ last_line: 'bogus' }, { last_line: 'Surplus' }, { lastLine: 'surplus' }, { summary_codes: 'numbers' }, { bank_rows: 'moving' }, { hide_zero_bank_rows: true }]) {
       const parsed = parseMoneyFlowConfig(bad)
       expect(parsed.ok).toBe(false)
     }
@@ -131,5 +131,61 @@ describe('moneyFlowRows — Urban Road, August 2026', () => {
     expect(moneyFlowRows(f, DEFAULT).notes).toEqual([
       '1 of the bank accounts chosen for this report is not in this balance sheet, so it is not counted as bank - check the report settings.',
     ])
+  })
+})
+
+describe("bank_rows — Distinct Directions' bank block (DD-33)", () => {
+  // Calxa's p22 lists only the accounts that moved; ours printed
+  // "Petty Cash 156 156 0". Petty Cash at DD's 155.81 both ends, and an
+  // account that moved 30c — which prints as 0, and whose 30c the proof still
+  // counts (unlisted, as deriveMoneyFlow does for a source under 50c).
+  const withIdle = {
+    ...flow,
+    bank: { start: flow.bank.start + 155.81 + 12.3, end: flow.bank.end + 155.81 + 12.6, delta: Math.round((flow.bank.delta + 0.3) * 100) / 100 },
+    bank_accounts: [
+      ...flow.bank_accounts,
+      { label: 'Petty Cash', account_id: 'petty', opening: 155.81, closing: 155.81, movement: 0 },
+      { label: 'Cash Draw', account_id: 'draw', opening: 12.3, closing: 12.6, movement: 0.3 },
+    ],
+    unlisted_movement: Math.round((flow.unlisted_movement + 0.3) * 100) / 100,
+  }
+  const bankBlock = (config: MoneyFlowConfig) => {
+    const out = printed(moneyFlowRows(withIdle, config).rows)
+    return out.slice(out.indexOf('# How this Affected Our Bank'))
+  }
+
+  it("'all' (the default) lists every account with a balance, as before", () => {
+    expect(bankBlock(DEFAULT)).toEqual([
+      '# How this Affected Our Bank',
+      'CBA Cheque Account -40708',
+      'Bus Online Saver 9000',
+      'Petty Cash 0',
+      'Cash Draw 0',
+      'Total -31708',
+      'Net Movement -31708',
+    ])
+  })
+
+  it("'moved' leaves off the accounts whose movement prints as 0 — the Total and the last line do not move", () => {
+    const moved = { ...DEFAULT, bank_rows: 'moved' as const }
+    expect(bankBlock(moved)).toEqual([
+      '# How this Affected Our Bank',
+      'CBA Cheque Account -40708',
+      'Bus Online Saver 9000',
+      'Total -31708',
+      'Net Movement -31708',
+    ])
+    const all = moneyFlowRows(withIdle, DEFAULT)
+    const onlyMoved = moneyFlowRows(withIdle, moved)
+    expect(onlyMoved.rows.at(-1)).toEqual(all.rows.at(-1))
+    expect(onlyMoved.rows.at(-2)).toEqual(all.rows.at(-2))
+    expect(onlyMoved.notes).toEqual(all.notes)
+    // Everything above the bank block is untouched.
+    expect(onlyMoved.rows.slice(0, all.rows.length - 5)).toEqual(all.rows.slice(0, all.rows.length - 5))
+  })
+
+  it("an account that moved 50c or more stays — it prints as 1", () => {
+    const halfDollar = { ...withIdle, bank_accounts: [...flow.bank_accounts, { label: 'Cash Draw', account_id: 'draw', opening: 12.3, closing: 12.8, movement: 0.5 }] }
+    expect(printed(moneyFlowRows(halfDollar, { ...DEFAULT, bank_rows: 'moved' }).rows)).toContain('Cash Draw 1')
   })
 })

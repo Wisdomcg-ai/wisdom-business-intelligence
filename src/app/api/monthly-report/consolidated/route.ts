@@ -4,7 +4,9 @@
  * Multi-tenant consolidation endpoint (Phase 34, tenant model).
  *
  * Input:  { business_id, report_month, fiscal_year }
- * Output: ConsolidatedReport — per-tenant columns for the business.
+ * Output: { report: ConsolidatedReport — per-tenant columns for the business,
+ *           settings — the business's monthly_report_settings, as
+ *           GET /api/monthly-report/settings serves them }
  *
  * Behavior: consolidation is only meaningful when the business has 2+ active
  * Xero connections marked include_in_consolidation. With 0 or 1 tenant, the
@@ -48,7 +50,11 @@ import {
   translatePLAtMonthlyAverage,
 } from '@/lib/consolidation/fx'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { reportedFxMonths } from '@/lib/monthly-report/consolidated-fx'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
+import { loadReportSettings } from '@/lib/monthly-report/report-settings-load'
+import { resolveApprovedBudgetForTenants } from '@/lib/budgets/consolidated-budget'
+import { loadAccountGroups, withConsolidatedGroups } from '@/lib/monthly-report/consolidated-groups'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 
@@ -164,13 +170,42 @@ async function postHandler(request: Request) {
     const yearStartMonth = parentProfile?.fiscal_year_start ?? DEFAULT_YEAR_START_MONTH
     const fyMonths = generateFiscalMonthKeys(fiscal_year, yearStartMonth) as readonly string[]
 
+    // --- REPORT SETTINGS ---
+    // The business's own settings row, read the way the settings panel reads
+    // it, served beside the report for the Budget vs Actual adapter. The
+    // adapter used to put a stub in its place that switched off Unspent
+    // Budget, Budget Next Month, Budget Annual Total and the prior year, so
+    // Dragon and IICT printed six figure columns where Calxa prints nine,
+    // whatever the coach had set (IICT-12, DRG-05). A failed read fails the
+    // request: a report with guessed columns is not one to send.
+    stage = 'load_settings'
+    const { settings } = await loadReportSettings(supabase, ids.businessId)
+
     // --- ENGINE ---
     // Presentation currency is always AUD for now. FX callback kicks in only
     // for tenants with non-AUD functional_currency (engine short-circuits AUD tenants).
     const presentationCurrency = 'AUD'
+    // The months this report prints from. Translation walks every month a line
+    // carries, but rates are loaded for the fiscal year only, so every month
+    // outside it came back "missing" — IICT's banner listed eighteen months,
+    // most of them with rates stored, when the August pack reads two (IICT-62).
+    // A missing rate is reported only for a month the report reads; values in
+    // the other months are never printed.
+    const reportedMonths = new Set(reportedFxMonths(fyMonths, report_month))
+
+    // --- BUDGET SOURCE ---
+    // Read positively, as the single-entity route does: a business with no
+    // settings row arrives on the defaults' 'forecast'. On the budget store the
+    // engine takes the approved budget INSTEAD of the forecast — per
+    // organisation or for the group, aligned to each organisation's own
+    // accounts, in AUD or refused with the reason (lib/budgets/consolidated-
+    // budget). This route used to ignore the setting, so Dragon and IICT
+    // printed a forecast under "Budgets" whatever the coach chose (DRG-03,
+    // IICT-07).
+    const onBudgetStore = (settings as { budget_source?: string } | null)?.budget_source === 'budget_version'
 
     stage = 'engine'
-    const report = await buildConsolidation(supabase, {
+    const engineReport = await buildConsolidation(supabase, {
       businessId: ids.businessId,
       reportMonth: report_month,
       fiscalYear: fiscal_year,
@@ -189,9 +224,38 @@ async function postHandler(request: Request) {
         for (const [m, r] of rates.entries()) {
           ratesUsed[`${pair}::${m}`] = r
         }
-        return { translated, missing, ratesUsed }
+        return { translated, missing: missing.filter((m) => reportedMonths.has(m)), ratesUsed }
       },
+      ...(onBudgetStore
+        ? {
+            resolveApprovedBudget: ({ tenants, accountsByTenant, presentationCurrency: currency }) => {
+              stage = 'approved_budget'
+              return resolveApprovedBudgetForTenants(supabase as any, {
+                businessId: ids.businessId,
+                fiscalYear: fiscal_year,
+                reportMonth: report_month,
+                fyMonths,
+                tenants,
+                accountsByTenant,
+                presentationCurrency: currency,
+              })
+            },
+          }
+        : {}),
     })
+
+    // --- EXPENSE GROUPS ---
+    // Each consolidated line under the group its account is mapped to, the
+    // one reading the single-entity pages use (consolidated-groups). The
+    // lines carried none, so every consolidated statement page printed one
+    // flat run where Calxa prints IICT's and Dragon's expenses under their
+    // headings, each with a subtotal (IICT-26, DRG-21). A failed read fails the
+    // request, as the generate route's does. A report with no lines has
+    // nothing to group and reads nothing.
+    stage = 'load_mappings'
+    const report = engineReport.consolidated.lines.length > 0
+      ? withConsolidatedGroups(engineReport, await loadAccountGroups(supabase, ids))
+      : engineReport
 
     // PRES-07 — this route never computed read-path quality, so the monthly
     // report's DataIntegrityBanner had nothing to render for a consolidation
@@ -219,6 +283,7 @@ async function postHandler(request: Request) {
     return NextResponse.json({
       success: true,
       report,
+      settings,
       data_quality: data_quality?.data_quality ?? null,
       per_tenant_quality: data_quality?.per_tenant_quality ?? [],
     })

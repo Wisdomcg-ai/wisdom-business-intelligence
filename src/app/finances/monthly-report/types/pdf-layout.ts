@@ -48,6 +48,19 @@ export type WidgetType =
   // which comparison column Xero fills — the grouping, subtotals and sign
   // conventions are identical, and WC.1 config exists precisely for this.
   | 'balance_sheet'
+  // Bank Balances & Movement, Calxa page 17: the chosen bank, cash-on-hand and
+  // credit-card accounts at the end of the month and the month before, per Xero
+  // organisation, foreign ones translated at each date's closing rate. Takes no
+  // config — the accounts are the business's saved list, not a placement's, so
+  // two placements could not disagree about what the bank is.
+  | 'bank_balances'
+  // An uploaded page: the month's PDF, uploaded by the coach against this
+  // placement and merged into the pack at its position (see
+  // lib/monthly-report/pack-inserts). The route for the pages audit §5 says
+  // not to build — DD's Lumary income analysis, Dragon's Cash vs Accruals,
+  // IICT's Employment Hero payroll. titleOverride names it; placed as many
+  // times as a client has inserts.
+  | 'uploaded_insert'
   // P&L Charts
   // WD.1 — one renderer serves all three; the type carries the section, and
   // widget.config.section may override it (WC.1). Three types rather than one
@@ -125,6 +138,12 @@ export interface WidgetDefinition {
    * saved before this rule still render correctly.
    */
   fullRow?: boolean
+  /**
+   * The palette greys a type out once it is placed. A type whose placements
+   * are told apart by their own name or file — an uploaded page — can be
+   * dragged on again.
+   */
+  repeatable?: boolean
   defaultColSpan: number
   defaultRowSpan: number
   minColSpan: number

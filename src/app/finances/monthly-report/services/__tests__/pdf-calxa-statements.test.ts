@@ -159,7 +159,7 @@ describe('the detail table rows (Calxa pages 4, 6, 10-11)', () => {
   it('puts the Employment Expense figures on its heading row, with no Total row', () => {
     const report = urbanRoadAugust()
     const opex = report.sections.find((s) => s.category === 'Operating Expenses')!
-    const rows = sectionDetailRows(opex, report.settings.expense_group_order)
+    const rows = sectionDetailRows(opex, report.settings.expense_group_order, { priorYear: false })
     expect(rows[0]).toEqual({ kind: 'section', label: 'Expense' })
     const group = rows[1]
     expect(group.kind).toBe('group')
@@ -181,14 +181,14 @@ describe('the detail table rows (Calxa pages 4, 6, 10-11)', () => {
   it('a section whose only group is named as the heading is its accounts, with no echo row', () => {
     const report = urbanRoadAugust()
     const revenue = { ...report.sections[0], lines: report.sections[0].lines.map((ln) => ({ ...ln, group: 'income ' })) }
-    const rows = sectionDetailRows(revenue, null)
+    const rows = sectionDetailRows(revenue, null, { priorYear: false })
     expect(rows.map((r) => r.kind)).toEqual(['section', 'line', 'total'])
     expect(rows[1]).toMatchObject({ indent: 1 })
   })
 
   it('an ungrouped section is its accounts, one indent under the heading', () => {
     const report = urbanRoadAugust()
-    const rows = sectionDetailRows(report.sections[0], null)
+    const rows = sectionDetailRows(report.sections[0], null, { priorYear: false })
     expect(rows.map((r) => r.kind)).toEqual(['section', 'line', 'total'])
     expect(rows[1]).toMatchObject({ indent: 1 })
     expect(rows[2]).toMatchObject({ label: 'Total Income' })
@@ -319,7 +319,7 @@ describe('a grouped income section keeps income polarity on its group row', () =
       lines: [l('Canvas Sales', shortfall, { group: 'Trading Income', variance_percent: -23.92, ytd_variance_percent: -19.23 })],
       subtotal: l('Total Revenue', shortfall, { variance_percent: -23.92, ytd_variance_percent: -19.23 }),
     }
-    const rows = sectionDetailRows(revenue, report.settings.expense_group_order)
+    const rows = sectionDetailRows(revenue, report.settings.expense_group_order, { priorYear: false })
     const group = rows.find((r) => r.kind === 'group')
     const total = rows.find((r) => r.kind === 'total')
     if (group?.kind !== 'group' || total?.kind !== 'total') throw new Error('shape')
@@ -337,13 +337,13 @@ describe('a grouped income section keeps income polarity on its group row', () =
       lines: [l('Interest Income', f(200, 110.93, -89.07, 400, 168.8, -231.2, 0, 0, 0), { group: 'Interest' })],
       subtotal: l('Total Other Income', f(200, 110.93, -89.07, 400, 168.8, -231.2, 0, 0, 0)),
     }
-    const g = sectionDetailRows(other, null).find((r) => r.kind === 'group')
+    const g = sectionDetailRows(other, null, { priorYear: false }).find((r) => r.kind === 'group')
     if (g?.kind !== 'group') throw new Error('shape')
     expect(g.line.variance_amount).toBeCloseTo(-89.07, 2)
 
     const report = urbanRoadAugust()
     const opex = report.sections.find((s) => s.category === 'Operating Expenses')!
-    const e = sectionDetailRows(opex, report.settings.expense_group_order).find((r) => r.kind === 'group')
+    const e = sectionDetailRows(opex, report.settings.expense_group_order, { priorYear: false }).find((r) => r.kind === 'group')
     if (e?.kind !== 'group') throw new Error('shape')
     expect(Math.round(e.line.variance_amount)).toBe(-792)
   })

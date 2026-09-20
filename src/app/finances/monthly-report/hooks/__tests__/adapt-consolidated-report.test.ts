@@ -10,8 +10,21 @@
  */
 import { describe, it, expect } from 'vitest'
 import { adaptConsolidatedToGeneratedReport } from '../useMonthlyReport'
+import { DEFAULT_SECTIONS } from '../../types'
 
 const FY_MONTHS = ['2026-07', '2026-08', '2026-09']
+
+/** A settings row as GET /api/monthly-report/settings serves it. */
+const SETTINGS = {
+  business_id: 'biz-1',
+  sections: { ...DEFAULT_SECTIONS },
+  show_prior_year: false,
+  show_ytd: true,
+  show_unspent_budget: true,
+  show_budget_next_month: true,
+  show_budget_annual_total: true,
+  budget_forecast_id: null,
+}
 
 function line(
   account_type: string,
@@ -53,6 +66,7 @@ describe('adaptConsolidatedToGeneratedReport — Phase B budget wiring', () => {
       REPORT_MONTH,
       2027,
       'biz-1',
+      { settings: SETTINGS },
     )
 
     expect(report.has_budget).toBe(false)
@@ -77,6 +91,7 @@ describe('adaptConsolidatedToGeneratedReport — Phase B budget wiring', () => {
       REPORT_MONTH,
       2027,
       'biz-1',
+      { settings: SETTINGS },
     )
 
     expect(report.has_budget).toBe(true)
@@ -118,6 +133,7 @@ describe('adaptConsolidatedToGeneratedReport — Phase B budget wiring', () => {
       REPORT_MONTH,
       2027,
       'biz-1',
+      { settings: SETTINGS },
     )
 
     const marketing = report.sections
@@ -138,10 +154,71 @@ describe('adaptConsolidatedToGeneratedReport — Phase B budget wiring', () => {
       REPORT_MONTH,
       2027,
       'biz-1',
+      { settings: SETTINGS },
     )
     expect(report.is_consolidation).toBe(true)
     expect(report.business_id).toBe('biz-1')
     expect(report.report_month).toBe(REPORT_MONTH)
     expect(report.fiscal_year).toBe(2027)
+  })
+})
+
+/**
+ * IICT-12 / DRG-05 — the adapter replaced the business's settings with a stub
+ * that switched off Unspent Budget, Budget Next Month, Budget Annual Total and
+ * the prior year. The summary, detail and YTD pages read `report.settings`, so
+ * Dragon and IICT printed six figure columns where Calxa prints nine, whatever
+ * the coach had set.
+ */
+describe('adaptConsolidatedToGeneratedReport — the business\'s own settings', () => {
+  const REPORT_MONTH = '2026-08'
+
+  it('carries the settings it is given, column switches and all, instead of a stub', () => {
+    const stored = {
+      ...SETTINGS,
+      show_prior_year: true,
+      standing_commentary: [{ account_name: 'Wages', text: 'Refer to the Payrun page' }],
+      expense_group_order: ['Employment Costs'],
+      subscription_account_codes: ['485'],
+    }
+    const report = adaptConsolidatedToGeneratedReport(
+      makeConsolidated({}),
+      REPORT_MONTH,
+      2027,
+      'biz-1',
+      { settings: stored as any },
+    )
+    expect(report.settings).toEqual(stored)
+    expect(report.settings.show_unspent_budget).toBe(true)
+    expect(report.settings.show_budget_next_month).toBe(true)
+    expect(report.settings.show_budget_annual_total).toBe(true)
+    expect(report.settings.show_prior_year).toBe(true)
+  })
+
+  it('a switch the coach turned off stays off', () => {
+    const report = adaptConsolidatedToGeneratedReport(
+      makeConsolidated({}),
+      REPORT_MONTH,
+      2027,
+      'biz-1',
+      { settings: { ...SETTINGS, show_budget_next_month: false } },
+    )
+    expect(report.settings.show_budget_next_month).toBe(false)
+    expect(report.settings.show_unspent_budget).toBe(true)
+  })
+
+  it('the consolidation carries no prior-year figures, so every row says so rather than printing $0', () => {
+    const report = adaptConsolidatedToGeneratedReport(
+      makeConsolidated({}),
+      REPORT_MONTH,
+      2027,
+      'biz-1',
+      { settings: { ...SETTINGS, show_prior_year: true } },
+    )
+    for (const section of report.sections) {
+      for (const l of section.lines) expect(l.prior_year).toBeNull()
+      expect(section.subtotal.prior_year).toBeNull()
+    }
+    expect(report.net_profit_row.prior_year).toBeNull()
   })
 })
