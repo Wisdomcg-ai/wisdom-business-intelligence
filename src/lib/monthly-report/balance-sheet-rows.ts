@@ -103,13 +103,20 @@ export function balanceSheetColumnLabel(isoDate: string): string {
 
 // ─── Labels ─────────────────────────────────────────────────────────────────
 
-/** Dollars. The sync's BS equation materiality (CLAUDE.md, 1 Sep 2026). */
-const NET_ASSETS_TOLERANCE = 0.05
+/**
+ * Dollars. The sync's BS equation materiality (CLAUDE.md, 1 Sep 2026) — how
+ * far Net Assets and Total Equity may be apart and the sheet still be said to
+ * balance. Exported because anything that MOVES a figure on this sheet has to
+ * stay inside it: the consolidated sheet holds its eliminations to this proof
+ * and not to a looser one of their own (a pair netted 50c apart moved Net
+ * Assets off Total Equity, and the page then blamed the client's books).
+ */
+export const NET_ASSETS_TOLERANCE = 0.05
 
 /** Xero's fixed id for the Current Year Earnings row, which has no real account. */
 const CURRENT_YEAR_EARNINGS_ID = 'abababab-abab-abab-abab-abababababab'
 
-function isCurrentYearEarnings(label: string, accountId: string | null): boolean {
+export function isCurrentYearEarnings(label: string, accountId: string | null): boolean {
   return accountId === CURRENT_YEAR_EARNINGS_ID || label.trim().toLowerCase() === 'current year earnings'
 }
 
@@ -423,7 +430,7 @@ export interface BuildBalanceSheetInput {
   accounts?: ReadonlyMap<string, BsAccount> | null
 }
 
-const CLASS_OF_XERO: Record<string, BsClass> = { ASSET: 'asset', LIABILITY: 'liability', EQUITY: 'equity' }
+export const CLASS_OF_XERO: Record<string, BsClass> = { ASSET: 'asset', LIABILITY: 'liability', EQUITY: 'equity' }
 
 const CLASS_LABEL: Record<BsClass, string> = { asset: 'Asset', liability: 'Liability', equity: 'Equity' }
 
@@ -500,6 +507,42 @@ function buildClassRows(merged: Merged[], accounts: ReadonlyMap<string, BsAccoun
   // Nothing at the report date is no sheet, not three nil classes: the page
   // says Xero returned nothing rather than printing "Total Asset —".
   if (!hasCurrent) return { rows: [], balances: true }
+
+  const placed = (cls: BsClass): PlacedBsLine[] =>
+    (sortLines(lines[cls], accounts) as typeof lines[BsClass]).map((m) => {
+      const e = m.entry as Extract<Entry, { kind: 'line' }>
+      return {
+        label: isCurrentYearEarnings(e.label, e.accountId) ? 'Current Earnings' : e.label,
+        current: m.current,
+        prior: m.prior,
+      }
+    })
+  return flatClassSheet({ asset: placed('asset'), liability: placed('liability'), equity: placed('equity') }, { hasPrior, unplaced })
+}
+
+/** One account on the flat sheet: already in its class, in its class's sign, in page order. */
+export interface PlacedBsLine {
+  label: string
+  current: number | null
+  prior: number | null
+}
+
+/**
+ * The rows of the flat sheet from accounts already placed and ordered — Asset,
+ * Liability, Net Assets, Equity, each class closed by a total ADDED from every
+ * account including the ones hidden as nil — and whether it balances.
+ *
+ * One function for both sheets the page prints: one organisation's, built
+ * from Xero's report (buildClassRows), and several organisations' built from
+ * the stored mirror (consolidated-balance-sheet.ts). Which rows hide, how a
+ * total is added, the variance sign and the $0.05 proof are the page's rules,
+ * not either sheet's, so neither can print a total the other would not.
+ */
+export function flatClassSheet(
+  lines: Record<BsClass, PlacedBsLine[]>,
+  opts: { hasPrior: boolean; unplaced?: boolean },
+): { rows: BalanceSheetRow[]; balances: boolean } {
+  const { hasPrior, unplaced = false } = opts
   // Xero's balances are cents; a sum of them in binary floating point is not
   // (Just Digital Signage's 1,574,750.74 − 911,847.17 comes out
   // 662,903.5700000001). Back to cents, so the payload — and a frozen copy of
@@ -514,14 +557,13 @@ function buildClassRows(merged: Merged[], accounts: ReadonlyMap<string, BsAccoun
   const rows: BalanceSheetRow[] = []
   const pushClass = (cls: BsClass) => {
     rows.push({ type: 'section_header', label: CLASS_LABEL[cls], current: null, prior: null, variance: null, variance_pct: null, depth: 0 })
-    for (const m of sortLines(lines[cls], accounts) as typeof lines[BsClass]) {
+    for (const m of lines[cls]) {
       // Hidden from the page, never from the arithmetic: a 2c Retained
       // Earnings b/f stays inside Total Equity.
       if (roundsToNil(m.current, m.prior)) continue
-      const e = m.entry as Extract<Entry, { kind: 'line' }>
       rows.push({
         type: 'line_item',
-        label: isCurrentYearEarnings(e.label, e.accountId) ? 'Current Earnings' : e.label,
+        label: m.label,
         current: m.current,
         prior: m.prior,
         ...balanceSheetVariance(cls, m.current, m.prior),

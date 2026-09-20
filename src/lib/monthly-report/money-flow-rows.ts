@@ -8,6 +8,7 @@
  */
 import { z } from 'zod'
 import { flowSurplus, type MoneyFlow } from './money-flow'
+import { listOf } from './multi-org-consolidate'
 
 /**
  * A placement's config. Strict: the layout editor's options panel offers only
@@ -188,6 +189,14 @@ export function moneyFlowRows(flow: MoneyFlow, config: MoneyFlowConfig): MoneyFl
     movement: config.last_line === 'surplus' ? surplus : reconciled,
   })
 
+  // Named first, the way P8's consolidated balance sheet does: nothing else on
+  // this page says which organisations it added, and a group that quietly
+  // loses a connection would otherwise print every total short and silent.
+  if (flow.organisations && flow.organisations.length > 0) {
+    notes.push(
+      `Added together: ${listOf(flow.organisations.map((o) => (o.currency === 'AUD' ? o.name : `${o.name} (${o.currency})`)))}.`,
+    )
+  }
   if (!flow.summary) {
     notes.push("This month's income and expenses are not in the stored Xero sync, so the surplus is the movement in earnings on the balance sheet.")
   }

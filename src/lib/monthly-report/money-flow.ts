@@ -42,6 +42,7 @@
 
 import { isBankRow, parseBankAccountIds } from './opening-bank'
 import { compareStatementLines } from './statement-order'
+import { consolidateBalanceRows, consolidateFlowRows, type ConsolidationOrg, type FxRateLike } from './multi-org-consolidate'
 
 export interface BsRowInput {
   /** The Xero AccountID — what a chosen bank account and a credit card are matched on. */
@@ -124,6 +125,14 @@ export interface MoneyFlow {
   unlisted_movement: number
   /** earnings + sources − uses + unlisted − Δbank. 0 by construction when the equation holds. */
   continuity_residual: number
+  /**
+   * Set only by deriveConsolidatedMoneyFlow (more than one Xero organisation):
+   * every organisation added together, so the page can say so — nothing else
+   * on it names them, and a group that loses a connection would otherwise
+   * print every total short, balanced, with no mark of it. Absent for a
+   * single-organisation business, which prints exactly as before.
+   */
+  organisations?: { name: string; currency: string }[]
 }
 
 /** Last calendar day of 'YYYY-MM' as 'YYYY-MM-DD'. */
@@ -433,5 +442,113 @@ export function deriveMoneyFlow(
     uses,
     unlisted_movement: round2(unlisted),
     continuity_residual: residual,
+  }
+}
+
+// ─── P9 — more than one Xero organisation ──────────────────────────────────
+
+export interface MoneyFlowOrganisation {
+  tenant_id: string
+  name: string
+  /** xero_connections.functional_currency; null when it was never recorded. */
+  functional_currency: string | null
+}
+
+/**
+ * Where Did Our Money Go for a business Xero holds as several organisations
+ * (Dragon Roofing's two, IICT Group's two, one of them in Hong Kong dollars).
+ *
+ * Same-currency first (DRG-49): every organisation's balance-sheet rows are
+ * summed as though they were one ledger — no translation, so a two-AUD-org
+ * business like Dragon touches no rate at all. A foreign organisation's rows
+ * are translated first (the account_id/account_code stay real and distinct,
+ * so a chosen bank or debtors account still matches only the row it names)
+ * and relabelled onto one synthetic tenant, and the WHOLE single-organisation
+ * engine (deriveMoneyFlow) then runs over the combined ledger unchanged: the
+ * accounting-equation proof, the bank matching, the sorting, all of it.
+ *
+ * IAS 21 (decision 7): balance-sheet rows — the bank and every source/use —
+ * translate at the closing rate of their own date, exactly as P8's
+ * consolidated balance sheet translates assets and liabilities. The month's
+ * P&L (the Summary Income and Expenditure block, and the Surplus/Deficit this
+ * page opens on) translates at the month's average rate instead, because a
+ * month's income and expense are a MOVEMENT, not a balance. Those two
+ * translations of the same underlying profit will not agree to the cent for a
+ * foreign organisation — the residue is a currency translation difference,
+ * not a missing dollar — and it prints on its own line via the page's
+ * existing "the month's profit on the income statement and on the balance
+ * sheet differ by that much" note (moneyFlowProof, money-flow-rows.ts):
+ * nothing is folded into the Surplus figure to make the page balance.
+ *
+ * A rate this business needs and does not have refuses, naming the
+ * organisation and the date or month — never HKD added to AUD one-for-one,
+ * never a blank page. A currency that was never recorded refuses too.
+ */
+export function deriveConsolidatedMoneyFlow(
+  rows: BsRowInput[],
+  period: string,
+  organisations: readonly MoneyFlowOrganisation[],
+  opts: {
+    equationTolerance?: number
+    minItem?: number
+    bankAccountIds?: readonly string[] | null
+    plRows?: PlRowInput[]
+    creditCardAccountIds?: readonly string[]
+    /** fx_rates rows for every currency pair a foreign organisation needs. */
+    rates?: readonly FxRateLike[]
+  } = {},
+): MoneyFlow {
+  const prior = priorMonth(period)
+  const orgs = [...new Map(organisations.map((o) => [o.tenant_id, o])).values()]
+  if (orgs.length === 0) {
+    return notComparable(period, prior, 'No Xero organisation is connected to this business.')
+  }
+  // One organisation is the ordinary page — no translation, no relabelling,
+  // and byte-identical to a business that was never multi-org at all.
+  if (orgs.length === 1) return deriveMoneyFlow(rows, period, opts)
+
+  // Every organisation needs its own balance sheet at BOTH month-ends before
+  // any figure is merged: a connection with nothing synced yet would
+  // otherwise vanish into the combined ledger, contributing a silent $0 and
+  // understating every total with no sign that anything was missing — the
+  // same trap totalBankAt (opening-bank.ts) and the consolidated balance
+  // sheet already guard against.
+  const endKey = endOfMonth(period)
+  const startKey = endOfMonth(prior)
+  for (const o of orgs) {
+    const hasEnd = rows.some((r) => r.tenant_id === o.tenant_id && r.balances_by_date[endKey] !== undefined)
+    const hasStart = rows.some((r) => r.tenant_id === o.tenant_id && r.balances_by_date[startKey] !== undefined)
+    if (!hasEnd) return notComparable(period, prior, `No stored balance sheet for ${o.name} at ${period} yet — sync may not have reached it.`)
+    if (!hasStart) return notComparable(period, prior, `No stored balance sheet for ${o.name} at ${prior} — the month before this one hasn't been synced.`)
+  }
+
+  const consolidationOrgs: ConsolidationOrg[] = orgs.map((o) => ({
+    tenant_id: o.tenant_id,
+    name: o.name,
+    functional_currency: o.functional_currency,
+  }))
+  const rates = opts.rates ?? []
+
+  // The two month-ends this page prints — never every date the mirror has
+  // ever carried: a business's oldest-synced organisation can carry years of
+  // history a sibling predates, and that history is not this report's
+  // concern (IICT-55/56). Both dates are already proven present for every
+  // organisation by the hasEnd/hasStart check above.
+  const bs = consolidateBalanceRows(rows, consolidationOrgs, rates, [startKey, endKey], { prefixLabel: true })
+  if (!bs.ok) return notComparable(period, prior, bs.reason)
+
+  let plRows: PlRowInput[] | undefined
+  if (opts.plRows && opts.plRows.length > 0) {
+    const pl = consolidateFlowRows(opts.plRows, consolidationOrgs, rates)
+    if (!pl.ok) return notComparable(period, prior, pl.reason)
+    plRows = pl.rows
+  }
+
+  const flow = deriveMoneyFlow(bs.rows, period, { ...opts, plRows })
+  if (!flow.comparable) return flow
+
+  return {
+    ...flow,
+    organisations: orgs.map((o) => ({ name: o.name, currency: (o.functional_currency ?? 'AUD').trim().toUpperCase() })),
   }
 }

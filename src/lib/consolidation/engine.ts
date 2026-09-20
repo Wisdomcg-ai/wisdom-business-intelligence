@@ -33,6 +33,7 @@ import {
   type AlignedAccount,
 } from './account-alignment'
 import { loadEliminationRulesForBusiness, applyEliminations } from './eliminations'
+import type { ApprovedBudgetOutcome } from '@/lib/budgets/consolidated-budget'
 
 interface LoadedContext {
   business: ConsolidationBusiness
@@ -80,6 +81,22 @@ export interface BuildConsolidationOpts {
    * Tests inject this directly to avoid mocking financial_forecasts queries.
    */
   singleBusinessBudget?: ForecastLineLike[] | null
+  /**
+   * The APPROVED budget, for a business on the budget store
+   * (monthly_report_settings.budget_source = 'budget_version'). When given, it
+   * replaces the forecast loaders entirely: its answer is the budget, and a
+   * refusal is no budget with the reason attached — never the forecast, which
+   * is the moving yardstick the budget store exists to get away from.
+   *
+   * A callback rather than a value because alignment needs each organisation's
+   * accounts, which the engine has only just read (resolveApprovedBudgetForTenants).
+   */
+  resolveApprovedBudget?: (ctx: {
+    tenants: ConsolidationTenant[]
+    /** Each organisation's deduplicated P&L lines, before translation — codes and names are what align. */
+    accountsByTenant: Map<string, XeroPLLineLike[]>
+    presentationCurrency: string
+  }) => Promise<ApprovedBudgetOutcome>
 }
 
 /**
@@ -619,14 +636,35 @@ export async function buildConsolidation(
   //    Both branches produce `budgetsByTenant` (Map<tenant_id, lines>) and
   //    `singleModeBudget` (ForecastLineLike[] | null) — exactly one of them
   //    will be non-empty per run. The universe builder consumes both.
-  const budgetMode: 'single' | 'per_tenant' = business.consolidation_budget_mode
+  //
+  //    The approved budget (opts.resolveApprovedBudget) is a third source that
+  //    replaces both: its versions say whether the budget is the group's or
+  //    each organisation's, so it sets the mode rather than reading it.
+  let budgetMode: 'single' | 'per_tenant' = business.consolidation_budget_mode
 
   let budgetsByTenant = new Map<string, ForecastLineLike[]>()
   let singleModeBudget: ForecastLineLike[] | null = null
   let singleBudgetFound = false
   let fallbackFired = false
+  let approved: ApprovedBudgetOutcome | null = null
 
-  if (budgetMode === 'single') {
+  if (opts.resolveApprovedBudget) {
+    approved = await opts.resolveApprovedBudget({
+      tenants,
+      accountsByTenant: new Map(deduped.map((d) => [d.tenant.tenant_id, d.lines])),
+      presentationCurrency: business.presentation_currency,
+    })
+    if (approved.status === 'resolved' && approved.scope === 'per_tenant' && approved.byTenant) {
+      budgetMode = 'per_tenant'
+      budgetsByTenant = new Map(approved.byTenant)
+    } else {
+      budgetMode = 'single'
+      if (approved.status === 'resolved') {
+        singleModeBudget = approved.consolidated
+        singleBudgetFound = approved.consolidated.length > 0
+      }
+    }
+  } else if (budgetMode === 'single') {
     // Single mode: one forecast drives consolidated.budgetLines. Tests can
     // inject singleBusinessBudget; otherwise the engine loads it.
     const loaded =
@@ -771,6 +809,35 @@ export async function buildConsolidation(
       lines: consolidatedActuals.lines,
       budgetLines: consolidatedBudget,
     },
+    // Only when the approved budget was asked for: a forecast-basis report is
+    // byte-for-byte what it was, and names no source it did not use.
+    ...(approved
+      ? {
+          budget_provenance: approved.status === 'resolved'
+            ? {
+                source: 'budget_version' as const,
+                scope: approved.scope,
+                version_id: approved.versionId,
+                version_ids: approved.versionIds,
+                label: approved.label,
+                no_budget_reason: null,
+                no_budget_detail: null,
+                budget_only_accounts: approved.budgetOnly,
+                translated: approved.translated,
+              }
+            : {
+                source: 'none' as const,
+                scope: null,
+                version_id: null,
+                version_ids: [],
+                label: null,
+                no_budget_reason: approved.reason,
+                no_budget_detail: approved.detail,
+                budget_only_accounts: [],
+                translated: [],
+              },
+        }
+      : {}),
     fx_context: { rates_used: fxRatesUsed, missing_rates: fxMissing },
     diagnostics: {
       tenants_loaded: tenants.length,

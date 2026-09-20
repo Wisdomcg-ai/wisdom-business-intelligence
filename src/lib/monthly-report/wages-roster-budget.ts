@@ -12,7 +12,7 @@
  *
  * Pure: the loader reads the layout, payslips and start dates and hands them in.
  */
-import { parsePayrollGridConfig, type PayrollRosterEntry } from './payroll-grid-config'
+import { parsePayrollGridConfig, weeklySalaryOf, type PayrollRosterEntry } from './payroll-grid-config'
 import { cleanEmployeeName, rosterMatcher } from './payroll-grid'
 
 /** Weeks in one pay period, by Xero calendar type. */
@@ -53,7 +53,13 @@ export function budgetRosterFromLayout(layout: unknown): PayrollRosterEntry[] | 
     for (const widget of widgets as { type?: unknown; config?: unknown }[]) {
       if (widget?.type !== 'payroll_grid') continue
       const { roster } = parsePayrollGridConfig(widget.config).config
-      if (roster.some((r) => typeof r.weekly_salary === 'number')) return roster
+      // A fortnightly roster (IICT-40) is read as its weekly equivalent, so this
+      // page and the Payroll Report budget a person the same. An entry stated
+      // weekly is handed on exactly as it was stored.
+      if (roster.some((r) => weeklySalaryOf(r) !== null)) {
+        return roster.map((r) =>
+          r.fortnightly_salary === undefined ? r : { ...r, weekly_salary: weeklySalaryOf(r) })
+      }
     }
   }
   return null
@@ -108,6 +114,8 @@ export interface RosterEmployeeBudget {
 export interface RosterUnpaidBudget {
   /** The roster's name for them. */
   name: string
+  /** Their roster entry's position. */
+  index: number
   weekly_salary: number
   weeks: number
   budget: number
@@ -229,7 +237,7 @@ export function rosterEmployeeBudgets(input: {
       return
     }
     const weeks = weeksEmployed(found[0].start_date, found[0].termination_date)
-    if (weeks > 0) unpaid.push({ name: cleanEmployeeName(entry.name), weekly_salary: weekly, weeks, budget: round2(weekly * weeks) })
+    if (weeks > 0) unpaid.push({ name: cleanEmployeeName(entry.name), index, weekly_salary: weekly, weeks, budget: round2(weekly * weeks) })
   })
 
   return { ok: true, employees, unpaid, unchecked, pay_cycle: all[0]?.cycle ?? null }
