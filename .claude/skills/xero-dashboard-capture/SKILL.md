@@ -69,6 +69,9 @@ The POST refuses a tenant_id that isn't an active connection of the business.
    ```
    A business with several orgs (Dragon, IICT) takes one POST with several
    captures. The accounts must sum to `total_count` or the POST is refused.
+   The endpoint is role-gated: 401 = the WisdomBI session expired, 403 = the
+   signed-in account is neither super_admin nor this client's assigned coach.
+   Either way report it and stop — don't retry blindly.
 5. Move to the next org. At the end, report the table of org → badge count and
    any org that couldn't be read (login wall, dashboard layout changed).
 

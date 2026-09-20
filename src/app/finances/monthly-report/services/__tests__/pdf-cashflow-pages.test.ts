@@ -10,6 +10,9 @@ import { buildPackCashflowRows } from '@/lib/monthly-report/pack-cashflow-rows'
 import { urbanRoadFullYear, UR_EXPENSE_GROUP_ORDER } from '@/lib/monthly-report/__tests__/urban-road-full-year-fixture'
 import type { FinancialForecast } from '@/app/finances/forecast/types'
 
+/** The pages print only for a business with its cashflow section on (pack-cashflow-gate). */
+const CASHFLOW_ON = () => ({ ...fixtureReport().settings.sections, cashflow: true })
+
 const FY2027 = {
   id: 'f', business_id: 'b', user_id: 'u', name: 'FY2027', fiscal_year: 2027, year_type: 'FY',
   actual_start_month: '2026-07', actual_end_month: '2026-08', forecast_start_month: '2026-09', forecast_end_month: '2027-06',
@@ -27,6 +30,7 @@ function render() {
     cashflowForecast,
     cashflowBasis: packCashflowBasisFor(fullYear, '2026-08', cashflowForecast),
     businessName: 'Urban Road',
+    sections: CASHFLOW_ON(),
   }).generate()
   const pages: string[][] = []
   // The content stream escapes parentheses; read them back as printed.
@@ -150,6 +154,7 @@ describe('Cashflow Forecast pages — Urban Road, August 2026', () => {
       const service: any = new MonthlyReportPDFService(fixtureReport(), {
         cashflowForecast: { ...cf, months: scaled(cf.months, by) } as typeof cf,
         businessName: 'Urban Road',
+        sections: CASHFLOW_ON(),
       })
       const doc = service.doc
       const text = doc.text.bind(doc)
@@ -205,6 +210,7 @@ describe('Cashflow Forecast pages — Urban Road, August 2026', () => {
       cashflowForecast,
       cashflowBasis: 'Opening bank balance unavailable — balances start from $0',
       businessName: 'Urban Road',
+      sections: CASHFLOW_ON(),
     }).generate()
     const pages = Array.from({ length: doc.getNumberOfPages() }, (_, i) => textRuns(doc, i + 1).join(' '))
     const chart = pages.filter((p) => p.includes('Cashflow Forecast')).pop()!
@@ -226,6 +232,7 @@ describe('Cashflow Forecast pages — Urban Road, August 2026', () => {
         cashflowForecast: { ...cf, months } as typeof cf,
         cashflowBasis: 'Opening bank balance unavailable — balances start from $0',
         businessName: 'Urban Road',
+        sections: CASHFLOW_ON(),
       }).generate()
       const pages = Array.from({ length: doc.getNumberOfPages() }, (_, i) => textRuns(doc, i + 1))
       return pages.filter((runs) => runs.some((r) => r.startsWith('Cashflow Forecast')))

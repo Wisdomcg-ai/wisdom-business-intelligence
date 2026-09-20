@@ -398,11 +398,16 @@ export function PreWorkStep({ review, onUpdate }: PreWorkStepProps) {
           </div>
 
           {!isLastSection ? (
+            /* A quiet section switch, not a second forward control. This used to be
+               a brand-orange primary button reading "Next: <section>", which sat
+               directly above the shell's brand-orange "Continue" and read as two
+               competing Next buttons — the confusion v2 set out to remove. The
+               three section cards above are the tabs; this is a convenience. */
             <button
               onClick={goToNextSection}
-              className="flex items-center gap-2 px-5 py-2.5 bg-brand-orange text-white rounded-lg font-medium hover:bg-brand-orange-600 transition-colors"
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 font-medium transition-colors"
             >
-              Next: {SECTIONS[currentSectionIndex + 1].label}
+              {SECTIONS[currentSectionIndex + 1].label}
               <ChevronRight className="w-4 h-4" />
             </button>
           ) : (

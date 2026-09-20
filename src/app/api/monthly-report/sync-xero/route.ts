@@ -145,26 +145,62 @@ async function postHandler(request: Request) {
       });
     }
 
-    // Stamp the DATA freshness clock here, where it is earned: this request ran
-    // BOTH the P&L orchestrator and the BS mirror. The shared BS module must not
-    // stamp it — the daily BS-only cron calls the same function, and a BS-only
-    // refresh marking a connection "fresh" would mask broken P&L syncs from
-    // connection-health and the daily health report.
-    stage = 'stamp_last_synced';
-    for (const connection of connections) {
-      if (!bsResult.syncedTenantIds.includes(connection.tenant_id)) continue;
-      await supabaseAdmin
-        .from('xero_connections')
-        .update({ last_synced_at: new Date().toISOString() })
-        .eq('id', connection.id);
-    }
+    // The DATA freshness clock is NOT stamped here, and must not be.
+    //
+    // `xero_connections.last_synced_at` is half of dataClockFor()
+    // (lib/xero/connection-status.ts) — the clock behind the coach
+    // connection-health pill, /cfo, /api/Xero/status, the daily health report
+    // and the dashboard's "Last synced" line — so it may only move for an org
+    // whose data actually landed.
+    //
+    // This stage used to stamp every connection in bsResult.syncedTenantIds:
+    // the BALANCE SHEET mirror syncing was enough to move the clock, and
+    // plResult was never consulted. An org whose P&L failed — or was never
+    // reached, because the orchestrator refuses a second concurrent run — but
+    // whose BS synced then read fresh for the whole 48h window, hiding the
+    // failure from every surface above. The old comment called the stamp
+    // "earned" because the request ran both the P&L orchestrator and the BS
+    // mirror. Running is not succeeding.
+    //
+    // syncBusinessXeroPL is the ONE writer. It stamps per tenant, inside the
+    // try, only for a tenant that finished 'success' or 'partial', never from
+    // the catch (sync-orchestrator.ts). It iterates the SAME connection set
+    // selected above — business_id in ids.all, is_active — so dropping this
+    // loop drops no legitimate stamp: every tenant it could have stamped
+    // truthfully, the orchestrator has already stamped. An orchestrator stamp
+    // that fails to write is covered too, because that tenant's success/partial
+    // sync_jobs row is the other half of the max() in dataClockFor.
 
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[Sync Xero] Done: ${totalAccountsSynced} accounts synced across ${syncedTenantIds.length}/${connections.length} tenants`);
     }
 
+    // `success` means the P&L LANDED — not that the request ran to the end.
+    //
+    // It was hardcoded `true`, so a run where the orchestrator returned
+    // status 'error' still answered 200 {success: true}: every tenant errored,
+    // or the 44-05 single-flight guard refused a second concurrent run and no
+    // P&L was attempted at all. The detail sat in `errors`, which neither
+    // caller reads. /integrations branches on this field and announced
+    // "N/M Xero organisations synced"; the monthly-report hook toasted success
+    // and moved its own on-screen clock. The same lie the stamp above used to
+    // write to the database, told to the user's face instead.
+    //
+    // 'partial' stays a success: some tenant's numbers did land, and `errors`
+    // carries what did not. Only 'error' — nothing landed anywhere — is false.
+    // The status stays 200 either way: the BS mirror's work is real, the body
+    // says what happened, and a non-2xx would send both callers down their
+    // network-failure branch and throw the detail away.
+    const plLanded = plResult.status !== 'error';
+
     return NextResponse.json({
-      success: true,
+      success: plLanded,
+      // Surfaced so a caller can tell a clean run from a salvaged one without
+      // parsing `errors`, and so the two UIs can word themselves honestly.
+      pl_status: plResult.status,
+      // /integrations reads `data.error` when success is false; without it the
+      // alert degrades to a bare "Sync failed" that names no cause.
+      ...(plLanded ? {} : { error: plResult.error ?? 'Xero P&L sync failed' }),
       tenants_synced: syncedTenantIds.length,
       tenants_total: connections.length,
       accounts_synced: totalAccountsSynced,

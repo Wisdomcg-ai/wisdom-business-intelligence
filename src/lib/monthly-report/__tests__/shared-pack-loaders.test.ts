@@ -33,7 +33,7 @@ vi.mock('@/lib/budgets/resolve-budget', async (importOriginal) => ({
 import { loadPayrollGrid, payrollMonthWindow } from '../payroll-grid-load'
 import { loadWagesDetail } from '../wages-detail-load'
 import { loadMoneyFlow } from '../money-flow-load'
-import { loadOpeningBank } from '../opening-bank-load'
+import { loadOpeningBank, loadPackCashflowOpening } from '../opening-bank-load'
 import { loadBankAccountIds } from '../bank-accounts-load'
 import { URBAN_ROAD_BS_JUL_AUG_2026, URBAN_ROAD_PL_AUG_2026, CBA_CHEQUE, BUS_ONLINE_SAVER, AMEX_PLATINUM } from './fixtures/urban-road-money-flow-2026-08'
 import { loadExternalMetricSeries } from '../external-metrics-load'
@@ -114,6 +114,46 @@ describe('payroll-grid-load', () => {
       .toEqual({ data: null, reason: 'no Xero connection' })
     expect(await loadPayrollGrid(fakeSupabase({ xero_payslip_lines: [] }), { business_id: BUSINESS, report_month: '2026-08', fiscal_year: 2027 }))
       .toEqual({ data: null, reason: 'no payslips synced for this period' })
+  })
+
+  it("carries each run's pay period and every named employee record, for the roster budget (P10)", async () => {
+    const db = fakeSupabase({
+      xero_payslip_lines: [
+        { ...slip('e1', 'Andrea Shinners', '2026-08-05', 5000), calendar_type: 'FORTNIGHTLY', period_start: '2026-07-22', period_end: '2026-08-04' },
+        { ...slip('e2', 'Lara Powell', '2026-08-05', 3800), calendar_type: 'FORTNIGHTLY', period_start: '2026-07-22', period_end: '2026-08-04' },
+        { ...slip('e1', 'Andrea Shinners', '2026-08-19', 5000), calendar_type: 'FORTNIGHTLY', period_start: '2026-08-05', period_end: '2026-08-18' },
+      ],
+      xero_employees: [
+        { tenant_id: TENANT, employee_id: 'e1', first_name: 'Andrea', last_name: 'Shinners', start_date: '2020-03-05', termination_date: null },
+        { tenant_id: TENANT, employee_id: 'e2', first_name: 'Lara', last_name: 'Powell', start_date: '2022-05-09', termination_date: '2026-08-10' },
+        { tenant_id: TENANT, employee_id: 'e3', first_name: 'On', last_name: 'Leave', start_date: '2021-01-01', termination_date: null },
+        { tenant_id: 'other-tenant', employee_id: 'x', first_name: 'Not', last_name: 'Ours', start_date: null, termination_date: null },
+      ],
+      monthly_report_settings: [],
+    })
+    const res = await loadPayrollGrid(db, { business_id: BUSINESS, report_month: '2026-08', fiscal_year: 2027, months: 1 })
+    expect(res.data!.pay_periods).toEqual([
+      { payment_date: '2026-08-05', calendar_type: 'FORTNIGHTLY', period_start: '2026-07-22', period_end: '2026-08-04' },
+      { payment_date: '2026-08-19', calendar_type: 'FORTNIGHTLY', period_start: '2026-08-05', period_end: '2026-08-18' },
+    ])
+    expect(res.data!.employee_records).toEqual([
+      { employee_id: 'e1', name: 'Andrea Shinners', start_date: '2020-03-05', termination_date: null },
+      { employee_id: 'e2', name: 'Lara Powell', start_date: '2022-05-09', termination_date: '2026-08-10' },
+      { employee_id: 'e3', name: 'On Leave', start_date: '2021-01-01', termination_date: null },
+    ])
+    expect(res.data!.employees.find((e) => e.employee_id === 'e2')!.termination_date).toBe('2026-08-10')
+    expect(res.data!.records_unreadable).toBeUndefined()
+  })
+
+  it('employee records that could not be read still build the grid, and say so — the roster budget cannot count weeks without them', async () => {
+    const db = fakeSupabase({
+      xero_payslip_lines: [slip('e1', 'Andrea Shinners', '2026-08-03', 2500)],
+      xero_employees: { error: { message: 'timeout' } },
+      monthly_report_settings: [],
+    })
+    const res = await loadPayrollGrid(db, { business_id: BUSINESS, report_month: '2026-08', fiscal_year: 2027, months: 1 })
+    expect(res.data!.grand_total).toBe(2500)
+    expect(res.data!.records_unreadable).toBe(true)
   })
 
   it('a payslip read that fails is could-not-check, not "no payslips synced"', async () => {
@@ -340,6 +380,56 @@ describe('opening-bank-load', () => {
   })
 })
 
+describe('loadPackCashflowOpening — the opening and the v1 verdict from one read', () => {
+  const bank = (tenant_id: string, balance: number) => ({
+    business_id: PROFILE, tenant_id, account_type: 'asset', section: 'Bank', balance_date: '2026-06-30', balance, basis: 'accruals',
+  })
+
+  it('one active AUD organisation: the opening, and no refusal', async () => {
+    const res = await loadPackCashflowOpening(fakeSupabase({
+      business_profiles: [{ id: PROFILE, fiscal_year_start: 7 }],
+      xero_connections: [
+        { business_id: BUSINESS, tenant_id: TENANT, functional_currency: 'AUD', is_active: true },
+        { business_id: BUSINESS, tenant_id: 'retired', functional_currency: 'AUD', is_active: false },
+      ],
+      xero_bs_lines: [bank(TENANT, 167629.81)],
+    }), BUSINESS, '2026-08')
+    expect(res).toEqual({ opening: { status: 'read', amount: 167629.81, asAt: '2026-06-30' }, v1Refusal: null })
+  })
+
+  it("Dragon Roofing's shape — two active AUD organisations — is refused though its opening reads", async () => {
+    const res = await loadPackCashflowOpening(fakeSupabase({
+      business_profiles: [{ id: PROFILE, fiscal_year_start: 7 }],
+      xero_connections: [
+        { business_id: BUSINESS, tenant_id: 'dragon', functional_currency: 'AUD', is_active: true },
+        { business_id: BUSINESS, tenant_id: 'easy-hail', functional_currency: 'AUD', is_active: true },
+      ],
+      xero_bs_lines: [bank('dragon', 41339.27), bank('easy-hail', 388767.43)],
+    }), BUSINESS, '2026-08')
+    expect(res.opening).toMatchObject({ status: 'read', amount: 430106.7 })
+    expect(res.v1Refusal).toContain('more than one Xero organisation')
+  })
+
+  it("IICT's shape — an HKD organisation among AUD ones — is refused", async () => {
+    const res = await loadPackCashflowOpening(fakeSupabase({
+      business_profiles: [{ id: PROFILE, fiscal_year_start: 7 }],
+      xero_connections: [
+        { business_id: BUSINESS, tenant_id: 'iap', functional_currency: 'AUD', is_active: true },
+        { business_id: PROFILE, tenant_id: 'igl', functional_currency: 'HKD', is_active: true },
+      ],
+      xero_bs_lines: [],
+    }), BUSINESS, '2026-08')
+    expect(res.v1Refusal).not.toBeNull()
+  })
+
+  it('a connection read that fails throws — never a silent "one organisation"', async () => {
+    await expect(loadPackCashflowOpening(fakeSupabase({
+      business_profiles: [{ id: PROFILE, fiscal_year_start: 7 }],
+      xero_connections: { error: { message: 'timeout' } },
+    }), BUSINESS, '2026-08')).rejects.toBeTruthy()
+  })
+})
+
 describe('external-metrics-load', () => {
   it('returns active series with only this month\'s values', async () => {
     const series = await loadExternalMetricSeries(fakeSupabase({
@@ -355,6 +445,20 @@ describe('external-metrics-load', () => {
     expect(series).toHaveLength(1)
     expect(series[0].values).toEqual([expect.objectContaining({ value: 120 })])
     expect(series[0].tie).toBeNull()
+    expect(series[0].history).toBeUndefined()
+  })
+
+  it('a trend placement also gets the window, month by month, newest month included (P10)', async () => {
+    const values = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'].map((period_month, i) => ({
+      id: `v${i}`, series_id: 's1', business_id: BUSINESS, period_month, dimension_value: 'Shopify', measure_key: 'orders', scenario: 'actual', value: 100 + i,
+    }))
+    const series = await loadExternalMetricSeries(fakeSupabase({
+      external_metric_series: [{ id: 's1', business_id: BUSINESS, is_active: true, display_name: 'Orders by channel', reconciles_to_account_name: null }],
+      external_metric_values: values,
+    }), BUSINESS, '2026-08', { months: 3 })
+    expect(series[0].values.map((v: { value: number }) => v.value)).toEqual([104])
+    // June, July and August — not September, and not March.
+    expect(series[0].history.map((v: { period_month: string }) => v.period_month)).toEqual(['2026-06', '2026-07', '2026-08'])
   })
 })
 

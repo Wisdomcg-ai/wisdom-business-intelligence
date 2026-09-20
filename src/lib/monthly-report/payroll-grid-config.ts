@@ -40,6 +40,23 @@ const rosterEntrySchema = z.strictObject({
    * page's per-employee Budget, × the month's pay runs (wages-roster-budget).
    */
   weekly_salary: z.number().min(0).nullable().optional(),
+  /**
+   * The same standing budget stated per fortnight, for a roster kept that way
+   * (IICT's Payroll Detailed Summary budgets each person per fortnight). An
+   * entry states one or the other: two figures that disagree would print one.
+   * The weekly equivalent is half (weeklySalaryOf).
+   */
+  fortnightly_salary: z.number().min(0).nullable().optional(),
+  /**
+   * The roster area the person prints under — Distinct Directions' Head Office,
+   * Bathurst, Orange and Dubbo (Calxa p12-13). Areas take the order they first
+   * appear in on the roster, and each gets a total. Not Xero's employee group:
+   * DD's roster areas and Xero groups disagree for two people, and it is the
+   * roster's the client reads.
+   */
+  area: z.string().trim().min(1).max(60).optional(),
+}).refine((entry) => entry.weekly_salary === undefined || entry.fortnightly_salary === undefined, {
+  message: 'state weekly_salary or fortnightly_salary, not both',
 })
 
 const configSchema = z.strictObject({
@@ -66,6 +83,45 @@ const configSchema = z.strictObject({
    * pages deliberately put no block of colour behind a figure.
    */
   difference_fills: z.boolean().default(false),
+
+  // ── P10: Calxa's payrun pages (DD-19, DD-20, IICT-40, DRG-37) ─────────────
+  // Every default is the page before these existed.
+
+  /**
+   * What the Budget row holds (decision 4).
+   * 'approved' — the approved wages budget: the P&L's wages line, so the
+   * Payroll page and the statement print one number.
+   * 'roster' — each rostered employee's weekly salary × the weeks of the
+   * month's pay runs, the way Calxa builds DD's page (245,584 where the
+   * approved line is 237,711).
+   */
+  budget_basis: z.enum(['approved', 'roster']).default('approved'),
+  /**
+   * On the approved basis, a month before the report's financial year — June
+   * in a three-month August window — has no budget in this year's store.
+   * 'dash' prints a dash, as the page always has; 'roster' prints the roster's
+   * budget for that month instead, as Calxa's Dragon page does (DRG-37).
+   */
+  earlier_months: z.enum(['dash', 'roster']).default('dash'),
+  /** The salary column states a week's budget or a fortnight's (IICT-40). */
+  salary_period: z.enum(['week', 'fortnight']).default('week'),
+  /**
+   * Calxa layout: Month actual, Month budget (the roster's) and Variance beside
+   * each employee, each area and the total, for the report month (DD-19).
+   */
+  employee_month_columns: z.boolean().default(false),
+  /**
+   * Calxa layout: shade each pay against the roster salary for its pay period —
+   * green at or under, red over, amber where the roster carries no salary; a
+   * week with no pay is left plain (DD-19).
+   */
+  pay_fills: z.boolean().default(false),
+  /** Dollars a pay may run over its salary and still shade green, so cents do not flag. */
+  fill_tolerance: z.number().min(0).max(100).default(1),
+  /** Calxa layout: DD's page has no Standard Units column. */
+  standard_units_column: z.boolean().default(true),
+  /** Bullets printed under the table — the coach's explanations (Adam Davey's leave payout). */
+  notes: z.array(z.string().trim().min(1).max(600)).max(12).default([]),
 })
 
 export type PayrollRosterEntry = z.infer<typeof rosterEntrySchema>
@@ -77,6 +133,34 @@ export type ParsedPayrollGridConfig =
   | { ok: false; reason: string; config: PayrollGridConfig }
 
 export const DEFAULT_PAYROLL_GRID_CONFIG: PayrollGridConfig = configSchema.parse({})
+
+/**
+ * An entry's standing budget for one week: its weekly salary, or half its
+ * fortnightly one. Null when it states neither — a dash, never $0.
+ */
+export function weeklySalaryOf(entry: Pick<PayrollRosterEntry, 'weekly_salary' | 'fortnightly_salary'>): number | null {
+  if (typeof entry.weekly_salary === 'number') return entry.weekly_salary
+  if (typeof entry.fortnightly_salary === 'number') return entry.fortnightly_salary / 2
+  return null
+}
+
+/**
+ * Whether a placement uses nothing P10 added — then the page is drawn exactly
+ * as it was before those options existed (pdf-insert-widgets-golden).
+ */
+export function isP10Default(config: PayrollGridConfig): boolean {
+  const d = DEFAULT_PAYROLL_GRID_CONFIG
+  return (
+    config.budget_basis === d.budget_basis &&
+    config.earlier_months === d.earlier_months &&
+    config.salary_period === d.salary_period &&
+    config.employee_month_columns === d.employee_month_columns &&
+    config.pay_fills === d.pay_fills &&
+    config.standard_units_column === d.standard_units_column &&
+    config.notes.length === 0 &&
+    config.roster.every((r) => r.area === undefined && r.fortnightly_salary === undefined)
+  )
+}
 
 /**
  * A bad config is a sentence on the page, not an exception and not a silent

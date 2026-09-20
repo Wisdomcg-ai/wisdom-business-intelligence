@@ -9,6 +9,7 @@ import { getInitials, getColorForName, parseTeamFromProfile, type TeamMember } f
 import { OperationalActivitiesService, type OperationalActivity } from '@/app/goals/services/operational-activities-service';
 import OperationalPlanTab from '@/app/goals/components/OperationalPlanTab';
 import type { QuarterlyReview, InitiativeDecision } from '../../types';
+import { planQuarterKey } from '../../types';
 import {
   Rocket,
   Plus,
@@ -186,7 +187,7 @@ export function QuarterlyRocksStep({ review, onUpdateInitiativeDecisions }: Quar
       // Sprint rocks are planned FOR the quarter being planned (review.quarter),
       // derived from the review itself, not the live clock — so a "plan Q1 FY27" review
       // always plans Q1 FY27 rocks whether the session runs in June or July.
-      const resolvedKey = `q${review.quarter}`;
+      const resolvedKey = planQuarterKey(review);
       setSprintQuarterKey(resolvedKey);
       setSprintQuarterNum(review.quarter);
       setSprintYear(review.year);

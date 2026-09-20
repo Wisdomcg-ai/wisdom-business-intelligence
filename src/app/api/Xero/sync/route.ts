@@ -1,266 +1,171 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
-import { withSchema } from '@/lib/api/with-schema';
+/**
+ * POST /api/Xero/sync — the KPI dashboard's "Sync Xero" button.
+ *
+ * A thin shim over the canonical orchestrator, like /api/Xero/refresh-pl and
+ * /api/Xero/sync-forecast. This route used to run its own "sync", wrong in
+ * every direction that matters:
+ *   - it took ONE connection (resolveXeroBusinessId → connections[0]), so Dragon
+ *     Roofing (2 orgs) and IICT Group (3) synced only their lowest-id org;
+ *   - it fetched api.xro/2.0/BankSummary (not an endpoint) and a current-month
+ *     P&L into financial_metrics — which nothing on the dashboard charts — and
+ *     never refreshed the xero_pl_lines mirror that the charts DO read;
+ *   - a failed P&L fetch still wrote revenue/cogs/expenses = 0;
+ *   - it then stamped xero_connections.last_synced_at = now whatever Xero had
+ *     said, 403 included. That column is the data clock classifyBusinessConnections
+ *     reads (coach pill, /cfo board, /api/Xero/status), so one click made a
+ *     stale or refused org read fresh for 48 hours;
+ *   - its access check looked the id up in businesses.id only, and the dashboard
+ *     posts business_profiles.id — everyone but a super admin got a 403.
+ *
+ * Now every active org goes through the pipeline the 6-hourly cron runs, and an
+ * org's clock moves only when THAT org's data landed. The response names each
+ * org's outcome — including an org that is switched off, which no sync touches —
+ * so a partial sync is never reported as a green tick.
+ */
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import * as Sentry from '@sentry/nextjs'
+import { withSchema } from '@/lib/api/with-schema'
+import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/admin'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import {
+  classifyBusinessConnections,
+  type XeroConnectionStatusRow,
+  type XeroOrgClassification,
+} from '@/lib/xero/connection-status'
+import {
+  syncBusinessXeroPL,
+  SYNC_IN_FLIGHT,
+  SYNC_NO_CONNECTIONS,
+  type SyncResult,
+  type TenantSyncOutcome,
+} from '@/lib/xero/sync-orchestrator'
+import type { ManualSyncOrg, ManualSyncOutcome, ManualSyncResponse } from '@/lib/xero/manual-sync-response'
+
+export const dynamic = 'force-dynamic'
+// The Fluid Compute ceiling, as the sync cron uses: a whole-business run has
+// taken 232s, and a kill mid-run leaves its sync_jobs lock 'running' for 15
+// minutes — every press in that window would read "already running".
+export const maxDuration = 800
 
 // VALID-04 (observe mode): POST triggers a Xero data sync for a business.
 const SyncPostSchema = z
   .object({
     business_id: z.string(),
   })
-  .passthrough();
-import { createClient } from '@supabase/supabase-js';
-import { getSupabaseSecretKey } from '@/lib/supabase/keys'
-import { createRouteHandlerClient } from '@/lib/supabase/server';
-import { getValidAccessToken } from '@/lib/xero/token-manager';
-import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
-import * as Sentry from '@sentry/nextjs'
+  .passthrough()
 
-export const dynamic = 'force-dynamic'
+const CONNECTION_COLUMNS =
+  'id, business_id, tenant_id, tenant_name, include_in_consolidation, is_active, last_synced_at, updated_at, expires_at, created_at'
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  getSupabaseSecretKey()
-);
+const UNNAMED_ORG = 'Unnamed Xero organisation'
 
-// Verify user has access to the business
-async function verifyUserAccess(userId: string, businessId: string): Promise<boolean> {
-  // Check if user is the owner
-  const { data: business } = await supabaseAdmin
-    .from('businesses')
-    .select('owner_id, assigned_coach_id')
-    .eq('id', businessId)
-    .maybeSingle();
-
-  if (business?.owner_id === userId || business?.assigned_coach_id === userId) {
-    return true;
-  }
-
-  // Check if user is a business member
-  const { data: membership } = await supabaseAdmin
-    .from('business_users')
-    .select('id')
-    .eq('business_id', businessId)
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (membership) {
-    return true;
-  }
-
-  // Check if user is super_admin
-  const { data: role } = await supabaseAdmin
-    .from('system_roles')
-    .select('role')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  return role?.role === 'super_admin';
-}
-
-async function syncXeroData(business_id: string) {
-  try {
-    // Get the Xero connection (resolves businesses.id vs business_profiles.id)
-    const { connection } = await resolveXeroBusinessId(supabaseAdmin, business_id);
-
-    if (!connection) {
-      return NextResponse.json({ error: 'No Xero connection found' }, { status: 404 });
-    }
-
-    // Use the robust token manager for refresh handling
-    const tokenResult = await getValidAccessToken(connection, supabaseAdmin);
-    if (!tokenResult.success) {
-      Sentry.captureException(tokenResult.error, { tags: { route: 'Xero/sync' }, extra: { context: "[Xero Sync] Token refresh failed" } } as any);
-      return NextResponse.json(
-        { error: tokenResult.message || 'Xero connection expired', needsReconnect: tokenResult.shouldDeactivate },
-        { status: 401 }
-      );
-    }
-
-    const accessToken = tokenResult.accessToken!;
-
-    // Get bank accounts
-    const bankResponse = await fetch(`https://api.xero.com/api.xro/2.0/BankSummary`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'xero-tenant-id': connection.tenant_id,
-        'Accept': 'application/json'
-      }
-    });
-
-    const bankData = bankResponse.ok ? await bankResponse.json() : null;
-    
-    // Calculate total cash
-    let totalCash = 0;
-    if (bankData?.BankSummary) {
-      bankData.BankSummary.forEach((account: any) => {
-        totalCash += account.ClosingBalance || 0;
-      });
-    }
-
-    // Get P&L for current month
-    const currentDate = new Date();
-    const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-    const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-    
-    const plResponse = await fetch(
-      `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${startOfMonth.toISOString().split('T')[0]}&toDate=${endOfMonth.toISOString().split('T')[0]}&standardLayout=true&paymentsOnly=false`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'xero-tenant-id': connection.tenant_id,
-          'Accept': 'application/json'
-        }
-      }
-    );
-
-    let monthlyMetrics = {
-      revenue_month: 0,
-      cogs_month: 0,
-      expenses_month: 0,
-      net_profit_month: 0
-    };
-
-    if (plResponse.ok) {
-      const plData = await plResponse.json();
-      // Parse P&L data
-      if (plData?.Reports?.[0]?.Rows) {
-        plData.Reports[0].Rows.forEach((row: any) => {
-          if (row.RowType === 'Section') {
-            const title = (row.Title || '').toUpperCase();
-            // Check COGS first — "LESS COST OF SALES" contains "SALES"
-            if (title.includes('COST OF SALES') || title.includes('DIRECT COSTS') || title.includes('COST OF GOODS')) {
-              row.Rows?.forEach((subRow: any) => {
-                if (subRow.Cells?.[1]?.Value) {
-                  monthlyMetrics.cogs_month += parseFloat(subRow.Cells[1].Value) || 0;
-                }
-              });
-            } else if (title.includes('INCOME') || title.includes('REVENUE') || title.includes('SALES') || title.includes('TRADING INCOME')) {
-              row.Rows?.forEach((subRow: any) => {
-                if (subRow.Cells?.[1]?.Value) {
-                  monthlyMetrics.revenue_month += parseFloat(subRow.Cells[1].Value) || 0;
-                }
-              });
-            } else if (title.includes('EXPENSE') || title.includes('OPERATING')) {
-              row.Rows?.forEach((subRow: any) => {
-                if (subRow.Cells?.[1]?.Value) {
-                  monthlyMetrics.expenses_month += parseFloat(subRow.Cells[1].Value) || 0;
-                }
-              });
-            }
-          }
-        });
-      }
-    }
-
-    // DEPRECATED (Tier 3 cleanup, 2026-04-30): the 3-bucket net_profit_month
-    // formula below omits the Xero `other_income` and `other_expense` buckets,
-    // so it can disagree with the canonical 5-bucket net profit produced by
-    // forecast-read-service.ts and historical-pl-summary.ts. We retained it
-    // because no current consumer reads `financial_metrics.net_profit_month`
-    // (verified via codebase grep — only `total_cash`, `unreconciled_count`,
-    // and `metric_date` are read). Treat as dead-write; remove in a future
-    // migration if no consumer surfaces by 2026-08.
-    monthlyMetrics.net_profit_month = monthlyMetrics.revenue_month - monthlyMetrics.cogs_month - monthlyMetrics.expenses_month;
-
-    // Save to financial_metrics table
-    const { error: metricsError } = await supabaseAdmin
-      .from('financial_metrics')
-      .upsert({
-        business_id: business_id,
-        metric_date: new Date().toISOString().split('T')[0],
-        // FLEET-02 (26 Aug 2026): this value is ALWAYS 0. The fetch above calls
-        // api.xro/2.0/BankSummary, but Xero's BankSummary is a REPORT
-        // (/api.xro/2.0/Reports/BankSummary) returning { Reports: [{ Rows }] },
-        // so `bankData.BankSummary` never exists and totalCash keeps its
-        // initialiser. Writing 0 asserted "this client holds no cash" — /cfo
-        // rendered it as fact for every client. Cash is now derived from the
-        // xero_bs_lines mirror (lib/xero/derive-cash-from-bs-mirror.ts); store
-        // null here so the column says "unknown" instead of a false zero.
-        total_cash: null,
-        revenue_month: monthlyMetrics.revenue_month,
-        cogs_month: monthlyMetrics.cogs_month,
-        expenses_month: monthlyMetrics.expenses_month,
-        net_profit_month: monthlyMetrics.net_profit_month,
-        gross_profit_month: monthlyMetrics.revenue_month - monthlyMetrics.cogs_month,
-        gross_margin_percent: monthlyMetrics.revenue_month > 0 
-          ? ((monthlyMetrics.revenue_month - monthlyMetrics.cogs_month) / monthlyMetrics.revenue_month) * 100 
-          : 0,
-        net_margin_percent: monthlyMetrics.revenue_month > 0 
-          ? (monthlyMetrics.net_profit_month / monthlyMetrics.revenue_month) * 100 
-          : 0
-      }, { onConflict: 'business_id,metric_date' });
-
-    // Update last sync time
-    await supabaseAdmin
-      .from('xero_connections')
-      .update({ last_synced_at: new Date().toISOString() })
-      .eq('id', connection.id);
-
-    return NextResponse.json({ 
-      success: true, 
-      metrics: {
-        totalCash,
-        ...monthlyMetrics
-      }
-    });
-
-  } catch (error) {
-    Sentry.captureException(error, { tags: { route: 'Xero/sync' }, extra: { context: "Sync error" } } as any);
-    return NextResponse.json({ error: 'Sync failed' }, { status: 500 });
-  }
-}
-
-export async function GET(request: NextRequest) {
-  const supabase = await createRouteHandlerClient();
-
-  // Verify user is authenticated
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  if (userError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const searchParams = request.nextUrl.searchParams;
-  const business_id = searchParams.get('business_id');
-
-  if (!business_id) {
-    return NextResponse.json({ error: 'business_id is required' }, { status: 400 });
-  }
-
-  // Verify user has access to this business
-  const hasAccess = await verifyUserAccess(user.id, business_id);
-  if (!hasAccess) {
-    return NextResponse.json({ error: 'Access denied to this business' }, { status: 403 });
-  }
-
-  return syncXeroData(business_id);
+function respond(
+  outcome: ManualSyncOutcome,
+  tenants: TenantSyncOutcome[],
+  disconnected: XeroOrgClassification[],
+  status: number,
+) {
+  const orgs: ManualSyncOrg[] = [
+    ...tenants.map((t) => ({ name: t.tenant_name?.trim() || UNNAMED_ORG, status: t.status })),
+    ...disconnected.map((o) => ({ name: o.tenantName || UNNAMED_ORG, status: 'disconnected' as const })),
+  ]
+  const body: ManualSyncResponse = { outcome, orgs }
+  return NextResponse.json(body, { status })
 }
 
 async function postHandler(request: Request) {
-  const supabase = await createRouteHandlerClient();
-
-  // Verify user is authenticated
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  const supabase = await createRouteHandlerClient()
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
   if (userError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // withSchema validates a clone and never passes the body on — read it here.
+  const body = await request.json().catch(() => null)
+  const businessId = typeof body?.business_id === 'string' ? body.business_id : ''
+  if (!businessId) {
+    return NextResponse.json({ error: 'business_id is required' }, { status: 400 })
+  }
+
+  const admin = createServiceRoleClient()
+  // The dashboard posts business_profiles.id; team membership (business_users)
+  // is keyed on businesses.id, so check access against the resolved business.
+  const ids = await resolveBusinessProfileIds(admin, businessId)
+  if (!(await verifyBusinessAccess(user.id, ids.businessId))) {
+    return NextResponse.json({ error: 'Access denied to this business' }, { status: 403 })
+  }
+
+  // The resolver echoes an id it could not resolve, and a failed read looks the
+  // same. With one id-space missing, every lookup below misses the connection
+  // rows and a connected business would be told it is not connected.
+  if (String(ids.businessId) === String(ids.profileId)) {
+    return respond('failed', [], [], 500)
+  }
+
+  const { data: rows, error: rowsError } = await admin
+    .from('xero_connections')
+    .select(CONNECTION_COLUMNS)
+    .in('business_id', ids.all)
+  if (rowsError) {
+    Sentry.captureException(rowsError, {
+      tags: { route: 'Xero/sync', invariant: 'xero_manual_sync_connections_read' },
+      extra: { business_id: businessId },
+    } as any)
+    return respond('failed', [], [], 500)
+  }
+  const connections = (rows ?? []) as XeroConnectionStatusRow[]
+
+  // Orgs no sync touches: switched off with no live row for the same org, unless
+  // retired on purpose — connection-status's 'dead'. That is decided from the
+  // rows alone, before any clock is read, so no sync clock is needed here.
+  const disconnected = classifyBusinessConnections(connections, { ok: true, byTenant: new Map() })
+    .orgs.filter((o) => o.status === 'dead')
+
+  // Nothing switched on: say so without claiming a sync job there is nothing to run.
+  if (!connections.some((c) => c.is_active === true)) {
+    return respond('not_connected', [], disconnected, 404)
+  }
+
+  const tenants: TenantSyncOutcome[] = []
+  let result: SyncResult
   try {
-    const { business_id } = await request.json();
-
-    if (!business_id) {
-      return NextResponse.json({ error: 'business_id is required' }, { status: 400 });
-    }
-
-    // Verify user has access to this business
-    const hasAccess = await verifyUserAccess(user.id, business_id);
-    if (!hasAccess) {
-      return NextResponse.json({ error: 'Access denied to this business' }, { status: 403 });
-    }
-
-    return syncXeroData(business_id);
+    result = await syncBusinessXeroPL(businessId, {
+      onTenantOutcome: (outcome) => tenants.push(outcome),
+    })
   } catch (error) {
-    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+    Sentry.captureException(error, {
+      tags: { route: 'Xero/sync' },
+      extra: { context: '[Xero Sync] orchestrator threw', business_id: businessId },
+    } as any)
+    return respond('failed', tenants, disconnected, 500)
   }
+
+  if (result.error === SYNC_IN_FLIGHT) return respond('in_progress', tenants, disconnected, 409)
+  // The rows above include an active org, so "no active connections" here means
+  // the orchestrator's own id lookup missed them (its resolver echoes on a failed
+  // read) — a sync that could not run, not a business without Xero.
+  if (result.error === SYNC_NO_CONNECTIONS) return respond('failed', tenants, disconnected, 500)
+
+  // No org's data landed: a failed sync, whatever the rollup says. A business
+  // whose only org hit Xero's daily limit rolls up as 'partial'.
+  const landed = tenants.filter((t) => t.status === 'success' || t.status === 'partial')
+  if (result.status === 'error' || landed.length === 0) {
+    return respond('failed', tenants, disconnected, 502)
+  }
+
+  // Green needs the rollup and every org the sync reached to say success, and
+  // no org it could not reach.
+  if (
+    result.status === 'success' &&
+    tenants.every((t) => t.status === 'success') &&
+    disconnected.length === 0
+  ) {
+    return respond('synced', tenants, disconnected, 200)
+  }
+  return respond('partial', tenants, disconnected, 200)
 }
 
-export const POST = withSchema('Xero/sync', SyncPostSchema, postHandler);
+export const POST = withSchema('Xero/sync', SyncPostSchema, postHandler)
