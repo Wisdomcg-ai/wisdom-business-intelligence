@@ -38,6 +38,7 @@
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId'
 import { addSubscriptionLine, newSubscriptionCrawl, priorMonthKeyOf, type SubscriptionCrawl } from './subscription-detail-build'
+import { buildSubscriptionFx } from './subscription-fx'
 
 type Client = any
 
@@ -102,8 +103,16 @@ export function crawlFromPersistedVendorActuals(args: {
   rows: PersistedVendorActualRow[]
   budgets: VendorBudgetAccounts[]
   batchWindowMs?: number
+  /**
+   * What one organisation's stored figures are multiplied by to state them in
+   * the report's currency (subscription-fx). The history is each organisation's
+   * OWN money, so a business with an organisation in another currency needs it
+   * here too, or the rows would be added together as the route's once were
+   * (IICT-35). Absent (every single-currency business): nothing is translated.
+   */
+  rateFor?: (tenantId: string, month: string) => number | null
 }): { crawl: SubscriptionCrawl; notes: PersistedCrawlNotes } {
-  const { accountCodes, reportMonth, accountNames, rows, budgets } = args
+  const { accountCodes, reportMonth, accountNames, rows, budgets, rateFor } = args
   const window = args.batchWindowMs ?? DEFAULT_BATCH_WINDOW_MS
   const crawl = newSubscriptionCrawl(accountCodes)
   // The history is stored gross (BASIS, above): crawl.statementAmounts stays
@@ -137,6 +146,7 @@ export function crawlFromPersistedVendorActuals(args: {
       amount,
       isCurrent,
       tenantId: r.tenant_id,
+      ...(rateFor ? { rate: rateFor(r.tenant_id, r.month) ?? 1 } : {}),
     })
   }
 
@@ -196,11 +206,16 @@ export async function loadPersistedSubscriptionCrawl(
     if (a.account_code && a.account_name && !accountNames.has(a.account_code)) accountNames.set(a.account_code, a.account_name)
   }
 
+  // The same rates the route states its figures at, so the harness's rows are
+  // in the same money as the account totals the assembler builds.
+  const fx = await buildSubscriptionFx(supabase, connections ?? [], months)
+
   return crawlFromPersistedVendorActuals({
     accountCodes: account_codes,
     reportMonth: report_month,
     accountNames,
     rows: (rows ?? []) as PersistedVendorActualRow[],
     budgets: (budgets ?? []) as VendorBudgetAccounts[],
+    ...(fx.translates ? { rateFor: fx.rateFor } : {}),
   })
 }

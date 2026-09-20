@@ -5,6 +5,11 @@ import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
+import { resolveXeroConnections } from '@/lib/business/resolveXeroBusinessId'
+import { createTenantCallPacer, systemClock, type TenantCallPacer } from '@/lib/xero/tenant-call-pacer'
+import { inDisplayOrder, listNames } from '@/lib/monthly-report/organisation-order'
+import { describeMissingRates, type MissingRate } from '@/lib/monthly-report/consolidated-fx'
+import { loadFxRates } from '@/lib/consolidation/fx'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import * as Sentry from '@sentry/nextjs'
 import {
@@ -80,7 +85,22 @@ interface TriggerLineInput {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return systemClock.sleep(ms)
+}
+
+/** The currency every figure the commentary quotes is stated in. */
+const PRESENTATION_CURRENCY = 'AUD'
+
+const upperCurrency = (c: unknown): string => String(c ?? '').trim().toUpperCase()
+const nameKey = (name: string) => name.toLowerCase().trim()
+
+/** One organisation's month of posted documents, ready to be read per account. */
+interface OrgDocuments {
+  connection: any
+  orgName: string
+  invoices: any[]
+  bankTransactions: any[]
+  creditNotes: any[]
 }
 
 /**
@@ -99,6 +119,13 @@ async function fetchAllXeroPages(
   headers: Record<string, string>,
   dataKey: string,
   context: { tenantId: string; reportMonth: string; label?: string },
+  /**
+   * The organisation's pacer: four pagers run at once here, a page every
+   * 300ms, and the commentary now does that to every organisation of a
+   * consolidation in turn. Every call goes through it so no organisation is
+   * sent more than Xero allows in a minute (tenant-call-pacer).
+   */
+  pacer: TenantCallPacer,
   maxPages = 10
 ): Promise<any[]> {
   const all: any[] = []
@@ -114,7 +141,7 @@ async function fetchAllXeroPages(
 
   while (page <= maxPages) {
     const separator = url.includes('?') ? '&' : '?'
-    const res = await fetch(`${url}${separator}page=${page}`, { headers })
+    const res = await pacer.run(() => fetch(`${url}${separator}page=${page}`, { headers }))
 
     if (res.status === 429) {
       if (rateLimitRetries >= MAX_RATE_LIMIT_RETRIES) {
@@ -299,44 +326,27 @@ async function postHandler(request: Request) {
       return NextResponse.json({ success: true, commentary: {}, checked: true })
     }
 
-    // Check for Xero connection.
+    // EVERY active organisation, oldest decision first.
     //
-    // Phase D (CFO-only clients): the old `.maybeSingle()` ERRORED for any
-    // business with 2+ active connections (Dragon Roofing, IICT Group) —
-    // supabase returns `data: null` on multi-row maybeSingle — so every
-    // consolidation parent silently got `commentary: {}`. Pick the newest
-    // active connection instead (vendor drill-down reads ONE tenant's
-    // invoices; for multi-tenant groups that's the primary entity — partial
-    // detail beats none).
+    // This took the newest active connection by created_at and read that one
+    // organisation's documents. Dragon's two connections and IICT's three each
+    // share a created_at to the microsecond, so which organisation explained a
+    // consolidated figure was a coin toss — and whichever won, the suppliers of
+    // the others were missing from an account that holds their spend (DRG-19,
+    // IICT-29). Calxa's bullets cover every organisation: "Legal expenses |
+    // Simpson Quinn ($2,931)" is Dragon's $1,459 and Easy Hail's $1,472.
     const ids = await resolveBusinessProfileIds(supabase, business_id)
-    const { data: connections } = await supabase
-      .from('xero_connections')
-      .select('*')
-      .in('business_id', ids.all)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .limit(5)
-    const connection = connections?.[0] ?? null
+    const { connections: activeConnections } = await resolveXeroConnections(supabase, business_id)
+    const orgs = inDisplayOrder((activeConnections ?? []) as { id: string; display_order?: number | null }[]) as any[]
 
-    if (!connection) {
+    if (orgs.length === 0) {
       // NOT an answer — we could not look. `checked: false` keeps the client
       // from reading "no Xero connection" as "nothing is over budget".
       return NextResponse.json({ success: true, commentary: {}, checked: false })
     }
 
-    // Get valid access token
-    const tokenResult = await getValidAccessToken({ id: connection.id }, supabase)
-    if (!tokenResult.success || !tokenResult.accessToken) {
-      // Token refresh failed — again, could not look.
-      return NextResponse.json({ success: true, commentary: {}, checked: false })
-    }
-
-    const accessToken = tokenResult.accessToken
-    const tenantId = connection.tenant_id
-    // The currency the P&L is stated in. Every supplier amount is converted into
-    // it before it is quoted, because the commentary sits underneath a statement
-    // line and the two have to be the same money.
-    const baseCurrency: string | null = connection.functional_currency ?? null
+    const multiOrg = orgs.length > 1
+    const orgNameOf = (c: any): string => c.tenant_name || c.display_name || c.tenant_id
 
     // The prior month, for the fallback comparator ("… against 8.9% in June").
     // One read of the wide mirror carries every account's whole year, so this
@@ -353,34 +363,73 @@ async function postHandler(request: Request) {
       ? new Date(`${priorMonth}-01T00:00:00Z`).toLocaleString('en-AU', { month: 'long', timeZone: 'UTC' })
       : null
 
+    // A consolidation states its figures in AUD, so an organisation that keeps
+    // its books in another currency has its documents translated at the month's
+    // average rate — the rate its P&L was translated at — before a supplier is
+    // quoted beside an AUD line (IICT-29, SKILL.md:72). A single-organisation
+    // business is not translated: its report is in its own currency.
+    const monthsNeeded = [report_month, ...(priorMonth ? [priorMonth] : [])]
+    const ratesByCurrency = new Map<string, Map<string, number>>()
+    if (multiOrg) {
+      const currencies = [...new Set(orgs.map((c) => upperCurrency(c.functional_currency)).filter((c) => c && c !== PRESENTATION_CURRENCY))]
+      for (const currency of currencies) {
+        try {
+          ratesByCurrency.set(currency, await loadFxRates(supabase as never, `${currency}/${PRESENTATION_CURRENCY}`, 'monthly_average', monthsNeeded))
+        } catch (err) {
+          // A rate we could not read is a rate we do not have: the organisation
+          // is left out below and said so, never summed one-for-one.
+          Sentry.captureException(err, { tags: { route: 'monthly-report/commentary', invariant: 'commentary_fx_rates_unreadable' } } as any)
+          ratesByCurrency.set(currency, new Map())
+        }
+      }
+    }
+    /** The factor one organisation's figures are multiplied by, or null when the month has no rate. */
+    const rateFor = (connection: any, month: string): number | null => {
+      const currency = upperCurrency(connection.functional_currency)
+      if (!multiOrg || !currency || currency === PRESENTATION_CURRENCY) return 1
+      return ratesByCurrency.get(currency)?.get(month) ?? null
+    }
+
     const priorActuals = new Map<string, number>()
     let priorIncomeActual: number | null = null
     if (priorMonth) {
-      const { data: wideRows } = await supabase
+      const priorRates = new Map<string, number | null>(orgs.map((c) => [c.tenant_id, rateFor(c, priorMonth)]))
+      // A prior month one organisation cannot be translated into is not a
+      // comparator: the clause goes without rather than compare this month's
+      // whole business with last month's part of it.
+      const priorComparable = [...priorRates.values()].every((r) => r !== null)
+      const query = supabase
         .from('xero_pl_lines_wide_compat')
-        .select('account_name, account_type, monthly_values')
-        .eq('tenant_id', tenantId)
+        .select('tenant_id, account_name, account_type, monthly_values')
+      const { data: wideRows } = multiOrg
+        ? await query.in('tenant_id', orgs.map((c) => c.tenant_id))
+        : await query.eq('tenant_id', orgs[0].tenant_id)
       let incomeSum = 0
       let sawIncome = false
-      for (const row of (wideRows ?? []) as { account_name: string; account_type: string; monthly_values: Record<string, number> }[]) {
-        const v = Number(row.monthly_values?.[priorMonth] ?? 0)
-        if (!Number.isFinite(v)) continue
-        priorActuals.set(row.account_name, (priorActuals.get(row.account_name) ?? 0) + v)
-        if (row.account_type === 'revenue') { incomeSum += v; sawIncome = true }
+      if (priorComparable) {
+        for (const row of (wideRows ?? []) as { tenant_id?: string; account_name: string; account_type: string; monthly_values: Record<string, number> }[]) {
+          const rate = (row.tenant_id ? priorRates.get(row.tenant_id) : 1) ?? 1
+          const v = Number(row.monthly_values?.[priorMonth] ?? 0) * rate
+          if (!Number.isFinite(v)) continue
+          priorActuals.set(row.account_name, (priorActuals.get(row.account_name) ?? 0) + v)
+          if (row.account_type === 'revenue') { incomeSum += v; sawIncome = true }
+        }
       }
       // Null, not 0: a month we hold no revenue for cannot be a denominator,
       // and 0 would make every prior-month ratio infinite or refused silently.
       priorIncomeActual = sawIncome ? incomeSum : null
     }
-    const xeroHeaders = {
-      'Authorization': `Bearer ${accessToken}`,
-      'xero-tenant-id': tenantId,
-      'Accept': 'application/json',
-    }
 
     // Build account name → code lookup from xero_pl_lines (already synced from Xero)
     // This is more reliable than fetching Chart of Accounts again, and the data is already local
+    //
+    // PER ORGANISATION for a consolidation. A code is an organisation's own:
+    // Dragon's Virtual Contractors is 2300 and Easy Hail's is 508, while 402 is
+    // Dragon's Bad Debts expense and Easy Hail's Marketing — 26 of the 74 codes
+    // they share name different accounts. One map across both would quote one
+    // organisation's bills under the other's account.
     const accountNameToCode = new Map<string, string>()
+    const codesByTenant = new Map<string, Map<string, string>>()
     try {
       // Phase D (CFO-only clients): xero_pl_lines_wide_compat is keyed
       // business_profiles-space; the old bare `.eq('business_id',
@@ -388,13 +437,17 @@ async function postHandler(request: Request) {
       // whose two ids differ — the vendor code lookup was always empty.
       const { data: plLines } = await supabase
         .from('xero_pl_lines_wide_compat')
-        .select('account_name, account_code')
+        .select('tenant_id, account_name, account_code')
         .in('business_id', ids.all)
 
       if (plLines) {
         for (const line of plLines) {
-          if (line.account_name && line.account_code) {
-            accountNameToCode.set(line.account_name.toLowerCase(), line.account_code)
+          if (!line.account_name || !line.account_code) continue
+          accountNameToCode.set(nameKey(line.account_name), line.account_code)
+          if (line.tenant_id) {
+            const forTenant = codesByTenant.get(line.tenant_id) ?? new Map<string, string>()
+            forTenant.set(nameKey(line.account_name), line.account_code)
+            codesByTenant.set(line.tenant_id, forTenant)
           }
         }
       }
@@ -406,27 +459,37 @@ async function postHandler(request: Request) {
     }
 
     // Also check account_mappings for any mapped xero_account_code
-    // (handles cases where user has manually mapped accounts)
-    try {
-      const { data: mappings } = await supabase
-        .from('account_mappings')
-        .select('xero_account_name, xero_account_code')
-        .eq('business_id', business_id)
-        .not('xero_account_code', 'is', null)
+    // (handles cases where user has manually mapped accounts).
+    //
+    // Single-organisation only: a mapping row carries no tenant, so for a
+    // consolidation there is no organisation whose code it is, and trying it in
+    // every one is the shared-code trap above.
+    if (!multiOrg) {
+      try {
+        const { data: mappings } = await supabase
+          .from('account_mappings')
+          .select('xero_account_name, xero_account_code')
+          .eq('business_id', business_id)
+          .not('xero_account_code', 'is', null)
 
-      if (mappings) {
-        for (const m of mappings) {
-          if (m.xero_account_name && m.xero_account_code) {
-            // Don't overwrite codes from xero_pl_lines — they're more authoritative
-            if (!accountNameToCode.has(m.xero_account_name.toLowerCase())) {
-              accountNameToCode.set(m.xero_account_name.toLowerCase(), m.xero_account_code)
+        if (mappings) {
+          for (const m of mappings) {
+            if (m.xero_account_name && m.xero_account_code) {
+              // Don't overwrite codes from xero_pl_lines — they're more authoritative
+              if (!accountNameToCode.has(nameKey(m.xero_account_name))) {
+                accountNameToCode.set(nameKey(m.xero_account_name), m.xero_account_code)
+              }
             }
           }
         }
+      } catch {
+        // Non-fatal — mappings are supplementary
       }
-    } catch {
-      // Non-fatal — mappings are supplementary
     }
+
+    /** The code this organisation posts an account under, or undefined. */
+    const codeIn = (connection: any, xeroName: string): string | undefined =>
+      multiOrg ? codesByTenant.get(connection.tenant_id)?.get(nameKey(xeroName)) : accountNameToCode.get(nameKey(xeroName))
 
     // Posted documents for the month, and only the invoice types the commented
     // accounts can use — see commentary-documents.ts for the two Urban Road
@@ -439,24 +502,73 @@ async function postHandler(request: Request) {
     // the list. Same pager, so the same 429 cap and page-cap invariant apply,
     // labelled CreditNotes in Sentry.
     const bankUrl = commentaryBankTransactionsUrl(report_month)!
-    const pageContext = { tenantId, reportMonth: report_month }
     const sides = [...sideByAccount.values()]
     const invoiceTypes = invoiceTypesFor(sides)
     const creditNotesUrl = commentaryCreditNotesUrl(report_month, creditNoteTypesFor(sides))
 
-    const [invoicePages, bankTransactions, creditNotes] = await Promise.all([
-      Promise.all(invoiceTypes.map(type =>
-        fetchAllXeroPages(commentaryInvoicesUrl(report_month, type)!, xeroHeaders, 'Invoices', { ...pageContext, label: `Invoices (${type})` })
-      )),
-      fetchAllXeroPages(bankUrl, xeroHeaders, 'BankTransactions', pageContext),
-      creditNotesUrl
-        ? fetchAllXeroPages(creditNotesUrl, xeroHeaders, 'CreditNotes', { ...pageContext, label: 'CreditNotes' })
-        : Promise.resolve([]),
-    ])
-    const invoices = invoicePages.flat()
+    // One organisation at a time: sibling connections share a refresh token, so
+    // two token refreshes at once can invalidate each other, and Xero's limits
+    // are per organisation anyway.
+    const read: OrgDocuments[] = []
+    /** Organisations whose documents are not in the lists below, and why. */
+    const unreadOrgs: string[] = []
+    const untranslatedOrgs: string[] = []
+    const missingRates: MissingRate[] = []
 
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[Commentary] Fetched ${invoices.length} invoices, ${bankTransactions.length} bank transactions, ${creditNotes.length} credit notes for ${report_month}`)
+    for (const connection of orgs) {
+      const orgName = orgNameOf(connection)
+      const tokenResult = await getValidAccessToken({ id: connection.id }, supabase)
+      if (!tokenResult.success || !tokenResult.accessToken) {
+        // Token refresh failed — we could not look at this organisation.
+        unreadOrgs.push(orgName)
+        continue
+      }
+      const currency = upperCurrency(connection.functional_currency)
+      if (rateFor(connection, report_month) === null) {
+        // Its figures are in another currency and the month has no rate: a
+        // supplier of its would be quoted as dollars it is not (IICT-05).
+        untranslatedOrgs.push(orgName)
+        missingRates.push({ currency_pair: `${currency}/${PRESENTATION_CURRENCY}`, period: report_month })
+        continue
+      }
+      const xeroHeaders = {
+        'Authorization': `Bearer ${tokenResult.accessToken}`,
+        'xero-tenant-id': connection.tenant_id,
+        'Accept': 'application/json',
+      }
+      const pageContext = { tenantId: connection.tenant_id, reportMonth: report_month }
+      const pacer = createTenantCallPacer({ clock: systemClock })
+
+      const [invoicePages, bankTransactions, creditNotes] = await Promise.all([
+        Promise.all(invoiceTypes.map(type =>
+          fetchAllXeroPages(commentaryInvoicesUrl(report_month, type)!, xeroHeaders, 'Invoices', { ...pageContext, label: `Invoices (${type})` }, pacer)
+        )),
+        fetchAllXeroPages(bankUrl, xeroHeaders, 'BankTransactions', pageContext, pacer),
+        creditNotesUrl
+          ? fetchAllXeroPages(creditNotesUrl, xeroHeaders, 'CreditNotes', { ...pageContext, label: 'CreditNotes' }, pacer)
+          : Promise.resolve([]),
+      ])
+      read.push({ connection, orgName, invoices: invoicePages.flat(), bankTransactions, creditNotes })
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Commentary] ${orgName}: ${invoicePages.flat().length} invoices, ${bankTransactions.length} bank transactions, ${creditNotes.length} credit notes for ${report_month}`)
+      }
+    }
+
+    if (read.length === 0) {
+      // Nothing was read anywhere — could not look, as a failed token always was.
+      return NextResponse.json({ success: true, commentary: {}, checked: false })
+    }
+
+    // Coach-only, on every drafted line: a list that is missing an
+    // organisation's suppliers under-quotes its account, and the coach is the
+    // one who can tell whether that matters.
+    const orgWarnings: string[] = []
+    if (unreadOrgs.length > 0) {
+      orgWarnings.push(`Suppliers from ${listNames(unreadOrgs)} are not included: Xero could not be read for ${unreadOrgs.length === 1 ? 'it' : 'them'}.`)
+    }
+    if (untranslatedOrgs.length > 0) {
+      orgWarnings.push(`Suppliers from ${listNames(untranslatedOrgs)} are not included: ${describeMissingRates(missingRates)}.`)
     }
 
     // Load settings for detail tab cross-references
@@ -495,18 +607,19 @@ async function postHandler(request: Request) {
 
     for (const line of allLines) {
       const xeroName = line.xero_account_name || line.account_name
-      const accountCode = accountNameToCode.get(xeroName.toLowerCase())
+      // The account in each organisation that was read: its own code there.
+      const inEachOrg = read.map((org) => ({ org, code: codeIn(org.connection, xeroName) })).filter((o) => !!o.code)
       const trigger_reason = reasonByAccount.get(line.account_name)
 
       // Determine detail tab cross-reference
       let detail_tab_ref: 'subscriptions' | 'wages' | null = null
-      if (accountCode && subscriptionAccountCodes.includes(accountCode)) {
+      if (inEachOrg.some((o) => subscriptionAccountCodes.includes(o.code!))) {
         detail_tab_ref = 'subscriptions'
       } else if (wagesAccountNames.includes(xeroName.toLowerCase())) {
         detail_tab_ref = 'wages'
       }
 
-      if (!accountCode) {
+      if (inEachOrg.length === 0) {
         // No account code (or BS line / revenue line without Xero P&L
         // membership) — still include with empty vendor summary so coach
         // can add notes. trigger_reason makes the row meaningful to the UI.
@@ -524,14 +637,29 @@ async function postHandler(request: Request) {
       // with the small ones rolled into "Others". A subscription account names
       // the product ("Google Workspace", as its subscription page does); every
       // other account names the company that billed it ("Google" on ad spend).
-      const significant: VendorSummary[] = summariseVendors(collectAccountTransactions({
-        accountCode,
-        side: sideByAccount.get(line.account_name) ?? 'expense',
-        invoices,
-        bankTransactions,
-        creditNotes,
-        baseCurrency,
-        vendorNames: detail_tab_ref === 'subscriptions' ? 'product' : 'company',
+      //
+      // Every organisation's documents for the account, merged BY NAME: a
+      // supplier billing two organisations is one row, in the presentation
+      // currency, so the list sums to the line above it (DRG-19, IICT-29).
+      const side = sideByAccount.get(line.account_name) ?? 'expense'
+      const significant: VendorSummary[] = summariseVendors(inEachOrg.flatMap(({ org, code }) => {
+        const transactions = collectAccountTransactions({
+          accountCode: code!,
+          side,
+          invoices: org.invoices,
+          bankTransactions: org.bankTransactions,
+          creditNotes: org.creditNotes,
+          // The organisation's OWN currency: a document is converted into it at
+          // the document's own rate, then the organisation into the report's.
+          baseCurrency: org.connection.functional_currency ?? null,
+          vendorNames: detail_tab_ref === 'subscriptions' ? 'product' : 'company',
+        })
+        const rate = rateFor(org.connection, report_month) ?? 1
+        return rate === 1
+          ? transactions
+          // A line the document itself could not state in the organisation's
+          // currency stays unconverted and out of every total, as it was.
+          : transactions.map((t) => (t.converted === false ? t : { ...t, amount: t.amount * rate }))
       }))
 
       // The draft: facts only, rebuilt from scratch every run.
@@ -586,6 +714,9 @@ async function postHandler(request: Request) {
         draft_clause = draft.clause
         draft_warnings = draft.warnings
       }
+      // An organisation that was not read, or could not be translated, is
+      // missing from this list whether or not it was drafted.
+      draft_warnings = [...draft_warnings, ...orgWarnings]
 
       commentary[line.account_name] = {
         vendor_summary: significant,

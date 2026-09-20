@@ -124,6 +124,33 @@ export function openingBalanceDate(reportMonth: string, yearStartMonth: number):
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
 }
 
+/**
+ * Why the v1 cashflow must not be built for these organisations — or null.
+ *
+ * v1 opens on this bank balance and then ESTIMATES the banked months' cash
+ * from the P&L. For one AUD organisation that is a projection with a stated
+ * basis. For Dragon Roofing's two it put $1,024,110 in the bank at 31 August
+ * against the $288,449 the two banks held (DRG-45); for IICT, with one
+ * organisation in HKD, it opened at $0 and ran from a Full Year that added
+ * Hong Kong dollars to Australian ones (IICT-50). Cash model v2 refuses both in
+ * the same words (pack-cash-model-load); v1 does now too, and the cash pages
+ * print the reason instead of the figures.
+ *
+ * An organisation listed twice (IICT's orgs sit under two business ids) is
+ * one organisation. No organisation at all is not a refusal: the opening is
+ * 'unavailable' and the page says so, as before.
+ */
+export function packCashflowV1Refusal(tenants: readonly OpeningTenant[]): string | null {
+  const distinct = [...new Map(tenants.map((t) => [t.tenant_id, t])).values()]
+  if (distinct.length > 1) {
+    return 'This business has more than one Xero organisation, and the cashflow cannot yet be built for more than one.'
+  }
+  if (distinct.some((t) => (t.currency || 'AUD').toUpperCase() !== 'AUD')) {
+    return 'The Xero organisation reports in a foreign currency, which this cashflow cannot translate.'
+  }
+  return null
+}
+
 const num = (v: number | string | null | undefined) => {
   const n = Number(v ?? 0)
   return Number.isFinite(n) ? n : 0

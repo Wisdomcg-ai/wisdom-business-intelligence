@@ -10,11 +10,13 @@ import { fakeSupabase } from './fake-supabase'
 
 const BUSINESS = '28d41193-38ae-4071-a2b1-0dbea90a38fd'
 const PROFILE = 'aabd3c49-4dc8-4aa6-a9a6-75f62ab89ff5'
+const TENANT_ONE = '8519c134-ed81-4d9b-8f07-ce499d12b7ee'
 
-const { compositeMock, qualityMock, resolveBudgetMock } = vi.hoisted(() => ({
+const { compositeMock, qualityMock, resolveBudgetMock, consolidatedActualsMock } = vi.hoisted(() => ({
   compositeMock: vi.fn(),
   qualityMock: vi.fn(),
   resolveBudgetMock: vi.fn(),
+  consolidatedActualsMock: vi.fn(),
 }))
 
 vi.mock('@sentry/nextjs', () => ({ captureException: vi.fn(), captureMessage: vi.fn() }))
@@ -23,6 +25,9 @@ vi.mock('@/lib/business/resolveBusinessProfileIds', () => ({
 }))
 vi.mock('@/lib/services/forecast-read-service', () => ({
   createForecastReadService: () => ({ getMonthlyComposite: compositeMock, getDataQualityForBusiness: qualityMock }),
+}))
+vi.mock('@/lib/monthly-report/consolidated-full-year-actuals', () => ({
+  loadConsolidatedFullYearActuals: consolidatedActualsMock,
 }))
 vi.mock('@/lib/budgets/resolve-budget', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/budgets/resolve-budget')>()),
@@ -114,6 +119,55 @@ describe('loadFullYearReport', () => {
     )
     expect(res.ok && res.report.forecast_available).toBe(false)
     expect(compositeMock).not.toHaveBeenCalled()
+  })
+
+  it('never runs the overwriting name-keyed read for a business with more than one organisation and no active forecast (IICT-18, IICT-44)', async () => {
+    // It reads the consolidation instead (full-year-multi-org-budget.test.ts),
+    // and passes that read's refusal — a missing exchange rate — straight on.
+    consolidatedActualsMock.mockResolvedValue({ ok: false, error: 'This page combines 2 Xero organisations and no HKD/AUD exchange rate is stored for Aug 2026, …' })
+    qualityMock.mockResolvedValue({ data_quality: 'no_sync', per_tenant_quality: [] })
+    // IICT's shape: IGP's Membership income would overwrite IGL's HKD 1,628,444.86.
+    const db = fakeSupabase(tables({
+      financial_forecasts: [],
+      xero_connections: [
+        { business_id: BUSINESS, tenant_id: 'igp', functional_currency: 'AUD', is_active: true },
+        { business_id: PROFILE, tenant_id: 'igl', functional_currency: 'HKD', is_active: true },
+        { business_id: BUSINESS, tenant_id: 'old', functional_currency: 'AUD', is_active: false },
+      ],
+      xero_pl_lines_wide_compat: [
+        { business_id: PROFILE, tenant_id: 'igl', account_code: '200', account_name: 'Canvas Sales', account_type: 'revenue', section: 'Revenue', monthly_values: { '2026-08': 1628444.86 } },
+        { business_id: PROFILE, tenant_id: 'igp', account_code: '200', account_name: 'Canvas Sales', account_type: 'revenue', section: 'Revenue', monthly_values: { '2026-08': 61.71 } },
+      ],
+    }))
+    const res = await loadFullYearReport(db, { business_id: BUSINESS, fiscal_year: 2027, report_month: '2026-08' })
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.refused).toBe(true)
+    expect(res.error).toContain('no HKD/AUD exchange rate is stored for Aug 2026')
+    expect(consolidatedActualsMock).toHaveBeenCalledWith(db, expect.objectContaining({ businessId: BUSINESS, fiscalYear: 2027, lastActualMonth: '2026-08' }))
+    expect(db.calls.some((c) => c.table === 'xero_pl_lines_wide_compat')).toBe(false)
+  })
+
+  it('one organisation with no active forecast still builds from the fallback read', async () => {
+    qualityMock.mockResolvedValue({ data_quality: 'no_sync', per_tenant_quality: [] })
+    const res = await loadFullYearReport(fakeSupabase(tables({
+      financial_forecasts: [],
+      xero_connections: [{ business_id: BUSINESS, tenant_id: TENANT_ONE, functional_currency: 'AUD', is_active: true }],
+      xero_pl_lines_wide_compat: [
+        { business_id: PROFILE, account_code: '41000', account_name: 'Canvas Sales', account_type: 'revenue', section: 'Revenue', monthly_values: { '2026-08': 200 } },
+      ],
+    })), { business_id: BUSINESS, fiscal_year: 2027, report_month: '2026-08' })
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    const canvas = res.report.sections.find((s) => s.category === 'Revenue')!.lines.find((l) => l.account_name === 'Canvas Sales')!
+    expect(canvas.months[1]).toMatchObject({ month: '2026-08', actual: 200, source: 'actual' })
+  })
+
+  it('a connection read that fails throws, rather than letting the overwriting read run', async () => {
+    await expect(loadFullYearReport(
+      fakeSupabase(tables({ financial_forecasts: [], xero_connections: { error: { message: 'timeout' } } })),
+      { business_id: BUSINESS, fiscal_year: 2027, report_month: '2026-08' },
+    )).rejects.toBeTruthy()
   })
 
   it('says which months the approved budget reaches, so a partial version is not read as zeros', async () => {

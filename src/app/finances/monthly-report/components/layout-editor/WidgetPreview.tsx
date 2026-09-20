@@ -3,7 +3,7 @@
 import {
   FileText, Table2, Calendar, CreditCard, Users, TrendingUp,
   PieChart, Target, Grid3x3, Flame, Timer, BarChart3, AlertTriangle,
-  LineChart, DollarSign, Activity,
+  LineChart, DollarSign, Activity, FileUp,
 } from 'lucide-react'
 import type { WidgetType } from '../../types/pdf-layout'
 import { WIDGET_DEFINITIONS } from '../../constants/widget-registry'
@@ -11,7 +11,7 @@ import { WIDGET_DEFINITIONS } from '../../constants/widget-registry'
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   FileText, Table2, Calendar, CreditCard, Users, TrendingUp,
   PieChart, Target, Grid3x3, Flame, Timer, BarChart3, AlertTriangle,
-  LineChart, DollarSign, Activity,
+  LineChart, DollarSign, Activity, FileUp,
 }
 
 const CATEGORY_COLORS: Record<string, string> = {

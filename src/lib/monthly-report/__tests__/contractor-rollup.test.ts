@@ -158,6 +158,18 @@ describe('contractorLoadReason — what the page says when the rows are missing 
     expect(reason).not.toMatch(/no contractor payments were found/)
   })
 
+  it('an exchange rate nobody loaded is not a Xero read failure, and says where it is loaded', () => {
+    const reason = contractorLoadReason(empty({
+      complete: false,
+      incomplete_reason: 'no HKD/AUD exchange rate is stored for Aug 2026, so IICT Group Limited cannot be shown in AUD',
+      translation_unavailable: { missing: [{ currency_pair: 'HKD/AUD', period: '2026-08' }], organisations: ['IICT Group Limited'] },
+    }), 0)
+    expect(reason).toBe(
+      'no HKD/AUD exchange rate is stored for Aug 2026, so IICT Group Limited cannot be shown in AUD — load the rates under Admin, Consolidation',
+    )
+    expect(reason).not.toMatch(/Xero/)
+  })
+
   it('an answer that does not say whether it is complete (an older response, a payload file) is not read as empty', () => {
     expect(contractorLoadReason(empty(), 0)).toBe('the contractor figures could not be confirmed as complete')
   })

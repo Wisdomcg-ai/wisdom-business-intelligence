@@ -8,12 +8,14 @@
  */
 import { z } from 'zod'
 import { flowSurplus, type MoneyFlow } from './money-flow'
+import { listOf } from './multi-org-consolidate'
 
 /**
- * A placement's config. Strict, because nothing but a hand-written SQL update
- * sets it — there is no editor for this page — so a typo ('Surplus', or
- * lastLine for last_line) must come back as a reason the page prints, not as
- * the default quietly standing in for what was asked.
+ * A placement's config. Strict: the layout editor's options panel offers only
+ * these values (placement-options), but a config typed by hand in SQL still
+ * reaches the page, and a typo there ('Surplus', or lastLine for last_line)
+ * must come back as a reason the page prints, not as the default quietly
+ * standing in for what was asked.
  *
  * last_line — what the page's last line says.
  *   'reconciliation' (default) — Net Movement = Surplus + Came From − Spent,
@@ -30,10 +32,22 @@ import { flowSurplus, type MoneyFlow } from './money-flow'
  *   'calxa' — with Calxa's report-group numbers, 400 · Income … as its pack
  *     prints them. The numbers are Calxa's mapping, not Xero's; on a client who
  *     never used Calxa they are noise.
+ *
+ * bank_rows — which accounts How this Affected Our Bank lists.
+ *   'all' (default) — every chosen bank account with a balance at either date.
+ *   'moved' — only those whose movement prints as something other than 0.
+ *     Calxa's Distinct Directions p22 leaves Cash Draw, OFFSET and Petty Cash
+ *     off; ours printed "Petty Cash 156 156 0" (DD-33). The Total is the
+ *     bank's movement either way, so nothing it proves changes.
  */
+export const MONEY_FLOW_LAST_LINES = ['reconciliation', 'surplus'] as const
+export const MONEY_FLOW_SUMMARY_CODES = ['plain', 'calxa'] as const
+export const MONEY_FLOW_BANK_ROWS = ['all', 'moved'] as const
+
 const configSchema = z.strictObject({
-  last_line: z.enum(['reconciliation', 'surplus']).default('reconciliation'),
-  summary_codes: z.enum(['plain', 'calxa']).default('plain'),
+  last_line: z.enum(MONEY_FLOW_LAST_LINES).default('reconciliation'),
+  summary_codes: z.enum(MONEY_FLOW_SUMMARY_CODES).default('plain'),
+  bank_rows: z.enum(MONEY_FLOW_BANK_ROWS).default('all'),
 })
 
 export type MoneyFlowConfig = z.infer<typeof configSchema>
@@ -65,6 +79,12 @@ export interface MoneyFlowRows {
 }
 
 const round2 = (v: number) => Math.round(v * 100) / 100
+
+/**
+ * A movement under 50c prints as "0" — the rule deriveMoneyFlow already applies
+ * to the sources and uses (its minItem), here for bank_rows 'moved'.
+ */
+const PRINTS_AS_ZERO = 0.5
 
 /** Whole dollars, as the page prints them — for the wording of a note. */
 const dollars = (v: number) => {
@@ -154,7 +174,10 @@ export function moneyFlowRows(flow: MoneyFlow, config: MoneyFlowConfig): MoneyFl
   rows.push({ type: 'total', label: 'Total', movement: spent })
 
   rows.push({ type: 'section', label: 'How this Affected Our Bank' })
-  for (const b of flow.bank_accounts) rows.push({ type: 'line', label: b.label, opening: b.opening, closing: b.closing, movement: b.movement })
+  for (const b of flow.bank_accounts) {
+    if (config.bank_rows === 'moved' && Math.abs(b.movement) < PRINTS_AS_ZERO) continue
+    rows.push({ type: 'line', label: b.label, opening: b.opening, closing: b.closing, movement: b.movement })
+  }
   rows.push({ type: 'total', label: 'Total', movement: flow.bank.delta })
 
   // The movements under 50c that no row lists still belong in the proof, or a
@@ -166,6 +189,14 @@ export function moneyFlowRows(flow: MoneyFlow, config: MoneyFlowConfig): MoneyFl
     movement: config.last_line === 'surplus' ? surplus : reconciled,
   })
 
+  // Named first, the way P8's consolidated balance sheet does: nothing else on
+  // this page says which organisations it added, and a group that quietly
+  // loses a connection would otherwise print every total short and silent.
+  if (flow.organisations && flow.organisations.length > 0) {
+    notes.push(
+      `Added together: ${listOf(flow.organisations.map((o) => (o.currency === 'AUD' ? o.name : `${o.name} (${o.currency})`)))}.`,
+    )
+  }
   if (!flow.summary) {
     notes.push("This month's income and expenses are not in the stored Xero sync, so the surplus is the movement in earnings on the balance sheet.")
   }

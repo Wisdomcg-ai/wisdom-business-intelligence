@@ -9,7 +9,7 @@
  * and the page into 'unavailable'.
  */
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
-import { openingBalanceDate, parseBankAccountIds, totalBankAt, type KnownAccountInput, type OpeningBank } from './opening-bank'
+import { openingBalanceDate, packCashflowV1Refusal, parseBankAccountIds, totalBankAt, type KnownAccountInput, type OpeningBank } from './opening-bank'
 import { loadBankAccountIds } from './bank-accounts-load'
 
 type Client = any
@@ -25,6 +25,21 @@ export async function loadOpeningBank(
   reportMonth: string,
   opts: { bankAccountIds?: string[] | null } = {},
 ): Promise<OpeningBank> {
+  return (await loadPackCashflowOpening(supabase, businessId, reportMonth, opts)).opening
+}
+
+/**
+ * The opening bank, and — from the same read of the business's active
+ * organisations — whether the v1 cashflow may be built on it at all
+ * (packCashflowV1Refusal). One read, so the two answers cannot describe
+ * different organisations.
+ */
+export async function loadPackCashflowOpening(
+  supabase: Client,
+  businessId: string,
+  reportMonth: string,
+  opts: { bankAccountIds?: string[] | null } = {},
+): Promise<{ opening: OpeningBank; v1Refusal: string | null }> {
   const ids = await resolveBusinessProfileIds(supabase, businessId)
   const bankAccountIds = parseBankAccountIds(opts.bankAccountIds !== undefined
     ? opts.bankAccountIds
@@ -97,7 +112,7 @@ export async function loadOpeningBank(
     }))
   }
 
-  return totalBankAt(
+  const opening = totalBankAt(
     rows.map((r) => ({
       tenant_id: (r.tenant_id as string | null) ?? null,
       account_id: (r.account_id as string | null) ?? null,
@@ -111,4 +126,5 @@ export async function loadOpeningBank(
     bankAccountIds,
     { knownAccounts },
   )
+  return { opening, v1Refusal: packCashflowV1Refusal(tenants) }
 }

@@ -9,6 +9,7 @@ import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfile
 import { loadFxRates } from '@/lib/consolidation/fx'
 import type { BalanceSheetCompare } from '@/app/finances/monthly-report/types'
 import { buildBalanceSheetData, balanceSheetDates, type BsAccount } from '@/lib/monthly-report/balance-sheet-rows'
+import { loadConsolidatedBalanceSheet } from '@/lib/monthly-report/consolidated-balance-sheet-load'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -379,31 +380,43 @@ async function getHandler(request: NextRequest) {
 
     // ─────────────────────────────────────────────────────────────────────
     // Single-tenant path (cash_only OR full BS) — uses the first active
-    // connection. For multi-tenant FULL balance sheets, callers should use
-    // /api/monthly-report/consolidated-bs instead — that route runs the FX
-    // engine with eliminations and proper account alignment. This route's
-    // full-BS shape predates the consolidation engine and is preserved for
-    // back-compat with the existing Calxa-style monthly report.
+    // connection. A multi-tenant FULL balance sheet is the consolidated sheet
+    // just below, built from the stored mirror.
     // ─────────────────────────────────────────────────────────────────────
-    // The full sheet is ONE organisation's. For a business Xero holds as
-    // several (Dragon Roofing + Easy Hail Claim; IICT's three, one of them in
-    // HKD) the first active connection used to be printed as though it were
-    // the business — whichever org the query happened to return first, with
-    // nothing on the page to say the rest were missing. Say so instead: the
-    // pack prints this as the page's reason and the tab as its error. The
-    // consolidated balance sheet is the page that covers them together. The
-    // Cash KPI above sums every org itself and is unaffected.
+    // The full sheet for a business Xero holds as several organisations
+    // (Dragon Roofing + Easy Hail Claim; IICT's three, one of them in HKD) is
+    // the consolidated sheet, built from the stored balance-sheet mirror per
+    // organisation — translated, eliminated, and in the one-organisation
+    // sheet's shape, so the tab, the pack, the Finalise freeze and the sent
+    // copy all take it exactly as they take one organisation's. It never calls
+    // Xero: the mirror is the sync's, and a pack of three organisations would
+    // otherwise be six live reports against three minute limits.
+    //
+    // It used to refuse (409 MULTI_ORG) rather than print the first connection
+    // as though it were the business; the refusals that remain are the
+    // sheet's own — a missing closing rate, an organisation never synced —
+    // and the pack prints them as the page's reason. The Cash KPI above sums
+    // every org itself and is unaffected.
     if (!cashOnly && allConns.length > 1) {
-      const names = allConns.map((c: any) => c.tenant_name).filter(Boolean).join(', ')
-      return NextResponse.json(
-        {
-          error:
-            `Xero holds this business as ${allConns.length} organisations${names ? ` (${names})` : ''}, ` +
-            'and this page can show only one of them — the consolidated balance sheet covers them together',
-          code: 'MULTI_ORG',
-        },
-        { status: 409 },
-      )
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month as string)) {
+        return NextResponse.json({ error: 'month must be YYYY-MM' }, { status: 400 })
+      }
+      let result: Awaited<ReturnType<typeof loadConsolidatedBalanceSheet>>
+      try {
+        result = await loadConsolidatedBalanceSheet(supabase, businessId, month as string, compare === 'mom' ? 'mom' : 'yoy', {
+          connections: allConns,
+        })
+      } catch (err) {
+        Sentry.captureException(err, { tags: { route: 'Xero/balance-sheet', stage: 'consolidated' }, extra: { businessId, month } } as any)
+        return NextResponse.json(
+          { error: 'the stored balance sheet could not be read — export again in a minute or two' },
+          { status: 502 },
+        )
+      }
+      if (!result.ok) {
+        return NextResponse.json({ error: result.reason, code: 'CONSOLIDATED_BS_REFUSED' }, { status: 422 })
+      }
+      return NextResponse.json(result.data)
     }
 
     const connection = allConns[0]

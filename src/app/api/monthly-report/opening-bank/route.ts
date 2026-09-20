@@ -9,7 +9,7 @@ import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionCon
 import { z } from 'zod'
 import { withQuerySchema } from '@/lib/api/with-schema'
 import { isValidPeriodMonth } from '@/lib/monthly-report/external-metrics'
-import { loadOpeningBank } from '@/lib/monthly-report/opening-bank-load'
+import { loadPackCashflowOpening } from '@/lib/monthly-report/opening-bank-load'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +24,11 @@ export const dynamic = 'force-dynamic'
  * Always 200 with an `opening` verdict when the lookup ran: "unavailable" is an
  * answer the page prints, not an error it hides. All rules live in the pure
  * opening-bank module.
+ *
+ * `v1_refusal` is why the v1 cashflow must not be built on this business at
+ * all — more than one Xero organisation, or one in a foreign currency — or
+ * null. The page asks before it looks up a forecast, and prints the reason in
+ * the cash pages' place (packCashflowV1Refusal).
  */
 const OpeningBankGetSchema = z.object({
   business_id: z.string().optional(),
@@ -65,9 +70,9 @@ async function getHandler(request: Request) {
     }
 
     // Shared with scripts/preview-pack.ts — see opening-bank-load.
-    const opening = await loadOpeningBank(supabase, businessId, reportMonth)
+    const { opening, v1Refusal } = await loadPackCashflowOpening(supabase, businessId, reportMonth)
 
-    return NextResponse.json({ success: true, opening })
+    return NextResponse.json({ success: true, opening, v1_refusal: v1Refusal })
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'monthly-report/opening-bank' }, extra: { context: '[OpeningBank] GET error' } } as any)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

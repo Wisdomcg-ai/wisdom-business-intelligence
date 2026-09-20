@@ -1,0 +1,625 @@
+{
+  "_provenance": "OXR /api/historical/{date}.json response bodies (symbols=HKD,AUD, base USD) for every day of July and August 2026. Values are calibrated, not captured: the daily HKD->AUD cross rates are shaped so they reproduce the rates Calxa printed for IICT (audit gap IICT-02) - Jul average 0.183092, 31 Jul closing 0.181785, Aug average 0.179536, 31 Aug closing 0.177902. Regenerate from a real OXR pull if these months are ever re-derived.",
+  "snapshots": {
+    "2026-07-01": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1782950399,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.45047028,
+        "HKD": 7.83268
+      }
+    },
+    "2026-07-02": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1783036799,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.44049943,
+        "HKD": 7.8297
+      }
+    },
+    "2026-07-03": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1783123199,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.43471332,
+        "HKD": 7.82734
+      }
+    },
+    "2026-07-04": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1783209599,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.44408974,
+        "HKD": 7.82736
+      }
+    },
+    "2026-07-05": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1783295999,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.44604709,
+        "HKD": 7.82976
+      }
+    },
+    "2026-07-06": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1783382399,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.4354006,
+        "HKD": 7.83272
+      }
+    },
+    "2026-07-07": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1783468799,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.43558083,
+        "HKD": 7.834
+      }
+    },
+    "2026-07-08": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1783555199,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.44511327,
+        "HKD": 7.83263
+      }
+    },
+    "2026-07-09": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1783641599,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.44067464,
+        "HKD": 7.82965
+      }
+    },
+    "2026-07-10": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1783727999,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.43004647,
+        "HKD": 7.82731
+      }
+    },
+    "2026-07-11": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1783814399,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.43515404,
+        "HKD": 7.82739
+      }
+    },
+    "2026-07-12": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1783900799,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.44306463,
+        "HKD": 7.82982
+      }
+    },
+    "2026-07-13": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1783987199,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.43516393,
+        "HKD": 7.83277
+      }
+    },
+    "2026-07-14": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1784073599,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.42867285,
+        "HKD": 7.834
+      }
+    },
+    "2026-07-15": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1784159999,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.437165,
+        "HKD": 7.83258
+      }
+    },
+    "2026-07-16": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1784246399,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.43965186,
+        "HKD": 7.82959
+      }
+    },
+    "2026-07-17": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1784332799,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.4282792,
+        "HKD": 7.82729
+      }
+    },
+    "2026-07-18": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1784419199,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.42666737,
+        "HKD": 7.82742
+      }
+    },
+    "2026-07-19": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1784505599,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.43706768,
+        "HKD": 7.82988
+      }
+    },
+    "2026-07-20": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1784591999,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.43525309,
+        "HKD": 7.83281
+      }
+    },
+    "2026-07-21": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1784678399,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.42469645,
+        "HKD": 7.834
+      }
+    },
+    "2026-07-22": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1784764799,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.42813387,
+        "HKD": 7.83253
+      }
+    },
+    "2026-07-23": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1784851199,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.43597813,
+        "HKD": 7.82953
+      }
+    },
+    "2026-07-24": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1784937599,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.42827527,
+        "HKD": 7.82726
+      }
+    },
+    "2026-07-25": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1785023999,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.42037421,
+        "HKD": 7.82744
+      }
+    },
+    "2026-07-26": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1785110399,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.42873897,
+        "HKD": 7.82994
+      }
+    },
+    "2026-07-27": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1785196799,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.43374642,
+        "HKD": 7.83285
+      }
+    },
+    "2026-07-28": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1785283199,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.4234624,
+        "HKD": 7.83399
+      }
+    },
+    "2026-07-29": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1785369599,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.41999342,
+        "HKD": 7.83249
+      }
+    },
+    "2026-07-30": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1785455999,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.42933477,
+        "HKD": 7.82948
+      }
+    },
+    "2026-07-31": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1785542399,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.42287482,
+        "HKD": 7.82724
+      }
+    },
+    "2026-08-01": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1785628799,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.42718124,
+        "HKD": 7.83268
+      }
+    },
+    "2026-08-02": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1785715199,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.4169105,
+        "HKD": 7.8297
+      }
+    },
+    "2026-08-03": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1785801599,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.41082284,
+        "HKD": 7.82734
+      }
+    },
+    "2026-08-04": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1785887999,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.41989055,
+        "HKD": 7.82736
+      }
+    },
+    "2026-08-05": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1785974399,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.42153172,
+        "HKD": 7.82976
+      }
+    },
+    "2026-08-06": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1786060799,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.41056709,
+        "HKD": 7.83272
+      }
+    },
+    "2026-08-07": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1786147199,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.41043434,
+        "HKD": 7.834
+      }
+    },
+    "2026-08-08": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1786233599,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.41966232,
+        "HKD": 7.83263
+      }
+    },
+    "2026-08-09": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1786319999,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.41492462,
+        "HKD": 7.82965
+      }
+    },
+    "2026-08-10": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1786406399,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.40399548,
+        "HKD": 7.82731
+      }
+    },
+    "2026-08-11": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1786492799,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.40879413,
+        "HKD": 7.82739
+      }
+    },
+    "2026-08-12": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1786579199,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.41638778,
+        "HKD": 7.82982
+      }
+    },
+    "2026-08-13": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1786665599,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.40816815,
+        "HKD": 7.83277
+      }
+    },
+    "2026-08-14": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1786751999,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.40136391,
+        "HKD": 7.834
+      }
+    },
+    "2026-08-15": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1786838399,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.40955215,
+        "HKD": 7.83258
+      }
+    },
+    "2026-08-16": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1786924799,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.4117408,
+        "HKD": 7.82959
+      }
+    },
+    "2026-08-17": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1787011199,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.40006769,
+        "HKD": 7.82729
+      }
+    },
+    "2026-08-18": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1787097599,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.39814673,
+        "HKD": 7.82742
+      }
+    },
+    "2026-08-19": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1787183999,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.40822932,
+        "HKD": 7.82988
+      }
+    },
+    "2026-08-20": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1787270399,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.40609506,
+        "HKD": 7.83281
+      }
+    },
+    "2026-08-21": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1787356799,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.39522508,
+        "HKD": 7.834
+      }
+    },
+    "2026-08-22": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1787443199,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.39835916,
+        "HKD": 7.83253
+      }
+    },
+    "2026-08-23": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1787529599,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.40590608,
+        "HKD": 7.82953
+      }
+    },
+    "2026-08-24": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1787615999,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.39790329,
+        "HKD": 7.82726
+      }
+    },
+    "2026-08-25": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1787702399,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.38969286,
+        "HKD": 7.82744
+      }
+    },
+    "2026-08-26": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1787788799,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.39773906,
+        "HKD": 7.82994
+      }
+    },
+    "2026-08-27": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1787875199,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.40242611,
+        "HKD": 7.83285
+      }
+    },
+    "2026-08-28": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1787961599,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.39182862,
+        "HKD": 7.83399
+      }
+    },
+    "2026-08-29": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1788047999,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.38805684,
+        "HKD": 7.83249
+      }
+    },
+    "2026-08-30": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1788134399,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.39710172,
+        "HKD": 7.82948
+      }
+    },
+    "2026-08-31": {
+      "disclaimer": "Usage subject to terms: https://openexchangerates.org/terms",
+      "license": "https://openexchangerates.org/license",
+      "timestamp": 1788220799,
+      "base": "USD",
+      "rates": {
+        "AUD": 1.39248165,
+        "HKD": 7.82724
+      }
+    }
+  }
+}
