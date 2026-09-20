@@ -744,10 +744,11 @@ describe('Group L — a failed engagement lookup is unknown, not "never" or "non
 describe('Group M — a failed profiles read makes profile-keyed modules unknown', () => {
   // With business_profiles failed, the profile-keyed reads run against the nil
   // uuid and "succeed" with nothing. That nothing is not the client having nothing.
+  // quarterlyReview is not here: quarterly_reviews is keyed by businesses.id (Group S).
   const PROFILE_DEPENDENT = [
     'businessProfile', 'valueProposition', 'xeroConnected', 'goals', 'onePagePlan',
     'strategicInitiatives', 'forecast', 'cashflow', 'monthlyReport', 'kpiDashboard',
-    'weeklyReviews', 'quarterlyReview',
+    'weeklyReviews',
   ]
 
   it('every module that needs a profile id is unknown, though its own query returned []', async () => {
@@ -789,21 +790,6 @@ describe('Group N — a row that WAS seen still counts when part of its lookup f
     })
     expect(client.modules.xeroConnected).toBe('completed')
     expect(client.alerts).not.toContain('Xero not connected')
-  })
-
-  it('a completed quarterly review under the owner is completed; an unfinished one is unknown, not in_progress', async () => {
-    let client = await getFirstClient({
-      business_profiles: FAILED,
-      defaults: { quarterly_reviews: { data: [{ id: 'q1', business_id: 'owner-1', status: 'completed' }], error: null } },
-    })
-    expect(client.modules.quarterlyReview).toBe('completed')
-
-    // A completed one could be sitting under the profile id we couldn't read.
-    client = await getFirstClient({
-      business_profiles: FAILED,
-      defaults: { quarterly_reviews: { data: [{ id: 'q1', business_id: 'owner-1', status: 'draft' }], error: null } },
-    })
-    expect(client.modules.quarterlyReview).toBe('unknown')
   })
 
   it('initiatives with the snapshot table unread: the plan is unknown, not in_progress', async () => {
@@ -1134,5 +1120,97 @@ describe('Group R — how a read pages', () => {
       expect(limitCalls.filter((c) => c.table === table).map((c) => c.count), table).toEqual([1000, 1000])
       expect(gtCalls.filter((c) => c.table === table), table).toEqual([{ table, col: 'id', val: `${table}-b` }])
     }
+  })
+})
+
+// ─── Group S — the quarterly review is read by the id its writer stores ──────
+//
+// quarterly_reviews.business_id is a foreign key to businesses.id (validated in
+// prod), and the workshop stores the businesses.id that resolveBusinessId
+// returns. The route read the table by business_profiles.id and the owner's
+// user_id — ids that column can never hold — so on 15 Sep 2026 it matched none
+// of the 13 reviews under the 27-client coach, and every client read
+// 'not_started', including the 6 with a completed review. No id translation is
+// needed: the route holds each client's businesses.id from the businesses read,
+// as session notes and messages already use it.
+
+describe('Group S — the quarterly review is read by businesses.id, the id its writer stores', () => {
+  const reviews = (...rows: Array<{ business_id: string; status: string }>): TableResp => ({
+    data: rows.map((row, i) => ({ id: rowId('qr', i), ...row })),
+    error: null,
+  })
+
+  it('a completed review keyed by businesses.id reads completed', async () => {
+    const client = await getFirstClient({
+      defaults: { quarterly_reviews: reviews({ business_id: 'biz-1', status: 'completed' }) },
+    })
+    expect(client.modules.quarterlyReview).toBe('completed')
+  })
+
+  it.each(['not_started', 'prework_complete', 'in_progress'])(
+    'a review keyed by businesses.id at status %s reads in_progress',
+    async (status) => {
+      // The workshop inserts the row, at not_started, when the client presses Start.
+      const client = await getFirstClient({
+        defaults: { quarterly_reviews: reviews({ business_id: 'biz-1', status }) },
+      })
+      expect(client.modules.quarterlyReview).toBe('in_progress')
+    }
+  )
+
+  it('filters quarterly_reviews by the businesses\' ids, not profile ids or owners\' user_ids', async () => {
+    await getFirstClient()
+    const filters = inCalls.filter((c) => c.table === 'quarterly_reviews')
+    expect(filters.length).toBeGreaterThan(0)
+    for (const c of filters) expect(c).toEqual({ table: 'quarterly_reviews', col: 'business_id', vals: ['biz-1'] })
+    expect(orCalls.filter((c) => c.table === 'quarterly_reviews')).toEqual([])
+  })
+
+  it('each client reads its own reviews (the shapes found on prod, 15 Sep 2026)', async () => {
+    const names = ['Acme', 'Bolt', 'Crane', 'Delta']
+    createRouteHandlerClientMock.mockResolvedValueOnce(
+      makeSupabase({
+        businesses: {
+          data: names.map((name, i) => ({ id: `biz-${i + 1}`, business_name: name, name, owner_id: `owner-${i + 1}`, status: 'active' })),
+          error: null,
+        },
+        business_profiles: {
+          data: names.map((name, i) => ({ id: `prof-${i + 1}`, business_id: `biz-${i + 1}`, user_id: `owner-${i + 1}`, business_name: name })),
+          error: null,
+        },
+        defaults: {
+          quarterly_reviews: reviews(
+            // Two completed quarters and this one under way: still completed.
+            { business_id: 'biz-1', status: 'completed' },
+            { business_id: 'biz-1', status: 'completed' },
+            { business_id: 'biz-1', status: 'in_progress' },
+            { business_id: 'biz-2', status: 'in_progress' },
+            // Pressed Start, pre-work not yet done.
+            { business_id: 'biz-3', status: 'not_started' },
+          ),
+        },
+      })
+    )
+    const res = await GET(new Request('http://localhost/api/coach/client-completion'))
+    expect(res.status).toBe(200)
+    const { clients } = await res.json()
+
+    expect(Object.fromEntries(clients.map((c: any) => [c.businessId, c.modules.quarterlyReview]))).toEqual({
+      'biz-1': 'completed',
+      'biz-2': 'in_progress',
+      'biz-3': 'in_progress',
+      'biz-4': 'not_started',
+    })
+  })
+
+  it('needs no profile id: with business_profiles unread, the review still answers', async () => {
+    let client = await getFirstClient({
+      business_profiles: FAILED,
+      defaults: { quarterly_reviews: reviews({ business_id: 'biz-1', status: 'in_progress' }) },
+    })
+    expect(client.modules.quarterlyReview).toBe('in_progress')
+
+    client = await getFirstClient({ business_profiles: FAILED })
+    expect(client.modules.quarterlyReview).toBe('not_started')
   })
 })
