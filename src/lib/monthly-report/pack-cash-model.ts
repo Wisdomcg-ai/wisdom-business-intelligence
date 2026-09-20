@@ -279,6 +279,33 @@ export function openingGst(
   return { amount: round2(closing - settled), dueMonth, settledEnd, leftOver: settled, leftOverByAccount }
 }
 
+/**
+ * Every balance-sheet date THIS build could read: checkCashModelAccounts'
+ * own fiscal-year window (the FY opening through the report month — the same
+ * span buildPackCashModel's actual-months loop reads, month-end by
+ * month-end), plus openingGst's own settled-end walk-back, which for an
+ * annual GST schedule can reach further back than the fiscal year opens.
+ *
+ * Exported for the multi-org loader (pack-cash-model-load.ts): a foreign
+ * organisation's FX rate is only ever required at a date this build could
+ * actually use — never at every date its Xero connection has simply existed
+ * for, which is what an unfiltered `xero_bs_lines_wide_compat` read carries
+ * (IICT-50, the cash-model twin of money-flow's IICT-55/56).
+ */
+export function cashModelNeededBalanceSheetDates(reportMonth: string, fiscalYearStart: number, cfg: Pick<CashModelConfig, 'gst'>): string[] {
+  const fyOpening = openingBalanceDate(reportMonth, fiscalYearStart)
+  const reportEnd = endOfMonth(reportMonth)
+  const dates = new Set(monthEnds(fyOpening, reportEnd))
+  if (cfg.gst.opening !== 'balance') {
+    const schedule = cashModelSchedule(cfg.gst.schedule)
+    const dueMonth = dueMonthKey(reportMonth, schedule)
+    let start = reportMonth
+    for (let i = 0; i < 12 && dueMonthKey(priorMonth(start), schedule) === dueMonth; i++) start = priorMonth(start)
+    dates.add(endOfMonth(priorMonth(start)))
+  }
+  return [...dates].sort()
+}
+
 /** The months a schedule pays in, in the order they fall after `from`: 'Nov/Feb/May/Aug'. */
 function paymentMonthsText(name: string, from: string): string {
   if (name === 'payday') return 'each pay run'

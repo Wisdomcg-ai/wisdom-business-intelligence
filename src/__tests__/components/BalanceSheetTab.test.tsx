@@ -126,3 +126,49 @@ describe('BalanceSheetTab — S5 equation residual banner', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
+
+/**
+ * A group's sheet carries what was done to its figures: which organisations
+ * were added, a loan eliminated, a loan left in full because its two sides
+ * disagree, how a foreign organisation was translated. The pack prints all of
+ * it — assessBalanceSheetForPdf pushes consolidation.warnings into its warning
+ * card, and addBalanceSheetPage draws consolidation.notes under the table. The
+ * tab renders the same payload, so it says the same things: a coach reviewing
+ * IICT on screen was shown three organisations added together, a HKD entity
+ * translated at 0.1779 and both sides of an unreconciled intercompany loan,
+ * and was told none of it while the pack of that same month said all three.
+ */
+describe('BalanceSheetTab — what a group’s sheet says it did', () => {
+  const NOTE = 'Added together: Dragon Roofing Pty Ltd and EASY HAIL CLAIM PTY LTD.'
+  const WARNING =
+    'Not eliminated: Loan Receivable - Easy Hail Claim Pty Ltd (Dragon Roofing Pty Ltd) and Loan Payable - ' +
+    'Dragon Roofing Pty Ltd (EASY HAIL CLAIM PTY LTD) are 68,211 apart at Aug 2026, so both are shown in full.'
+
+  const consolidated = (over: Partial<NonNullable<BalanceSheetData['consolidation']>> = {}): BalanceSheetData => ({
+    ...makeBS(100000, 40000, 60000),
+    consolidation: {
+      organisations: [
+        { name: 'Dragon Roofing Pty Ltd', currency: 'AUD' },
+        { name: 'EASY HAIL CLAIM PTY LTD', currency: 'AUD' },
+      ],
+      notes: [NOTE],
+      warnings: [],
+      ...over,
+    },
+  })
+
+  it('prints the notes under the table, as the pack prints them', () => {
+    render(<BalanceSheetTab {...baseProps} balanceSheet={consolidated()} />)
+    expect(screen.getByText(NOTE)).toBeInTheDocument()
+  })
+
+  it('prints a consolidation warning where a coach will see it, not only in the PDF', () => {
+    render(<BalanceSheetTab {...baseProps} balanceSheet={consolidated({ warnings: [WARNING] })} />)
+    expect(screen.getByText(WARNING)).toBeInTheDocument()
+  })
+
+  it('says nothing extra for one organisation’s own sheet', () => {
+    const { container } = render(<BalanceSheetTab {...baseProps} balanceSheet={makeBS(100000, 40000, 60000)} />)
+    expect(container.textContent).not.toMatch(/Added together|Not eliminated/)
+  })
+})

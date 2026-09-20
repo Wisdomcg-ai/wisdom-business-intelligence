@@ -1,0 +1,5151 @@
+{
+ "_provenance": "Read 16 Sep 2026 (read-only, GET-only client) from prod xero_bs_lines (basis accruals), xero_accounts and fx_rates for IICT Group (business fbc6dffd). All three organisations as they were connected: IICT Group Pty Ltd (tenant 44582ebf) is not an active connection today and its rows stop at its last good sync on 10 Sep 2026; its connection entry here is written by hand from the audit (AUD, display_order 3). IAP and IGL rows were last synced 15 Sep 2026. Rates are the stored OXR rows (HKD/AUD), which match Calxa's implied Aug 2026 average 0.1795357 and 31 Aug closing 0.177902.",
+ "business_id": "fbc6dffd-677d-47ec-8277-7157982938e7",
+ "profile_id": "6c0dfadb-4229-4fc2-89eb-ec064d24511b",
+ "connections": [
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "name": "IICT (Aust) Pty Ltd",
+   "functional_currency": "AUD",
+   "display_order": 1
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "name": "IICT Group Limited",
+   "functional_currency": "HKD",
+   "display_order": 2
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "name": "IICT Group Pty Ltd",
+   "functional_currency": "AUD",
+   "display_order": 3
+  }
+ ],
+ "rows": [
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "df99a026-076e-4ccf-ac3c-c92f9478f217",
+   "account_code": "100",
+   "account_name": "My Fortune - IICT Aust",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-06-30",
+   "balance": 1.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "8147e50e-4d1a-4945-9eed-031ab250a7b8",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-06-30",
+   "balance": 4400.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "d9bbc607-c1ec-4bc8-8e91-9ecb650b91b5",
+   "account_code": "881",
+   "account_name": "Director A Funds Introduced",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-06-30",
+   "balance": 1.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "92e5f55a-fd6c-488b-9f77-5d75037c03f1",
+   "account_code": "900",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2025-06-30",
+   "balance": -4400.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "df99a026-076e-4ccf-ac3c-c92f9478f217",
+   "account_code": "100",
+   "account_name": "My Fortune - IICT Aust",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-07-31",
+   "balance": 5457.3
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "c276a1dd-4286-4a75-9ce7-2c7fa4d582f2",
+   "account_code": "605",
+   "account_name": "Cash on Hand",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 96.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "dddb205e-c28b-4b9b-816e-670392a25bdd",
+   "account_code": "640",
+   "account_name": "Motor Vehicle - Range Rover Sport",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 182754.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "92e5f55a-fd6c-488b-9f77-5d75037c03f1",
+   "account_code": "700",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-07-31",
+   "balance": -43600.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "a82edbf5-8a90-4815-b4ff-0feeb541e3be",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-07-31",
+   "balance": 96.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-07-31",
+   "balance": -4886.53
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "8147e50e-4d1a-4945-9eed-031ab250a7b8",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": 7898.44
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "29f42030-5dfe-4f03-b60d-4a3c2ad69361",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": -6680.95
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "d9bbc607-c1ec-4bc8-8e91-9ecb650b91b5",
+   "account_code": "870",
+   "account_name": "Director Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": 1.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "39d7b81d-2fa5-4afd-8b1c-44bad15cc82f",
+   "account_code": "910",
+   "account_name": "Loan - Range Rover",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": 188313.94
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "1916d922-f2bf-417e-8764-8bd94aee6f45",
+   "account_code": "912",
+   "account_name": "Less Unexpired interest on MV - Range Rover Sport",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": -40034.6
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "df99a026-076e-4ccf-ac3c-c92f9478f217",
+   "account_code": "100",
+   "account_name": "My Fortune - IICT Aust",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": 2913.6
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "c276a1dd-4286-4a75-9ce7-2c7fa4d582f2",
+   "account_code": "605",
+   "account_name": "Cash on Hand",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 96.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "dddb205e-c28b-4b9b-816e-670392a25bdd",
+   "account_code": "640",
+   "account_name": "Motor Vehicle - Range Rover Sport",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 182754.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "92e5f55a-fd6c-488b-9f77-5d75037c03f1",
+   "account_code": "700",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": -43600.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "a82edbf5-8a90-4815-b4ff-0feeb541e3be",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-08-31",
+   "balance": 96.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-08-31",
+   "balance": -5813.35
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "8147e50e-4d1a-4945-9eed-031ab250a7b8",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 7580.4
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "29f42030-5dfe-4f03-b60d-4a3c2ad69361",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": -6680.95
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "d9bbc607-c1ec-4bc8-8e91-9ecb650b91b5",
+   "account_code": "870",
+   "account_name": "Director Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 1.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "39d7b81d-2fa5-4afd-8b1c-44bad15cc82f",
+   "account_code": "910",
+   "account_name": "Loan - Range Rover",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 186088.28
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "1916d922-f2bf-417e-8764-8bd94aee6f45",
+   "account_code": "912",
+   "account_name": "Less Unexpired interest on MV - Range Rover Sport",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": -39107.78
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "df99a026-076e-4ccf-ac3c-c92f9478f217",
+   "account_code": "100",
+   "account_name": "My Fortune - IICT Aust",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": -245.84
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "2632bee2-5252-49d9-a9b3-de8cc5369f7d",
+   "account_code": "108",
+   "account_name": "My Thank You Account",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": 2075.51
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "c276a1dd-4286-4a75-9ce7-2c7fa4d582f2",
+   "account_code": "605",
+   "account_name": "Cash on Hand",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 96.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "dddb205e-c28b-4b9b-816e-670392a25bdd",
+   "account_code": "640",
+   "account_name": "Motor Vehicle - Range Rover Sport",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 182754.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "92e5f55a-fd6c-488b-9f77-5d75037c03f1",
+   "account_code": "700",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 52598.19
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "a47218e2-b6ef-4560-b1fe-2bb327c4ac89",
+   "account_code": "720",
+   "account_name": "Computer Equipment",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-06-30",
+   "balance": 817.27
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "740ff067-f34c-4ae5-b6e6-0aea6fc60826",
+   "account_code": "721",
+   "account_name": "Less Accumulated Depreciation on Computer Equipment",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-06-30",
+   "balance": -11.2
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "c7f577d6-a2bc-42a5-b024-9005384c6c04",
+   "account_code": "750",
+   "account_name": "Rental Bond / Security Deposit",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 12308.55
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "a82edbf5-8a90-4815-b4ff-0feeb541e3be",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-06-30",
+   "balance": 96.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-06-30",
+   "balance": -1791888.44
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "b8240ae2-9b69-4369-94e2-811d0428938c",
+   "account_code": "315",
+   "account_name": "Loan Establishment Fees / Borrowing Costs",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -4000.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "bf9dd873-6022-45f8-bdd7-9ba3e67a6e53",
+   "account_code": "625",
+   "account_name": "Loan - Hong Kong company - IICT Group Limited",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 1782919.17
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "8147e50e-4d1a-4945-9eed-031ab250a7b8",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 91254.57
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "0f6a7761-56c0-4225-b1a0-3049b4053574",
+   "account_code": "802",
+   "account_name": "ATO ICA - BAS payable account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -33873.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "29f42030-5dfe-4f03-b60d-4a3c2ad69361",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -57179.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "d5f473ed-ed82-4886-89e3-1f0d840cbb5a",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 114443.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "5b2b3fa5-867c-4fbf-9ada-e6a362a80d5c",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 11010.37
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "d9bbc607-c1ec-4bc8-8e91-9ecb650b91b5",
+   "account_code": "870",
+   "account_name": "Director Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 1.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "1dee9d45-e764-4d75-8ef5-9d8b59f84aa3",
+   "account_code": "880",
+   "account_name": "Director A Drawings",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -6427.92
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "39d7b81d-2fa5-4afd-8b1c-44bad15cc82f",
+   "account_code": "910",
+   "account_name": "Loan - Range Rover",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 163831.68
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "1916d922-f2bf-417e-8764-8bd94aee6f45",
+   "account_code": "912",
+   "account_name": "Less Unexpired interest on MV - Range Rover Sport",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -30253.65
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "4d651eea-5b16-4695-bc29-c3048e0d8190",
+   "account_code": null,
+   "account_name": "Altitude Business Gold Mastercard",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 10458.7
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "df99a026-076e-4ccf-ac3c-c92f9478f217",
+   "account_code": "100",
+   "account_name": "My Fortune - IICT Aust",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": 2426.74
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "2632bee2-5252-49d9-a9b3-de8cc5369f7d",
+   "account_code": "108",
+   "account_name": "My Thank You Account",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": 723.62
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "c276a1dd-4286-4a75-9ce7-2c7fa4d582f2",
+   "account_code": "605",
+   "account_name": "Cash on Hand",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 96.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "dddb205e-c28b-4b9b-816e-670392a25bdd",
+   "account_code": "640",
+   "account_name": "Motor Vehicle - Range Rover Sport",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 182754.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "92e5f55a-fd6c-488b-9f77-5d75037c03f1",
+   "account_code": "700",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 52598.19
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "a47218e2-b6ef-4560-b1fe-2bb327c4ac89",
+   "account_code": "720",
+   "account_name": "Computer Equipment",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-07-31",
+   "balance": 817.27
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "740ff067-f34c-4ae5-b6e6-0aea6fc60826",
+   "account_code": "721",
+   "account_name": "Less Accumulated Depreciation on Computer Equipment",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-07-31",
+   "balance": -11.2
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "c7f577d6-a2bc-42a5-b024-9005384c6c04",
+   "account_code": "750",
+   "account_name": "Rental Bond / Security Deposit",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 12308.55
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "4686bf2f-8f30-4398-93d6-5fc5fcb8675e",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": -1791888.44
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "a82edbf5-8a90-4815-b4ff-0feeb541e3be",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": 96.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": -240291.38
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "b8240ae2-9b69-4369-94e2-811d0428938c",
+   "account_code": "315",
+   "account_name": "Loan Establishment Fees / Borrowing Costs",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -4000.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "bf9dd873-6022-45f8-bdd7-9ba3e67a6e53",
+   "account_code": "625",
+   "account_name": "Loan - Hong Kong company - IICT Group Limited",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 2015382.6
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "8147e50e-4d1a-4945-9eed-031ab250a7b8",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 87403.86
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "0923c6b5-acbd-463e-b600-50efd831a71f",
+   "account_code": "804",
+   "account_name": "Wages Payable - Payroll",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 485.97
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "29f42030-5dfe-4f03-b60d-4a3c2ad69361",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -44634.11
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "d5f473ed-ed82-4886-89e3-1f0d840cbb5a",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 76842.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "5b2b3fa5-867c-4fbf-9ada-e6a362a80d5c",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 21129.54
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "d9bbc607-c1ec-4bc8-8e91-9ecb650b91b5",
+   "account_code": "870",
+   "account_name": "Director Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 1.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "1dee9d45-e764-4d75-8ef5-9d8b59f84aa3",
+   "account_code": "880",
+   "account_name": "Director A Drawings",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -6456.91
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "39d7b81d-2fa5-4afd-8b1c-44bad15cc82f",
+   "account_code": "910",
+   "account_name": "Loan - Range Rover",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 161606.02
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "1916d922-f2bf-417e-8764-8bd94aee6f45",
+   "account_code": "912",
+   "account_name": "Less Unexpired interest on MV - Range Rover Sport",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -29390.83
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "4d651eea-5b16-4695-bc29-c3048e0d8190",
+   "account_code": null,
+   "account_name": "Altitude Business Gold Mastercard",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 5427.85
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "df99a026-076e-4ccf-ac3c-c92f9478f217",
+   "account_code": "100",
+   "account_name": "My Fortune - IICT Aust",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": 4066.45
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "2632bee2-5252-49d9-a9b3-de8cc5369f7d",
+   "account_code": "108",
+   "account_name": "My Thank You Account",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": 79.29
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "c276a1dd-4286-4a75-9ce7-2c7fa4d582f2",
+   "account_code": "605",
+   "account_name": "Cash on Hand",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 96.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "dddb205e-c28b-4b9b-816e-670392a25bdd",
+   "account_code": "640",
+   "account_name": "Motor Vehicle - Range Rover Sport",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 182754.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "92e5f55a-fd6c-488b-9f77-5d75037c03f1",
+   "account_code": "700",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 52598.19
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "4ea8fddc-c60c-467e-a65f-b7a498b469ba",
+   "account_code": "710",
+   "account_name": "Office Equipment",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-08-31",
+   "balance": 908.18
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "a47218e2-b6ef-4560-b1fe-2bb327c4ac89",
+   "account_code": "720",
+   "account_name": "Computer Equipment",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-08-31",
+   "balance": 817.27
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "740ff067-f34c-4ae5-b6e6-0aea6fc60826",
+   "account_code": "721",
+   "account_name": "Less Accumulated Depreciation on Computer Equipment",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-08-31",
+   "balance": -11.2
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "c7f577d6-a2bc-42a5-b024-9005384c6c04",
+   "account_code": "750",
+   "account_name": "Rental Bond / Security Deposit",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 12308.55
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "4686bf2f-8f30-4398-93d6-5fc5fcb8675e",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": -1791888.44
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "a82edbf5-8a90-4815-b4ff-0feeb541e3be",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": 96.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": -478305.69
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "b8240ae2-9b69-4369-94e2-811d0428938c",
+   "account_code": "315",
+   "account_name": "Loan Establishment Fees / Borrowing Costs",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -4000.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "bf9dd873-6022-45f8-bdd7-9ba3e67a6e53",
+   "account_code": "625",
+   "account_name": "Loan - Hong Kong company - IICT Group Limited",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 2267371.73
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "8147e50e-4d1a-4945-9eed-031ab250a7b8",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 88405.79
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "0923c6b5-acbd-463e-b600-50efd831a71f",
+   "account_code": "804",
+   "account_name": "Wages Payable - Payroll",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 1390.07
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "29f42030-5dfe-4f03-b60d-4a3c2ad69361",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -54473.48
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "d5f473ed-ed82-4886-89e3-1f0d840cbb5a",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 94260.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "5b2b3fa5-867c-4fbf-9ada-e6a362a80d5c",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 109.72
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "d9bbc607-c1ec-4bc8-8e91-9ecb650b91b5",
+   "account_code": "870",
+   "account_name": "Director Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 1.0
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "1dee9d45-e764-4d75-8ef5-9d8b59f84aa3",
+   "account_code": "880",
+   "account_name": "Director A Drawings",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -6485.9
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "39d7b81d-2fa5-4afd-8b1c-44bad15cc82f",
+   "account_code": "910",
+   "account_name": "Loan - Range Rover",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 159380.36
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "1916d922-f2bf-417e-8764-8bd94aee6f45",
+   "account_code": "912",
+   "account_name": "Less Unexpired interest on MV - Range Rover Sport",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -29390.83
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "account_id": "4d651eea-5b16-4695-bc29-c3048e0d8190",
+   "account_code": null,
+   "account_name": "Altitude Business Gold Mastercard",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 7146.4
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "2f6464fc-ad14-4732-b4a7-7936d225b17f",
+   "account_code": "100",
+   "account_name": "Westpac Business One",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-06-30",
+   "balance": 56831.13
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "38e86ec6-efcc-4d71-b2bd-ba8497a942d0",
+   "account_code": "105",
+   "account_name": "Cash Passport",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 600.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4e6db5c5-1341-40cf-b19e-aede9be48d11",
+   "account_code": "110",
+   "account_name": "28 Degrees Travel card",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 45693.5
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "c682ef12-d26f-4701-b9e3-6197dccb91e5",
+   "account_code": "621",
+   "account_name": "Investment Account (Offset)",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 300000.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "5291b604-79bc-46af-85ff-6c736b18f4db",
+   "account_code": "623",
+   "account_name": "Loan - Corporate Trustee of Private Nature (name TBA)",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 2200.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "71fa20e2-f9b0-43dd-8570-582d061e22c3",
+   "account_code": "624",
+   "account_name": "Loan - Kaizen Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 2200.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "a0bd2cfa-da77-4107-bea6-11c58c28e04a",
+   "account_code": "625",
+   "account_name": "Loan - Hong Kong company - IICT Group Limited",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 2030.04
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4e08726a-0deb-4e5a-9c74-7f528e2e5752",
+   "account_code": "626",
+   "account_name": "Loan - Fitness Federation",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 2600.8
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "da0b66b9-ea27-4113-a36e-a5e2ade9e672",
+   "account_code": "627",
+   "account_name": "Loan - Shambala NFP",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 16150.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "5c08e424-39a9-4ed2-b401-0ffc1ceaf19c",
+   "account_code": "628",
+   "account_name": "Loan - Antba.com.au",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 45.27
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "3b779c26-57f5-4ddf-b7bf-0ce1d41cfb62",
+   "account_code": "629",
+   "account_name": "Loan - Click-Holistic.com",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 408.53
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "a73684ad-72a8-4700-a1c3-85ac6ae49be6",
+   "account_code": "631",
+   "account_name": "Other Debtors - Tax Office",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "04d7ae4b-d4ef-449b-bd86-9d3075b65015",
+   "account_code": "680",
+   "account_name": "Goodwill/Web Development etc - at Cost",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 430000.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "f07b0cb0-dbd1-461c-bf23-c492a165adaa",
+   "account_code": "700",
+   "account_name": "Motorcycle Honda",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "2d87b319-c71d-486f-8704-0deca63ad133",
+   "account_code": "704",
+   "account_name": "Buildings",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 100232.61
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "bafd4e88-ab94-4534-a42e-9c082a446c96",
+   "account_code": "732",
+   "account_name": "Motor Vehicle - 2022 Landrover Defender above limit",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 41330.36
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "3f175daa-eb4d-4a5b-a5dd-ff280cb5c361",
+   "account_code": "733",
+   "account_name": "Small Business Pool",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 82344.29
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "98bc7408-6632-457d-b4ad-84d49ba14093",
+   "account_code": "734",
+   "account_name": "Less: Accumulated Depreciation on Small Business Pool",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-06-30",
+   "balance": -36995.83
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "dfc8a146-6956-4f21-a6cd-1807e4940bcd",
+   "account_code": null,
+   "account_name": "AUD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-06-30",
+   "balance": 6157.2
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "bfd973c5-e88b-42ae-8497-cf9d883d27cf",
+   "account_code": null,
+   "account_name": "CAD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-06-30",
+   "balance": 772.13
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "79886d0a-8858-46b2-ac9c-3bed4e452a8c",
+   "account_code": "",
+   "account_name": "Debit Card",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-06-30",
+   "balance": 266.22
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "0e288bdc-1c45-46d1-b688-c00be194e619",
+   "account_code": null,
+   "account_name": "EUR PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-06-30",
+   "balance": -1155.81
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "80c67b0f-f9b0-4787-a554-fb51f2c6dfae",
+   "account_code": null,
+   "account_name": "GBP PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-06-30",
+   "balance": -2362.4
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "f952cc0d-726d-44c3-8143-b14e63d187b8",
+   "account_code": null,
+   "account_name": "My Donations (tax account)",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-06-30",
+   "balance": 5041.08
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "8dae8c3f-db43-4695-bbb6-0d60af50ee13",
+   "account_code": null,
+   "account_name": "NZD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-06-30",
+   "balance": 603.03
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4a4a8473-df9b-427f-8b5f-47e939b2844a",
+   "account_code": null,
+   "account_name": "Thank you (General expenses)",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-06-30",
+   "balance": 19568.36
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "55d41fcf-7a62-497d-be2b-d82d3cdba9cf",
+   "account_code": null,
+   "account_name": "USD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-06-30",
+   "balance": 4382.6
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7d8c4a97-cf71-4dcf-9351-a074a1e734fd",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-06-30",
+   "balance": 880791.71
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "97252f2a-d213-47d5-bdea-391b9d4c1c4a",
+   "account_code": "966",
+   "account_name": "Dividends Paid",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-06-30",
+   "balance": -60000.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "551fdc69-3fd4-44a9-8281-42afc480e84b",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-06-30",
+   "balance": 194.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-06-30",
+   "balance": -256459.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4bc3580c-a49d-4f54-a098-a0c081937916",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-06-30",
+   "balance": 308050.73
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "6203da53-130a-4c39-8ec6-983b09722156",
+   "account_code": "815",
+   "account_name": "ATO Integrated Client Account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-06-30",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "6bfe6197-711c-4ffb-9980-fcd30b9c6681",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-06-30",
+   "balance": 32020.93
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "763515da-5a35-4332-8d13-12972f9d3123",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-06-30",
+   "balance": 17466.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "c58680f7-8bf6-4381-8943-490a6fd6ccf1",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-06-30",
+   "balance": 9244.13
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "a9a6b40a-af1e-4144-a585-020cc140a541",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-06-30",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7cbed61e-d3e1-4770-b681-531cf2c465ab",
+   "account_code": "880",
+   "account_name": "Shareholder Loan",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-06-30",
+   "balance": 152657.82
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "27d096fb-0fac-4655-ae63-cafe42c04630",
+   "account_code": "",
+   "account_name": "Altitude Business Gold Mastercard",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-06-30",
+   "balance": -5023.2
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "2f6464fc-ad14-4732-b4a7-7936d225b17f",
+   "account_code": "100",
+   "account_name": "Westpac Business One",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-07-31",
+   "balance": 499.02
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "38e86ec6-efcc-4d71-b2bd-ba8497a942d0",
+   "account_code": "105",
+   "account_name": "Cash Passport",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4e6db5c5-1341-40cf-b19e-aede9be48d11",
+   "account_code": "110",
+   "account_name": "28 Degrees Travel card",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "c44637a7-4a9d-40ef-b3ee-35fb43bfd025",
+   "account_code": "616",
+   "account_name": "Cash on Hand",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 2.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "c682ef12-d26f-4701-b9e3-6197dccb91e5",
+   "account_code": "621",
+   "account_name": "Investment Account (Offset)",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "5291b604-79bc-46af-85ff-6c736b18f4db",
+   "account_code": "623",
+   "account_name": "Loan - Corporate Trustee of Private Nature (name TBA)",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "71fa20e2-f9b0-43dd-8570-582d061e22c3",
+   "account_code": "624",
+   "account_name": "Loan - Kaizen Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "a0bd2cfa-da77-4107-bea6-11c58c28e04a",
+   "account_code": "625",
+   "account_name": "Loan - Hong Kong company - IICT Group Limited",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4e08726a-0deb-4e5a-9c74-7f528e2e5752",
+   "account_code": "626",
+   "account_name": "Loan - Fitness Federation",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "da0b66b9-ea27-4113-a36e-a5e2ade9e672",
+   "account_code": "627",
+   "account_name": "Loan - Shambala NFP",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "5c08e424-39a9-4ed2-b401-0ffc1ceaf19c",
+   "account_code": "628",
+   "account_name": "Loan - Antba.com.au",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "3b779c26-57f5-4ddf-b7bf-0ce1d41cfb62",
+   "account_code": "629",
+   "account_name": "Loan - Click-Holistic.com",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "04d7ae4b-d4ef-449b-bd86-9d3075b65015",
+   "account_code": "680",
+   "account_name": "Goodwill/Web Development etc - at Cost",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 430000.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "2d87b319-c71d-486f-8704-0deca63ad133",
+   "account_code": "704",
+   "account_name": "Buildings",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 100232.61
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "bafd4e88-ab94-4534-a42e-9c082a446c96",
+   "account_code": "732",
+   "account_name": "Motor Vehicle - 2022 Landrover Defender above limit",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 41330.36
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "3f175daa-eb4d-4a5b-a5dd-ff280cb5c361",
+   "account_code": "733",
+   "account_name": "Small Business Pool",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 82344.29
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "98bc7408-6632-457d-b4ad-84d49ba14093",
+   "account_code": "734",
+   "account_name": "Less: Accumulated Depreciation on Small Business Pool",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-07-31",
+   "balance": -36995.83
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "dfc8a146-6956-4f21-a6cd-1807e4940bcd",
+   "account_code": null,
+   "account_name": "AUD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-07-31",
+   "balance": 59.38
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "bfd973c5-e88b-42ae-8497-cf9d883d27cf",
+   "account_code": null,
+   "account_name": "CAD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-07-31",
+   "balance": 591.46
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "79886d0a-8858-46b2-ac9c-3bed4e452a8c",
+   "account_code": "",
+   "account_name": "Debit Card",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-07-31",
+   "balance": 300.79
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "0e288bdc-1c45-46d1-b688-c00be194e619",
+   "account_code": null,
+   "account_name": "EUR PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-07-31",
+   "balance": -383.76
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "80c67b0f-f9b0-4787-a554-fb51f2c6dfae",
+   "account_code": null,
+   "account_name": "GBP PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-07-31",
+   "balance": -2312.73
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "f952cc0d-726d-44c3-8143-b14e63d187b8",
+   "account_code": null,
+   "account_name": "My Donations (tax account)",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-07-31",
+   "balance": 41.08
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "8dae8c3f-db43-4695-bbb6-0d60af50ee13",
+   "account_code": null,
+   "account_name": "NZD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-07-31",
+   "balance": 36.65
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4a4a8473-df9b-427f-8b5f-47e939b2844a",
+   "account_code": null,
+   "account_name": "Thank you (General expenses)",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-07-31",
+   "balance": 4472.6
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "55d41fcf-7a62-497d-be2b-d82d3cdba9cf",
+   "account_code": null,
+   "account_name": "USD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-07-31",
+   "balance": 4887.33
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7d8c4a97-cf71-4dcf-9351-a074a1e734fd",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-07-31",
+   "balance": 857514.53
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "551fdc69-3fd4-44a9-8281-42afc480e84b",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-07-31",
+   "balance": 2.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-07-31",
+   "balance": 105537.93
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4bc3580c-a49d-4f54-a098-a0c081937916",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": 9501.55
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "6203da53-130a-4c39-8ec6-983b09722156",
+   "account_code": "815",
+   "account_name": "ATO Integrated Client Account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": 18467.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "6bfe6197-711c-4ffb-9980-fcd30b9c6681",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": 38149.76
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "763515da-5a35-4332-8d13-12972f9d3123",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": 17466.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "c58680f7-8bf6-4381-8943-490a6fd6ccf1",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": 10364.74
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "a9a6b40a-af1e-4144-a585-020cc140a541",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7cbed61e-d3e1-4770-b681-531cf2c465ab",
+   "account_code": "880",
+   "account_name": "Shareholder Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": -475166.36
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "5a932d63-a826-4c54-8b5a-56153254b690",
+   "account_code": "881",
+   "account_name": "Shareholder Funds Introduced",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": 93000.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "ccbfd762-cde4-41f5-8d89-c87a6d69ee78",
+   "account_code": "890",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": -43600.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "27d096fb-0fac-4655-ae63-cafe42c04630",
+   "account_code": "",
+   "account_name": "Altitude Business Gold Mastercard",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": -6131.9
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "2f6464fc-ad14-4732-b4a7-7936d225b17f",
+   "account_code": "100",
+   "account_name": "Westpac Business One",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": 7606.56
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "38e86ec6-efcc-4d71-b2bd-ba8497a942d0",
+   "account_code": "105",
+   "account_name": "Cash Passport",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4e6db5c5-1341-40cf-b19e-aede9be48d11",
+   "account_code": "110",
+   "account_name": "28 Degrees Travel card",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "c44637a7-4a9d-40ef-b3ee-35fb43bfd025",
+   "account_code": "616",
+   "account_name": "Cash on Hand",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 2.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "c682ef12-d26f-4701-b9e3-6197dccb91e5",
+   "account_code": "621",
+   "account_name": "Investment Account (Offset)",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "5291b604-79bc-46af-85ff-6c736b18f4db",
+   "account_code": "623",
+   "account_name": "Loan - Corporate Trustee of Private Nature (name TBA)",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "71fa20e2-f9b0-43dd-8570-582d061e22c3",
+   "account_code": "624",
+   "account_name": "Loan - Kaizen Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "a0bd2cfa-da77-4107-bea6-11c58c28e04a",
+   "account_code": "625",
+   "account_name": "Loan - Hong Kong company - IICT Group Limited",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4e08726a-0deb-4e5a-9c74-7f528e2e5752",
+   "account_code": "626",
+   "account_name": "Loan - Fitness Federation",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "da0b66b9-ea27-4113-a36e-a5e2ade9e672",
+   "account_code": "627",
+   "account_name": "Loan - Shambala NFP",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "5c08e424-39a9-4ed2-b401-0ffc1ceaf19c",
+   "account_code": "628",
+   "account_name": "Loan - Antba.com.au",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "3b779c26-57f5-4ddf-b7bf-0ce1d41cfb62",
+   "account_code": "629",
+   "account_name": "Loan - Click-Holistic.com",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "04d7ae4b-d4ef-449b-bd86-9d3075b65015",
+   "account_code": "680",
+   "account_name": "Goodwill/Web Development etc - at Cost",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 430000.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "2d87b319-c71d-486f-8704-0deca63ad133",
+   "account_code": "704",
+   "account_name": "Buildings",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 100232.61
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "bafd4e88-ab94-4534-a42e-9c082a446c96",
+   "account_code": "732",
+   "account_name": "Motor Vehicle - 2022 Landrover Defender above limit",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 41330.36
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "3f175daa-eb4d-4a5b-a5dd-ff280cb5c361",
+   "account_code": "733",
+   "account_name": "Small Business Pool",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 82344.29
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "98bc7408-6632-457d-b4ad-84d49ba14093",
+   "account_code": "734",
+   "account_name": "Less: Accumulated Depreciation on Small Business Pool",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": -36995.83
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "dfc8a146-6956-4f21-a6cd-1807e4940bcd",
+   "account_code": null,
+   "account_name": "AUD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": 116.3
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "bfd973c5-e88b-42ae-8497-cf9d883d27cf",
+   "account_code": null,
+   "account_name": "CAD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": 586.25
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "79886d0a-8858-46b2-ac9c-3bed4e452a8c",
+   "account_code": "",
+   "account_name": "Debit Card",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": 367.26
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "0e288bdc-1c45-46d1-b688-c00be194e619",
+   "account_code": null,
+   "account_name": "EUR PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": -387.2
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "80c67b0f-f9b0-4787-a554-fb51f2c6dfae",
+   "account_code": null,
+   "account_name": "GBP PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": -2326.47
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "f952cc0d-726d-44c3-8143-b14e63d187b8",
+   "account_code": null,
+   "account_name": "My Donations (tax account)",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": 24.05
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "8dae8c3f-db43-4695-bbb6-0d60af50ee13",
+   "account_code": null,
+   "account_name": "NZD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": 36.09
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4a4a8473-df9b-427f-8b5f-47e939b2844a",
+   "account_code": null,
+   "account_name": "Thank you (General expenses)",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": 128.5
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "55d41fcf-7a62-497d-be2b-d82d3cdba9cf",
+   "account_code": null,
+   "account_name": "USD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": 4823.65
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7d8c4a97-cf71-4dcf-9351-a074a1e734fd",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-08-31",
+   "balance": 857514.53
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "551fdc69-3fd4-44a9-8281-42afc480e84b",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-08-31",
+   "balance": 2.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-08-31",
+   "balance": 78981.52
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4bc3580c-a49d-4f54-a098-a0c081937916",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 79409.31
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "6203da53-130a-4c39-8ec6-983b09722156",
+   "account_code": "815",
+   "account_name": "ATO Integrated Client Account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": -23065.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "6bfe6197-711c-4ffb-9980-fcd30b9c6681",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 32276.17
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "763515da-5a35-4332-8d13-12972f9d3123",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 17466.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "c58680f7-8bf6-4381-8943-490a6fd6ccf1",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 9878.28
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "a616bad7-b835-4e07-b4b6-64a052276a2a",
+   "account_code": "829",
+   "account_name": "Amounts withheld where no ABN is quoted",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "a9a6b40a-af1e-4144-a585-020cc140a541",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7cbed61e-d3e1-4770-b681-531cf2c465ab",
+   "account_code": "880",
+   "account_name": "Shareholder Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": -589913.91
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "5a932d63-a826-4c54-8b5a-56153254b690",
+   "account_code": "881",
+   "account_name": "Shareholder Funds Introduced",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": 213000.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "ccbfd762-cde4-41f5-8d89-c87a6d69ee78",
+   "account_code": "890",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": -43600.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "27d096fb-0fac-4655-ae63-cafe42c04630",
+   "account_code": "",
+   "account_name": "Altitude Business Gold Mastercard",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": -4060.48
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "2f6464fc-ad14-4732-b4a7-7936d225b17f",
+   "account_code": "100",
+   "account_name": "Westpac Business One",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "c44637a7-4a9d-40ef-b3ee-35fb43bfd025",
+   "account_code": "616",
+   "account_name": "Cash on Hand",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 2.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "a0bd2cfa-da77-4107-bea6-11c58c28e04a",
+   "account_code": "625",
+   "account_name": "Loan - Hong Kong company - IICT Group Limited",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-06-30",
+   "balance": -137624.99
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "04d7ae4b-d4ef-449b-bd86-9d3075b65015",
+   "account_code": "680",
+   "account_name": "Goodwill/Web Development etc - at Cost",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 430000.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "2d87b319-c71d-486f-8704-0deca63ad133",
+   "account_code": "704",
+   "account_name": "Buildings",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 100232.61
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "bafd4e88-ab94-4534-a42e-9c082a446c96",
+   "account_code": "732",
+   "account_name": "Motor Vehicle - 2022 Landrover Defender above limit",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 41330.36
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "3f175daa-eb4d-4a5b-a5dd-ff280cb5c361",
+   "account_code": "733",
+   "account_name": "Small Business Pool",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 82344.29
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "98bc7408-6632-457d-b4ad-84d49ba14093",
+   "account_code": "734",
+   "account_name": "Less: Accumulated Depreciation on Small Business Pool",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": -36995.83
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "dfc8a146-6956-4f21-a6cd-1807e4940bcd",
+   "account_code": null,
+   "account_name": "AUD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": 125.54
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "bfd973c5-e88b-42ae-8497-cf9d883d27cf",
+   "account_code": null,
+   "account_name": "CAD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": 537.89
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "79886d0a-8858-46b2-ac9c-3bed4e452a8c",
+   "account_code": "",
+   "account_name": "Debit Card",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "0e288bdc-1c45-46d1-b688-c00be194e619",
+   "account_code": null,
+   "account_name": "EUR PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": -374.01
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "80c67b0f-f9b0-4787-a554-fb51f2c6dfae",
+   "account_code": null,
+   "account_name": "GBP PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": -2163.09
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "f952cc0d-726d-44c3-8143-b14e63d187b8",
+   "account_code": null,
+   "account_name": "My Donations (tax account)",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "8dae8c3f-db43-4695-bbb6-0d60af50ee13",
+   "account_code": null,
+   "account_name": "NZD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": 32.88
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4a4a8473-df9b-427f-8b5f-47e939b2844a",
+   "account_code": null,
+   "account_name": "Thank you (General expenses)",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "55d41fcf-7a62-497d-be2b-d82d3cdba9cf",
+   "account_code": null,
+   "account_name": "USD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": 4571.2
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7d8c4a97-cf71-4dcf-9351-a074a1e734fd",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-06-30",
+   "balance": 857514.53
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "551fdc69-3fd4-44a9-8281-42afc480e84b",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-06-30",
+   "balance": 2.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-06-30",
+   "balance": -211202.55
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4bc3580c-a49d-4f54-a098-a0c081937916",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "6203da53-130a-4c39-8ec6-983b09722156",
+   "account_code": "815",
+   "account_name": "ATO Integrated Client Account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -56598.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "6bfe6197-711c-4ffb-9980-fcd30b9c6681",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 39195.68
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "763515da-5a35-4332-8d13-12972f9d3123",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 17466.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "c58680f7-8bf6-4381-8943-490a6fd6ccf1",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7a5d7f6b-bcd5-42a9-9a51-33ca254ca416",
+   "account_code": "850",
+   "account_name": "Suspense",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -0.01
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7cbed61e-d3e1-4770-b681-531cf2c465ab",
+   "account_code": "880",
+   "account_name": "Shareholder Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -661105.38
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "5a932d63-a826-4c54-8b5a-56153254b690",
+   "account_code": "881",
+   "account_name": "Shareholder Funds Introduced",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 451153.38
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "ccbfd762-cde4-41f5-8d89-c87a6d69ee78",
+   "account_code": "890",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 52149.19
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "27d096fb-0fac-4655-ae63-cafe42c04630",
+   "account_code": "",
+   "account_name": "Altitude Business Gold Mastercard",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -6556.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "2f6464fc-ad14-4732-b4a7-7936d225b17f",
+   "account_code": "100",
+   "account_name": "Westpac Business One",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": 216.9
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "c44637a7-4a9d-40ef-b3ee-35fb43bfd025",
+   "account_code": "616",
+   "account_name": "Cash on Hand",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 2.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "a0bd2cfa-da77-4107-bea6-11c58c28e04a",
+   "account_code": "625",
+   "account_name": "Loan - Hong Kong company - IICT Group Limited",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-07-31",
+   "balance": -137624.99
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "04d7ae4b-d4ef-449b-bd86-9d3075b65015",
+   "account_code": "680",
+   "account_name": "Goodwill/Web Development etc - at Cost",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 430000.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "2d87b319-c71d-486f-8704-0deca63ad133",
+   "account_code": "704",
+   "account_name": "Buildings",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 100232.61
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "bafd4e88-ab94-4534-a42e-9c082a446c96",
+   "account_code": "732",
+   "account_name": "Motor Vehicle - 2022 Landrover Defender above limit",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 41330.36
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "3f175daa-eb4d-4a5b-a5dd-ff280cb5c361",
+   "account_code": "733",
+   "account_name": "Small Business Pool",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 82344.29
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "98bc7408-6632-457d-b4ad-84d49ba14093",
+   "account_code": "734",
+   "account_name": "Less: Accumulated Depreciation on Small Business Pool",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": -36995.83
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "dfc8a146-6956-4f21-a6cd-1807e4940bcd",
+   "account_code": null,
+   "account_name": "AUD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": 1.46
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "bfd973c5-e88b-42ae-8497-cf9d883d27cf",
+   "account_code": null,
+   "account_name": "CAD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": 535.31
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "79886d0a-8858-46b2-ac9c-3bed4e452a8c",
+   "account_code": "",
+   "account_name": "Debit Card",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "0e288bdc-1c45-46d1-b688-c00be194e619",
+   "account_code": null,
+   "account_name": "EUR PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": -370.18
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "80c67b0f-f9b0-4787-a554-fb51f2c6dfae",
+   "account_code": null,
+   "account_name": "GBP PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": -2156.67
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "f952cc0d-726d-44c3-8143-b14e63d187b8",
+   "account_code": null,
+   "account_name": "My Donations (tax account)",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "8dae8c3f-db43-4695-bbb6-0d60af50ee13",
+   "account_code": null,
+   "account_name": "NZD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": 33.42
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4a4a8473-df9b-427f-8b5f-47e939b2844a",
+   "account_code": null,
+   "account_name": "Thank you (General expenses)",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "55d41fcf-7a62-497d-be2b-d82d3cdba9cf",
+   "account_code": null,
+   "account_name": "USD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": 4488.14
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7d8c4a97-cf71-4dcf-9351-a074a1e734fd",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": 646311.99
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "551fdc69-3fd4-44a9-8281-42afc480e84b",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": 2.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": 9.23
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4bc3580c-a49d-4f54-a098-a0c081937916",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "6203da53-130a-4c39-8ec6-983b09722156",
+   "account_code": "815",
+   "account_name": "ATO Integrated Client Account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -56598.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "6bfe6197-711c-4ffb-9980-fcd30b9c6681",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 39204.43
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "763515da-5a35-4332-8d13-12972f9d3123",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 17466.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "c58680f7-8bf6-4381-8943-490a6fd6ccf1",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7a5d7f6b-bcd5-42a9-9a51-33ca254ca416",
+   "account_code": "850",
+   "account_name": "Suspense",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -0.01
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7cbed61e-d3e1-4770-b681-531cf2c465ab",
+   "account_code": "880",
+   "account_name": "Shareholder Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -661105.38
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "5a932d63-a826-4c54-8b5a-56153254b690",
+   "account_code": "881",
+   "account_name": "Shareholder Funds Introduced",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 451153.38
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "ccbfd762-cde4-41f5-8d89-c87a6d69ee78",
+   "account_code": "890",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 52149.19
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "27d096fb-0fac-4655-ae63-cafe42c04630",
+   "account_code": "",
+   "account_name": "Altitude Business Gold Mastercard",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -6556.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "2f6464fc-ad14-4732-b4a7-7936d225b17f",
+   "account_code": "100",
+   "account_name": "Westpac Business One",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": 216.9
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "c44637a7-4a9d-40ef-b3ee-35fb43bfd025",
+   "account_code": "616",
+   "account_name": "Cash on Hand",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 2.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "a0bd2cfa-da77-4107-bea6-11c58c28e04a",
+   "account_code": "625",
+   "account_name": "Loan - Hong Kong company - IICT Group Limited",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-08-31",
+   "balance": -137624.99
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "04d7ae4b-d4ef-449b-bd86-9d3075b65015",
+   "account_code": "680",
+   "account_name": "Goodwill/Web Development etc - at Cost",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 430000.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "2d87b319-c71d-486f-8704-0deca63ad133",
+   "account_code": "704",
+   "account_name": "Buildings",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 100232.61
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "bafd4e88-ab94-4534-a42e-9c082a446c96",
+   "account_code": "732",
+   "account_name": "Motor Vehicle - 2022 Landrover Defender above limit",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 41330.36
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "3f175daa-eb4d-4a5b-a5dd-ff280cb5c361",
+   "account_code": "733",
+   "account_name": "Small Business Pool",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 82344.29
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "98bc7408-6632-457d-b4ad-84d49ba14093",
+   "account_code": "734",
+   "account_name": "Less: Accumulated Depreciation on Small Business Pool",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": -36995.83
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "dfc8a146-6956-4f21-a6cd-1807e4940bcd",
+   "account_code": null,
+   "account_name": "AUD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": 66.71
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "bfd973c5-e88b-42ae-8497-cf9d883d27cf",
+   "account_code": null,
+   "account_name": "CAD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": 530.3
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "79886d0a-8858-46b2-ac9c-3bed4e452a8c",
+   "account_code": "",
+   "account_name": "Debit Card",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "0e288bdc-1c45-46d1-b688-c00be194e619",
+   "account_code": null,
+   "account_name": "EUR PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": -366.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "80c67b0f-f9b0-4787-a554-fb51f2c6dfae",
+   "account_code": null,
+   "account_name": "GBP PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": -2131.15
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "f952cc0d-726d-44c3-8143-b14e63d187b8",
+   "account_code": null,
+   "account_name": "My Donations (tax account)",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "8dae8c3f-db43-4695-bbb6-0d60af50ee13",
+   "account_code": null,
+   "account_name": "NZD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": 33.04
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4a4a8473-df9b-427f-8b5f-47e939b2844a",
+   "account_code": null,
+   "account_name": "Thank you (General expenses)",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "55d41fcf-7a62-497d-be2b-d82d3cdba9cf",
+   "account_code": null,
+   "account_name": "USD PayPal",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": 4396.61
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7d8c4a97-cf71-4dcf-9351-a074a1e734fd",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": 646311.99
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "551fdc69-3fd4-44a9-8281-42afc480e84b",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": 2.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": -162.55
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "4bc3580c-a49d-4f54-a098-a0c081937916",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 180.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "6203da53-130a-4c39-8ec6-983b09722156",
+   "account_code": "815",
+   "account_name": "ATO Integrated Client Account",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -56598.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "6bfe6197-711c-4ffb-9980-fcd30b9c6681",
+   "account_code": "820",
+   "account_name": "GST",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 39194.24
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "763515da-5a35-4332-8d13-12972f9d3123",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 17466.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "c58680f7-8bf6-4381-8943-490a6fd6ccf1",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 0.0
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7a5d7f6b-bcd5-42a9-9a51-33ca254ca416",
+   "account_code": "850",
+   "account_name": "Suspense",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -0.01
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "7cbed61e-d3e1-4770-b681-531cf2c465ab",
+   "account_code": "880",
+   "account_name": "Shareholder Loan",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -661105.38
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "5a932d63-a826-4c54-8b5a-56153254b690",
+   "account_code": "881",
+   "account_name": "Shareholder Funds Introduced",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 451153.38
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "ccbfd762-cde4-41f5-8d89-c87a6d69ee78",
+   "account_code": "890",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "account_type": "liability",
+   "section": "Non-Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 52149.19
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "account_id": "27d096fb-0fac-4655-ae63-cafe42c04630",
+   "account_code": "",
+   "account_name": "Altitude Business Gold Mastercard",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -6556.0
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8cc4a250-f36c-4dd3-90b9-71011f37a687",
+   "account_code": "724",
+   "account_name": "Business purchase",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 102586.58
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "81c2f30d-aa27-4adb-8693-2445fca7efeb",
+   "account_code": "730",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 7701.26
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8f0f255b-da21-49b0-857f-f2d293c1ebb5",
+   "account_code": "732",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-06-30",
+   "balance": 321.52
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "bee51b34-ebfb-4209-9f42-2ff91e09dd5a",
+   "account_code": null,
+   "account_name": "AWX_IICT Group Limite_Cash_HKD",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-06-30",
+   "balance": 113276.03
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-06-30",
+   "balance": 553435.76
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "85265394-4ed6-4dfd-9cff-47971e9c1c3f",
+   "account_code": "880",
+   "account_name": "Director A Drawings",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-06-30",
+   "balance": -329550.37
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8cc4a250-f36c-4dd3-90b9-71011f37a687",
+   "account_code": "724",
+   "account_name": "Business purchase",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 102586.58
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "81c2f30d-aa27-4adb-8693-2445fca7efeb",
+   "account_code": "730",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 17283.95
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8f0f255b-da21-49b0-857f-f2d293c1ebb5",
+   "account_code": "732",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-07-31",
+   "balance": 321.52
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "bee51b34-ebfb-4209-9f42-2ff91e09dd5a",
+   "account_code": null,
+   "account_name": "AWX_IICT Group Limite_Cash_HKD",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-07-31",
+   "balance": 252168.81
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-07-31",
+   "balance": 775069.15
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "85265394-4ed6-4dfd-9cff-47971e9c1c3f",
+   "account_code": "880",
+   "account_name": "Director A Drawings",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-07-31",
+   "balance": -402708.29
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8cc4a250-f36c-4dd3-90b9-71011f37a687",
+   "account_code": "724",
+   "account_name": "Business purchase",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 102586.58
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "81c2f30d-aa27-4adb-8693-2445fca7efeb",
+   "account_code": "730",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 20550.05
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8f0f255b-da21-49b0-857f-f2d293c1ebb5",
+   "account_code": "732",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2025-08-31",
+   "balance": 321.52
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "bee51b34-ebfb-4209-9f42-2ff91e09dd5a",
+   "account_code": null,
+   "account_name": "AWX_IICT Group Limite_Cash_HKD",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2025-08-31",
+   "balance": 261811.65
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2025-08-31",
+   "balance": 872508.87
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "85265394-4ed6-4dfd-9cff-47971e9c1c3f",
+   "account_code": "880",
+   "account_name": "Director A Drawings",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2025-08-31",
+   "balance": -487239.07
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8cc4a250-f36c-4dd3-90b9-71011f37a687",
+   "account_code": "724",
+   "account_name": "Business purchase",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 102586.58
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "81c2f30d-aa27-4adb-8693-2445fca7efeb",
+   "account_code": "730",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 9760787.95
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "032c720d-b3cb-4356-80b6-a12daff139d0",
+   "account_code": "731",
+   "account_name": "Bond / Security Deposit - The Hive",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 95921.44
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8f0f255b-da21-49b0-857f-f2d293c1ebb5",
+   "account_code": "732",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-06-30",
+   "balance": 464147.14
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "bee51b34-ebfb-4209-9f42-2ff91e09dd5a",
+   "account_code": null,
+   "account_name": "AWX_IICT Group Limite_Cash_HKD",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-06-30",
+   "balance": 711252.8
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8b2651f9-463a-492f-b7ef-6d97e7a0557c",
+   "account_code": "835",
+   "account_name": "Dividends Paid",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-06-30",
+   "balance": -39269.17
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "01f48e73-cf32-4b93-aa80-afc978882678",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-06-30",
+   "balance": 8094046.83
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-06-30",
+   "balance": 4176351.55
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "438d613b-d4ed-40a8-aca5-72408895422d",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 290074.85
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "85265394-4ed6-4dfd-9cff-47971e9c1c3f",
+   "account_code": "880",
+   "account_name": "Director A Drawings",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": -1428508.16
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "311b8253-fbb2-42a0-a658-792522a587b5",
+   "account_code": "881",
+   "account_name": "Director A Funds Introduced",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-06-30",
+   "balance": 42000.0
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8cc4a250-f36c-4dd3-90b9-71011f37a687",
+   "account_code": "724",
+   "account_name": "Business purchase",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 102586.58
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "81c2f30d-aa27-4adb-8693-2445fca7efeb",
+   "account_code": "730",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 10939880.56
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "032c720d-b3cb-4356-80b6-a12daff139d0",
+   "account_code": "731",
+   "account_name": "Bond / Security Deposit - The Hive",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 95921.44
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8f0f255b-da21-49b0-857f-f2d293c1ebb5",
+   "account_code": "732",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-07-31",
+   "balance": 464147.14
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "bee51b34-ebfb-4209-9f42-2ff91e09dd5a",
+   "account_code": null,
+   "account_name": "AWX_IICT Group Limite_Cash_HKD",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-07-31",
+   "balance": 1303713.43
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8b2651f9-463a-492f-b7ef-6d97e7a0557c",
+   "account_code": "835",
+   "account_name": "Dividends Paid",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": -39269.17
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "01f48e73-cf32-4b93-aa80-afc978882678",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": 8094046.83
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-07-31",
+   "balance": 6001537.16
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "438d613b-d4ed-40a8-aca5-72408895422d",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 319358.73
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "85265394-4ed6-4dfd-9cff-47971e9c1c3f",
+   "account_code": "880",
+   "account_name": "Director A Drawings",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": -1511424.4
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "311b8253-fbb2-42a0-a658-792522a587b5",
+   "account_code": "881",
+   "account_name": "Director A Funds Introduced",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-07-31",
+   "balance": 42000.0
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "6103da71-715f-4565-bcf7-6ed9a550dea0",
+   "account_code": "720",
+   "account_name": "Computer Equipment",
+   "account_type": "asset",
+   "section": "Fixed Assets",
+   "balance_date": "2026-08-31",
+   "balance": 2641.86
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8cc4a250-f36c-4dd3-90b9-71011f37a687",
+   "account_code": "724",
+   "account_name": "Business purchase",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 102586.58
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "81c2f30d-aa27-4adb-8693-2445fca7efeb",
+   "account_code": "730",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 12361643.06
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "032c720d-b3cb-4356-80b6-a12daff139d0",
+   "account_code": "731",
+   "account_name": "Bond / Security Deposit - The Hive",
+   "account_type": "asset",
+   "section": "Non-current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 95921.44
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8f0f255b-da21-49b0-857f-f2d293c1ebb5",
+   "account_code": "732",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "account_type": "asset",
+   "section": "Current Assets",
+   "balance_date": "2026-08-31",
+   "balance": 464147.14
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "bee51b34-ebfb-4209-9f42-2ff91e09dd5a",
+   "account_code": null,
+   "account_name": "AWX_IICT Group Limite_Cash_HKD",
+   "account_type": "asset",
+   "section": "Bank",
+   "balance_date": "2026-08-31",
+   "balance": 1237808.62
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "8b2651f9-463a-492f-b7ef-6d97e7a0557c",
+   "account_code": "835",
+   "account_name": "Dividends Paid",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": -39269.17
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "01f48e73-cf32-4b93-aa80-afc978882678",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": 8094046.83
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "abababab-abab-abab-abab-abababababab",
+   "account_code": null,
+   "account_name": "Current Year Earnings",
+   "account_type": "equity",
+   "section": null,
+   "balance_date": "2026-08-31",
+   "balance": 7471758.73
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "438d613b-d4ed-40a8-aca5-72408895422d",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 231494.69
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "85265394-4ed6-4dfd-9cff-47971e9c1c3f",
+   "account_code": "880",
+   "account_name": "Director A Drawings",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": -1574282.39
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "account_id": "311b8253-fbb2-42a0-a658-792522a587b5",
+   "account_code": "881",
+   "account_name": "Director A Funds Introduced",
+   "account_type": "liability",
+   "section": "Current Liabilities",
+   "balance_date": "2026-08-31",
+   "balance": 81000.0
+  }
+ ],
+ "accounts": [
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "df99a026-076e-4ccf-ac3c-c92f9478f217",
+   "account_code": "100",
+   "account_name": "My Fortune - IICT Aust",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "df99a026-076e-4ccf-ac3c-c92f9478f217",
+   "account_code": "100",
+   "account_name": "My Fortune - IICT Aust",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "2632bee2-5252-49d9-a9b3-de8cc5369f7d",
+   "account_code": "108",
+   "account_name": "My Thank You Account",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "2632bee2-5252-49d9-a9b3-de8cc5369f7d",
+   "account_code": "108",
+   "account_name": "My Thank You Account",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "b8240ae2-9b69-4369-94e2-811d0428938c",
+   "account_code": "315",
+   "account_name": "Loan Establishment Fees / Borrowing Costs",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "c276a1dd-4286-4a75-9ce7-2c7fa4d582f2",
+   "account_code": "605",
+   "account_name": "Cash on Hand",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "bf9dd873-6022-45f8-bdd7-9ba3e67a6e53",
+   "account_code": "625",
+   "account_name": "Loan - Hong Kong company - IICT Group Limited",
+   "xero_type": "LIABILITY",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "bf9dd873-6022-45f8-bdd7-9ba3e67a6e53",
+   "account_code": "625",
+   "account_name": "Loan - Hong Kong company - IICT Group Limited",
+   "xero_type": "LIABILITY",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "dddb205e-c28b-4b9b-816e-670392a25bdd",
+   "account_code": "640",
+   "account_name": "Motor Vehicle - Range Rover Sport",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "dddb205e-c28b-4b9b-816e-670392a25bdd",
+   "account_code": "640",
+   "account_name": "Motor Vehicle - Range Rover Sport",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "92e5f55a-fd6c-488b-9f77-5d75037c03f1",
+   "account_code": "700",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "4ea8fddc-c60c-467e-a65f-b7a498b469ba",
+   "account_code": "710",
+   "account_name": "Office Equipment",
+   "xero_type": "FIXED",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "4ea8fddc-c60c-467e-a65f-b7a498b469ba",
+   "account_code": "710",
+   "account_name": "Office Equipment",
+   "xero_type": "FIXED",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "a47218e2-b6ef-4560-b1fe-2bb327c4ac89",
+   "account_code": "720",
+   "account_name": "Computer Equipment",
+   "xero_type": "FIXED",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "a47218e2-b6ef-4560-b1fe-2bb327c4ac89",
+   "account_code": "720",
+   "account_name": "Computer Equipment",
+   "xero_type": "FIXED",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "740ff067-f34c-4ae5-b6e6-0aea6fc60826",
+   "account_code": "721",
+   "account_name": "Less Accumulated Depreciation on Computer Equipment",
+   "xero_type": "FIXED",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "740ff067-f34c-4ae5-b6e6-0aea6fc60826",
+   "account_code": "721",
+   "account_name": "Less Accumulated Depreciation on Computer Equipment",
+   "xero_type": "FIXED",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "c7f577d6-a2bc-42a5-b024-9005384c6c04",
+   "account_code": "750",
+   "account_name": "Rental Bond / Security Deposit",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "8147e50e-4d1a-4945-9eed-031ab250a7b8",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "8147e50e-4d1a-4945-9eed-031ab250a7b8",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "0f6a7761-56c0-4225-b1a0-3049b4053574",
+   "account_code": "802",
+   "account_name": "ATO ICA - BAS payable account",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "0f6a7761-56c0-4225-b1a0-3049b4053574",
+   "account_code": "802",
+   "account_name": "ATO ICA - BAS payable account",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "0923c6b5-acbd-463e-b600-50efd831a71f",
+   "account_code": "804",
+   "account_name": "Wages Payable - Payroll",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "0923c6b5-acbd-463e-b600-50efd831a71f",
+   "account_code": "804",
+   "account_name": "Wages Payable - Payroll",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "29f42030-5dfe-4f03-b60d-4a3c2ad69361",
+   "account_code": "820",
+   "account_name": "GST",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "29f42030-5dfe-4f03-b60d-4a3c2ad69361",
+   "account_code": "820",
+   "account_name": "GST",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "d5f473ed-ed82-4886-89e3-1f0d840cbb5a",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "d5f473ed-ed82-4886-89e3-1f0d840cbb5a",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "5b2b3fa5-867c-4fbf-9ada-e6a362a80d5c",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "5b2b3fa5-867c-4fbf-9ada-e6a362a80d5c",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "d9bbc607-c1ec-4bc8-8e91-9ecb650b91b5",
+   "account_code": "870",
+   "account_name": "Director Loan",
+   "xero_type": "TERMLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "1dee9d45-e764-4d75-8ef5-9d8b59f84aa3",
+   "account_code": "880",
+   "account_name": "Director A Drawings",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "1dee9d45-e764-4d75-8ef5-9d8b59f84aa3",
+   "account_code": "880",
+   "account_name": "Director A Drawings",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "d9bbc607-c1ec-4bc8-8e91-9ecb650b91b5",
+   "account_code": "881",
+   "account_name": "Director A Funds Introduced",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "92e5f55a-fd6c-488b-9f77-5d75037c03f1",
+   "account_code": "900",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "xero_type": "TERMLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "39d7b81d-2fa5-4afd-8b1c-44bad15cc82f",
+   "account_code": "910",
+   "account_name": "Loan - Range Rover",
+   "xero_type": "TERMLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "39d7b81d-2fa5-4afd-8b1c-44bad15cc82f",
+   "account_code": "910",
+   "account_name": "Loan - Range Rover",
+   "xero_type": "TERMLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "1916d922-f2bf-417e-8764-8bd94aee6f45",
+   "account_code": "912",
+   "account_name": "Less Unexpired interest on MV - Range Rover Sport",
+   "xero_type": "TERMLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "1916d922-f2bf-417e-8764-8bd94aee6f45",
+   "account_code": "912",
+   "account_name": "Less Unexpired interest on MV - Range Rover Sport",
+   "xero_type": "TERMLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "4686bf2f-8f30-4398-93d6-5fc5fcb8675e",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "4686bf2f-8f30-4398-93d6-5fc5fcb8675e",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "a82edbf5-8a90-4815-b4ff-0feeb541e3be",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "a82edbf5-8a90-4815-b4ff-0feeb541e3be",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "4d651eea-5b16-4695-bc29-c3048e0d8190",
+   "account_code": null,
+   "account_name": "Altitude Business Gold Mastercard",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "CREDITCARD"
+  },
+  {
+   "tenant_id": "1d83c9a4-bf6d-448f-bb87-88e2684317bf",
+   "xero_account_id": "4d651eea-5b16-4695-bc29-c3048e0d8190",
+   "account_code": null,
+   "account_name": "Altitude Business Gold Mastercard",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "CREDITCARD"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "2f6464fc-ad14-4732-b4a7-7936d225b17f",
+   "account_code": "100",
+   "account_name": "Westpac Business One",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "2f6464fc-ad14-4732-b4a7-7936d225b17f",
+   "account_code": "100",
+   "account_name": "Westpac Business One",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "38e86ec6-efcc-4d71-b2bd-ba8497a942d0",
+   "account_code": "105",
+   "account_name": "Cash Passport",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "38e86ec6-efcc-4d71-b2bd-ba8497a942d0",
+   "account_code": "105",
+   "account_name": "Cash Passport",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "4e6db5c5-1341-40cf-b19e-aede9be48d11",
+   "account_code": "110",
+   "account_name": "28 Degrees Travel card",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "4e6db5c5-1341-40cf-b19e-aede9be48d11",
+   "account_code": "110",
+   "account_name": "28 Degrees Travel card",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "c44637a7-4a9d-40ef-b3ee-35fb43bfd025",
+   "account_code": "616",
+   "account_name": "Cash on Hand",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "c682ef12-d26f-4701-b9e3-6197dccb91e5",
+   "account_code": "621",
+   "account_name": "Investment Account (Offset)",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "c682ef12-d26f-4701-b9e3-6197dccb91e5",
+   "account_code": "621",
+   "account_name": "Investment Account (Offset)",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "ccbfd762-cde4-41f5-8d89-c87a6d69ee78",
+   "account_code": "622",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "5291b604-79bc-46af-85ff-6c736b18f4db",
+   "account_code": "623",
+   "account_name": "Loan - Corporate Trustee of Private Nature (name TBA)",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "5291b604-79bc-46af-85ff-6c736b18f4db",
+   "account_code": "623",
+   "account_name": "Loan - Corporate Trustee of Private Nature (name TBA)",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "71fa20e2-f9b0-43dd-8570-582d061e22c3",
+   "account_code": "624",
+   "account_name": "Loan - Kaizen Pty Ltd",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "71fa20e2-f9b0-43dd-8570-582d061e22c3",
+   "account_code": "624",
+   "account_name": "Loan - Kaizen Pty Ltd",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "a0bd2cfa-da77-4107-bea6-11c58c28e04a",
+   "account_code": "625",
+   "account_name": "Loan - Hong Kong company - IICT Group Limited",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "a0bd2cfa-da77-4107-bea6-11c58c28e04a",
+   "account_code": "625",
+   "account_name": "Loan - Hong Kong company - IICT Group Limited",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "4e08726a-0deb-4e5a-9c74-7f528e2e5752",
+   "account_code": "626",
+   "account_name": "Loan - Fitness Federation",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "4e08726a-0deb-4e5a-9c74-7f528e2e5752",
+   "account_code": "626",
+   "account_name": "Loan - Fitness Federation",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "da0b66b9-ea27-4113-a36e-a5e2ade9e672",
+   "account_code": "627",
+   "account_name": "Loan - Shambala NFP",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "da0b66b9-ea27-4113-a36e-a5e2ade9e672",
+   "account_code": "627",
+   "account_name": "Loan - Shambala NFP",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "5c08e424-39a9-4ed2-b401-0ffc1ceaf19c",
+   "account_code": "628",
+   "account_name": "Loan - Antba.com.au",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "5c08e424-39a9-4ed2-b401-0ffc1ceaf19c",
+   "account_code": "628",
+   "account_name": "Loan - Antba.com.au",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "3b779c26-57f5-4ddf-b7bf-0ce1d41cfb62",
+   "account_code": "629",
+   "account_name": "Loan - Click-Holistic.com",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "3b779c26-57f5-4ddf-b7bf-0ce1d41cfb62",
+   "account_code": "629",
+   "account_name": "Loan - Click-Holistic.com",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "a73684ad-72a8-4700-a1c3-85ac6ae49be6",
+   "account_code": "631",
+   "account_name": "Other Debtors - Tax Office",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "a73684ad-72a8-4700-a1c3-85ac6ae49be6",
+   "account_code": "631",
+   "account_name": "Other Debtors - Tax Office",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "04d7ae4b-d4ef-449b-bd86-9d3075b65015",
+   "account_code": "680",
+   "account_name": "Goodwill/Web Development etc - at Cost",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "04d7ae4b-d4ef-449b-bd86-9d3075b65015",
+   "account_code": "680",
+   "account_name": "Goodwill/Web Development etc - at Cost",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "f07b0cb0-dbd1-461c-bf23-c492a165adaa",
+   "account_code": "700",
+   "account_name": "Motorcycle Honda",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "f07b0cb0-dbd1-461c-bf23-c492a165adaa",
+   "account_code": "700",
+   "account_name": "Motorcycle Honda",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "2d87b319-c71d-486f-8704-0deca63ad133",
+   "account_code": "704",
+   "account_name": "Buildings",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "2d87b319-c71d-486f-8704-0deca63ad133",
+   "account_code": "704",
+   "account_name": "Buildings",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "bafd4e88-ab94-4534-a42e-9c082a446c96",
+   "account_code": "732",
+   "account_name": "Motor Vehicle - 2022 Landrover Defender above limit",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "bafd4e88-ab94-4534-a42e-9c082a446c96",
+   "account_code": "732",
+   "account_name": "Motor Vehicle at cost - 2022 Landrover Defender",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "3f175daa-eb4d-4a5b-a5dd-ff280cb5c361",
+   "account_code": "733",
+   "account_name": "Small Business Pool",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "98bc7408-6632-457d-b4ad-84d49ba14093",
+   "account_code": "734",
+   "account_name": "Less: Accumulated Depreciation on Small Business Pool",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "4bc3580c-a49d-4f54-a098-a0c081937916",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "4bc3580c-a49d-4f54-a098-a0c081937916",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "6203da53-130a-4c39-8ec6-983b09722156",
+   "account_code": "815",
+   "account_name": "ATO Integrated Client Account",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "6203da53-130a-4c39-8ec6-983b09722156",
+   "account_code": "815",
+   "account_name": "ATO Integrated Client Account",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "6bfe6197-711c-4ffb-9980-fcd30b9c6681",
+   "account_code": "820",
+   "account_name": "GST",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "6bfe6197-711c-4ffb-9980-fcd30b9c6681",
+   "account_code": "820",
+   "account_name": "GST",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "763515da-5a35-4332-8d13-12972f9d3123",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "763515da-5a35-4332-8d13-12972f9d3123",
+   "account_code": "825",
+   "account_name": "PAYG Withholdings Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "c58680f7-8bf6-4381-8943-490a6fd6ccf1",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "c58680f7-8bf6-4381-8943-490a6fd6ccf1",
+   "account_code": "826",
+   "account_name": "Superannuation Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "a616bad7-b835-4e07-b4b6-64a052276a2a",
+   "account_code": "829",
+   "account_name": "Amounts withheld where no ABN is quoted",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "a616bad7-b835-4e07-b4b6-64a052276a2a",
+   "account_code": "829",
+   "account_name": "Amounts withheld where no ABN is quoted",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "7a5d7f6b-bcd5-42a9-9a51-33ca254ca416",
+   "account_code": "850",
+   "account_name": "Suspense",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "7a5d7f6b-bcd5-42a9-9a51-33ca254ca416",
+   "account_code": "850",
+   "account_name": "Suspense",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "a9a6b40a-af1e-4144-a585-020cc140a541",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "a9a6b40a-af1e-4144-a585-020cc140a541",
+   "account_code": "860",
+   "account_name": "Rounding",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "7cbed61e-d3e1-4770-b681-531cf2c465ab",
+   "account_code": "880",
+   "account_name": "Shareholder Loan",
+   "xero_type": "TERMLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "7cbed61e-d3e1-4770-b681-531cf2c465ab",
+   "account_code": "880",
+   "account_name": "Shareholder Loan",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "5a932d63-a826-4c54-8b5a-56153254b690",
+   "account_code": "881",
+   "account_name": "Shareholder Funds Introduced",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "5a932d63-a826-4c54-8b5a-56153254b690",
+   "account_code": "881",
+   "account_name": "Shareholder Funds Introduced",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "ccbfd762-cde4-41f5-8d89-c87a6d69ee78",
+   "account_code": "890",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "xero_type": "TERMLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "7d8c4a97-cf71-4dcf-9351-a074a1e734fd",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "7d8c4a97-cf71-4dcf-9351-a074a1e734fd",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "97252f2a-d213-47d5-bdea-391b9d4c1c4a",
+   "account_code": "966",
+   "account_name": "Dividends Paid",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "97252f2a-d213-47d5-bdea-391b9d4c1c4a",
+   "account_code": "966",
+   "account_name": "Dividends Paid",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "551fdc69-3fd4-44a9-8281-42afc480e84b",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "551fdc69-3fd4-44a9-8281-42afc480e84b",
+   "account_code": "970",
+   "account_name": "Owner A Share Capital",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "dfc8a146-6956-4f21-a6cd-1807e4940bcd",
+   "account_code": null,
+   "account_name": "AUD PayPal",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "dfc8a146-6956-4f21-a6cd-1807e4940bcd",
+   "account_code": null,
+   "account_name": "AUD PayPal",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "27d096fb-0fac-4655-ae63-cafe42c04630",
+   "account_code": "",
+   "account_name": "Altitude Business Gold Mastercard",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "CREDITCARD"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "27d096fb-0fac-4655-ae63-cafe42c04630",
+   "account_code": "",
+   "account_name": "Altitude Business Gold Mastercard",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "CREDITCARD"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "bfd973c5-e88b-42ae-8497-cf9d883d27cf",
+   "account_code": null,
+   "account_name": "CAD PayPal",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "bfd973c5-e88b-42ae-8497-cf9d883d27cf",
+   "account_code": null,
+   "account_name": "CAD PayPal",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "79886d0a-8858-46b2-ac9c-3bed4e452a8c",
+   "account_code": "",
+   "account_name": "Debit Card",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "79886d0a-8858-46b2-ac9c-3bed4e452a8c",
+   "account_code": "",
+   "account_name": "Debit Card",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "0e288bdc-1c45-46d1-b688-c00be194e619",
+   "account_code": null,
+   "account_name": "EUR PayPal",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "0e288bdc-1c45-46d1-b688-c00be194e619",
+   "account_code": null,
+   "account_name": "EUR PayPal",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "80c67b0f-f9b0-4787-a554-fb51f2c6dfae",
+   "account_code": null,
+   "account_name": "GBP PayPal",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "80c67b0f-f9b0-4787-a554-fb51f2c6dfae",
+   "account_code": null,
+   "account_name": "GBP PayPal",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "f952cc0d-726d-44c3-8143-b14e63d187b8",
+   "account_code": null,
+   "account_name": "My Donations (tax account)",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "f952cc0d-726d-44c3-8143-b14e63d187b8",
+   "account_code": null,
+   "account_name": "My Donations (tax account)",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "8dae8c3f-db43-4695-bbb6-0d60af50ee13",
+   "account_code": null,
+   "account_name": "NZD PayPal",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "8dae8c3f-db43-4695-bbb6-0d60af50ee13",
+   "account_code": null,
+   "account_name": "NZD PayPal",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "4a4a8473-df9b-427f-8b5f-47e939b2844a",
+   "account_code": null,
+   "account_name": "Thank you (General expenses)",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "4a4a8473-df9b-427f-8b5f-47e939b2844a",
+   "account_code": null,
+   "account_name": "Thank you (General expenses)",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "55d41fcf-7a62-497d-be2b-d82d3cdba9cf",
+   "account_code": null,
+   "account_name": "USD PayPal",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "44582ebf-ec15-414b-9f20-8706967257f3",
+   "xero_account_id": "55d41fcf-7a62-497d-be2b-d82d3cdba9cf",
+   "account_code": null,
+   "account_name": "USD PayPal",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "6103da71-715f-4565-bcf7-6ed9a550dea0",
+   "account_code": "720",
+   "account_name": "Computer Equipment",
+   "xero_type": "FIXED",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "6103da71-715f-4565-bcf7-6ed9a550dea0",
+   "account_code": "720",
+   "account_name": "Computer Equipment",
+   "xero_type": "FIXED",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "8cc4a250-f36c-4dd3-90b9-71011f37a687",
+   "account_code": "724",
+   "account_name": "Business purchase",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "8cc4a250-f36c-4dd3-90b9-71011f37a687",
+   "account_code": "724",
+   "account_name": "Business purchase",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "81c2f30d-aa27-4adb-8693-2445fca7efeb",
+   "account_code": "730",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "81c2f30d-aa27-4adb-8693-2445fca7efeb",
+   "account_code": "730",
+   "account_name": "Loan - IICT (Aust) Pty Ltd",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "032c720d-b3cb-4356-80b6-a12daff139d0",
+   "account_code": "731",
+   "account_name": "Bond / Security Deposit - The Hive",
+   "xero_type": "NONCURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "8f0f255b-da21-49b0-857f-f2d293c1ebb5",
+   "account_code": "732",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "8f0f255b-da21-49b0-857f-f2d293c1ebb5",
+   "account_code": "732",
+   "account_name": "Loan - IICT Group Pty Ltd",
+   "xero_type": "CURRENT",
+   "xero_class": "ASSET",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "438d613b-d4ed-40a8-aca5-72408895422d",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "438d613b-d4ed-40a8-aca5-72408895422d",
+   "account_code": "800",
+   "account_name": "Accounts Payable",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "8b2651f9-463a-492f-b7ef-6d97e7a0557c",
+   "account_code": "835",
+   "account_name": "Dividends Paid",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "85265394-4ed6-4dfd-9cff-47971e9c1c3f",
+   "account_code": "880",
+   "account_name": "Director A Drawings",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "85265394-4ed6-4dfd-9cff-47971e9c1c3f",
+   "account_code": "880",
+   "account_name": "Director A Drawings",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "311b8253-fbb2-42a0-a658-792522a587b5",
+   "account_code": "881",
+   "account_name": "Director A Funds Introduced",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "311b8253-fbb2-42a0-a658-792522a587b5",
+   "account_code": "881",
+   "account_name": "Director A Funds Introduced",
+   "xero_type": "CURRLIAB",
+   "xero_class": "LIABILITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "01f48e73-cf32-4b93-aa80-afc978882678",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": null
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "01f48e73-cf32-4b93-aa80-afc978882678",
+   "account_code": "960",
+   "account_name": "Retained Earnings",
+   "xero_type": "EQUITY",
+   "xero_class": "EQUITY",
+   "bank_account_type": ""
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "bee51b34-ebfb-4209-9f42-2ff91e09dd5a",
+   "account_code": null,
+   "account_name": "AWX_IICT Group Limite_Cash_HKD",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  },
+  {
+   "tenant_id": "de943481-389d-4134-b0af-410f025f53c2",
+   "xero_account_id": "bee51b34-ebfb-4209-9f42-2ff91e09dd5a",
+   "account_code": null,
+   "account_name": "AWX_IICT Group Limite_Cash_HKD",
+   "xero_type": "BANK",
+   "xero_class": "ASSET",
+   "bank_account_type": "BANK"
+  }
+ ],
+ "fx_rates": [
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2025-04-01",
+   "rate": 0.20486682906777084,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2025-04-30",
+   "rate": 0.2011168775908865,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2025-05-01",
+   "rate": 0.19914202943029993,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2025-05-31",
+   "rate": 0.19829130027228498,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2025-06-01",
+   "rate": 0.19599015923543942,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2025-06-30",
+   "rate": 0.1937185587169345,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2025-07-01",
+   "rate": 0.19476484352765577,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2025-07-31",
+   "rate": 0.1981931897150799,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2025-08-01",
+   "rate": 0.19659666005871496,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2025-08-31",
+   "rate": 0.1960175172296151,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2025-09-01",
+   "rate": 0.19484737627787294,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2025-09-30",
+   "rate": 0.19437123849560126,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2025-10-01",
+   "rate": 0.19671713061123708,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2025-10-31",
+   "rate": 0.196598897600319,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2025-11-01",
+   "rate": 0.19755903140732198,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2025-11-30",
+   "rate": 0.19603671614724474,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2025-12-01",
+   "rate": 0.19330341528805967,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2025-12-31",
+   "rate": 0.1926040625792499,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2026-01-01",
+   "rate": 0.1892393902975421,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2026-01-31",
+   "rate": 0.18396814320194113,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2026-02-01",
+   "rate": 0.1813173404834106,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2026-02-28",
+   "rate": 0.1796314783686878,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2026-03-01",
+   "rate": 0.18228433706800246,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2026-03-31",
+   "rate": 0.18434818108171896,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2026-04-01",
+   "rate": 0.1925,
+   "source": "manual"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2026-04-30",
+   "rate": 0.1925,
+   "source": "manual"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2026-05-01",
+   "rate": 0.17758953067863406,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2026-05-25",
+   "rate": 0.17786852917638318,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2026-06-01",
+   "rate": 0.18196155472581474,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2026-06-30",
+   "rate": 0.18446757916345252,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2026-07-01",
+   "rate": 0.18309189411127558,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2026-07-31",
+   "rate": 0.18178479899016947,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "monthly_average",
+   "period": "2026-08-01",
+   "rate": 0.1795356608763917,
+   "source": "oxr"
+  },
+  {
+   "currency_pair": "HKD/AUD",
+   "rate_type": "closing_spot",
+   "period": "2026-08-31",
+   "rate": 0.17790200084322572,
+   "source": "oxr"
+  }
+ ]
+}

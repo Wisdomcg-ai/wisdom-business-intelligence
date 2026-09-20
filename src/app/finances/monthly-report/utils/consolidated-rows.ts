@@ -12,6 +12,8 @@ export interface ConsolidatedForecastLineVM {
   account_type: string
   account_name: string
   monthly_values: Record<string, number>
+  /** consolidated.lines only: the account's expense group (see consolidated-groups). */
+  group?: string
 }
 
 export interface ConsolidatedEntityColumnVM {

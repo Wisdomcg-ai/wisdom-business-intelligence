@@ -95,7 +95,9 @@ routine feeds the badge side via `reconciliation_dashboard_captures`
 
    A non-2xx or `{error}` response = that business FAILED; report it, don't
    retry blindly (401 means Matt's WisdomBI session expired — ask him to log
-   in there too).
+   in there too; 403 means the signed-in account isn't super_admin or this
+   client's assigned coach — the endpoint is role-gated, so report it and
+   stop rather than trying another business as that account).
 
    **Keep account names stable across rounds.** Xero shows the SAME account
    under different labels on different screens (panel nickname, Tasks list,
