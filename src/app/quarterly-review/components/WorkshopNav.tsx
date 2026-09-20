@@ -1,7 +1,7 @@
 'use client';
 
 import { WorkshopStep, WORKSHOP_STEPS, STEP_LABELS, ReviewType, getWorkshopSteps } from '../types';
-import { ChevronLeft, ChevronRight, Check, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, Loader2, AlertTriangle } from 'lucide-react';
 
 interface WorkshopNavProps {
   currentStep: WorkshopStep;
@@ -14,6 +14,8 @@ interface WorkshopNavProps {
   isSaving?: boolean;
   isCompleting?: boolean;
   hasUnsavedChanges?: boolean;
+  saveError?: string | null;
+  onRetrySave?: () => void;
   nextLabel?: string;
   reviewType?: ReviewType;
 }
@@ -29,6 +31,8 @@ export function WorkshopNav({
   isSaving,
   isCompleting,
   hasUnsavedChanges,
+  saveError,
+  onRetrySave,
   nextLabel,
   reviewType = 'quarterly'
 }: WorkshopNavProps) {
@@ -70,9 +74,25 @@ export function WorkshopNav({
         </div>
 
         {/* Center — passive auto-save status. No manual Save button; everything
-            auto-saves. The owner can see at a glance their work is safe. */}
+            auto-saves. Three honest states: saved, saving, or couldn't save —
+            a failure is never dressed up as either of the other two. */}
         <div className="flex items-center gap-2 text-xs" aria-live="polite">
-          {isSaving || hasUnsavedChanges ? (
+          {saveError ? (
+            <span className="flex items-center gap-1.5 text-amber-700">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">{saveError}</span>
+              {onRetrySave && (
+                <button
+                  type="button"
+                  onClick={onRetrySave}
+                  disabled={isSaving}
+                  className="underline font-medium hover:text-amber-900 disabled:opacity-50"
+                >
+                  {isSaving ? 'Retrying…' : 'Retry'}
+                </button>
+              )}
+            </span>
+          ) : isSaving || hasUnsavedChanges ? (
             <span className="flex items-center gap-1.5 text-gray-500">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
               <span className="hidden sm:inline">Saving…</span>

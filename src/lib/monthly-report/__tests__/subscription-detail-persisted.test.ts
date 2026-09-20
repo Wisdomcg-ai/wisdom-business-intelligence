@@ -42,7 +42,11 @@ describe('the crawl accumulators', () => {
     addSubscriptionLine(crawl, { accountCode: '99999', vendorName: 'Not requested', amount: 1, isCurrent: true, tenantId: TENANT })
     const shopify = crawl.vendorData.get('63700')!.get('shopify')!
     // No statement amount given (the stored history): the gross figure stands in, and the crawl does not claim one.
-    expect(shopify).toEqual({ vendor_name: 'Shopify', actual: 4260.66, prior_actual: 4212, transaction_count: 2, statement_actual: 4260.66, statement_prior_actual: 4212 })
+    expect(shopify).toEqual({
+      vendor_name: 'Shopify', actual: 4260.66, prior_actual: 4212, transaction_count: 2, statement_actual: 4260.66, statement_prior_actual: 4212,
+      // The report month per organisation, for a page that prints a column each (DRG-30).
+      by_tenant: { [TENANT]: { actual: 4260.66, statement_actual: 4260.66 } },
+    })
     expect(crawl.statementAmounts).toBe(false)
     expect(crawl.vendorData.has('99999')).toBe(false)
     expect(crawl.tenantMonthActuals.get(TENANT)!.get('shopify')).toEqual({ name: 'Shopify', amount: 4260.66 })
@@ -54,6 +58,7 @@ describe('the crawl accumulators', () => {
     addSubscriptionLine(crawl, { accountCode: '63700', vendorName: 'Harvey Norman', amount: 110, statementAmount: 100, isCurrent: false, tenantId: TENANT })
     expect(crawl.vendorData.get('63700')!.get('harveynorman')).toEqual({
       vendor_name: 'Harvey Norman', actual: 1125, prior_actual: 110, transaction_count: 1, statement_actual: 1022.73, statement_prior_actual: 100,
+      by_tenant: { [TENANT]: { actual: 1125, statement_actual: 1022.73 } },
     })
     expect(crawl.tenantMonthActuals.get(TENANT)!.get('harveynorman')).toEqual({ name: 'Harvey Norman', amount: 1125 })
   })
@@ -69,6 +74,7 @@ describe('the crawl accumulators', () => {
       vendor_name: 'Kim Andrea Ambrocio', actual: 1200, prior_actual: 1500, transaction_count: 1, statement_actual: 1200, statement_prior_actual: 1500,
       months: { '2026-08': 1200, '2026-07': 1500, '2026-06': 900 },
       statement_months: { '2026-08': 1200, '2026-07': 1500, '2026-06': 900 },
+      by_tenant: { [TENANT]: { actual: 1200, statement_actual: 1200 } },
     })
     expect(crawl.vendorData.get('61400')!.get('hardwareconcepts')).toMatchObject({ actual: 0, prior_actual: 0, transaction_count: 0, months: { '2026-06': 101 } })
     expect([...crawl.tenantMonthActuals.get(TENANT)!.keys()]).toEqual(['kimandreaambrocio'])

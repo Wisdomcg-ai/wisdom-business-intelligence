@@ -74,6 +74,20 @@ describe('which roster sets the budget', () => {
     expect(budgetRosterFromLayout(layout)?.[0].weekly_salary).toBe(2500)
   })
 
+  it('reads a fortnightly roster (IICT-40) as its weekly equivalent, and hands a weekly one on as stored', () => {
+    const roster = [
+      { name: 'Jennifer Moore', fortnightly_salary: 2707 },
+      { name: 'Joelson Batista', weekly_salary: 2676, area: 'Head Office' },
+      { name: 'Joanne Heath' },
+    ]
+    const layout = { version: 1, pages: [{ id: 'p', widgets: [{ id: 'w', type: 'payroll_grid', config: { salary_period: 'fortnight', roster } }] }] }
+    expect(budgetRosterFromLayout(layout)).toEqual([
+      { name: 'Jennifer Moore', fortnightly_salary: 2707, weekly_salary: 1353.5 },
+      { name: 'Joelson Batista', weekly_salary: 2676, area: 'Head Office' },
+      { name: 'Joanne Heath' },
+    ])
+  })
+
   it('skips a placement whose config does not parse — its page prints the reason', () => {
     const broken = { id: 'x', type: 'payroll_grid', config: { roster: [{ name: 'Andrea Shinners', weekly_salary: -5 }] } }
     const good = { id: 'y', type: 'payroll_grid', config: { roster: [{ name: 'Andrea Shinners', weekly_salary: 2500 }] } }
@@ -225,7 +239,7 @@ describe('a rostered employee the month did not pay', () => {
     const res = rosterEmployeeBudgets({ roster: urRosterWithSalaries(), payslips: slips(), employees: paidOthers(), records: records() })
     expect(res.ok).toBe(true)
     if (!res.ok) return
-    expect(res.unpaid).toEqual([{ name: 'Thomas White', weekly_salary: 600, weeks: 5, budget: 3000 }])
+    expect(res.unpaid).toEqual([{ name: 'Thomas White', index: 4, weekly_salary: 600, weeks: 5, budget: 3000 }])
     expect(res.unchecked).toEqual([])
     expect(res.pay_cycle).toBe('WEEKLY')
     const total = [...res.employees, ...res.unpaid].reduce((t, e) => t + (e.budget ?? 0), 0)
