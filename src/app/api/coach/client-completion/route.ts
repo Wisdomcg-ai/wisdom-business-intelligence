@@ -56,29 +56,90 @@ interface ClientCompletion {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Run one read of the batch so a single failure can't take the whole page down.
+ * Rows asked for per page. PostgREST cuts every response to the project's "Max
+ * rows" (1,000 on hosted Supabase, and it can be set lower). A lower cap costs
+ * pages, never rows: the next page starts after the last row actually received.
+ */
+const PAGE_ROWS = 1000
+
+/**
+ * Past this many pages a read gives up and counts as failed rather than run
+ * without bound. 50 pages is ~100× the largest read on 15 Sep 2026 (494
+ * strategic_initiatives rows for the 27-client coach). A read that grows that
+ * big belongs in SQL, and the Sentry warning names it.
+ */
+const MAX_PAGES = 50
+
+/** The parts of a PostgREST select builder that safeQuery pages with. */
+interface PagedQuery<Row> extends PromiseLike<{ data: Row[] | null; error: any }> {
+  order(column: string, options: { ascending: boolean }): PagedQuery<Row>
+  gt(column: string, value: string): PagedQuery<Row>
+  limit(count: number): PagedQuery<Row>
+}
+
+/**
+ * Run one read of the batch, to its last row, so a single failure can't take
+ * the whole page down and a big table can't quietly shorten an answer.
  *
- * The contract every caller depends on: `null` means the read FAILED (we could
- * not check) and `[]` means it ran and found nothing. The two used to be
- * collapsed with `result || []`, so a failed xero_connections read told the
- * coach that every client needed to connect Xero. Record `result !== null` in
- * the route's `read` flags BEFORE building lookups from `result ?? []`.
+ * The contract every caller depends on: `null` means we could not read every
+ * row (the read failed, threw, or did not reach its end) and `[]` means it ran
+ * to the end and found nothing. The two used to be collapsed with
+ * `result || []`, so a failed xero_connections read told the coach that every
+ * client needed to connect Xero. Record `result !== null` in the route's `read`
+ * flags BEFORE building lookups from `result ?? []`.
+ *
+ * Every read is paged because PostgREST returns a cut-short response as a
+ * success. Without an ORDER BY the rows it keeps come first in storage order —
+ * on these append-mostly tables, the OLDEST — so a capped read drops exactly
+ * the rows that decide "a snapshot in the last 30 days", this week's review in
+ * the streak and a new unread message (the same shape left 12 of 15 Xero sync
+ * clocks ~3 weeks stale on 15 Sep 2026). Pages follow the primary key, a total
+ * order, and each asks for the rows after the last id received, so a row added
+ * or deleted mid-read cannot push another into two pages or out of all of them.
+ * Only an EMPTY page ends the read: a short page can be the cap, not the end.
+ * A read that stops part-way is a failed read — part of the rows would be an
+ * answer with the deciding rows missing.
+ *
+ * `query` must build a fresh select that includes `id` and has no order or
+ * limit of its own: safeQuery owns both.
  */
 async function safeQuery<Row>(
   source: string,
-  fn: () => PromiseLike<{ data: Row[] | null; error: any }>
+  query: () => PagedQuery<Row>
 ): Promise<Row[] | null> {
   const context = {
     level: 'warning',
     tags: { route: 'coach/client-completion', invariant: 'client-completion-load', source },
   }
+  const rows: Row[] = []
+  let after: string | null = null
   try {
-    const { data, error } = await fn()
-    if (error) {
-      Sentry.captureMessage(`[client-completion] query error: ${error.message}`, context as any)
-      return null
+    for (let page = 0; page < MAX_PAGES; page++) {
+      let pageQuery = query().order('id', { ascending: true })
+      if (after !== null) pageQuery = pageQuery.gt('id', after)
+      const { data, error } = await pageQuery.limit(PAGE_ROWS)
+      if (error) {
+        Sentry.captureMessage(`[client-completion] query error: ${error.message}`, context as any)
+        return null
+      }
+      if (!Array.isArray(data)) {
+        Sentry.captureMessage('[client-completion] query returned no row array', context as any)
+        return null
+      }
+      if (data.length === 0) return rows
+      const lastId = (data[data.length - 1] as { id?: unknown }).id
+      if (typeof lastId !== 'string' || lastId === '') {
+        Sentry.captureMessage('[client-completion] rows carry no id to page from', context as any)
+        return null
+      }
+      rows.push(...data)
+      after = lastId
     }
-    return data
+    Sentry.captureMessage(`[client-completion] read did not reach its end in ${MAX_PAGES} pages`, {
+      ...context,
+      extra: { rowsRead: rows.length },
+    } as any)
+    return null
   } catch (e: any) {
     Sentry.captureMessage(`[client-completion] query exception: ${e.message}`, context as any)
     return null
@@ -344,6 +405,8 @@ async function getHandler() {
     type R = Record<string, any>
 
     // ── Step 3b: Parallel batch queries ──────────────────────────
+    // safeQuery reads each one to its last row, paging by id — so every select
+    // below includes `id` and none adds an order or a limit of its own.
     const [
       // SETUP
       assessmentsResult,
@@ -390,7 +453,7 @@ async function getHandler() {
       safeQuery<R>('strategy_data', () =>
         supabase
           .from('strategy_data')
-          .select('user_id, vision_mission')
+          .select('id, user_id, vision_mission')
           .in('user_id', idsOrNil(ownerIds))
       ),
       // 3. Xero Connected — check both businessIds and profileIds.
@@ -534,14 +597,14 @@ async function getHandler() {
           .select('id, last_login_at')
           .in('id', idsOrNil(ownerIds))
       ),
-      // Coaching sessions (for days-since-session)
+      // Coaching sessions (for days-since-session). Pages arrive in id order,
+      // so the latest session is found below, not assumed to come first.
       safeQuery<R>('coaching_sessions', () =>
         supabase
           .from('coaching_sessions')
           .select('id, business_id, scheduled_at, status')
           .in('business_id', businessIds)
           .eq('status', 'completed')
-          .order('scheduled_at', { ascending: false })
       ),
       // Session actions (for open action count)
       safeQuery<R>('session_actions', () =>
@@ -842,10 +905,14 @@ async function getHandler() {
         }))
       )
 
-      const completedSessions = coachingSessionsByBusiness.get(biz.id) || []
-      const lastCompletedSession = completedSessions[0] // already sorted desc
-      const daysSinceSession = lastCompletedSession
-        ? daysBetween(now, new Date(lastCompletedSession.scheduled_at))
+      // The most recent completed session — rows arrive in id order, not date order.
+      let lastSessionAt: number | null = null
+      for (const session of coachingSessionsByBusiness.get(biz.id) || []) {
+        const at = new Date(session.scheduled_at).getTime()
+        if (lastSessionAt === null || at > lastSessionAt) lastSessionAt = at
+      }
+      const daysSinceSession = lastSessionAt !== null
+        ? daysBetween(now, new Date(lastSessionAt))
         : null
 
       const openActions = actionsByBusiness.get(biz.id)?.length || 0

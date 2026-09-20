@@ -42,8 +42,26 @@ vi.mock('@/lib/supabase/server', () => ({
   createRouteHandlerClient: (...args: unknown[]) => createRouteHandlerClientMock(...args),
 }))
 
-/** `throws` makes the awaited query reject instead of resolving (the exception path). */
-type TableResp = { data: unknown; error?: unknown; throws?: boolean }
+/**
+ * PostgREST's "Max rows": the mock cuts every response to this many rows and
+ * still sends error: null, as hosted Supabase does.
+ */
+const MAX_ROWS = 1000
+
+/**
+ * `throws` makes the awaited query reject instead of resolving (the exception path).
+ * `maxRows` lowers this table's cap (a project can set Max rows below 1,000).
+ * `failOnRequest` fails only that request to the table (0 = the first page).
+ * `endless` answers every request with a full page of new rows: a read that never ends.
+ */
+type TableResp = {
+  data: unknown
+  error?: unknown
+  throws?: boolean
+  maxRows?: number
+  failOnRequest?: number
+  endless?: boolean
+}
 
 /**
  * Per-table responses. Routes mostly do .select().eq()/.in()/.or().order()
@@ -63,31 +81,86 @@ type MockOpts = {
   defaults?: Record<string, TableResp>
 }
 
-/** Every query-shape call the route makes, for assertions on the SQL it would send. */
+/**
+ * Every query-shape call the route makes, for assertions on the SQL it would
+ * send. A paged read sends one select per page, so these record every page.
+ */
 const selectCalls: Array<{ table: string; cols: string }> = []
 const inCalls: Array<{ table: string; col: string; vals: unknown[] }> = []
 const orCalls: Array<{ table: string; filter: string }> = []
 const eqCalls: Array<{ table: string; col: string; val: unknown }> = []
+const orderCalls: Array<{ table: string; col: string; ascending: boolean }> = []
+const gtCalls: Array<{ table: string; col: string; val: string }> = []
+const limitCalls: Array<{ table: string; count: number }> = []
+
+/** Code-unit order, which is how Postgres orders the lowercase-hex uuid ids. */
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
 function makeChainable(result: TableResp, table = ''): Record<string, any> {
   const b: Record<string, any> = {}
-  const ret = () => b
+  let orderBy: { col: string; ascending: boolean } | null = null
+  let after: { col: string; val: string } | null = null
+  let limit: number | null = null
   b.select = vi.fn((cols: string) => { selectCalls.push({ table, cols }); return b })
   b.eq = vi.fn((col: string, val: unknown) => { eqCalls.push({ table, col, val }); return b })
   b.in = vi.fn((col: string, vals: unknown[]) => { inCalls.push({ table, col, vals }); return b })
   b.or = vi.fn((filter: string) => { orCalls.push({ table, filter }); return b })
-  b.order = vi.fn(ret)
-  b.limit = vi.fn(ret)
+  b.order = vi.fn((col: string, opts?: { ascending?: boolean }) => {
+    orderBy = { col, ascending: opts?.ascending ?? true }
+    orderCalls.push({ table, ...orderBy })
+    return b
+  })
+  b.gt = vi.fn((col: string, val: string) => {
+    after = { col, val }
+    gtCalls.push({ table, col, val })
+    return b
+  })
+  b.limit = vi.fn((count: number) => {
+    limit = count
+    limitCalls.push({ table, count })
+    return b
+  })
   b.single = vi.fn(() => Promise.resolve(result))
   b.maybeSingle = vi.fn(() => Promise.resolve(result))
+
+  /**
+   * What PostgREST would send back for this request. The mock ignores the
+   * eq/in/or VALUES (every fixture row comes back, whatever the ids) but honours
+   * the cursor, the order and the limit — and then cuts the response to Max rows.
+   * With no order it answers in storage order: the fixture's order, oldest first.
+   */
+  const respond = (): TableResp => {
+    if (!Array.isArray(result.data)) return result
+    let rows = result.data as Array<Record<string, any>>
+    if (after) {
+      const { col, val } = after
+      rows = rows.filter((r) => byCodeUnit(String(r[col]), val) > 0)
+    }
+    if (orderBy) {
+      const { col, ascending } = orderBy
+      rows = [...rows].sort((x, y) => byCodeUnit(String(x[col] ?? ''), String(y[col] ?? '')) * (ascending ? 1 : -1))
+    }
+    if (limit !== null) rows = rows.slice(0, limit)
+    return { ...result, data: rows.slice(0, result.maxRows ?? MAX_ROWS) }
+  }
+
   ;(b as any).then = (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
     if (result.throws) {
       Promise.reject(new Error(`simulated ${table} network failure`)).then(resolve, reject)
       return
     }
-    Promise.resolve(result).then(resolve, reject)
+    Promise.resolve(respond()).then(resolve, reject)
   }
   return b
+}
+
+/** A full page of rows no earlier request has seen, for `endless` tables. */
+function endlessPage(table: string, request: number) {
+  return Array.from({ length: MAX_ROWS }, (_, i) => ({
+    id: `${table}-${String(request * MAX_ROWS + i).padStart(9, '0')}`,
+    business_id: 'biz-1',
+    user_id: 'owner-1',
+  }))
 }
 
 function makeSupabase(opts: MockOpts = {}) {
@@ -116,13 +189,26 @@ function makeSupabase(opts: MockOpts = {}) {
     ? { data: null, error: ideas_error }
     : ideas
 
+  const responseFor = (table: string): TableResp => {
+    if (table === 'system_roles') return systemRole
+    if (table === 'businesses') return businesses
+    if (table === 'business_profiles') return business_profiles
+    if (table === 'ideas') return ideasResp
+    if (defaults[table]) return defaults[table]
+    return { data: [], error: null }
+  }
+
+  // Requests made to each table so far — a paged read makes one per page.
+  const requests = new Map<string, number>()
   const fromSpy = vi.fn((table: string) => {
-    if (table === 'system_roles') return makeChainable(systemRole, table)
-    if (table === 'businesses') return makeChainable(businesses, table)
-    if (table === 'business_profiles') return makeChainable(business_profiles, table)
-    if (table === 'ideas') return makeChainable(ideasResp, table)
-    if (defaults[table]) return makeChainable(defaults[table], table)
-    return makeChainable({ data: [], error: null }, table)
+    const request = requests.get(table) ?? 0
+    requests.set(table, request + 1)
+    const resp = responseFor(table)
+    if (resp.failOnRequest === request) {
+      return makeChainable({ data: null, error: { message: `simulated ${table} failure on request ${request}` } }, table)
+    }
+    if (resp.endless) return makeChainable({ data: endlessPage(table, request), error: null }, table)
+    return makeChainable(resp, table)
   })
 
   return {
@@ -145,6 +231,9 @@ beforeEach(() => {
   inCalls.length = 0
   orCalls.length = 0
   eqCalls.length = 0
+  orderCalls.length = 0
+  gtCalls.length = 0
+  limitCalls.length = 0
 })
 
 // ─── Group A — Pre-phase shape preserved ─────────────────────────────────────
@@ -471,7 +560,7 @@ describe('Group J — vision_mission module reads strategy_data (owner-keyed)', 
   it('completed when the owner has a full vision_mission document', async () => {
     createRouteHandlerClientMock.mockResolvedValueOnce(
       makeSupabase({
-        defaults: { strategy_data: { data: [{ user_id: 'owner-1', vision_mission: fullVisionMission }], error: null } },
+        defaults: { strategy_data: { data: [{ id: 'sd-1', user_id: 'owner-1', vision_mission: fullVisionMission }], error: null } },
       }),
     )
     const res = await GET(new Request('http://localhost/api/coach/client-completion'))
@@ -484,7 +573,7 @@ describe('Group J — vision_mission module reads strategy_data (owner-keyed)', 
       makeSupabase({
         defaults: {
           strategy_data: {
-            data: [{ user_id: 'owner-1', vision_mission: { ...fullVisionMission, core_values: [] } }],
+            data: [{ id: 'sd-1', user_id: 'owner-1', vision_mission: { ...fullVisionMission, core_values: [] } }],
             error: null,
           },
         },
@@ -784,5 +873,266 @@ describe('Group P — healthy vs total outage, and which read failed', () => {
         tags: expect.objectContaining({ source: 'xero_connections', invariant: 'client-completion-load' }),
       })
     )
+  })
+})
+
+// ─── Groups Q-R — PostgREST's row cap cannot shorten an answer ───────────────
+//
+// Hosted Supabase cuts every PostgREST response to "Max rows" (1,000) and sends
+// what is left with error: null. The batch used to read each table in ONE
+// unordered request, and an unordered read keeps rows in storage order — the
+// OLDEST first on these append-mostly tables — so once a coach's rows passed
+// 1,000 it silently dropped the rows that decide the answer: the latest KPI
+// snapshot, this week's review, the newest unread message. On 15 Sep 2026 the
+// biggest read was 494 strategic_initiatives rows for the 27-client coach,
+// growing ~50 a month; a sync_jobs read of the same shape had already left 12
+// of 15 Xero sync clocks ~3 weeks stale that day.
+//
+// The mock enforces the cap in storage order. Each Group Q test first replays
+// the old single request (unpagedRead) to show it losing the deciding rows,
+// then asserts the route's answer through GET.
+
+const DAY_MS = 24 * 60 * 60 * 1000
+/** A `date` column `days` ago, as PostgREST sends it: YYYY-MM-DD. */
+const daysAgoDate = (days: number) => new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 10)
+/** A `timestamptz` column `days` ago. */
+const daysAgoIso = (days: number) => new Date(Date.now() - days * DAY_MS).toISOString()
+/** Zero-padded, so code-unit order is numeric order. */
+const rowId = (prefix: string, n: number) => `${prefix}-${String(n).padStart(5, '0')}`
+
+/** The pre-fix read of a table: one unordered request with no limit, cut to Max rows. */
+async function unpagedRead(resp: TableResp): Promise<Array<Record<string, any>>> {
+  const { data } = await (makeChainable(resp, 'unpaged').select('*') as PromiseLike<{
+    data: Array<Record<string, any>>
+  }>)
+  return data
+}
+
+describe('Group Q — past 1,000 rows, the newest rows still decide', () => {
+  it('kpiDashboard: this week\'s snapshot counts when 1,200 older snapshots were written first', async () => {
+    // Storage order: Acme's first snapshot a year ago, 1,200 of other clients'
+    // snapshots, then Acme's latest — this week's — written last.
+    const acmeFirst = { id: rowId('wms', 0), business_id: 'prof-1', week_ending_date: daysAgoDate(365), created_at: daysAgoIso(365) }
+    const others = Array.from({ length: 1200 }, (_, i) => ({
+      id: rowId('wms', 1 + i),
+      business_id: `prof-other-${i % 30}`,
+      week_ending_date: daysAgoDate(400 - 7 * Math.floor(i / 30)),
+      created_at: daysAgoIso(400 - 7 * Math.floor(i / 30)),
+    }))
+    const acmeLatest = { id: rowId('wms', 9999), business_id: 'prof-1', week_ending_date: daysAgoDate(3), created_at: daysAgoIso(3) }
+    const snapshots: TableResp = { data: [acmeFirst, ...others, acmeLatest], error: null }
+
+    // The old read kept the year-old snapshot and lost this week's: 'in_progress'.
+    const capped = await unpagedRead(snapshots)
+    expect(capped).toHaveLength(1000)
+    expect(capped).toContainEqual(acmeFirst)
+    expect(capped).not.toContainEqual(acmeLatest)
+
+    const client = await getFirstClient({ defaults: { weekly_metrics_snapshots: snapshots } })
+    expect(client.modules.kpiDashboard).toBe('completed')
+    expect(client.modules.monthlyReport).toBe('completed')
+  })
+
+  it('unreadMessages: the newest unread messages count when 1,050 read ones came first', async () => {
+    const older = Array.from({ length: 1050 }, (_, i) => ({
+      id: rowId('msg', i),
+      business_id: i % 2 === 0 ? 'biz-1' : 'biz-other',
+      sender_id: 'owner-1',
+      read: true,
+      created_at: daysAgoIso(300 - i / 10),
+    }))
+    const newest = [
+      ...Array.from({ length: 4 }, (_, i) => ({
+        id: rowId('msg', 2000 + i), business_id: 'biz-1', sender_id: 'owner-1', read: false, created_at: daysAgoIso(1),
+      })),
+      // Unread, but the coach sent it — not unread FOR the coach.
+      { id: rowId('msg', 2004), business_id: 'biz-1', sender_id: 'coach-1', read: false, created_at: daysAgoIso(1) },
+    ]
+    const messages: TableResp = { data: [...older, ...newest], error: null }
+
+    const capped = await unpagedRead(messages)
+    expect(capped.filter((m) => m.business_id === 'biz-1' && !m.read)).toEqual([])
+
+    const client = await getFirstClient({ defaults: { messages } })
+    expect(client.engagement.unreadMessages).toBe(4)
+    expect(client.modules.messages).toBe('completed')
+  })
+
+  it('weeklyReviewStreak: the last 8 weeks in a row count, not an old run the capped read happened to keep', async () => {
+    // Acme's 5-week run a year ago, written first; 1,100 other clients' reviews
+    // (one a week each); then Acme's last 8 weeks in a row, written last.
+    const acmeYearAgo = Array.from({ length: 5 }, (_, i) => ({
+      id: rowId('wr', i), business_id: 'prof-1', user_id: 'owner-1', is_completed: true, week_start_date: daysAgoDate(7 * (52 + i)),
+    }))
+    const others = Array.from({ length: 1100 }, (_, i) => ({
+      id: rowId('wr', 100 + i),
+      business_id: `prof-other-${i % 25}`,
+      user_id: `user-other-${i % 25}`,
+      is_completed: true,
+      week_start_date: daysAgoDate(7 * (1 + Math.floor(i / 25))),
+    }))
+    const acmeRecent = Array.from({ length: 8 }, (_, i) => ({
+      id: rowId('wr', 5000 + i), business_id: 'prof-1', user_id: 'owner-1', is_completed: true, week_start_date: daysAgoDate(7 * i),
+    }))
+    const reviews: TableResp = { data: [...acmeYearAgo, ...others, ...acmeRecent], error: null }
+
+    // The old read kept the year-old run and none of the last 8 weeks: a streak of 5.
+    const capped = await unpagedRead(reviews)
+    expect(capped.filter((r) => r.business_id === 'prof-1')).toEqual(acmeYearAgo)
+
+    const client = await getFirstClient({ defaults: { weekly_reviews: reviews } })
+    expect(client.engagement.weeklyReviewStreak).toBe(8)
+    expect(client.modules.weeklyReviews).toBe('completed')
+  })
+
+  it('ideas_*: 1,050 ideas are counted exactly, whatever order their ids take', async () => {
+    // The ids are a permutation of storage order (677 is coprime with 1,050), so
+    // paging by id cannot lean on ids arriving oldest-first.
+    const ideas = Array.from({ length: 1050 }, (_, i) => ({
+      id: rowId('idea', (i * 677) % 1050),
+      user_id: 'owner-1',
+      business_id: 'biz-1',
+      shared_with_all: i % 3 === 0,
+      shared_with: [],
+    }))
+
+    expect(await unpagedRead({ data: ideas, error: null })).toHaveLength(1000)
+
+    const client = await getFirstClient({ ideas: { data: ideas, error: null } })
+    expect(client.ideas_total).toBe(1050)
+    expect(client.ideas_private).toBe(700)
+    expect(client.ideas_team_shared).toBe(350)
+    expect(client.ideas_breakdown).toEqual({ owned: 700, team_shared: 350, total: 1050 })
+  })
+
+  it('strategicInitiatives: a client\'s first initiative counts behind 1,100 of other clients\'', async () => {
+    const others = Array.from({ length: 1100 }, (_, i) => ({ id: rowId('si', i), business_id: `prof-other-${i % 26}` }))
+    const acme = { id: rowId('si', 9000), business_id: 'prof-1' }
+    const initiatives: TableResp = { data: [...others, acme], error: null }
+
+    expect(await unpagedRead(initiatives)).not.toContainEqual(acme)
+
+    const client = await getFirstClient({ defaults: { strategic_initiatives: initiatives } })
+    expect(client.modules.strategicInitiatives).toBe('completed')
+    expect(client.modules.onePagePlan).toBe('in_progress')
+  })
+})
+
+describe('Group R — how a read pages', () => {
+  it('keeps reading past a SHORT page: a project whose Max rows is below the page size', async () => {
+    // Max rows set to 300, so every page comes back short of the 1,000 asked
+    // for. A reader that stopped on a short page would never see the newest message.
+    const rows = [
+      ...Array.from({ length: 700 }, (_, i) => ({
+        id: rowId('msg', i), business_id: 'biz-1', sender_id: 'owner-1', read: true, created_at: daysAgoIso(200 - i / 10),
+      })),
+      { id: rowId('msg', 700), business_id: 'biz-1', sender_id: 'owner-1', read: false, created_at: daysAgoIso(0) },
+    ]
+    const client = await getFirstClient({ defaults: { messages: { data: rows, error: null, maxRows: 300 } } })
+    expect(client.engagement.unreadMessages).toBe(1)
+
+    // 300 + 300 + 101 rows, then the empty page that ends the read — each page
+    // starting after the last id the one before it returned.
+    expect(selectCalls.filter((c) => c.table === 'messages')).toHaveLength(4)
+    expect(gtCalls.filter((c) => c.table === 'messages').map((c) => c.val)).toEqual([
+      rowId('msg', 299), rowId('msg', 599), rowId('msg', 700),
+    ])
+  })
+
+  it('exactly 1,000 rows: one full page, then the empty page that proves it was all of them', async () => {
+    const ideas = Array.from({ length: 1000 }, (_, i) => ({
+      id: rowId('idea', i), user_id: 'owner-1', business_id: 'biz-1', shared_with_all: false, shared_with: [],
+    }))
+    const client = await getFirstClient({ ideas: { data: ideas, error: null } })
+    expect(client.ideas_total).toBe(1000)
+    expect(selectCalls.filter((c) => c.table === 'ideas')).toHaveLength(2)
+  })
+
+  it('a page that fails part-way makes the whole read unknown, not the rows before it', async () => {
+    // The first page shows Acme has messages, but the unread ones are on the
+    // page that failed — a partial read is not an answer.
+    const rows = Array.from({ length: 1500 }, (_, i) => ({
+      id: rowId('msg', i), business_id: 'biz-1', sender_id: 'owner-1', read: i < 1400, created_at: daysAgoIso(100 - i / 20),
+    }))
+    const client = await getFirstClient({ defaults: { messages: { data: rows, error: null, failOnRequest: 1 } } })
+    expect(client.modules.messages).toBe('unknown')
+    expect(client.engagement.unknown).toEqual(['unreadMessages'])
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1)
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      '[client-completion] query error: simulated messages failure on request 1',
+      expect.objectContaining({
+        tags: expect.objectContaining({ source: 'messages', invariant: 'client-completion-load' }),
+      })
+    )
+  })
+
+  it('a read that never reaches an empty page stops after 50 pages and is unknown', async () => {
+    const client = await getFirstClient({ defaults: { messages: { data: [], error: null, endless: true } } })
+    expect(client.modules.messages).toBe('unknown')
+    expect(client.engagement.unknown).toEqual(['unreadMessages'])
+    // Messages feed neither the score nor an alert, so those still answer.
+    expect(typeof client.engagement.engagementScore).toBe('number')
+    expect(client.alertsComplete).toBe(true)
+    expect(selectCalls.filter((c) => c.table === 'messages')).toHaveLength(50)
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      '[client-completion] read did not reach its end in 50 pages',
+      expect.objectContaining({
+        tags: expect.objectContaining({ source: 'messages', invariant: 'client-completion-load' }),
+      })
+    )
+  })
+
+  it('rows with no id cannot be paged from: the read is unknown, not the rows it got', async () => {
+    const client = await getFirstClient({
+      defaults: { stop_doing_items: { data: [{ user_id: 'owner-1' }], error: null } },
+    })
+    expect(client.modules.stopDoing).toBe('unknown')
+  })
+
+  it('daysSinceSession: the latest completed session decides, wherever it falls in id order', async () => {
+    // Pages arrive in id order, and the latest session has neither the first id nor the last.
+    const client = await getFirstClient({
+      defaults: {
+        coaching_sessions: {
+          data: [
+            { id: 'cs-1', business_id: 'biz-1', scheduled_at: daysAgoIso(40), status: 'completed' },
+            { id: 'cs-2', business_id: 'biz-1', scheduled_at: daysAgoIso(3), status: 'completed' },
+            { id: 'cs-3', business_id: 'biz-1', scheduled_at: daysAgoIso(20), status: 'completed' },
+          ],
+          error: null,
+        },
+      },
+    })
+    expect(client.engagement.daysSinceSession).toBe(3)
+    expect(client.alerts.filter((a: string) => a.startsWith('No session'))).toEqual([])
+  })
+
+  it('every batched read selects id, orders by id alone, asks for 1,000 and ends on an empty page', async () => {
+    // Two rows in every table: one page of rows, then the empty page that ends the read.
+    const twoRows = (table: string): TableResp => ({
+      data: [
+        { id: `${table}-a`, business_id: 'biz-1', user_id: 'owner-1' },
+        { id: `${table}-b`, business_id: 'biz-1', user_id: 'owner-1' },
+      ],
+      error: null,
+    })
+    await getFirstClient({
+      business_profiles: twoRows('business_profiles'),
+      ideas: twoRows('ideas'),
+      defaults: Object.fromEntries(BATCH_TABLES.map((t) => [t, twoRows(t)])),
+    })
+
+    for (const table of [...BATCH_TABLES, 'business_profiles', 'ideas']) {
+      const selects = selectCalls.filter((c) => c.table === table)
+      expect(selects, table).toHaveLength(2)
+      for (const s of selects) expect(s.cols.split(',').map((c) => c.trim()), table).toContain('id')
+      // No read brings an order of its own: a second sort key would break paging by id.
+      expect(orderCalls.filter((c) => c.table === table), table).toEqual([
+        { table, col: 'id', ascending: true },
+        { table, col: 'id', ascending: true },
+      ])
+      expect(limitCalls.filter((c) => c.table === table).map((c) => c.count), table).toEqual([1000, 1000])
+      expect(gtCalls.filter((c) => c.table === table), table).toEqual([{ table, col: 'id', val: `${table}-b` }])
+    }
   })
 })
