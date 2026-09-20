@@ -4,8 +4,13 @@
  * Validates GET /api/cron/sync-all-xero:
  *   - 401 without Authorization header.
  *   - 401 with wrong Bearer secret.
+ *   - 401 when CRON_SECRET is unset (SEC-02 fail closed).
  *   - 200 with valid auth → calls runSyncForAllBusinesses, returns results.
  *   - 500 when the orchestrator throws (failures surface, NOT swallowed).
+ *
+ * The SEC-02 unset case moved here when /api/Xero/sync-all was retired: that
+ * dead route's suite was the only place in the sync family pinning it, and
+ * this is the route that actually runs the fleet in production.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
@@ -69,6 +74,20 @@ describe('Cron sync-all route', () => {
     const res = await GET(
       makeRequest({ Authorization: 'Bearer wrong-secret' }),
     )
+    expect(res.status).toBe(401)
+    expect(runSyncForAllBusinessesMock).not.toHaveBeenCalled()
+  })
+
+  it('unauth (CRON_SECRET unset → fail closed)', async () => {
+    // SEC-02: with the secret absent, the loose `auth !== `Bearer ${env}``
+    // form would let `Bearer undefined` — or any request — through. The
+    // `!cronSecret ||` guard is what makes an unconfigured deploy reject
+    // rather than expose a fleet-wide sync trigger.
+    delete process.env.CRON_SECRET
+
+    const { GET } = await import('@/app/api/cron/sync-all-xero/route')
+    const res = await GET(makeRequest({ Authorization: 'Bearer undefined' }))
+
     expect(res.status).toBe(401)
     expect(runSyncForAllBusinessesMock).not.toHaveBeenCalled()
   })
