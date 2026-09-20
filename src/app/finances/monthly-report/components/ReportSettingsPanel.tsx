@@ -7,6 +7,8 @@ import type { MonthlyReportSettings, ReportSections, ForecastOption, AccountMapp
 import { createClient } from '@/lib/supabase/client'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import TemplatePicker from './TemplatePicker'
+import BudgetSpreadsheetImport from './BudgetSpreadsheetImport'
+import { budgetVersionChoice } from '../utils/budget-version-choice'
 import TemplateSaveModal from './TemplateSaveModal'
 
 interface ReportSettingsPanelProps {
@@ -100,6 +102,9 @@ interface BudgetVersionOption {
   effective_from: string | null
   months_covered: number | null
   fiscal_year: number
+  /** null = a version covering the whole business; else the Xero organisation's. */
+  tenant_id: string | null
+  source: string | null
 }
 
 export default function ReportSettingsPanel({
@@ -120,6 +125,9 @@ export default function ReportSettingsPanel({
 }: ReportSettingsPanelProps) {
   const [localSettings, setLocalSettings] = useState<MonthlyReportSettings>(settings)
   const [budgetVersions, setBudgetVersions] = useState<BudgetVersionOption[]>([])
+  const [organisations, setOrganisations] = useState<Array<{ tenant_id: string; name: string }>>([])
+  const [showBudgetImport, setShowBudgetImport] = useState(false)
+  const [versionsReloadedAt, setVersionsReloadedAt] = useState(0)
   const [forecasts, setForecasts] = useState<ForecastOption[]>([])
   const [expenseAccounts, setExpenseAccounts] = useState<AccountMapping[]>([])
   const [wagesAccountOptions, setWagesAccountOptions] = useState<string[]>([])
@@ -138,11 +146,21 @@ export default function ReportSettingsPanel({
       // forecast query below, which deliberately spans both id-spaces.
       const versionRes = await supabase
         .from('budget_versions')
-        .select('id, label, effective_from, months_covered, fiscal_year, locked_at')
+        .select('id, label, effective_from, months_covered, fiscal_year, locked_at, tenant_id, source')
         .eq('business_id', businessId)
         .not('locked_at', 'is', null)
         .order('effective_from', { ascending: false })
       setBudgetVersions((versionRes.data as BudgetVersionOption[]) ?? [])
+      // The organisations, for the import's scope picker and for naming a
+      // per-organisation version. businesses-space, like budget_versions.
+      const orgRes = await supabase
+        .from('xero_connections')
+        .select('tenant_id, tenant_name, display_name, display_order')
+        .eq('business_id', businessId)
+        .eq('is_active', true)
+        .order('display_order', { ascending: true })
+      setOrganisations(((orgRes.data ?? []) as Array<{ tenant_id: string; tenant_name: string | null; display_name: string | null }>)
+        .map((c) => ({ tenant_id: c.tenant_id, name: c.display_name || c.tenant_name || c.tenant_id })))
       // Resolve business_profiles.id from businesses.id
       const ids = await resolveBusinessProfileIds(supabase, businessId)
       const forecastRes = await supabase
@@ -187,7 +205,7 @@ export default function ReportSettingsPanel({
       setWagesAccountOptions(Array.from(namesSet).sort())
     }
     if (businessId && isOpen) loadData()
-  }, [businessId, isOpen])
+  }, [businessId, isOpen, versionsReloadedAt])
 
   const handleSectionToggle = (key: keyof ReportSections) => {
     setLocalSettings(prev => ({
@@ -247,6 +265,19 @@ export default function ReportSettingsPanel({
     }
   }
 
+  /**
+   * The year the import's months must belong to: the report's own month when
+   * the panel was opened for one, else the fiscal year today sits in. A budget
+   * imported against the wrong year cannot be matched to a month at all.
+   */
+  const budgetImportFiscalYear = (() => {
+    const month = reportMonth && /^\d{4}-\d{2}$/.test(reportMonth) ? reportMonth : null
+    const [year, monthNumber] = month
+      ? month.split('-').map(Number)
+      : [new Date().getFullYear(), new Date().getMonth() + 1]
+    return monthNumber >= 7 ? year + 1 : year
+  })()
+
   const handleSaveTemplate = async (name: string, isDefault: boolean) => {
     if (!onSaveTemplate) return
     setIsSavingTemplate(true)
@@ -260,6 +291,14 @@ export default function ReportSettingsPanel({
       setIsSavingTemplate(false)
     }
   }
+
+  // What the picker offers, and why it may not be selectable: the resolver's
+  // rule, not "exactly one version" — Dragon is held to one version per
+  // organisation and IICT to one for the group (DRG-03).
+  const budgetChoice = budgetVersionChoice(
+    budgetVersions,
+    Object.fromEntries(organisations.map((o) => [o.tenant_id, o.name])),
+  )
 
   if (!isOpen) return null
 
@@ -333,25 +372,23 @@ export default function ReportSettingsPanel({
             <select
               value={localSettings.budget_source ?? 'forecast'}
               onChange={(e) => setLocalSettings(prev => ({ ...prev, budget_source: e.target.value as 'forecast' | 'budget_version' }))}
-              disabled={budgetVersions.length !== 1}
+              disabled={!budgetChoice.selectable}
               className="w-full rounded-lg border-gray-300 text-sm focus:border-brand-orange focus:ring-brand-orange disabled:bg-gray-50 disabled:text-gray-500"
             >
               <option value="forecast">Forecast — re-cut as the year runs</option>
-              <option value="budget_version">
-                {budgetVersions.length === 1
-                  ? `Xero budget — ${budgetVersions[0].label ?? 'imported'}${budgetVersions[0].effective_from ? ` · effective ${budgetVersions[0].effective_from}` : ''}${budgetVersions[0].months_covered != null ? ` · ${budgetVersions[0].months_covered} of 12 months` : ''}`
-                  : 'Xero budget'}
-              </option>
+              <option value="budget_version">{budgetChoice.label}</option>
             </select>
             {/* Three states, never two. */}
-            {budgetVersions.length === 0 && (
-              <p className="mt-1 text-xs text-gray-500">No budget imported for this business yet.</p>
+            {budgetChoice.note && (
+              <p className={`mt-1 text-xs ${budgetChoice.tone === 'warning' ? 'text-amber-700' : 'text-gray-500'}`}>{budgetChoice.note}</p>
             )}
-            {budgetVersions.length > 1 && (
-              <p className="mt-1 text-xs text-amber-700">
-                More than one budget version for this business — the report cannot yet choose between them.
-              </p>
-            )}
+            <button
+              type="button"
+              onClick={() => setShowBudgetImport(true)}
+              className="mt-2 text-xs font-medium text-brand-orange hover:underline"
+            >
+              Import a budget from a spreadsheet…
+            </button>
           </div>
 
           {/* Budget Forecast Selection */}
@@ -569,6 +606,16 @@ export default function ReportSettingsPanel({
         onClose={() => setShowSaveModal(false)}
         onSave={handleSaveTemplate}
         isSaving={isSavingTemplate}
+      />
+
+      {/* The budget the client is held to, from the coach's spreadsheet */}
+      <BudgetSpreadsheetImport
+        isOpen={showBudgetImport}
+        onClose={() => setShowBudgetImport(false)}
+        businessId={businessId}
+        fiscalYear={budgetImportFiscalYear}
+        organisations={organisations}
+        onImported={() => setVersionsReloadedAt(Date.now())}
       />
     </div>
   )

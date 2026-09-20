@@ -17,7 +17,12 @@ import type { FinancialForecast } from '@/app/finances/forecast/types'
 function pagesOf(options: Record<string, unknown>): string[][] {
   const report = fixtureReport()
   report.settings = { ...report.settings, expense_group_order: UR_EXPENSE_GROUP_ORDER }
-  const doc: any = new MonthlyReportPDFService(report, { businessName: 'Urban Road', ...options } as any).generate()
+  const doc: any = new MonthlyReportPDFService(report, {
+    businessName: 'Urban Road',
+    // The cash pages print only with the cashflow section on (pack-cashflow-gate).
+    sections: { ...report.settings.sections, cashflow: true },
+    ...options,
+  } as any).generate()
   const pages: string[][] = []
   for (let i = 1; i <= doc.getNumberOfPages(); i++) pages.push(textRuns(doc, i).map((r) => r.replace(/\\([()\\])/g, '$1')))
   return pages

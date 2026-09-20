@@ -21,6 +21,9 @@ import {
   priorMonthKeyOf,
 } from '@/lib/monthly-report/subscription-detail-build'
 import { CONTRACTOR_WINDOW_MAX, windowMonthKeys } from '@/lib/monthly-report/contractor-page'
+import { buildSubscriptionFx, translationRefusal } from '@/lib/monthly-report/subscription-fx'
+import { inDisplayOrder } from '@/lib/monthly-report/organisation-order'
+import { createTenantCallPacer, systemClock, type TenantCallPacer } from '@/lib/xero/tenant-call-pacer'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -38,6 +41,7 @@ const SubscriptionDetailPostSchema = z.object({
   report_month: z.string(),
   account_codes: z.array(z.string()).optional(),
   months: z.number().int().min(1).max(CONTRACTOR_WINDOW_MAX).optional(),
+  account_codes_by_tenant: z.record(z.string(), z.array(z.string())).optional(),
 })
 
 const supabase = createClient(
@@ -46,7 +50,7 @@ const supabase = createClient(
 )
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return systemClock.sleep(ms)
 }
 
 const XERO_PAGE_CAP = 10
@@ -68,13 +72,21 @@ async function fetchAllPages(
   tenantId: string,
   resultKey: string,
   ctx: { tenantId: string; month: string; label: string },
+  /**
+   * The organisation's pacer: a Contractors Payment Summary crawls six months
+   * of two document types per organisation, a page every 300ms, and a
+   * consolidation multiplies that by its organisations. Every call goes
+   * through it so no organisation is sent more than Xero allows in a minute
+   * (tenant-call-pacer).
+   */
+  pacer: TenantCallPacer,
 ): Promise<{ items: any[]; complete: boolean }> {
   const items: any[] = []
   let page = 1
   let rateLimitRetries = 0
 
   while (page <= XERO_PAGE_CAP) {
-    const res = await fetch(
+    const res = await pacer.run(() => fetch(
       `${url}${url.includes('?') ? '&' : '?'}page=${page}`,
       {
         headers: {
@@ -83,7 +95,7 @@ async function fetchAllPages(
           'Accept': 'application/json',
         },
       }
-    )
+    ))
 
     if (res.status === 429) {
       if (rateLimitRetries >= MAX_RATE_LIMIT_RETRIES) {
@@ -160,10 +172,17 @@ async function postHandler(request: Request) {
     }
 
     const body = await request.json()
-    const { business_id, report_month, account_codes, months } = body as {
+    const { business_id, report_month, account_codes, months, account_codes_by_tenant } = body as {
       business_id: string
       report_month: string
       account_codes: string[]
+      /**
+       * The codes one organisation posts these accounts under, when they
+       * differ: Dragon's Virtual Contractors is 2300 and Easy Hail's 508, the
+       * same account under a different code (DRG-29). An organisation not
+       * named here is read on every code, as every caller's was.
+       */
+      account_codes_by_tenant?: Record<string, string[]>
       /**
        * Months to report across, ending at the report month — the Contractors
        * Payment Summary prints three. Two or fewer is the page as it always
@@ -222,7 +241,10 @@ async function postHandler(request: Request) {
     // ALL active connections — .maybeSingle() here silently reported ONE org's
     // subscriptions for multi-org businesses (Dragon has two orgs, IICT three),
     // the exact fraction-of-the-truth failure the wizard's crawl was cured of.
-    const { connections } = await resolveXeroConnections(supabase, business_id)
+    const { connections: activeConnections } = await resolveXeroConnections(supabase, business_id)
+    // The coach's order, so the per-entity columns run Dragon then Easy Hail
+    // (DRG-30) and the organisations are read one after another.
+    const connections = inDisplayOrder((activeConnections ?? []) as { id: string; display_order?: number | null }[]) as any[]
     // An empty answer here is "could not check", not "nothing spent" — the
     // Contractor page would otherwise print that no contractors were paid.
     if (!connections || connections.length === 0) {
@@ -233,6 +255,24 @@ async function postHandler(request: Request) {
     }
 
     const priorMonthKey = priorMonthKeyOf(report_month)
+
+    // Every organisation in one currency before anything is added up
+    // (IICT-35). One read for the whole request, shared with the assembler.
+    const windowMonthsForFx = typeof months === 'number' && months > 2 ? windowMonthKeys(report_month, months) : []
+    const fx = await buildSubscriptionFx(supabase, connections, [report_month, priorMonthKey, ...windowMonthsForFx])
+    if (fx.translates && fx.missing.length > 0) {
+      // Fail closed: no figure at all beats a figure in two currencies.
+      return NextResponse.json({
+        success: true,
+        data: {
+          ...emptyData,
+          complete: false,
+          incomplete_reason: translationRefusal(fx),
+          translation_unavailable: { missing: fx.missing, organisations: fx.untranslatable },
+          tenants: fx.orgs.map((o) => ({ tenant_id: o.tenant_id, name: o.name })),
+        },
+      })
+    }
 
     // Posted documents only (#516's rule, shared). A malformed month has no
     // range to ask Xero for.
@@ -254,7 +294,10 @@ async function postHandler(request: Request) {
 
     // The crawl's accumulators live in lib/monthly-report/subscription-detail-build,
     // with the assembly that follows the crawl — shared with scripts/preview-pack.ts.
-    const crawl = newSubscriptionCrawl(account_codes)
+    // Every code any organisation is asked about, so the crawl has a bucket
+    // for each. An organisation reads only its own (account_codes_by_tenant).
+    const allCodes = [...new Set([...account_codes, ...Object.values(account_codes_by_tenant ?? {}).flat()])]
+    const crawl = newSubscriptionCrawl(allCodes)
     const accountNameMap = crawl.accountNames
     const completeTenants = crawl.completeTenants
     const tenantMonthActuals = crawl.tenantMonthActuals
@@ -262,7 +305,9 @@ async function postHandler(request: Request) {
     // Posted lines only, signed by document type — see posted-subscription-lines.ts.
     // transaction_count counts every posted line, a refund included: a refund
     // is evidence the vendor is still active this month, not an absence.
-    const requestedCodes = new Set(account_codes)
+    const requestedCodes = new Set(allCodes)
+    /** The codes ONE organisation posts these accounts under. */
+    const codesFor = (tenantId: string) => new Set(account_codes_by_tenant?.[tenantId] ?? account_codes)
 
     // Each line twice: the gross document amount every page has always quoted
     // (and Step 6 seeded the vendor budgets on, and the write-through stores),
@@ -288,6 +333,9 @@ async function postHandler(request: Request) {
       const vendorName = extractVendorName(line.contactName, line.description)
       addSubscriptionLine(crawl, {
         accountCode: line.accountCode, vendorName, amount: line.grossAmount, statementAmount: line.amount, isCurrent: period.isCurrent, tenantId: txnTenantId,
+        // This organisation's money in the report's currency (IICT-35). 1 for
+        // every single-organisation business and every organisation in it.
+        rate: fx.translates ? (fx.rateFor(txnTenantId, period.month) ?? 1) : 1,
         // Months only for a caller that asked for a window, so the two-month
         // answer is the very answer it was.
         ...(windowMonths.length > 0 ? { month: period.month } : {}),
@@ -307,8 +355,9 @@ async function postHandler(request: Request) {
 
     // Process bank transactions into vendor breakdown
     function processBankTxns(txns: any[], period: Period, txnTenantId: string, baseCurrency: string | null) {
+      const codes = codesFor(txnTenantId)
       for (const bt of txns) {
-        for (const line of subscriptionStatementLinesOf(bt, 'bank', requestedCodes, baseCurrency)) {
+        for (const line of subscriptionStatementLinesOf(bt, 'bank', codes, baseCurrency)) {
           addLine(line, period, txnTenantId)
         }
       }
@@ -325,9 +374,10 @@ async function postHandler(request: Request) {
     // + line description) so a vendor keys identically on both paths.
     function processInvoices(invoices: any[], period: Period, txnTenantId: string, baseCurrency: string | null) {
       let sawLineItems = false
+      const codes = codesFor(txnTenantId)
       for (const inv of invoices) {
         if ((inv.LineItems || []).length > 0) sawLineItems = true
-        for (const line of subscriptionStatementLinesOf(inv, 'invoice', requestedCodes, baseCurrency)) {
+        for (const line of subscriptionStatementLinesOf(inv, 'invoice', codes, baseCurrency)) {
           addLine(line, period, txnTenantId)
         }
       }
@@ -369,23 +419,29 @@ async function postHandler(request: Request) {
       }
       const accessToken = tokenResult.accessToken
       const tenantId = connection.tenant_id
+      const pacer = createTenantCallPacer({ clock: systemClock })
       readCurrencies.push(connection.functional_currency ? String(connection.functional_currency).trim().toUpperCase() : null)
       // Captured from Xero's BaseCurrency at connect (Phase 67-01). Null is
       // tolerated the way toBaseAmount tolerates it.
       const baseCurrency: string | null = connection.functional_currency ?? null
 
       try {
-        const coaRes = await fetch('https://api.xero.com/api.xro/2.0/Accounts', {
+        const coaRes = await pacer.run(() => fetch('https://api.xero.com/api.xro/2.0/Accounts', {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
             'xero-tenant-id': tenantId,
             'Accept': 'application/json',
           },
-        })
+        }))
         if (coaRes.ok) {
           const coaData = await coaRes.json()
+          const codes = codesFor(tenantId)
           for (const acc of (coaData.Accounts || [])) {
-            if (acc.Code && acc.Name && !accountNameMap.has(acc.Code)) accountNameMap.set(acc.Code, acc.Name)
+            // Only the codes THIS organisation is read on: 2300 names Virtual
+            // Contractors in Dragon and nothing the page wants in Easy Hail,
+            // and a name taken from the wrong organisation would put its
+            // ledger rows on the wrong account (DRG-29).
+            if (acc.Code && acc.Name && codes.has(acc.Code) && !accountNameMap.has(acc.Code)) accountNameMap.set(acc.Code, acc.Name)
           }
         }
       } catch (err) {
@@ -404,6 +460,7 @@ async function postHandler(request: Request) {
         const txns = await fetchAllPages(
           currentBankUrl, accessToken, tenantId, 'BankTransactions',
           { tenantId, month: report_month, label: 'BankTransactions (current month)' },
+          pacer,
         )
         if (!txns.complete) crawlComplete = false
         processBankTxns(txns.items, currentPeriod, tenantId, baseCurrency)
@@ -418,6 +475,7 @@ async function postHandler(request: Request) {
         const txns = await fetchAllPages(
           priorBankUrl, accessToken, tenantId, 'BankTransactions',
           { tenantId, month: priorMonthKey, label: 'BankTransactions (prior month)' },
+          pacer,
         )
         if (!txns.complete) crawlComplete = false
         processBankTxns(txns.items, priorPeriod, tenantId, baseCurrency)
@@ -437,6 +495,7 @@ async function postHandler(request: Request) {
         const bills = await fetchAllPages(
           currentBillsUrl, accessToken, tenantId, 'Invoices',
           { tenantId, month: report_month, label: 'Invoices (current month)' },
+          pacer,
         )
         if (!bills.complete) crawlComplete = false
         processInvoices(bills.items, currentPeriod, tenantId, baseCurrency)
@@ -451,6 +510,7 @@ async function postHandler(request: Request) {
         const bills = await fetchAllPages(
           priorBillsUrl, accessToken, tenantId, 'Invoices',
           { tenantId, month: priorMonthKey, label: 'Invoices (prior month)' },
+          pacer,
         )
         if (!bills.complete) crawlComplete = false
         processInvoices(bills.items, priorPeriod, tenantId, baseCurrency)
@@ -469,6 +529,7 @@ async function postHandler(request: Request) {
           const txns = await fetchAllPages(
             older.bankUrl, accessToken, tenantId, 'BankTransactions',
             { tenantId, month: older.month, label: `BankTransactions (${older.month})` },
+            pacer,
           )
           if (!txns.complete) crawlComplete = false
           processBankTxns(txns.items, period, tenantId, baseCurrency)
@@ -481,6 +542,7 @@ async function postHandler(request: Request) {
           const bills = await fetchAllPages(
             older.billsUrl, accessToken, tenantId, 'Invoices',
             { tenantId, month: older.month, label: `Invoices (${older.month})` },
+            pacer,
           )
           if (!bills.complete) crawlComplete = false
           processInvoices(bills.items, period, tenantId, baseCurrency)
@@ -502,12 +564,22 @@ async function postHandler(request: Request) {
     // statement figure (the vendors-exceed-account invariant is not judged on
     // money that was never one currency), and the answer says why, so a page
     // that asks for net states it rather than print the sum.
-    const mixedCurrencies = statementCurrencies(readCurrencies)
+    // Translated organisations are all in one currency by the time the rows
+    // are added up, so there is nothing to withhold; this is the case the
+    // rates could not settle — an organisation with none recorded.
+    const mixedCurrencies = fx.translates ? null : statementCurrencies(readCurrencies)
     if (mixedCurrencies) crawl.statementAmounts = false
 
     const assembled = await assembleSubscriptionDetail(
       supabase,
-      { business_id, report_month, account_codes, ...(windowMonths.length > 0 ? { window_months: windowMonths } : {}) },
+      {
+        business_id,
+        report_month,
+        account_codes: allCodes,
+        ...(account_codes_by_tenant ? { account_codes_by_tenant } : {}),
+        ...(windowMonths.length > 0 ? { window_months: windowMonths } : {}),
+        fx,
+      },
       crawl,
     )
     const { configuredSubscriptionCodes } = assembled

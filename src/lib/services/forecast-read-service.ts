@@ -39,6 +39,8 @@ import {
   generateFiscalMonthKeys,
   DEFAULT_YEAR_START_MONTH,
 } from '@/lib/utils/fiscal-year-utils'
+// DRG-40 — long → wide grouping, per org then merged on type and name.
+import { aggregateXeroPlRows } from './aggregate-xero-pl-rows'
 
 /**
  * Phase 44.1 D-44.1-08 — soft-fail invariant gate.
@@ -607,26 +609,7 @@ export class ForecastReadService {
   }
 
   private aggregateXeroRows(xeroRows: ReadonlyArray<RawXeroRow>): MonthlyCompositeRow[] {
-    const grouped = new Map<string, MonthlyCompositeRow>()
-    for (const row of xeroRows) {
-      const key = row.account_code ?? `NAME:${row.account_name}`
-      let agg = grouped.get(key)
-      if (!agg) {
-        agg = {
-          account_code: row.account_code,
-          account_name: row.account_name,
-          account_type: this.normalizeAccountType(row.account_type),
-          monthly_values: {},
-        }
-        grouped.set(key, agg)
-      }
-      // 'YYYY-MM-DD' → 'YYYY-MM'
-      const monthKey = (row.period_month ?? '').slice(0, 7)
-      if (!monthKey) continue
-      const amt = Number(row.amount)
-      agg.monthly_values[monthKey] = (agg.monthly_values[monthKey] ?? 0) + (Number.isFinite(amt) ? amt : 0)
-    }
-    return [...grouped.values()]
+    return aggregateXeroPlRows(xeroRows)
   }
 
   private normalizeAccountType(raw: string | null | undefined): AccountType {

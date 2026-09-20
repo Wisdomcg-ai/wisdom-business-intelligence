@@ -39,6 +39,7 @@ import { NextRequest } from 'next/server';
 const mockGetUser = vi.fn();
 const mockRouteHandlerFrom = vi.fn();
 const mockAdminFrom = vi.fn();
+const mockAdminRpc = vi.fn();
 
 // ─── Module mocks (declared before importing the route) ────────────────────
 
@@ -50,7 +51,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }));
 
 vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(() => ({ from: mockAdminFrom })),
+  createClient: vi.fn(() => ({ from: mockAdminFrom, rpc: mockAdminRpc })),
 }));
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -179,26 +180,17 @@ function configureAdmin(opts: {
       };
       return chain;
     }
-    if (table === 'sync_jobs') {
-      // The data clock. These fixtures set freshness through
-      // xero_connections.last_synced_at, so the sync_jobs side contributes
-      // nothing and the fold reduces to the column — but the query must still
-      // succeed, because a FAILED lookup now (correctly) classifies as 'unknown'
-      // rather than quietly reading as "nobody has synced".
-      return {
-        select: () => ({
-          in: () => ({
-            gte: () => ({
-              then: (resolve: any) =>
-                Promise.resolve(
-                  opts.syncJobsError ? { data: null, error: opts.syncJobsError } : { data: [], error: null },
-                ).then(resolve),
-            }),
-          }),
-        }),
-      };
-    }
     throw new Error(`configureAdmin: unconfigured table "${table}"`);
+  });
+
+  // The data clock (last_xero_sync_by_tenant). These fixtures set freshness
+  // through xero_connections.last_synced_at, so the sync_jobs side contributes
+  // nothing and the fold reduces to the column — but the lookup must still
+  // succeed, because a FAILED lookup now (correctly) classifies as 'unknown'
+  // rather than quietly reading as "nobody has synced".
+  mockAdminRpc.mockImplementation(async (fn: string) => {
+    if (fn !== 'last_xero_sync_by_tenant') throw new Error(`configureAdmin: unexpected rpc "${fn}"`);
+    return opts.syncJobsError ? { data: null, error: opts.syncJobsError } : { data: {}, error: null };
   });
 }
 
@@ -230,6 +222,7 @@ beforeEach(() => {
   mockGetUser.mockReset();
   mockRouteHandlerFrom.mockReset();
   mockAdminFrom.mockReset();
+  mockAdminRpc.mockReset();
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
