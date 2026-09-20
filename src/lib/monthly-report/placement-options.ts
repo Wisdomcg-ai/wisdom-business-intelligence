@@ -10,6 +10,18 @@
  *   money_flow         last_line, summary_codes and bank_rows — the page's own
  *                      strict config (money-flow-rows); bank_rows 'moved'
  *                      leaves off accounts that did not move (DD-33)
+ *   consolidated_pl    layout, section and columns — Calxa's P&L Comparison,
+ *                      one section a page, actuals only (consolidated-pl-page)
+ *   subscription_detail layout and entity_columns — the Calxa sheet, with a
+ *                      column per Xero organisation (subscription-page, DRG-30)
+ *   contractor_detail  layout and entity_columns — the same for contractors
+ *                      (contractor-page, DRG-29)
+ *
+ * The three P7 pages carry settings this panel does not show — the sheet's
+ * vendor labels, its budget basis, the window's months, the codes each
+ * organisation posts an account under. Apply keeps them: they are typed by
+ * hand (or set up per client) and each page's own strict schema is what reads
+ * them.
  *
  * Every option's default is the page as it printed before the option existed,
  * and Apply stores a value only when it differs from that default, so a
@@ -60,7 +72,13 @@ export interface PlacementOptionSet {
   options: PlacementOption[]
 }
 
-export type PlacementOptionsType = 'cover_page' | 'executive_summary' | 'money_flow'
+export type PlacementOptionsType =
+  | 'cover_page'
+  | 'executive_summary'
+  | 'money_flow'
+  | 'consolidated_pl'
+  | 'subscription_detail'
+  | 'contractor_detail'
 
 export const PLACEMENT_OPTIONS: Record<PlacementOptionsType, PlacementOptionSet> = {
   cover_page: {
@@ -135,6 +153,95 @@ export const PLACEMENT_OPTIONS: Record<PlacementOptionsType, PlacementOptionSet>
             short: 'Moved bank accounts only',
             help: 'An account whose opening and closing balances print the same is left off. The Total is unchanged.',
           },
+        ],
+      },
+    ],
+  },
+  consolidated_pl: {
+    title: 'Per-entity P&L options',
+    options: [
+      {
+        key: 'layout',
+        label: 'How the page is set out',
+        default: 'standard',
+        choices: [
+          { value: 'standard', label: 'Every account in the consolidation, with the group’s budget and variance' },
+          {
+            value: 'calxa',
+            label: 'Calxa’s P&L Comparison',
+            short: 'Calxa P&L Comparison',
+            help: 'The statement per organisation: section headings, the expense groups with their subtotals, a total per section, and Gross Profit, Gross Profit % and Net Profit for each organisation. Accounts with nothing in any column printed are left off.',
+          },
+        ],
+      },
+      {
+        key: 'section',
+        label: 'Which section',
+        help: 'Calxa splits the page: an Income Split and an Expense Split. Needs the Calxa layout.',
+        default: 'all',
+        choices: [
+          { value: 'all', label: 'The whole profit and loss' },
+          { value: 'income', label: 'Income only', short: 'Income only' },
+          { value: 'cogs', label: 'Cost of sales only', short: 'Cost of sales only' },
+          { value: 'expense', label: 'Expenses only', short: 'Expenses only' },
+        ],
+      },
+      {
+        key: 'columns',
+        label: 'Columns',
+        help: 'Needs the Calxa layout.',
+        default: 'actual_budget',
+        choices: [
+          { value: 'actual_budget', label: 'Actual, Budget and Variance' },
+          { value: 'actuals', label: 'Actuals only, as Calxa’s split pages print them', short: 'Actuals only' },
+        ],
+      },
+    ],
+  },
+  subscription_detail: {
+    title: 'Subscriptions page options',
+    options: [
+      {
+        key: 'layout',
+        label: 'How the page is set out',
+        default: 'accounts',
+        choices: [
+          { value: 'accounts', label: 'An account band, its vendors and a subtotal each' },
+          { value: 'calxa', label: 'The client’s sheet: one table, Name | Last Month | Budget | month | Variance', short: 'Calxa sheet' },
+        ],
+      },
+      {
+        key: 'entity_columns',
+        label: 'A column per Xero organisation',
+        help: 'Calxa prints Dragon and Easy Hail before the total. Needs the Calxa sheet, and a business with more than one organisation.',
+        default: 'none',
+        choices: [
+          { value: 'none', label: 'One Actual column' },
+          { value: 'actuals', label: 'Each organisation’s actual, then the total', short: 'A column per organisation' },
+        ],
+      },
+    ],
+  },
+  contractor_detail: {
+    title: 'Contractors page options',
+    options: [
+      {
+        key: 'layout',
+        label: 'How the page is set out',
+        default: 'rollup',
+        choices: [
+          { value: 'rollup', label: 'Every contractor, then the same rows by department' },
+          { value: 'calxa', label: 'The Contractors Payment Summary: the window’s months, then the month by department', short: 'Contractors Payment Summary' },
+        ],
+      },
+      {
+        key: 'entity_columns',
+        label: 'A column per Xero organisation',
+        help: 'Calxa’s Virtual Contractors table is DRAGON | EHC | TOTAL. The standard page’s; the Payment Summary is already a table of months.',
+        default: 'none',
+        choices: [
+          { value: 'none', label: 'One column for the month' },
+          { value: 'actuals', label: 'Each organisation’s actual, then the total', short: 'A column per organisation' },
         ],
       },
     ],

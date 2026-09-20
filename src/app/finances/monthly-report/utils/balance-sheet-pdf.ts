@@ -200,6 +200,11 @@ export function assessBalanceSheetForPdf(
 
   const warnings: string[] = []
 
+  // A group's sheet says first what it was asked to do and did not — a loan
+  // left gross because its two sides disagree — ahead of any doubt about the
+  // arithmetic, which that leaves untouched.
+  warnings.push(...(entry.data.consolidation?.warnings ?? []))
+
   // The API's own Net-Assets-vs-Total-Equity check, computed at the $0.05 BS
   // materiality in lib/monthly-report/balance-sheet-rows.ts and rendered by BalanceSheetTab as
   // an amber badge. It is a DIFFERENT check from the equation below — it
