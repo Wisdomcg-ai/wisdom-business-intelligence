@@ -95,3 +95,53 @@ describe('WD.6 — buildConsolidatedRows', () => {
     expect(r.hasAnyBudget).toBe(false)
   })
 })
+
+/**
+ * IICT-25 / DRG-15 — the per-entity page takes the statement's variance sign.
+ *
+ * Variance here was actual − budget for every account type. The statement
+ * pages use calcVariance, where a cost is budget − actual, so an overspend is
+ * negative on every page but this one: Dragon's Tradies Contractors, $472,604
+ * against a $211,664 budget in August 2026, printed +260,940 on the per-entity
+ * page (and green in the tab) and (260,940) on the statement.
+ */
+describe('the variance sign follows the account type, as on the statement', () => {
+  const tradies = (): ConsolidatedReportVM => {
+    const base = vm()
+    const cogs = (actual: number) => ({ account_type: 'cogs', account_name: 'Tradies Contractors', monthly_values: { [M]: actual } })
+    base.byTenant[0].lines.push(cogs(472_604))
+    base.byTenant[0].budgetLines!.push(cogs(211_664))
+    base.consolidated.lines.push(cogs(472_604))
+    base.consolidated.budgetLines.push(cogs(211_664))
+    return base
+  }
+
+  it('an overspent cost is negative in the entity column and the consolidated column', () => {
+    const row = buildConsolidatedRows(tradies(), M).rows.find((r) => r.accountName === 'Tradies Contractors')!
+    expect(row.tenantCells[0].variance).toBe(-260_940)
+    expect(row.consolidatedVariance).toBe(-260_940)
+    expect(row.consolidatedVariancePct).toBeCloseTo((-260_940 / 211_664) * 100, 6)
+  })
+
+  it('income keeps actual − budget: a beat is positive', () => {
+    const { rows } = buildConsolidatedRows(vm(), M)
+    expect(rows[0].tenantCells[0].variance).toBe(10_000)
+    expect(rows[0].consolidatedVariance).toBe(45_000)
+  })
+
+  it('unbudgeted spend is unfavourable, not a +8,000 beat', () => {
+    const rent = buildConsolidatedRows(vm(), M).rows.find((r) => r.accountName === 'Rent')!
+    expect(rent.consolidatedVariance).toBe(-8_000)
+    expect(rent.tenantCells[0].variance).toBe(-8_000)
+  })
+
+  it('other income is income and other expenses are costs', () => {
+    const base = vm()
+    const line = (account_type: string, account_name: string, v: number) => ({ account_type, account_name, monthly_values: { [M]: v } })
+    base.consolidated.lines.push(line('other_income', 'Interest Income', 150), line('other_expense', 'Interest Expense', 900))
+    base.consolidated.budgetLines.push(line('other_income', 'Interest Income', 100), line('other_expense', 'Interest Expense', 400))
+    const { rows } = buildConsolidatedRows(base, M)
+    expect(rows.find((r) => r.accountName === 'Interest Income')!.consolidatedVariance).toBe(50)
+    expect(rows.find((r) => r.accountName === 'Interest Expense')!.consolidatedVariance).toBe(-500)
+  })
+})

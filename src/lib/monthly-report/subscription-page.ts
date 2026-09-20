@@ -81,6 +81,8 @@ const configSchema = z.object({
   always_show: z.array(z.string().min(1)).default([]),
   /** vendor_key → the name the page prints ("anthropic" → "Claude"). Matching keeps the canonical key. */
   labels: z.record(z.string(), z.string().min(1)).default({}),
+  /** 'actuals' adds a column per Xero organisation before the month's total (Calxa's Dragon · Easy Hail). Defaults 'none'. */
+  entity_columns: z.enum(['none', 'actuals']).optional(),
 }).strict()
 
 export interface SubscriptionPageConfig {
@@ -92,6 +94,7 @@ export interface SubscriptionPageConfig {
   basis: 'gross' | 'net'
   always_show: string[]
   labels: Record<string, string>
+  entity_columns: 'none' | 'actuals'
 }
 
 export type ParsedSubscriptionPageConfig =
@@ -99,14 +102,14 @@ export type ParsedSubscriptionPageConfig =
   /** The page still prints — in the default layout — and says why. */
   | { ok: false; config: SubscriptionPageConfig; reason: string }
 
-const DEFAULT_CONFIG: SubscriptionPageConfig = { layout: 'accounts', unallocated_row: false, vendors: 'all', total_budget: 'pre_budget_store', basis: 'gross', always_show: [], labels: {} }
+const DEFAULT_CONFIG: SubscriptionPageConfig = { layout: 'accounts', unallocated_row: false, vendors: 'all', total_budget: 'pre_budget_store', basis: 'gross', always_show: [], labels: {}, entity_columns: 'none' }
 
 /**
  * Options only the 'calxa' layout acts on. `basis` is not one: the standard page
  * honours it too, as it does `total_budget: 'approved'` (only 'vendor_sum' is
  * the sheet's alone).
  */
-const CALXA_ONLY_KEYS = ['unallocated_row', 'vendors', 'always_show', 'labels'] as const
+const CALXA_ONLY_KEYS = ['unallocated_row', 'vendors', 'always_show', 'labels', 'entity_columns'] as const
 
 export function parseSubscriptionPageConfig(raw: unknown): ParsedSubscriptionPageConfig {
   const result = configSchema.safeParse(raw ?? {})
@@ -142,6 +145,7 @@ export function parseSubscriptionPageConfig(raw: unknown): ParsedSubscriptionPag
       basis: c.basis ?? (calxa ? 'net' : 'gross'),
       always_show: calxa ? c.always_show : [],
       labels: calxa ? c.labels : {},
+      entity_columns: calxa ? (c.entity_columns ?? 'none') : 'none',
     },
   }
 }
@@ -154,6 +158,8 @@ export interface SubscriptionPageRow {
   prior_month: number
   budget: number
   actual: number
+  /** The month per organisation, in the model's `entities` order, when the placement asks for the columns. */
+  by_tenant?: number[]
   /** Budget − actual, the sheet's F = D − E. */
   variance: number
   /**
@@ -171,6 +177,8 @@ export interface SubscriptionPageModel {
   rows: SubscriptionPageRow[]
   /** Sentences under the table, each a fact the rows cannot show. */
   notes: string[]
+  /** The organisations each row is split across, when the placement asks for the columns (DRG-30). */
+  entities?: { tenant_id: string; name: string }[]
 }
 
 const cents = (n: number) => Math.round(n * 100) / 100
@@ -197,6 +205,25 @@ export function subscriptionNoBudgetNotes(detail: SubscriptionDetailData): strin
     .map((a) =>
       `${a.account_name} has no approved budget this month because ${a.total_budget_absent ?? 'no approved budget is in force'}, ` +
       'so its total has no budget or variance. The vendor budgets are the vendors\' own.')
+}
+
+/**
+ * Money on these accounts that no total on the page carries: an organisation
+ * that posted to them and is no longer connected to WisdomBI (IICT Group Pty
+ * Ltd since 10 Sep 2026). Said without a figure — its currency went with its
+ * connection, and every figure here is in one currency. Null when nothing was
+ * left out, and on a response from before the route counted it.
+ */
+export function unconnectedOrganisationsNote(detail: SubscriptionDetailData): string | null {
+  const count = detail.unconnected_tenants?.length ?? 0
+  if (count === 0) return null
+  const one = count === 1
+  return (
+    `${one ? 'One Xero organisation' : `${count} Xero organisations`} posted to ` +
+    `${(detail.accounts ?? []).length === 1 ? 'this account' : 'these accounts'} in the months shown but ` +
+    `${one ? 'is' : 'are'} not connected to WisdomBI, so ${one ? 'its' : 'their'} figures are not included. ` +
+    `Reconnect in Settings, Integrations to include ${one ? 'it' : 'them'}.`
+  )
 }
 
 function unconvertedNote(lines: readonly SubscriptionUnconvertedLine[]): string | null {
@@ -346,6 +373,15 @@ export function buildSubscriptionPageModel(report: SubscriptionDetailData, confi
   const withheld = onBasis.basis === 'withheld'
 
   const pinned = new Set(config.always_show.map((s) => createVendorKey(s)))
+  // The organisations the rows are split across. Asked for and not there (a
+  // single-organisation business, the stored history) is no columns and a
+  // sentence: a page cannot show a split it does not have.
+  const entities = config.entity_columns === 'actuals' && !withheld ? detail.tenants ?? [] : []
+  if (config.entity_columns === 'actuals' && entities.length === 0) {
+    notes.push('This report carries no figures per Xero organisation, so the page prints one Actual column.')
+  }
+  const splitOf = (by: Record<string, number> | undefined): number[] | undefined =>
+    entities.length > 0 ? entities.map((e) => cents(by?.[e.tenant_id] ?? 0)) : undefined
   /** Each account's budget as the TOTAL prints it, and whether it has one. */
   const budgetOf = (account: SubscriptionAccountGroup): { budget: number; none: boolean } => {
     if (config.total_budget === 'vendor_sum') {
@@ -369,6 +405,8 @@ export function buildSubscriptionPageModel(report: SubscriptionDetailData, confi
         budget: v.budget,
         actual: v.actual,
         variance: cents(v.budget - v.actual),
+        // On the net basis the columns are the statement figures, as `actual` is.
+        ...(splitOf(onBasis.basis === 'net' ? v.statement?.by_tenant : v.by_tenant) ? { by_tenant: splitOf(onBasis.basis === 'net' ? v.statement?.by_tenant : v.by_tenant) } : {}),
       }))
 
     // A pinned vendor the route did not return at all (an archived budget
@@ -380,7 +418,7 @@ export function buildSubscriptionPageModel(report: SubscriptionDetailData, confi
         const key = createVendorKey(name)
         if (present.has(key)) continue
         present.add(key)
-        vendors.push({ key, kind: 'vendor', label: config.labels[key] ?? name, prior_month: 0, budget: 0, actual: 0, variance: 0 })
+        vendors.push({ key, kind: 'vendor', label: config.labels[key] ?? name, prior_month: 0, budget: 0, actual: 0, variance: 0, ...(entities.length > 0 ? { by_tenant: entities.map(() => 0) } : {}) })
       }
     }
 
@@ -398,6 +436,9 @@ export function buildSubscriptionPageModel(report: SubscriptionDetailData, confi
       const unallocated: SubscriptionPageRow = {
         kind: 'unallocated',
         label: 'Unallocated',
+        ...(entities.length > 0
+          ? { by_tenant: entities.map((e, i) => cents((account.total_by_tenant?.[e.tenant_id] ?? 0) - vendors.reduce((t, r) => t + (r.by_tenant?.[i] ?? 0), 0))) }
+          : {}),
         prior_month: cents(account.total_prior_month - sum((r) => r.prior_month)),
         // With no budget in force there is nothing to allocate the vendor
         // budgets against, and a negative $13,596 here would be invented.
@@ -406,7 +447,7 @@ export function buildSubscriptionPageModel(report: SubscriptionDetailData, confi
         variance: 0,
       }
       unallocated.variance = cents(unallocated.budget - unallocated.actual)
-      if (![unallocated.prior_month, unallocated.budget, unallocated.actual].every(printsAsZero)) rows.push(unallocated)
+      if (![unallocated.prior_month, unallocated.budget, unallocated.actual, ...(unallocated.by_tenant ?? [])].every(printsAsZero)) rows.push(unallocated)
 
       // Only net rows can be held to the account. Gross rows run past it by
       // the GST, which the gross note already says; blamed on "money this
@@ -426,6 +467,7 @@ export function buildSubscriptionPageModel(report: SubscriptionDetailData, confi
       rows.push({
         kind: 'subtotal',
         label: `Total ${account.account_name}`,
+        ...(entities.length > 0 ? { by_tenant: entities.map((e) => cents(account.total_by_tenant?.[e.tenant_id] ?? 0)) } : {}),
         prior_month: account.total_prior_month,
         budget: accountBudget,
         actual: account.total_actual,
@@ -434,6 +476,9 @@ export function buildSubscriptionPageModel(report: SubscriptionDetailData, confi
       })
     }
   })
+
+  const unconnected = unconnectedOrganisationsNote(detail)
+  if (unconnected) notes.push(unconnected)
 
   // No accounts is the route's empty answer — no codes configured, no Xero
   // connection, or nothing billed or budgeted. It cannot tell those apart, so
@@ -450,9 +495,17 @@ export function buildSubscriptionPageModel(report: SubscriptionDetailData, confi
   const totalActual = cents(accounts.reduce((t, a) => t + a.total_actual, 0))
   const totalPrior = cents(accounts.reduce((t, a) => t + a.total_prior_month, 0))
   const total = { prior_month: totalPrior, budget: totalBudget, actual: totalActual, variance: cents(totalBudget - totalActual) }
-  rows.push({ kind: 'total', label: 'TOTAL', ...total, ...(allNone ? { no_budget: true as const } : {}) })
+  const totalByTenant = entities.length > 0
+    ? entities.map((e) => cents(accounts.reduce((t, a) => t + (a.total_by_tenant?.[e.tenant_id] ?? 0), 0)))
+    : undefined
+  rows.push({ kind: 'total', label: 'TOTAL', ...total, ...(totalByTenant ? { by_tenant: totalByTenant } : {}), ...(allNone ? { no_budget: true as const } : {}) })
 
-  return { title: single ? accounts[0].account_name : 'Subscriptions', rows, notes }
+  return {
+    title: single ? accounts[0].account_name : 'Subscriptions',
+    rows,
+    notes,
+    ...(entities.length > 0 ? { entities: [...entities] } : {}),
+  }
 }
 
 /** 'YYYY-MM' → 'Aug-26', the sheet's column heading. Unparseable passes through. */

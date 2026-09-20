@@ -4,9 +4,12 @@
 // before every export. Warnings and failures never block (the coach
 // decides); they inform, and the run is persisted either way so the pack
 // can prove months later what was true when it went out.
+//
+// Except a failure marked `blocks` (see preflight.ts): the pack's figures are
+// known to be wrong, so there is no "Export anyway" — only Close.
 
 import { CheckCircle, AlertTriangle, XCircle, MinusCircle, Loader2 } from 'lucide-react'
-import type { PreflightResult } from '@/lib/monthly-report/preflight'
+import { exportRefusals, type PreflightResult } from '@/lib/monthly-report/preflight'
 
 interface PreflightPanelProps {
   results: PreflightResult[]
@@ -25,6 +28,7 @@ const STATUS_META = {
 export default function PreflightPanel({ results, onCancel, onProceed, isExporting }: PreflightPanelProps) {
   const fails = results.filter((r) => r.status === 'fail').length
   const warns = results.filter((r) => r.status === 'warn').length
+  const refused = exportRefusals(results).length > 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -32,7 +36,9 @@ export default function PreflightPanel({ results, onCancel, onProceed, isExporti
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">Pre-flight checks</h2>
           <p className="text-sm text-gray-500">
-            {fails > 0
+            {refused
+              ? 'Export refused — this pack would print figures that are wrong. Fix the check marked below, then export.'
+              : fails > 0
               ? `${fails} failed, ${warns} warning${warns === 1 ? '' : 's'} — you can still export, but the pack will carry these issues.`
               : warns > 0
                 ? `${warns} warning${warns === 1 ? '' : 's'} — review before sending.`
@@ -48,7 +54,10 @@ export default function PreflightPanel({ results, onCancel, onProceed, isExporti
               <div key={r.key} className="flex items-start gap-3 py-2">
                 <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${meta.cls}`} />
                 <div className="min-w-0">
-                  <p className={`text-sm font-medium ${r.status === 'skip' ? 'text-gray-400' : 'text-gray-900'}`}>{r.label}</p>
+                  <p className={`text-sm font-medium ${r.status === 'skip' ? 'text-gray-400' : 'text-gray-900'}`}>
+                    {r.label}
+                    {r.blocks ? <span className="ml-2 text-xs font-semibold text-red-700">Blocks export</span> : null}
+                  </p>
                   <p className={`text-xs ${r.status === 'fail' ? 'text-red-700' : r.status === 'warn' ? 'text-amber-700' : 'text-gray-500'}`}>{r.detail}</p>
                 </div>
               </div>
@@ -58,18 +67,20 @@ export default function PreflightPanel({ results, onCancel, onProceed, isExporti
 
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-200">
           <button onClick={onCancel} className="px-4 py-2 text-sm border border-gray-200 rounded-md hover:bg-gray-50">
-            Cancel
+            {refused ? 'Close' : 'Cancel'}
           </button>
-          <button
-            onClick={onProceed}
-            disabled={isExporting}
-            className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-md disabled:opacity-50 ${
-              fails > 0 ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-          >
-            {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            {fails > 0 ? 'Export anyway' : 'Export PDF'}
-          </button>
+          {!refused && (
+            <button
+              onClick={onProceed}
+              disabled={isExporting}
+              className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-md disabled:opacity-50 ${
+                fails > 0 ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+              }`}
+            >
+              {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {fails > 0 ? 'Export anyway' : 'Export PDF'}
+            </button>
+          )}
         </div>
       </div>
     </div>

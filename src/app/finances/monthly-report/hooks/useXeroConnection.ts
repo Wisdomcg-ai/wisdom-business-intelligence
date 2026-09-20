@@ -33,12 +33,27 @@ export function useXeroConnection(businessId: string) {
   const [isSyncing, setIsSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Fetch connection status on mount / when businessId changes
-  useEffect(() => {
-    if (!businessId) return
+  /**
+   * Read the connection — and its clock — from the server.
+   *
+   * This is the ONLY thing that sets `last_synced_at` in this hook. handleSync
+   * used to assign `new Date().toISOString()` straight into state after any 2xx,
+   * so XeroConnectionBanner printed "Last synced: <a second ago>" over a sync
+   * whose P&L had just failed. That is the client-side twin of the database
+   * stamp deleted from the sync route: a clock moved by the act of asking,
+   * not by data arriving. `xero_connections.last_synced_at` has exactly one
+   * writer (syncBusinessXeroPL, per tenant, on that tenant's own success) —
+   * so after a sync we re-read it rather than predict it.
+   *
+   * `silent` skips the loading flag: the banner swaps its whole body for
+   * "Checking Xero connection..." while isLoading is true, and a post-sync
+   * re-read should refresh the line in place, not blank the banner.
+   */
+  const refreshStatus = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!businessId) return
 
-    const fetchStatus = async () => {
-      setIsLoading(true)
+      if (!silent) setIsLoading(true)
       setError(null)
 
       try {
@@ -75,12 +90,17 @@ export function useXeroConnection(businessId: string) {
         setCheckFailed(true)
         setError('Failed to check Xero connection')
       } finally {
-        setIsLoading(false)
+        if (!silent) setIsLoading(false)
       }
-    }
+    },
+    [businessId],
+  )
 
-    fetchStatus()
-  }, [businessId])
+  // Fetch connection status on mount / when businessId changes
+  useEffect(() => {
+    if (!businessId) return
+    refreshStatus()
+  }, [businessId, refreshStatus])
 
   const handleConnect = useCallback(() => {
     if (!businessId) return
@@ -112,13 +132,31 @@ export function useXeroConnection(businessId: string) {
         return false
       }
 
-      // Update last_synced_at in state
-      setXeroConnection(prev => prev ? {
-        ...prev,
-        last_synced_at: new Date().toISOString(),
-      } : prev)
+      // A 2xx is not a sync. The route answers 200 whenever it reached the end
+      // — the balance-sheet mirror always runs — and reports the P&L outcome in
+      // `success`/`pl_status`. 'error' there means nothing landed: every org
+      // failed, or the single-flight guard refused a second concurrent run and
+      // no P&L was attempted. Say so, and leave the clock alone.
+      if (!data.success) {
+        await refreshStatus({ silent: true })
+        toast.error(data.error || 'Xero sync failed — the figures on screen have not changed')
+        return false
+      }
 
-      toast.success(`Synced ${data.accounts_synced} accounts across ${data.months_synced} months`)
+      // Re-read the clock the server actually wrote (see refreshStatus).
+      await refreshStatus({ silent: true })
+
+      // `months_synced` was never a field of this response — the route returns
+      // `months_fetched` — so this toast has been reading "across undefined
+      // months" on every successful sync.
+      const summary = `Synced ${data.accounts_synced} accounts across ${data.months_fetched} months`
+      if (data.pl_status === 'partial' || (data.errors?.length ?? 0) > 0) {
+        // Something landed, but not all of it. Claiming a clean sync here is
+        // how a half-synced client reads as a healthy one.
+        toast.warning(`${summary} — some data did not sync`)
+      } else {
+        toast.success(summary)
+      }
       return true
     } catch (err) {
       console.error('[useXeroConnection] Sync error:', err)
@@ -127,7 +165,7 @@ export function useXeroConnection(businessId: string) {
     } finally {
       setIsSyncing(false)
     }
-  }, [businessId])
+  }, [businessId, refreshStatus])
 
   const handleManage = useCallback(() => {
     const integrationsPath = pathname.includes('/coach/clients/')

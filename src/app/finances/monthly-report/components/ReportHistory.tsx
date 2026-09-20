@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Clock, FileText, Download, CheckCircle } from 'lucide-react' // Download: WA.6 pdf stamp
 import type { ReportSnapshot, ReportSummary } from '../types'
+import { packMonthLong } from '../services/pack-style'
 
 interface ReportHistoryProps {
   businessId: string
@@ -65,8 +66,7 @@ export default function ReportHistory({ businessId, onLoadSnapshot }: ReportHist
       </div>
       <div className="divide-y divide-gray-100">
         {snapshots.map((snapshot: any) => {
-          const monthDate = new Date(snapshot.report_month + '-01')
-          const monthLabel = monthDate.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
+          const monthLabel = packMonthLong(snapshot.report_month)
           const summary: ReportSummary | null = snapshot.summary
           const generatedDate = snapshot.generated_at
             ? new Date(snapshot.generated_at).toLocaleDateString('en-AU', {

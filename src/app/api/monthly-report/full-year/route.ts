@@ -78,7 +78,12 @@ async function postHandler(request: Request) {
     // scripts/preview-pack.ts so the harness renders the page this route serves.
     const result = await loadFullYearReport(supabase, { business_id, fiscal_year, report_month })
     if (!result.ok) {
-      return NextResponse.json({ error: result.error, detail: result.detail }, { status: 500 })
+      // A refusal (a multi-org business with no active forecast) is an answer
+      // the tab shows, not a server fault.
+      return NextResponse.json(
+        { error: result.error, detail: result.detail, refused: result.refused },
+        { status: result.refused ? 422 : 500 },
+      )
     }
 
     return NextResponse.json({

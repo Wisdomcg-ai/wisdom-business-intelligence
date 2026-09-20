@@ -33,6 +33,7 @@ import {
   type AlignedAccount,
 } from './account-alignment'
 import { loadEliminationRulesForBusiness, applyEliminations } from './eliminations'
+import type { ApprovedBudgetOutcome } from '@/lib/budgets/consolidated-budget'
 
 interface LoadedContext {
   business: ConsolidationBusiness
@@ -80,6 +81,22 @@ export interface BuildConsolidationOpts {
    * Tests inject this directly to avoid mocking financial_forecasts queries.
    */
   singleBusinessBudget?: ForecastLineLike[] | null
+  /**
+   * The APPROVED budget, for a business on the budget store
+   * (monthly_report_settings.budget_source = 'budget_version'). When given, it
+   * replaces the forecast loaders entirely: its answer is the budget, and a
+   * refusal is no budget with the reason attached — never the forecast, which
+   * is the moving yardstick the budget store exists to get away from.
+   *
+   * A callback rather than a value because alignment needs each organisation's
+   * accounts, which the engine has only just read (resolveApprovedBudgetForTenants).
+   */
+  resolveApprovedBudget?: (ctx: {
+    tenants: ConsolidationTenant[]
+    /** Each organisation's deduplicated P&L lines, before translation — codes and names are what align. */
+    accountsByTenant: Map<string, XeroPLLineLike[]>
+    presentationCurrency: string
+  }) => Promise<ApprovedBudgetOutcome>
 }
 
 /**
@@ -342,11 +359,13 @@ export async function loadTenantBudgets(
   const ids = await resolveBusinessProfileIds(supabase, businessId)
 
   // 1. For each tenant, try to find a tenant-scoped forecast.
-  // Phase B (CFO-only clients): prefer ACTIVE forecasts and skip 0-line
-  // shells — the wizard's failed-seed trap left empty forecasts whose
-  // updated_at outranks the real one, and `.limit(1)` on updated_at alone
-  // silently picked those as the budget. We walk a small candidate list
-  // (active first, newest first) and take the first with materialized lines.
+  // Phase B (CFO-only clients): skip 0-line shells — the wizard's failed-seed
+  // trap left empty forecasts whose updated_at outranks the real one, and
+  // `.limit(1)` on updated_at alone silently picked those as the budget. We
+  // walk a small candidate list (newest first) and take the first with
+  // materialized lines. ACTIVE only: an inactive forecast is never a budget
+  // (IICT-09 — see loadSingleBusinessBudget), as resolveBudget and the Full
+  // Year page already require.
   for (const tenant of tenants) {
     const { data: forecasts, error } = await supabase
       .from('financial_forecasts')
@@ -354,8 +373,8 @@ export async function loadTenantBudgets(
       .in('business_id', ids.all)
       .eq('tenant_id', tenant.tenant_id)
       .eq('fiscal_year', fiscalYear)
+      .eq('is_active', true)
       .is('deleted_at', null)
-      .order('is_active', { ascending: false })
       .order('updated_at', { ascending: false })
       .limit(3)
     if (error) {
@@ -400,18 +419,24 @@ export async function loadSingleBusinessBudget(
 ): Promise<ForecastLineLike[] | null> {
   const ids = await resolveBusinessProfileIds(supabase, businessId)
 
-  // Phase B (CFO-only clients): prefer ACTIVE forecasts and skip 0-line
-  // shells (failed-seed wizard trap) — updated_at alone picked a freshly
-  // touched empty shell over the real budget. First candidate with
-  // materialized lines wins; candidates are active-first, newest-first.
+  // Phase B (CFO-only clients): skip 0-line shells (failed-seed wizard trap)
+  // — updated_at alone picked a freshly touched empty shell over the real
+  // budget. First candidate with materialized lines wins, newest first.
+  //
+  // ACTIVE only. This preferred an active forecast but did not require one,
+  // so IICT — whose FY2027 forecasts are both inactive — had inactive
+  // 88199866 as the budget on its statement pages while the Full Year and
+  // Subscriptions pages, which require an active forecast, said there was
+  // none: one pack, two budget rules (IICT-09). An inactive forecast is a
+  // draft or a superseded version, never a budget.
   const { data: forecasts, error } = await supabase
     .from('financial_forecasts')
     .select('id')
     .in('business_id', ids.all)
     .is('tenant_id', null)
     .eq('fiscal_year', fiscalYear)
+    .eq('is_active', true)
     .is('deleted_at', null)
-    .order('is_active', { ascending: false })
     .order('updated_at', { ascending: false })
     .limit(5)
   if (error) {
@@ -611,14 +636,35 @@ export async function buildConsolidation(
   //    Both branches produce `budgetsByTenant` (Map<tenant_id, lines>) and
   //    `singleModeBudget` (ForecastLineLike[] | null) — exactly one of them
   //    will be non-empty per run. The universe builder consumes both.
-  const budgetMode: 'single' | 'per_tenant' = business.consolidation_budget_mode
+  //
+  //    The approved budget (opts.resolveApprovedBudget) is a third source that
+  //    replaces both: its versions say whether the budget is the group's or
+  //    each organisation's, so it sets the mode rather than reading it.
+  let budgetMode: 'single' | 'per_tenant' = business.consolidation_budget_mode
 
   let budgetsByTenant = new Map<string, ForecastLineLike[]>()
   let singleModeBudget: ForecastLineLike[] | null = null
   let singleBudgetFound = false
   let fallbackFired = false
+  let approved: ApprovedBudgetOutcome | null = null
 
-  if (budgetMode === 'single') {
+  if (opts.resolveApprovedBudget) {
+    approved = await opts.resolveApprovedBudget({
+      tenants,
+      accountsByTenant: new Map(deduped.map((d) => [d.tenant.tenant_id, d.lines])),
+      presentationCurrency: business.presentation_currency,
+    })
+    if (approved.status === 'resolved' && approved.scope === 'per_tenant' && approved.byTenant) {
+      budgetMode = 'per_tenant'
+      budgetsByTenant = new Map(approved.byTenant)
+    } else {
+      budgetMode = 'single'
+      if (approved.status === 'resolved') {
+        singleModeBudget = approved.consolidated
+        singleBudgetFound = approved.consolidated.length > 0
+      }
+    }
+  } else if (budgetMode === 'single') {
     // Single mode: one forecast drives consolidated.budgetLines. Tests can
     // inject singleBusinessBudget; otherwise the engine loads it.
     const loaded =
@@ -763,6 +809,35 @@ export async function buildConsolidation(
       lines: consolidatedActuals.lines,
       budgetLines: consolidatedBudget,
     },
+    // Only when the approved budget was asked for: a forecast-basis report is
+    // byte-for-byte what it was, and names no source it did not use.
+    ...(approved
+      ? {
+          budget_provenance: approved.status === 'resolved'
+            ? {
+                source: 'budget_version' as const,
+                scope: approved.scope,
+                version_id: approved.versionId,
+                version_ids: approved.versionIds,
+                label: approved.label,
+                no_budget_reason: null,
+                no_budget_detail: null,
+                budget_only_accounts: approved.budgetOnly,
+                translated: approved.translated,
+              }
+            : {
+                source: 'none' as const,
+                scope: null,
+                version_id: null,
+                version_ids: [],
+                label: null,
+                no_budget_reason: approved.reason,
+                no_budget_detail: approved.detail,
+                budget_only_accounts: [],
+                translated: [],
+              },
+        }
+      : {}),
     fx_context: { rates_used: fxRatesUsed, missing_rates: fxMissing },
     diagnostics: {
       tenants_loaded: tenants.length,

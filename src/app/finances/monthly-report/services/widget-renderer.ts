@@ -41,6 +41,10 @@ export const WIDGET_METHOD_MAP: Record<WidgetType, string | null> = {
   consolidated_pl: 'renderConsolidatedPL',
   // WG.1 — balance sheet; config.compare selects the comparison column
   balance_sheet: 'renderBalanceSheet',
+  // Bank Balances & Movement — the chosen bank and card accounts, per org
+  bank_balances: 'renderBankBalances',
+  // An uploaded PDF: reserves its pages, which services/pack-pdf fills
+  uploaded_insert: 'renderUploadedInsert',
   // P&L Charts — the three analysis types share one renderer; it reads the
   // section from the widget type, with config.section as a WC.1 override.
   analysis_chart_income: 'renderAnalysisChart',
