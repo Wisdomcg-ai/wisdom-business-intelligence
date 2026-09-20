@@ -2,10 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
-import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
-import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
-import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 import { z } from 'zod'
 import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
 import { validateCapture, summariseDashboardCaptures, type CaptureRow } from '@/lib/cfo/dashboard-capture'
@@ -20,8 +18,16 @@ export const dynamic = 'force-dynamic'
  *   connection of the business (a badge for someone else's org is refused).
  * GET  ?business_id → latest capture per tenant + the business rollup.
  *
- * Coach/admin only — clients don't operate reconciliation. withSchema is
- * observe-mode (VALID-05a); the handler enforces its own contract.
+ * Coach/admin only — clients don't operate reconciliation. These captures
+ * drive the /cfo board's READY/BLOCKED verdict, so the gate is the same
+ * role gate every other user-facing /api/cfo route uses (board,
+ * board-settings, flag-client, recheck-reconciliation, report-status):
+ * super_admin, or the coach this business is actually assigned to.
+ * verifyBusinessAccess alone was NOT that gate — it admits any active
+ * business_users member of the client business, so a client team member
+ * could post a 0 count and flip their own board green (PR #545, F4/D2).
+ * withSchema is observe-mode (VALID-05a); the handler enforces its own
+ * contract.
  */
 const PostSchema = z.object({
   business_id: z.string(),
@@ -34,21 +40,46 @@ const supabase = createClient(
   getSupabaseSecretKey()
 )
 
+/**
+ * Coach-only surface on a service-role client -> app-layer authz. Mirrors
+ * recheck-reconciliation: role gate first, then assigned-coach ownership on
+ * the CANONICAL businesses-space id (the caller may send either id-space —
+ * the #1 recurring incident class). super_admin skips the ownership check;
+ * that branch is load-bearing, not a convenience: the recon round posts as
+ * Matt, who is assigned coach of only 1 of the 12 businesses he captures for.
+ */
 async function authorize(businessId: string): Promise<{ block: NextResponse } | { userId: string }> {
   const authClient = await createRouteHandlerClient()
   const { data: { user }, error: authError } = await authClient.auth.getUser()
   if (authError || !user) {
     return { block: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
-  const verdict = await requireSectionPermission(authClient, user.id, businessId, 'finances')
-  const blocked = enforceSectionPermission(
-    verdict, 'finances', 'api/cfo/reconciliation/dashboard-capture', user.id, businessId,
-  )
-  if (blocked) return { block: blocked }
-  const hasAccess = await verifyBusinessAccess(user.id, businessId)
-  if (!hasAccess) {
-    return { block: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+
+  const { data: roleRow } = await supabase
+    .from('system_roles')
+    .select('role')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  const isSuperAdmin = roleRow?.role === 'super_admin'
+  const isCoach = roleRow?.role === 'coach'
+  if (!isSuperAdmin && !isCoach) {
+    return { block: NextResponse.json({ error: 'Access denied' }, { status: 403 }) }
   }
+
+  if (!isSuperAdmin) {
+    const ids = await resolveBusinessProfileIds(supabase, businessId)
+    const { data: biz } = await supabase
+      .from('businesses')
+      .select('assigned_coach_id')
+      .eq('id', ids.businessId)
+      .maybeSingle()
+    if (!biz || biz.assigned_coach_id !== user.id) {
+      return {
+        block: NextResponse.json({ error: 'Access denied — not your assigned client' }, { status: 403 }),
+      }
+    }
+  }
+
   return { userId: user.id }
 }
 

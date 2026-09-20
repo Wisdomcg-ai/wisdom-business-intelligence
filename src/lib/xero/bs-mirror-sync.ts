@@ -227,10 +227,15 @@ export async function syncBusinessBSMirror(
     // Deliberately NOT stamping last_synced_at here. connection-health and the
     // daily health report read that column as the DATA freshness clock ("are the
     // numbers on screen current"), and this function syncs only the balance
-    // sheet. The manual route bumps it because the same request also runs the
-    // P&L orchestrator; if the daily BS-only cron bumped it, a tenant whose P&L
-    // sync was broken would read as fresh — masking exactly the staleness those
-    // checks exist to catch. The stamp lives with the caller that earns it.
+    // sheet. If the daily BS-only cron bumped it, a tenant whose P&L sync was
+    // broken would read as fresh — masking exactly the staleness those checks
+    // exist to catch.
+    //
+    // Nor does the manual route (/api/monthly-report/sync-xero) bump it any
+    // more. It used to stamp every tenant THIS function reported synced, which
+    // rebuilt the same lie by another door: a BS-only success moving the clock
+    // for an org whose P&L had just failed. syncBusinessXeroPL is the single
+    // writer, per tenant, on that tenant's own success.
 
     syncedTenantIds.push(tenantId)
   }

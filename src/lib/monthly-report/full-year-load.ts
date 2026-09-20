@@ -21,7 +21,8 @@ import { getPriorYearMonth } from '@/lib/monthly-report/shared'
 import { compareStatementLines, looksLikeWizardCode, realStatementCodes, statementAccountCode } from '@/lib/monthly-report/statement-order'
 import { mappingGroup } from '@/lib/monthly-report/expense-groups'
 import { buildFullYearSubtotal } from '@/lib/monthly-report/full-year-subtotal'
-import { loadActiveTenants, multiOrgFallbackRefusal } from '@/lib/monthly-report/multi-org-fallback'
+import { loadActiveTenants } from '@/lib/monthly-report/multi-org-fallback'
+import { loadConsolidatedFullYearActuals } from '@/lib/monthly-report/consolidated-full-year-actuals'
 import type { FullYearLine, FullYearMonthData, FullYearReport } from '@/app/finances/monthly-report/types'
 
 type Client = any
@@ -236,6 +237,11 @@ export async function loadFullYearReport(
     per_tenant_quality: [],
   }
 
+  // Read once, and used for both the branch below and the check inside it: the
+  // page must not choose the consolidated read from one set of organisations
+  // and then perform it over another.
+  const activeTenants = actualsForecast?.id ? [] : await loadActiveTenants(supabase, ids.all)
+
   if (actualsForecast?.id) {
     // D-13 path. D-18 invariant violations propagate to the outer catch.
     const composite = await createForecastReadService(supabase).getMonthlyComposite(actualsForecast.id)
@@ -254,13 +260,34 @@ export async function loadFullYearReport(
       data_quality: composite.data_quality,
       per_tenant_quality: composite.per_tenant_quality,
     }
+  } else if (activeTenants.length > 1) {
+    // More than one organisation: the name-keyed read below would overwrite the
+    // accounts they share and add a foreign currency to AUD one-for-one (see
+    // multi-org-fallback). Read the consolidation instead — the engine the
+    // statement uses, translated at each month's average rate — and refuse,
+    // naming the months, when a rate the page prints is missing (IICT-44).
+    // A read failure throws, as the connection read above does.
+    //
+    // `expect` is these same organisations: the consolidation loads its own set
+    // (businesses.id, include_in_consolidation) and a difference between the
+    // two is a page short by an organisation — or, when nothing is included, an
+    // empty universe and every figure $0 with no error at all.
+    const consolidated = await loadConsolidatedFullYearActuals(supabase, {
+      businessId: ids.businessId,
+      fiscalYear: Number(fiscal_year),
+      yearStartMonth,
+      lastActualMonth,
+      expect: activeTenants,
+    })
+    if (!consolidated.ok) return { ok: false, error: consolidated.error, refused: true }
+    xeroLines = consolidated.lines
+    const consolidatedQuality = await createForecastReadService(supabase).getDataQualityForBusiness(ids.all)
+    dataQuality = {
+      data_quality: consolidatedQuality.data_quality,
+      per_tenant_quality: consolidatedQuality.per_tenant_quality,
+    }
   } else {
-    // Refused for more than one organisation: this read keys on the account
-    // name and a later organisation's months overwrite an earlier one's, with
-    // no exchange rates (see multi-org-fallback). A read failure throws.
-    const refusal = multiOrgFallbackRefusal(await loadActiveTenants(supabase, ids.all), fiscal_year)
-    if (refusal) return { ok: false, error: refusal, refused: true }
-
+    // One organisation (or none): the fallback is exactly the read it was.
     const { data: rawXeroLines, error: xeroErr } = await supabase
       .from('xero_pl_lines_wide_compat')
       .select('account_code, account_name, account_type, section, monthly_values')

@@ -428,19 +428,27 @@ export default function ForecastOverview({
 
   // Phase 58.3 — pull live cash balance from Xero. The Cash KPI card renders
   // a "—" placeholder until this resolves (or stays placeholder if the tenant
-  // has no bank accounts / no Xero connection). Errors are intentionally
-  // swallowed → cash card simply stays in placeholder state, never blocks
-  // the rest of the dashboard.
+  // has no bank accounts / no Xero connection). Never blocks the rest of the
+  // dashboard on failure.
+  //
+  // The route distinguishes genuine "not connected" (`code: 'NO_CONNECTION'`,
+  // or a 401 for an expired connection) from every other failure — a Xero
+  // rate limit, a Xero API error, an internal error. Only the former is
+  // something "Connect Xero" actually fixes; collapsing every failure into
+  // one state told a fully-connected tenant hit by a rate limit or outage to
+  // go "Connect Xero" — a false, wasted action.
   const [cashPosition, setCashPosition] = useState<number | null>(null)
   const [cashAsOf, setCashAsOf] = useState<string | null>(null)
   const [cashLoading, setCashLoading] = useState(true)
-  const [cashUnavailable, setCashUnavailable] = useState(false)
+  const [cashFailure, setCashFailure] = useState<'not_connected' | 'unavailable' | null>(null)
+  const [cashFailureReason, setCashFailureReason] = useState<string | null>(null)
 
   useEffect(() => {
     if (!businessId) return
     let cancelled = false
     setCashLoading(true)
-    setCashUnavailable(false)
+    setCashFailure(null)
+    setCashFailureReason(null)
 
     // Past-FY view → ask for cash AS OF the last day of that FY (30 June
     // for an AU FY25, etc.). Current and future FY keep today's balance.
@@ -454,7 +462,27 @@ export default function ForecastOverview({
     }
     fetch(url.toString())
       .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        if (!res.ok) {
+          // NO_CONNECTION is the route's name for the genuine "not connected"
+          // case; every other body (rate limit, Xero API error, internal
+          // error) is a transient failure, not a missing connection.
+          let code: string | undefined
+          let message: string | undefined
+          try {
+            const body = await res.json()
+            if (typeof body?.code === 'string') code = body.code
+            if (typeof body?.error === 'string') message = body.error
+          } catch {
+            // Non-JSON error body — fall through with status only.
+          }
+          const err = new Error(message ?? `HTTP ${res.status}`) as Error & {
+            status: number
+            code?: string
+          }
+          err.status = res.status
+          err.code = code
+          throw err
+        }
         return (await res.json()) as { cash: number | null; currency: string; as_of: string }
       })
       .then((json) => {
@@ -465,7 +493,11 @@ export default function ForecastOverview({
       .catch((err: unknown) => {
         if (cancelled) return
         console.warn('[ForecastOverview] cash position fetch failed', err)
-        setCashUnavailable(true)
+        const status = (err as { status?: number } | undefined)?.status
+        const code = (err as { code?: string } | undefined)?.code
+        const notConnected = code === 'NO_CONNECTION' || status === 401
+        setCashFailure(notConnected ? 'not_connected' : 'unavailable')
+        setCashFailureReason(notConnected || !(err instanceof Error) ? null : err.message)
       })
       .finally(() => {
         if (!cancelled) setCashLoading(false)
@@ -533,6 +565,8 @@ export default function ForecastOverview({
       <KpiStrip
         totals={totals}
         xeroMonths={xeroMonths}
+        xeroActualsLoading={xeroActualsLoading}
+        xeroActualsError={xeroActualsError}
         lastClosedIndex={expectedLastActualIndex}
         revenuePlan={revenuePlan}
         grossPlan={grossPlan}
@@ -540,7 +574,8 @@ export default function ForecastOverview({
         cashPosition={cashPosition}
         cashAsOf={cashAsOf}
         cashLoading={cashLoading}
-        cashUnavailable={cashUnavailable}
+        cashFailure={cashFailure}
+        cashFailureReason={cashFailureReason}
         fyMode={fyMode}
       />
       <TrajectoryCard
@@ -604,6 +639,14 @@ interface KpiStripProps {
    * "this month" (see utils/dashboard-actual-series).
    */
   xeroMonths: DashboardActualsMonth[] | null
+  /** True while the dashboard-actuals request is in flight. */
+  xeroActualsLoading: boolean
+  /**
+   * Set when the dashboard-actuals request failed. The strip has no second
+   * source of actuals to fall back to, so it must say so rather than print the
+   * plan as though it were performance — see the fail-closed note in KpiStrip.
+   */
+  xeroActualsError: string | null
   /**
    * Last month whose calendar month-end has passed. Xero carries the month in
    * progress; counting a part month as an actual understates YTD against a
@@ -617,8 +660,15 @@ interface KpiStripProps {
   cashPosition: number | null
   cashAsOf: string | null
   cashLoading: boolean
-  /** True when the BS endpoint errored (auth, no connection, etc). */
-  cashUnavailable: boolean
+  /**
+   * Set when the cash fetch errored. 'not_connected' is the genuine
+   * NO_CONNECTION / expired-401 case — "Connect Xero" actually fixes it.
+   * 'unavailable' is everything else (rate limit, Xero API error, internal
+   * error) — a transient failure that a reconnect CTA would misdiagnose.
+   */
+  cashFailure: 'not_connected' | 'unavailable' | null
+  /** Error text from the failed response, surfaced only for 'unavailable'. */
+  cashFailureReason: string | null
   /** Selected FY relationship to today — drives copy & status pill visibility. */
   fyMode: FYMode
 }
@@ -626,6 +676,8 @@ interface KpiStripProps {
 function KpiStrip({
   totals,
   xeroMonths,
+  xeroActualsLoading,
+  xeroActualsError,
   lastClosedIndex,
   revenuePlan,
   grossPlan,
@@ -633,7 +685,8 @@ function KpiStrip({
   cashPosition,
   cashAsOf,
   cashLoading,
-  cashUnavailable,
+  cashFailure,
+  cashFailureReason,
   fyMode,
 }: KpiStripProps) {
   // KPI strip uses the data-driven cutoff (NOT the calendar floor) for YTD and
@@ -642,10 +695,36 @@ function KpiStrip({
   // for the monthly trend table / trajectory chart where the column label
   // ("Apr 26") needs to read as actual even when data hasn't synced yet.
   // Actuals come from Xero when available, falling back to whatever the stored
-  // lines carry — so a failed fetch degrades to the old behaviour, never to $0.
+  // lines carry (the Phase 65 estimated / prior-FY paths put real actuals in
+  // actual_months; a wizard-built forecast has had none since Phase 44).
   // Capped at the last CLOSED month: the month in progress is not an actual.
   const series = deriveActualSeries(totals, xeroMonths, lastClosedIndex)
   const dataIdx = series.dataLastActualIndex
+
+  /**
+   * Fail closed when the actuals could not be loaded.
+   *
+   * The old comment here said a failed fetch "degrades to the old behaviour,
+   * never to $0" — but for any wizard-built forecast the old behaviour IS $0:
+   * actual_months has been empty since Phase 44, so the fallback has nothing
+   * in it. On a 500 the strip printed "On track · $495k this month · YTD $0"
+   * in September, where $495k was JULY'S PLAN. Every one of those is a claim
+   * about actuals that no data supports.
+   *
+   * So: a failure the fallback cannot cover gets its own amber card, and the
+   * window before the request resolves gets a neutral one. When the fallback
+   * DOES carry actuals (dataIdx >= 0) the strip still has a real answer and
+   * keeps rendering it — that is what failing open was meant to protect.
+   * A future FY has no actuals by definition and is never in either state.
+   */
+  const actualsState: 'ready' | 'pending' | 'unavailable' =
+    dataIdx >= 0 || fyMode === 'future'
+      ? 'ready'
+      : xeroActualsError
+        ? 'unavailable'
+        : xeroActualsLoading
+          ? 'pending'
+          : 'ready'
   const monthsElapsed = dataIdx + 1 // number of months with actuals so far
   const ytdProrate = (annualPlan: number) =>
     monthsElapsed > 0 ? Math.round((annualPlan / 12) * monthsElapsed) : 0
@@ -681,6 +760,8 @@ function KpiStrip({
    *   - prior   → "Final" pill, year-end actual is the big number
    *   - current → today's logic (this-month big number, YTD vs prorated plan)
    *   - future  → "Plan" pill, monthly plan big number, plan-only sub-rows
+   * Short-circuits to the pending / unavailable card when there are no
+   * actuals to report and the reason is the fetch, not the data.
    */
   const buildKpiCard = (
     label: string,
@@ -688,6 +769,12 @@ function KpiStrip({
     annualPlan: number,
     accent: 'navy' | 'teal' | 'orange',
   ): KpiCardProps => {
+    // No actuals and no way to get them → say so. The plan is still a fact,
+    // so it stays on the card; "this month", YTD, year-end and the
+    // ahead/behind pill are not, so they go.
+    if (actualsState !== 'ready') {
+      return { kind: actualsState, label, accent, annualPlan, reason: xeroActualsError }
+    }
     const yearEnd = yearTotal(series)
     if (fyMode === 'prior') {
       return {
@@ -737,7 +824,8 @@ function KpiStrip({
       cashPosition,
       cashAsOf,
       cashLoading,
-      cashUnavailable,
+      cashFailure,
+      cashFailureReason,
       fyMode,
     },
   ]
@@ -782,13 +870,31 @@ type KpiCardProps =
       accent: 'navy' | 'teal' | 'orange'
     }
   | {
+      /** The actuals request failed and the stored lines carry none either. */
+      kind: 'unavailable'
+      label: string
+      annualPlan: number
+      /** Why the fetch failed, echoed so a support call has something to go on. */
+      reason: string | null
+      accent: 'navy' | 'teal' | 'orange'
+    }
+  | {
+      /** The actuals request is still in flight and nothing is known yet. */
+      kind: 'pending'
+      label: string
+      annualPlan: number
+      reason: string | null
+      accent: 'navy' | 'teal' | 'orange'
+    }
+  | {
       kind: 'cash'
       label: string
       accent: 'navy' | 'teal' | 'orange'
       cashPosition: number | null
       cashAsOf: string | null
       cashLoading: boolean
-      cashUnavailable: boolean
+      cashFailure: 'not_connected' | 'unavailable' | null
+      cashFailureReason: string | null
       fyMode: FYMode
     }
 
@@ -805,6 +911,8 @@ const ACCENT_FILL: Record<'navy' | 'teal' | 'orange', string> = {
 
 function KpiCard(props: KpiCardProps) {
   if (props.kind === 'cash') return <KpiCashCard {...props} />
+  if (props.kind === 'unavailable') return <KpiActualsUnavailableCard {...props} />
+  if (props.kind === 'pending') return <KpiActualsPendingCard {...props} />
   if (props.kind === 'prior') return <KpiPriorCard {...props} />
   if (props.kind === 'future') return <KpiFutureCard {...props} />
   return <KpiCurrentCard {...props} />
@@ -989,8 +1097,97 @@ function KpiFutureCard(props: Extract<KpiCardProps, { kind: 'future' }>) {
   )
 }
 
+/**
+ * The actuals could not be loaded.
+ *
+ * Amber, and deliberately empty where a number would be a lie: no big figure,
+ * no "this month", no YTD, no ahead/behind pill, no sparkline. The annual plan
+ * stays because it is still true — it comes from the forecast, not from Xero.
+ */
+function KpiActualsUnavailableCard(props: Extract<KpiCardProps, { kind: 'unavailable' }>) {
+  const { label, annualPlan, reason } = props
+
+  return (
+    <article className="bg-white border border-amber-200 rounded-xl p-5 flex flex-col gap-3.5">
+      <header className="flex items-start justify-between gap-2">
+        <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
+          {label}
+        </span>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-100">
+          <AlertTriangle className="w-3 h-3" strokeWidth={2.5} />
+          Couldn&apos;t load
+        </span>
+      </header>
+
+      <div>
+        <div className="text-3xl font-semibold tabular-nums leading-none text-gray-300">—</div>
+        <div className="mt-1 text-xs text-gray-500">actuals unavailable</div>
+      </div>
+
+      <div className="h-9" />
+
+      <dl className="text-xs space-y-1.5 pt-1 border-t border-gray-100 mt-1">
+        <div className="flex items-baseline justify-between gap-2 pt-2">
+          <dt className="text-gray-500">Annual plan</dt>
+          <dd className="text-gray-700 tabular-nums">
+            {annualPlan > 0 ? fmtMoney(annualPlan, { compact: true }) : '—'}
+          </dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-2">
+          <dt className="text-gray-500">Year to date</dt>
+          <dd className="text-amber-700">couldn&apos;t check</dd>
+        </div>
+      </dl>
+
+      <p className="text-xs text-amber-700">
+        Couldn&apos;t load actuals from Xero{reason ? ` — ${reason}` : ''}. Showing the plan only.
+      </p>
+    </article>
+  )
+}
+
+/** Same shape as the unavailable card, but neutral: the answer is still coming. */
+function KpiActualsPendingCard(props: Extract<KpiCardProps, { kind: 'pending' }>) {
+  const { label, annualPlan } = props
+
+  return (
+    <article className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-3.5">
+      <header className="flex items-start justify-between gap-2">
+        <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
+          {label}
+        </span>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200">
+          Loading
+        </span>
+      </header>
+
+      <div>
+        <div className="text-3xl font-semibold tabular-nums leading-none text-gray-300">…</div>
+        <div className="mt-1 text-xs text-gray-500">loading actuals…</div>
+      </div>
+
+      <div className="h-9" />
+
+      <dl className="text-xs space-y-1.5 pt-1 border-t border-gray-100 mt-1">
+        <div className="flex items-baseline justify-between gap-2 pt-2">
+          <dt className="text-gray-500">Annual plan</dt>
+          <dd className="text-gray-700 tabular-nums">
+            {annualPlan > 0 ? fmtMoney(annualPlan, { compact: true }) : '—'}
+          </dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-2">
+          <dt className="text-gray-500">Year to date</dt>
+          <dd className="text-gray-400">…</dd>
+        </div>
+      </dl>
+
+      <p className="text-xs text-gray-400">Checking Xero for this year&apos;s actuals.</p>
+    </article>
+  )
+}
+
 function KpiCashCard(props: Extract<KpiCardProps, { kind: 'cash' }>) {
-  const { cashPosition, cashAsOf, cashLoading, cashUnavailable, fyMode } = props
+  const { cashPosition, cashAsOf, cashLoading, cashFailure, cashFailureReason, fyMode } = props
   const hasCash = cashPosition != null && Number.isFinite(cashPosition)
 
   // Future FY: no cash forecast available — render explicit "—" with note.
@@ -998,6 +1195,37 @@ function KpiCashCard(props: Extract<KpiCardProps, { kind: 'cash' }>) {
   // BS endpoint returns "as of today" which is correct context regardless of
   // which FY tab is selected (cash is a balance, not an FY-bound flow).
   const isFuture = fyMode === 'future'
+
+  // 'unavailable' (rate limit / Xero API error / internal error) is not a
+  // missing connection — "Connect Xero" would be a false, wasted action for a
+  // fully-connected tenant hit by a transient failure. Say so instead, with
+  // no CTA, in the same amber pill + note styling as KpiActualsUnavailableCard
+  // so the strip reads as one system. Future FY never shows a live figure
+  // regardless of fetch outcome, so it keeps its own copy below.
+  if (cashFailure === 'unavailable' && !isFuture) {
+    return (
+      <article className="bg-white border border-amber-200 rounded-xl p-5 flex flex-col gap-3.5">
+        <header className="flex items-start justify-between gap-2">
+          <span className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">
+            {props.label}
+          </span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-100">
+            <AlertTriangle className="w-3 h-3" strokeWidth={2.5} />
+            Couldn&apos;t check
+          </span>
+        </header>
+        <div>
+          <div className="text-3xl font-semibold tabular-nums leading-none text-gray-300">—</div>
+          <div className="mt-1 text-xs text-gray-500">cash unavailable</div>
+        </div>
+        <div className="h-9" />
+        <p className="text-xs text-amber-700 pt-1 border-t border-gray-100 mt-1 pt-3">
+          Couldn&apos;t check your live cash position from Xero
+          {cashFailureReason ? ` — ${cashFailureReason}` : ''}.
+        </p>
+      </article>
+    )
+  }
 
   // Format the as-of date as "as of 7 May 2026" — falls back gracefully
   // when no date string is present.
@@ -1017,7 +1245,7 @@ function KpiCashCard(props: Extract<KpiCardProps, { kind: 'cash' }>) {
 
   const helperText = isFuture
     ? "Cash position depends on cashflow timing and isn't projected by this model."
-    : cashUnavailable
+    : cashFailure === 'not_connected'
     ? 'Connect Xero to see your live cash position.'
     : !hasCash && !cashLoading
     ? 'No bank accounts found in Xero.'
@@ -1159,7 +1387,7 @@ interface DashboardActualsMonth {
 }
 
 interface DashboardActualsResponse {
-  data: { months: DashboardActualsMonth[]; lastSyncedAt: string | null } | null
+  data: { months: DashboardActualsMonth[] } | null
   hasData: boolean
 }
 

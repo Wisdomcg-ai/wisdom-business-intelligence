@@ -25,12 +25,12 @@ describe('parseContractorPageConfig', () => {
   it('is the standard page with no config, as every other client has it', () => {
     expect(parseContractorPageConfig(undefined)).toEqual({
       ok: true,
-      config: { layout: 'rollup', months: 2, basis: 'gross', subtotal_variance: false, unallocated_row: false, uncategorised_label: 'Uncategorised' },
+      config: { layout: 'rollup', months: 2, basis: 'gross', subtotal_variance: false, unallocated_row: false, uncategorised_label: 'Uncategorised', entity_columns: 'none' },
     })
   })
 
   it('under calxa: three months, net, subtotal variances and Unallocated', () => {
-    expect(calxa()).toEqual({ layout: 'calxa', months: 3, basis: 'net', subtotal_variance: true, unallocated_row: true, uncategorised_label: 'Uncategorised' })
+    expect(calxa()).toEqual({ layout: 'calxa', months: 3, basis: 'net', subtotal_variance: true, unallocated_row: true, uncategorised_label: 'Uncategorised', entity_columns: 'none' })
     expect(calxa({ months: 4 }).months).toBe(4)
   })
 
