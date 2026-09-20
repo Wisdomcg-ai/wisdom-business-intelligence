@@ -162,7 +162,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 import * as Sentry from '@sentry/nextjs'
-import { runHealthChecks, getLastSyncByTenant } from '@/lib/health-checks'
+import { runHealthChecks, getLastSyncByTenant, getLastSyncByTenantSince } from '@/lib/health-checks'
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
@@ -388,6 +388,51 @@ describe('R30 — getLastSyncByTenant', () => {
         expect(syncJobsRequests[syncJobsRequests.length - 1].rows).toBe(0)
       }
     })
+
+    it('from an explicit instant: a finish at that instant counts, one a millisecond earlier does not', async () => {
+      const since = Date.now() - 26 * HOUR
+      results.sync_jobs = {
+        data: [
+          { tenant_id: 't-at', finished_at: new Date(since).toISOString() },
+          { tenant_id: 't-before', finished_at: new Date(since - 1).toISOString() },
+        ],
+        error: null,
+      }
+      const { ok, byTenant, error } = await getLastSyncByTenantSince(fakeClient as any, since)
+      expect(ok).toBe(true)
+      expect(error).toBeNull()
+      expect([...byTenant.keys()]).toEqual(['t-at'])
+      if (mode === 'deployed') expect(rpcCalls.map((c) => c.args.p_since)).toEqual([new Date(since).toISOString()])
+    })
+  })
+
+  it.each([
+    [
+      'the function errors',
+      () => {
+        rpcReply = { data: null, error: { code: '42501', message: 'permission denied for function last_xero_sync_by_tenant' } }
+      },
+      /^last_xero_sync_by_tenant: permission denied/,
+    ],
+    ['its reply is not an object', () => { rpcReply = { data: [], error: null } }, /not a \{tenant_id: finished_at\} object/],
+    ['an entry is unreadable', () => { rpcReply = { data: { t1: 'never' }, error: null } }, /unreadable entry for tenant "t1"/],
+    ['a fallback page fails', () => { rpcReply = 'missing'; failingSyncJobsRequest = 1 }, /^sync_jobs page 2: canceling statement due to statement timeout/],
+    [
+      'the fallback runs out of pages',
+      () => {
+        rpcReply = 'missing'
+        rowCap = 50
+        results.sync_jobs = { data: prodShapedWindow().rows, error: null }
+      },
+      /did not end within 50 pages/,
+    ],
+  ])('a failed lookup says why when %s', async (_label, arrange, reason) => {
+    results.sync_jobs = { data: [{ tenant_id: 't1', finished_at: isoAgo(HOUR) }], error: null }
+    arrange()
+    const { ok, byTenant, error } = await getLastSyncByTenantSince(fakeClient as any, Date.now() - 60 * DAY)
+    expect(ok).toBe(false)
+    expect(byTenant.size).toBe(0)
+    expect(error).toMatch(reason)
   })
 
   it('the prod-shaped window really does break a single read: the oldest 1,000 rows, weeks-old clocks, orgs missing', async () => {
