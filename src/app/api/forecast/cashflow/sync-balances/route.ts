@@ -16,6 +16,8 @@ import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { forecastBelongsToBusiness } from '@/lib/budgets/owned-forecast'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -149,6 +151,38 @@ async function postHandler(request: Request) {
       business_id,
     )
     if (_sectionBlocked) return _sectionBlocked
+
+    // A forecast id from the request body is a capability, not an identifier.
+    // The save below runs on the module-level service-role client, which
+    // bypasses RLS, and verifying the POSTED business_id proves nothing about a
+    // forecast id the caller chose: until this check, any authenticated user
+    // with access to ANY business could overwrite ANY forecast's
+    // assumptions.cashflow (audit F1). The id-set comes from
+    // resolveBusinessProfileIds because financial_forecasts.business_id is
+    // business_profiles-space — matching it against businesses.id alone would
+    // reject every legitimate caller.
+    //
+    // Checked HERE, ahead of the three Xero calls, so a refused request spends
+    // no Xero quota and touches nothing. A forecast that belongs to someone
+    // else and one that does not exist get the same refusal on purpose:
+    // splitting them would answer "does this forecast id exist?" for anyone
+    // who asks.
+    let ownedBusinessIds: string[] = []
+    if (forecast_id) {
+      const ids = await resolveBusinessProfileIds(supabase, business_id)
+      ownedBusinessIds = ids.all
+      if (!(await forecastBelongsToBusiness(supabase, forecast_id, ownedBusinessIds))) {
+        Sentry.captureMessage('[SyncBalances] refused a forecast_id from another business', {
+          level: 'warning' as any,
+          tags: { route: 'forecast/cashflow/sync-balances', invariant: 'forecast-id-not-owned' },
+          extra: { business_id, user_id: user.id, requestedForecastId: forecast_id },
+        } as any)
+        return NextResponse.json(
+          { error: 'That forecast does not belong to this business', code: 'FORECAST_NOT_OWNED' },
+          { status: 403 },
+        )
+      }
+    }
 
     // Resolve Xero connection (3-step lookup pattern)
     let connection: any = null
@@ -354,38 +388,64 @@ async function postHandler(request: Request) {
       classification_log: classificationLog,
     }
 
-    // Optionally persist to the forecast's assumptions
+    // Optionally persist to the forecast's assumptions.
+    // Both queries carry `.in('business_id', ownedBusinessIds)` as well as the
+    // guard above: the write names the business it was authorised for, so it
+    // cannot land on another tenant's row even if the guard is ever moved or
+    // an id is reassigned between the two statements.
     if (save && forecast_id) {
-      const { data: forecast } = await supabase
+      const { data: forecast, error: readError } = await supabase
         .from('financial_forecasts')
         .select('assumptions')
         .eq('id', forecast_id)
+        .in('business_id', ownedBusinessIds)
         .maybeSingle()
 
-      if (forecast) {
-        const existing = forecast.assumptions ?? {}
-        const existingCashflow = existing.cashflow ?? {}
-        const updated = {
-          ...existing,
-          cashflow: {
-            ...existingCashflow,
-            ...result,
-            // Preserve user-configured values that shouldn't be overwritten by sync
-            loans: existingCashflow.loans ?? result.detected_loans?.map((l: any) => ({
-              name: l.name,
-              balance: l.balance,
-              monthly_repayment: 0,
-              interest_rate: 0.065,
-              is_interest_only: false,
-            })) ?? [],
-            planned_stock_changes: existingCashflow.planned_stock_changes ?? {},
-          },
-        }
+      if (readError || !forecast) {
+        // Ownership was just proven, so the row was there moments ago. Report
+        // it rather than return 200 for a save that did not happen — the
+        // caller writes these numbers straight into the on-screen assumptions.
+        Sentry.captureException(readError ?? new Error('Forecast vanished between the ownership check and the save'), {
+          tags: { route: 'forecast/cashflow/sync-balances', invariant: 'sync_balances_assumptions_read_failed' },
+          extra: { forecast_id, business_id },
+        } as any)
+        return NextResponse.json({ error: 'Failed to save balances to the forecast' }, { status: 500 })
+      }
 
-        await supabase
-          .from('financial_forecasts')
-          .update({ assumptions: updated })
-          .eq('id', forecast_id)
+      const existing = forecast.assumptions ?? {}
+      const existingCashflow = existing.cashflow ?? {}
+      const updated = {
+        ...existing,
+        cashflow: {
+          ...existingCashflow,
+          ...result,
+          // Preserve user-configured values that shouldn't be overwritten by sync
+          loans: existingCashflow.loans ?? result.detected_loans?.map((l: any) => ({
+            name: l.name,
+            balance: l.balance,
+            monthly_repayment: 0,
+            interest_rate: 0.065,
+            is_interest_only: false,
+          })) ?? [],
+          planned_stock_changes: existingCashflow.planned_stock_changes ?? {},
+        },
+      }
+
+      const { error: updateError } = await supabase
+        .from('financial_forecasts')
+        .update({ assumptions: updated })
+        .eq('id', forecast_id)
+        .in('business_id', ownedBusinessIds)
+
+      if (updateError) {
+        // House rule: no swallowed WRITE failures. Answering 200 here would
+        // let the caller merge these balances into its local assumptions and
+        // show a saved state the forecast never took.
+        Sentry.captureException(updateError, {
+          tags: { route: 'forecast/cashflow/sync-balances', invariant: 'sync_balances_assumptions_write_failed' },
+          extra: { forecast_id, business_id },
+        } as any)
+        return NextResponse.json({ error: 'Failed to save balances to the forecast' }, { status: 500 })
       }
     }
 
