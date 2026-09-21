@@ -259,19 +259,36 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   // Integrations tab (or elsewhere) updates the banner without a full reload.
   const [dataQuality, setDataQuality] = useState<DataQuality>('verified')
   const [perTenantQuality, setPerTenantQuality] = useState<PerTenantQuality[]>([])
+  // Third state: the quality check could not be run. `dataQuality` is seeded to
+  // 'verified', so without this a failed fetch renders exactly like a clean
+  // bill of health.
+  const [qualityCheckFailed, setQualityCheckFailed] = useState(false)
   useEffect(() => {
     if (!businessId) return
     let aborted = false
     const fetchQuality = async () => {
       try {
         const r = await fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`)
-        if (!r.ok || aborted) return
+        if (aborted) return
+        if (!r.ok) {
+          setQualityCheckFailed(true)
+          return
+        }
         const data = await r.json()
-        if (aborted || !data?.summary) return
+        if (aborted) return
+        if (!data?.summary) {
+          setQualityCheckFailed(true)
+          return
+        }
         if (data.summary.data_quality) setDataQuality(data.summary.data_quality)
         if (Array.isArray(data.summary.per_tenant_quality)) setPerTenantQuality(data.summary.per_tenant_quality)
+        // The route reached us, but a read behind the tier may still have
+        // failed — that tier is then a default, not a measurement.
+        setQualityCheckFailed(data.summary.quality_check_failed === true)
       } catch {
-        // Non-blocking — banner stays as 'verified' (silent) on fetch failure.
+        // Non-blocking, but NOT silent: an unreachable check is reported as
+        // "couldn't verify", never as a clean bill of health.
+        if (!aborted) setQualityCheckFailed(true)
       }
     }
     void fetchQuality()
@@ -2066,13 +2083,19 @@ export function Step3RevenueCOGS({ state, actions, fiscalYear }: Step3RevenueCOG
   return (
     <div className="space-y-4">
       {/* D-44.2-02 — read-path data integrity banner. Renders nothing when verified.
-          Suppress 'no_sync' when actuals are already loaded — the API returns
-          'no_sync' if xero_connections.is_active is false or sync_jobs is in
-          'running'/unknown, but xero_pl_lines may still hold last-good data.
-          Telling the coach to "Connect Xero" when YTD is visibly populated is
-          contradictory; partial / failed / stale still fire correctly. */}
+
+          The 'no_sync'-when-actuals-are-loaded suppression that used to sit here
+          was compensating for a bug, not for a real product case: the sole
+          authenticated SELECT policy on sync_jobs compared the wrong id-space,
+          so this route's RLS-bound read returned zero rows for every business
+          and every tenant resolved to 'no_sync'. Rewriting that to 'verified'
+          meant a business whose last sync ERRORED rendered a clean bill of
+          health. The policy is fixed (20260916120000); 'no_sync' is now honest
+          and the tier is shown as measured. `checkFailed` covers the case the
+          suppression was really reaching for — we could not check. */}
       <DataIntegrityBanner
-        quality={dataQuality === 'no_sync' && (currentYTD?.months_count ?? 0) > 0 ? 'verified' : dataQuality}
+        quality={dataQuality}
+        checkFailed={qualityCheckFailed}
         perTenantQuality={perTenantQuality}
         lastSyncAt={perTenantQuality[0]?.last_sync_at ?? null}
       />
