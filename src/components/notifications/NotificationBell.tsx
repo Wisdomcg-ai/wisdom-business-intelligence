@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Bell, X, Check, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
+import { safeReturnPath } from '@/lib/utils/safe-return-path'
 
 interface Notification {
   id: string
@@ -195,9 +196,10 @@ export default function NotificationBell() {
                             <span className="text-xs text-gray-500">
                               {formatTimeAgo(notification.created_at)}
                             </span>
-                            {notification.link && (
+                            {/* S3: only ever a same-site path — never javascript: or an outside URL. */}
+                            {notification.link && safeReturnPath(notification.link, '') && (
                               <Link
-                                href={notification.link}
+                                href={safeReturnPath(notification.link, '')}
                                 onClick={() => {
                                   setShowDropdown(false)
                                   if (!notification.read) {
