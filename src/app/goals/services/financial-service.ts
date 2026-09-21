@@ -2,6 +2,7 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
+import { toDateOnly } from '@/lib/utils/date-only'
 import { FinancialData, CoreMetricsData } from '../types'
 import type { CurrentActualsProvenance } from '../utils/rollover-math'
 
@@ -114,10 +115,11 @@ export class FinancialService {
         year1_months: extendedPeriod?.year1Months ?? 12,
         current_year_remaining_months: extendedPeriod?.currentYearRemainingMonths ?? 0,
 
-        // Phase 42: Persist plan period as ISO date strings (YYYY-MM-DD)
-        plan_start_date: planPeriod?.planStartDate ? planPeriod.planStartDate.toISOString().slice(0, 10) : null,
-        plan_end_date:   planPeriod?.planEndDate   ? planPeriod.planEndDate.toISOString().slice(0, 10)   : null,
-        year1_end_date:  planPeriod?.year1EndDate  ? planPeriod.year1EndDate.toISOString().slice(0, 10)  : null,
+        // Phase 42: Persist plan period as ISO date strings (YYYY-MM-DD).
+        // B2: the LOCAL calendar date — toISOString() saved the day before in Australia.
+        plan_start_date: planPeriod?.planStartDate ? toDateOnly(planPeriod.planStartDate) : null,
+        plan_end_date:   planPeriod?.planEndDate   ? toDateOnly(planPeriod.planEndDate)   : null,
+        year1_end_date:  planPeriod?.year1EndDate  ? toDateOnly(planPeriod.year1EndDate)  : null,
 
         updated_at: new Date().toISOString()
       }

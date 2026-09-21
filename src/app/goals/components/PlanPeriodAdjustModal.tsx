@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { suggestPlanPeriod } from '../utils/suggest-plan-period'
+import { toDateOnly, parseDateOnly } from '@/lib/utils/date-only'
 
 export interface PlanPeriodAdjustModalProps {
   initialPlanStart: Date
@@ -13,14 +14,15 @@ export interface PlanPeriodAdjustModalProps {
   onSave: (period: { planStartDate: Date; planEndDate: Date; year1EndDate: Date }) => void
 }
 
+// B2 (22 Sep 2026): these used toISOString(), the UTC date — every date showed
+// one day early in Australia. Local calendar fields round-trip exactly.
 function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  return toDateOnly(d)
 }
 
 function fromIsoDate(s: string): Date {
-  // "YYYY-MM-DD" -> local Date
-  const [y, m, day] = s.split('-').map(Number)
-  return new Date(y, m - 1, day)
+  // "YYYY-MM-DD" -> local Date; an emptied input keeps no date rather than NaN.
+  return parseDateOnly(s) ?? new Date(NaN)
 }
 
 function monthDiffInclusive(start: Date, end: Date): number {
