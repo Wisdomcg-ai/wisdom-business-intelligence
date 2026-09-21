@@ -10,6 +10,7 @@ import {
   isFoundationMode,
   effectiveFoundationMode,
   toSessionModeOverride,
+  isInWorkshopProgramme,
   type ReviewReadiness,
   type SessionModeOverride,
   type Signal,
@@ -61,6 +62,7 @@ export default function ReviewReadinessPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [excludedCfoOnly, setExcludedCfoOnly] = useState(0);
 
   const canOverride = currentUser?.role === 'coach' || currentUser?.role === 'admin';
 
@@ -77,15 +79,25 @@ export default function ReviewReadinessPage() {
         // the businesses he runs reviews for, so filtering on assigned_coach_id
         // would hide most of the fleet from him.
         const [bizRes, profRes] = await Promise.all([
-          supabase.from('businesses').select('id, name, owner_id, review_session_mode'),
-          supabase.from('business_profiles').select('id, user_id, business_name'),
+          supabase.from('businesses').select('id, name, owner_id, review_session_mode, program_type'),
+          supabase.from('business_profiles').select('id, business_id, business_name'),
         ]);
         if (bizRes.error) throw bizRes.error;
         if (profRes.error) throw profRes.error;
 
-        const businesses = bizRes.data ?? [];
+        // CFO-only clients don't take part in workshops, so they aren't workshop
+        // candidates. Counted rather than silently dropped, so the list never
+        // looks shorter than it is without saying why.
+        const allBusinesses = bizRes.data ?? [];
+        const businesses = allBusinesses.filter(b => isInWorkshopProgramme(b.program_type));
+        if (!cancelled) setExcludedCfoOnly(allBusinesses.length - businesses.length);
+
         const profiles = profRes.data ?? [];
-        const profileByOwner = new Map(profiles.map(p => [String(p.user_id), p]));
+        // Match each business to ITS profile through the real link
+        // (business_profiles.business_id → businesses.id), not through the owner.
+        // Keying on owner put one profile on every business a person owns, and
+        // ignored the column that actually says which business a profile is for.
+        const profileByBusiness = new Map(profiles.map(p => [String(p.business_id), p]));
         const profileIds = profiles.map(p => String(p.id));
 
         // One pass per table. A failed read leaves that column 'unknown' for every
@@ -145,7 +157,7 @@ export default function ReviewReadinessPage() {
 
         const built: Row[] = businesses
           .map(b => {
-            const profile = profileByOwner.get(String(b.owner_id));
+            const profile = profileByBusiness.get(String(b.id));
             const profileId = profile ? String(profile.id) : null;
             return {
               businessesId: String(b.id),
@@ -330,6 +342,12 @@ export default function ReviewReadinessPage() {
         <Check className="w-3 h-3 inline text-green-600" /> has it ·{' '}
         <Minus className="w-3 h-3 inline text-gray-300" /> doesn&apos;t ·{' '}
         <AlertTriangle className="w-3 h-3 inline text-amber-500" /> couldn&apos;t check.
+        {excludedCfoOnly > 0 && (
+          <>
+            {' '}{excludedCfoOnly} CFO-only {excludedCfoOnly === 1 ? 'client isn’t' : 'clients aren’t'} listed —
+            they don&apos;t take part in workshops. Change a client&apos;s program type on their Profile tab.
+          </>
+        )}
         A client with no plan or no history is detected as a first session. Your choice
         sticks until you change it, and never changes a review they&apos;ve already completed.
       </p>
