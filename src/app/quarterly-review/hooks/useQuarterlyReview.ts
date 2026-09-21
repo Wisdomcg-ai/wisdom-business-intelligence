@@ -6,6 +6,7 @@ import { resolveBusinessId } from '@/lib/business/resolveBusinessId';
 import { useBusinessContext } from '@/contexts/BusinessContext';
 import { quarterlyReviewService } from '../services/quarterly-review-service';
 import { migrateStep, migrateSteps } from '../utils/step-migration';
+import { captureReviewWriteFailure } from '../utils/capture-write-failure';
 import { strategicSyncService } from '../services/strategic-sync-service';
 import { assemblePlanData } from '@/app/one-page-plan/services/plan-data-assembler';
 import { planSnapshotService } from '@/app/one-page-plan/services/plan-snapshot-service';
@@ -48,6 +49,7 @@ import {
   getDefaultQuarterlyTargets,
   getDefaultInitiativesChanges,
   getDefaultPersonalCommitments,
+  planQuarterKey,
   type YearType
 } from '../types';
 
@@ -67,6 +69,12 @@ interface UseQuarterlyReviewReturn {
   isSaving: boolean;
   isCompleting: boolean;
   hasUnsavedChanges: boolean;
+  /** Last transient write failure. Distinct from `error`, which is fatal (load). */
+  saveError: string | null;
+  /** The review completed but the plan did not reach the strategic tables. */
+  planSyncFailed: boolean;
+  /** The review completed but its actuals / snapshot were not recorded. */
+  historyWriteFailed: boolean;
   reviewType: ReviewType;
 
   // Quarter info
@@ -83,6 +91,7 @@ interface UseQuarterlyReviewReturn {
   // Actions
   initReview: () => Promise<void>;
   saveReview: () => Promise<void>;
+  retrySave: () => Promise<void>;
   goToStep: (step: WorkshopStep) => Promise<void>;
   completeCurrentStep: () => Promise<void>;
   startWorkshop: () => Promise<void>;
@@ -156,6 +165,19 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
   const [isSaving, setIsSaving] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  // A failed SAVE is transient and recoverable; a failed LOAD is fatal. They were
+  // the same `error`, so one dropped request mid-session replaced the whole
+  // workshop with an error page whose only button navigated away from the
+  // unsaved work.
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveAttempt, setSaveAttempt] = useState(0);
+  // True when the review was marked complete but its plan never reached the
+  // strategic tables. Surfaced on the close screen — never silently green.
+  const [planSyncFailed, setPlanSyncFailed] = useState(false);
+  // True when the review completed but its actuals / snapshot did not land. These
+  // are the rows next quarter's Scorecard and plan grid compare against, so losing
+  // them silently costs a quarter of history.
+  const [historyWriteFailed, setHistoryWriteFailed] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(options.businessId || null);
   const [profileBusinessId, setProfileBusinessId] = useState<string | null>(null); // business_profiles.id for sync
   const [userId, setUserId] = useState<string | null>(null);
@@ -163,6 +185,16 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
   // Review type from options or from loaded review
   const reviewType: ReviewType = review?.review_type || options.reviewType || 'quarterly';
   const workshopSteps = useMemo(() => getWorkshopSteps(reviewType), [reviewType]);
+
+  // THE quarter anchor. `resolvedQuarter`/`resolvedYear` are clock-derived and are
+  // only ever a seed for CREATING a review — they are not re-derived when a review
+  // is opened by id, so once the calendar moves past the quarter a review was
+  // started in they are simply wrong. Anything that acts on the review reads the
+  // review itself: review.quarter is the quarter being PLANNED (see the quarter
+  // helpers in types/index.ts), which is what QuarterlyRocksStep already writes its
+  // rocks against. Derived, never stored — a stored copy is what drifted.
+  const anchorQuarter: QuarterNumber = review?.quarter ?? resolvedQuarter;
+  const anchorYear: number = review?.year ?? resolvedYear;
 
   // Sync debounce ref
   const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -328,14 +360,23 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     try {
       await quarterlyReviewService.updateReview(review.id, review);
       setHasUnsavedChanges(false);
+      setSaveError(null);
       // DO NOT setReview(updated) — it would overwrite freshly loaded initiative decisions
     } catch (err) {
-      console.error('Error saving review:', err);
-      setError('Failed to save changes');
+      captureReviewWriteFailure(err, 'autosave', { reviewId: review.id, step: review.current_step });
+      // Leave hasUnsavedChanges true so the work is still in hand and the next
+      // edit (or an explicit retry) tries again.
+      setSaveError("Couldn't save your last change");
     } finally {
       setIsSaving(false);
     }
   }, [review]);
+
+  /** Re-arm the debounced auto-save after a failure (the Retry affordance). */
+  const retrySave = useCallback(async () => {
+    setSaveAttempt(a => a + 1);
+    await saveReview();
+  }, [saveReview]);
 
   // Auto-save when there are unsaved changes (debounced)
   useEffect(() => {
@@ -346,7 +387,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [hasUnsavedChanges, review, saveReview]);
+  }, [hasUnsavedChanges, review, saveReview, saveAttempt]);
 
   // Warn user about unsaved changes when closing/refreshing browser
   useEffect(() => {
@@ -371,21 +412,28 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
 
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(async () => {
+      // review.quarter IS the quarter being planned, so the rocks belong to it —
+      // not to the quarter after it. This used to add 1 to a clock-derived quarter,
+      // which disagreed both with QuarterlyRocksStep (writes q${review.quarter})
+      // and with the final sync on complete. Three writers, three answers.
+      const quarterKey = planQuarterKey({ quarter: anchorQuarter });
+      const syncId = profileBusinessId || businessId;
       try {
-        // Use the NEXT quarter — quarterly review rocks are for the upcoming quarter, not the current one
-        const nextQ = resolvedQuarter === 4 ? 1 : (resolvedQuarter + 1);
-        const quarterKey = `q${nextQ}`;
-        const syncId = profileBusinessId || businessId;
         await strategicSyncService.syncRocks(syncId, userId, review.quarterly_rocks || [], quarterKey);
       } catch (err) {
         console.error('[Sync] Background sync failed:', err);
+        captureReviewWriteFailure(err, 'background-rocks-sync', {
+          reviewId: review.id,
+          businessId: syncId,
+          quarterKey,
+        });
       }
     }, 5000);
 
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [hasUnsavedChanges, review?.current_step, businessId, userId, resolvedQuarter]);
+  }, [hasUnsavedChanges, review?.current_step, businessId, userId, anchorQuarter]);
 
   // Progress calculations - use dynamic step list based on review type
   const progressPercentage = useMemo(() => {
@@ -430,7 +478,8 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
         await quarterlyReviewService.updateReview(review.id, review);
         setHasUnsavedChanges(false);
       } catch (err) {
-        console.error('[goToStep] Save flush failed:', err);
+        captureReviewWriteFailure(err, 'flush-on-navigate', { reviewId: review.id, step: review.current_step });
+        setSaveError("Couldn't save your last change");
       }
     }
 
@@ -452,7 +501,8 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
         await quarterlyReviewService.updateReview(review.id, review);
         setHasUnsavedChanges(false);
       } catch (err) {
-        console.error('[completeCurrentStep] Save flush failed:', err);
+        captureReviewWriteFailure(err, 'flush-on-step-complete', { reviewId: review.id, step: review.current_step });
+        setSaveError("Couldn't save your last change");
       }
     }
 
@@ -492,7 +542,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
           await quarterlyReviewService.updateReview(review.id, review);
           setHasUnsavedChanges(false);
         } catch (flushErr) {
-          console.error('[Complete] Auto-save flush failed:', flushErr);
+          captureReviewWriteFailure(flushErr, 'flush-on-complete', { reviewId: review.id });
           // Continue with completion — data was already saved by auto-save
         }
       }
@@ -534,14 +584,15 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
           }
         }
       } catch (err) {
-        console.warn('[Snapshot] Pre-sync snapshot failed (non-blocking):', err);
+        // plan_snapshots is the annual-reset rollback point — a missing one means
+        // this completion has no restore point.
+        captureReviewWriteFailure(err, 'pre-sync-snapshot', { reviewId: review.id });
       }
 
       // 2. SYNC: strategic plan tables
       const syncBusinessId = profileBusinessId || (await getSnapshotBusinessId()) || businessId;
       try {
-        const syncQuarterKey = `q${resolvedQuarter}`;
-        console.log('[Sync] Using syncBusinessId:', syncBusinessId, 'quarter:', syncQuarterKey, '(profileBusinessId:', profileBusinessId, 'businessId:', businessId, 'resolvedQ:', resolvedQuarter, 'reviewQ:', review.quarter, ')');
+        const syncQuarterKey = planQuarterKey({ quarter: anchorQuarter });
         await strategicSyncService.syncAll(
           syncBusinessId,
           userId,
@@ -555,8 +606,18 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
           })),
           review.realignment_decision || undefined
         );
+        setPlanSyncFailed(false);
       } catch (err) {
-        console.error('[Sync] Final sync on complete failed:', err);
+        // The sync is the whole point of finishing: it is what pushes the targets,
+        // initiatives and rocks into the live strategic tables. Swallowing it and
+        // still showing "Review Complete" is a false green — the client leaves the
+        // session believing their plan landed when it never did.
+        captureReviewWriteFailure(err, 'final-strategic-sync', {
+          reviewId: review.id,
+          businessId: syncBusinessId,
+          quarterKey: planQuarterKey({ quarter: anchorQuarter }),
+        });
+        setPlanSyncFailed(true);
       }
 
       // 2b. ANNUAL SYNC: roll forward targets + sync next-year initiatives
@@ -572,10 +633,16 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
             nextYear
           );
           if (!annualResult.success) {
-            console.error('[Sync] Annual sync had errors:', annualResult.errors);
+            captureReviewWriteFailure(
+              new Error(`Annual sync reported errors: ${JSON.stringify(annualResult.errors)}`),
+              'annual-sync-partial',
+              { reviewId: review.id, businessId: syncBusinessId }
+            );
+            setPlanSyncFailed(true);
           }
         } catch (err) {
-          console.error('[Sync] Annual sync failed (non-blocking):', err);
+          captureReviewWriteFailure(err, 'annual-sync', { reviewId: review.id, businessId: syncBusinessId });
+          setPlanSyncFailed(true);
         }
       }
 
@@ -601,19 +668,36 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
           }
         }
       } catch (err) {
-        console.warn('[Snapshot] Post-sync snapshot failed (non-blocking):', err);
+        captureReviewWriteFailure(err, 'post-sync-snapshot', { reviewId: review.id });
+      }
+
+      // 3c. HISTORY — this review's actuals and the snapshot every later quarter
+      // reads back as "what happened in Qn". These used to run inside
+      // service.completeWorkshop AFTER the row was already marked completed, and
+      // swallowed their own errors, so a review that recorded nothing still said
+      // "Review Complete". They run here now, where a failure is reported.
+      try {
+        await quarterlyReviewService.createQuarterlySnapshot(review);
+        await quarterlyReviewService.saveKpiActuals(review);
+        setHistoryWriteFailed(false);
+      } catch (err) {
+        captureReviewWriteFailure(err, 'history-write', {
+          reviewId: review.id,
+          businessId: review.business_id,
+        });
+        setHistoryWriteFailed(true);
       }
 
       // 4. COMPLETE the workshop
       const updated = await quarterlyReviewService.completeWorkshop(review.id);
       setReview(updated);
     } catch (err) {
-      console.error('[Complete] Workshop completion failed:', err);
-      setError('Failed to complete the review. Please try again.');
+      captureReviewWriteFailure(err, 'complete-workshop', { reviewId: review.id });
+      setSaveError('Failed to complete the review. Please try again.');
     } finally {
       setIsCompleting(false);
     }
-  }, [review, businessId, profileBusinessId, userId, supabase, activeBusiness, isCompleting, hasUnsavedChanges]);
+  }, [review, businessId, profileBusinessId, userId, supabase, activeBusiness, isCompleting, hasUnsavedChanges, anchorQuarter, reviewType]);
 
   // Update helpers that set local state and mark unsaved
   const updateLocalState = useCallback((updater: (prev: QuarterlyReview) => QuarterlyReview) => {
@@ -632,9 +716,16 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
   const completePreWork = useCallback(async () => {
     if (!review) return;
     await saveReview();
-    const updated = await quarterlyReviewService.completePreWork(review.id);
+    // Advance to whatever actually follows 'prework' in the active sequence —
+    // never a hardcoded id, which is how this landed on the retired '1.1'.
+    const nextStep = workshopSteps[workshopSteps.indexOf('prework') + 1] ?? workshopSteps[0];
+    const updated = await quarterlyReviewService.completePreWork(
+      review.id,
+      nextStep,
+      review.steps_completed || []
+    );
     setReview(updated);
-  }, [review, saveReview]);
+  }, [review, saveReview, workshopSteps]);
 
   // Part 1 updates
   const updateDashboardSnapshot = useCallback((snapshot: DashboardSnapshot) => {
@@ -781,7 +872,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
       await quarterlyReviewService.updateReview(review.id, updated);
       setReview(updated);
     } catch (e) {
-      console.error('[AnnualReset] failed to mark review complete (non-fatal):', e);
+      captureReviewWriteFailure(e, 'mark-complete-annual-reset', { reviewId: review.id });
     }
   }, [review]);
 
@@ -793,12 +884,15 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     error,
     isSaving,
     hasUnsavedChanges,
+    saveError,
+    planSyncFailed,
+    historyWriteFailed,
     reviewType,
 
     // Quarter info
-    quarter: resolvedQuarter,
-    year: resolvedYear,
-    quarterLabel: `Q${resolvedQuarter} ${resolvedYear}`,
+    quarter: anchorQuarter,
+    year: anchorYear,
+    quarterLabel: `Q${anchorQuarter} ${anchorYear}`,
 
     // Progress
     currentStep: review?.current_step || 'prework',
@@ -809,6 +903,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     // Actions
     initReview,
     saveReview,
+    retrySave,
     goToStep,
     completeCurrentStep,
     startWorkshop,

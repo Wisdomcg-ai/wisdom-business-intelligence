@@ -6,6 +6,8 @@ import { useQuarterlyReview } from '../hooks/useQuarterlyReview';
 import { WorkshopProgress } from '../components/WorkshopProgress';
 import { WorkshopNav } from '../components/WorkshopNav';
 import { CoachNotesPanel } from '../components/CoachNotesPanel';
+import { FirstSessionNotice } from '../components/FirstSessionNotice';
+import { useReviewReadiness } from '../hooks/useReviewReadiness';
 import { QuarterNumber, ReviewType, YearType, getWorkshopSteps, getPlanningQuarter, getPreviousQuarterOf } from '../types';
 // Phase 73 v2 — year-end annual-reset gate (fires at the Part 3 → Part 4 transition).
 import { shouldRouteToAnnualReset } from '../utils/annual-reset-gate';
@@ -33,12 +35,14 @@ import { StrategicCheckStep } from '../components/steps/StrategicCheckStep';
 // historical reviews; they are simply not imported/rendered here.
 
 import { useCoachView } from '@/hooks/useCoachView';
+import { useBusinessContext } from '@/contexts/BusinessContext';
 import { ArrowLeft, Menu, X, PanelLeftClose, PanelLeftOpen, Loader2 } from 'lucide-react';
 
 function ReviewContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { getPath } = useCoachView();
+  const { currentUser } = useBusinessContext();
   const [showSidebar, setShowSidebar] = useState(false); // mobile
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false); // desktop
 
@@ -55,6 +59,10 @@ function ReviewContent() {
     isSaving,
     isCompleting,
     hasUnsavedChanges,
+    saveError,
+    retrySave,
+    planSyncFailed,
+    historyWriteFailed,
     quarterLabel,
     currentStep,
     stepsCompleted,
@@ -100,6 +108,16 @@ function ReviewContent() {
     updateAnnualInitiativePlan,
     updateCoachNotes,
   } = useQuarterlyReview({ reviewId, quarter, year, reviewType });
+
+  // What this client already has. Resolved once, in the right id-spaces, so a
+  // first-timer's session can capture a baseline and build a plan instead of
+  // opening on a wall of empty tables.
+  const readiness = useReviewReadiness(review);
+
+  // Only a coach or admin gets the mode control. A client sees the notice alone —
+  // how their session runs is a coaching decision, not theirs to flip mid-review.
+  const canOverrideSessionMode =
+    currentUser?.role === 'coach' || currentUser?.role === 'admin';
 
   // Use the review's actual type (may differ from URL param if resuming existing review)
   const effectiveReviewType = activeReviewType || reviewType;
@@ -336,6 +354,8 @@ function ReviewContent() {
         return (
           <WorkshopCompleteStep
             review={review}
+            planSyncFailed={planSyncFailed}
+            historyWriteFailed={historyWriteFailed}
           />
         );
       default:
@@ -445,6 +465,19 @@ function ReviewContent() {
         {/* Main Content */}
         <main className="flex-1 min-w-0">
           <div className="bg-white rounded-2xl border border-gray-200 p-4 lg:p-6">
+            {currentStep !== 'complete' && (
+              <FirstSessionNotice
+                readiness={readiness}
+                foundationMode={readiness.foundationMode}
+                detectedFoundationMode={readiness.detectedFoundationMode}
+                sessionMode={readiness.sessionMode}
+                overridden={readiness.overridden}
+                couldNotCheck={readiness.couldNotCheck}
+                isLoading={readiness.isLoading}
+                canOverride={canOverrideSessionMode}
+                onSetSessionMode={readiness.setSessionMode}
+              />
+            )}
             {renderStep()}
           </div>
           {/* Shared session notes — coach + client, autosaved. Hidden on the summary step. */}
@@ -470,6 +503,8 @@ function ReviewContent() {
         isSaving={isSaving}
         isCompleting={isCompleting}
         hasUnsavedChanges={hasUnsavedChanges}
+        saveError={saveError}
+        onRetrySave={retrySave}
         reviewType={effectiveReviewType}
       />
     </div>

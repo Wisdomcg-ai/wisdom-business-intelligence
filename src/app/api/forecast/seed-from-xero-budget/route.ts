@@ -154,7 +154,20 @@ async function postHandler(request: Request) {
 
     // ── 6. Fetch budget + catalog + actuals ──────────────────────────────────
     const duration = Math.min(3, Math.max(1, Number(targetForecast.forecast_duration ?? 1))) as 1 | 2 | 3
-    const token = await getValidAccessToken(connection, supabase)
+    // Service-role for the token, NOT the caller's session. getValidAccessToken
+    // looks read-only and is not: it takes a refresh lock and persists Xero's
+    // rotated refresh token, both UPDATEs on xero_connections. The `rls_access`
+    // policy there admits any active team member to SELECT (USING) but only
+    // role IN ('admin','member') to write (WITH CHECK → auth_can_manage_business).
+    // Step 1 above admits ANY active membership, so a caller this route accepts
+    // could have the lock silently refused (a 30s poll for a nonexistent
+    // sibling), then rotate the token at Xero and fail to save it three times —
+    // `xero_token_persist_failed` on a live connection. The connection RESOLUTION
+    // above deliberately stays on the caller's client: it backs the tenant-
+    // ownership 403 and is already pinned to a business whose access step 1
+    // proved. Found 16 Sep 2026 (verifyBusinessAccess caller audit, PR #545 F3).
+    const admin = createServiceRoleClient()
+    const token = await getValidAccessToken(connection, admin)
     if (!token.success || !token.accessToken) {
       return NextResponse.json(
         { error: 'Could not reach Xero for this organisation', code: token.shouldDeactivate ? 'requires_reconnect' : 'token_failed' },
@@ -195,7 +208,6 @@ async function postHandler(request: Request) {
     // reads an EMPTY catalog and every account falls back to the P&L mirror —
     // accounts with no history then come back "unclassified" (Urban Road, 5 Sep
     // 2026: Bank Revaluations, FX Gain/Loss, General Expenses).
-    const admin = createServiceRoleClient()
     const [catalog, actuals] = await Promise.all([
       loadAccountsCatalog(admin, tenantId),
       loadAccountActuals(admin, tenantId),

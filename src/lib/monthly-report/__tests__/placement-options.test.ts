@@ -14,6 +14,9 @@ import {
   summaryMargins,
 } from '../placement-options'
 import { MONEY_FLOW_BANK_ROWS, MONEY_FLOW_LAST_LINES, MONEY_FLOW_SUMMARY_CODES, parseMoneyFlowConfig } from '../money-flow-rows'
+import { parseConsolidatedPLConfig } from '../consolidated-pl-page'
+import { parseSubscriptionPageConfig } from '../subscription-page'
+import { parseContractorPageConfig } from '../contractor-page'
 
 describe('the readers the PDF applies', () => {
   it("a cover prints the report's own line unless it asks for the badge", () => {
@@ -33,12 +36,44 @@ describe('the readers the PDF applies', () => {
 })
 
 describe('the panel', () => {
-  it('offers the three pages, and no other', () => {
+  it('offers the pages that carry options, and no other', () => {
     expect(hasPlacementOptions('cover_page')).toBe(true)
     expect(hasPlacementOptions('executive_summary')).toBe(true)
     expect(hasPlacementOptions('money_flow')).toBe(true)
+    // P7's pages: the per-entity P&L, the subscriptions sheet, the contractors.
+    expect(hasPlacementOptions('consolidated_pl')).toBe(true)
+    expect(hasPlacementOptions('subscription_detail')).toBe(true)
+    expect(hasPlacementOptions('contractor_detail')).toBe(true)
     expect(hasPlacementOptions('ratio_analysis')).toBe(false)
     expect(hasPlacementOptions('budget_vs_actual')).toBe(false)
+  })
+
+  it("offers exactly the values each P7 page's own strict rule accepts", () => {
+    const pages = {
+      consolidated_pl: (config: Record<string, unknown>) => parseConsolidatedPLConfig({ layout: 'calxa', ...config }).ok,
+      subscription_detail: (config: Record<string, unknown>) => parseSubscriptionPageConfig({ layout: 'calxa', ...config }).ok,
+      contractor_detail: (config: Record<string, unknown>) => parseContractorPageConfig(config).ok,
+    } as const
+    for (const [type, accepts] of Object.entries(pages)) {
+      for (const option of PLACEMENT_OPTIONS[type as keyof typeof pages].options) {
+        for (const choice of option.choices) {
+          expect(accepts({ [option.key]: choice.value }), `${type}.${option.key}=${choice.value}`).toBe(true)
+        }
+      }
+    }
+  })
+
+  it('stores only what a coach changed, and keeps the settings the panel does not show', () => {
+    // The sheet's labels and total_budget are typed by hand; Apply keeps them.
+    const stored = { layout: 'calxa', total_budget: 'approved', labels: { anthropic: 'Claude' } }
+    expect(applyPlacementOptions('subscription_detail', stored, { layout: 'calxa', entity_columns: 'actuals' }))
+      .toEqual({ total_budget: 'approved', labels: { anthropic: 'Claude' }, layout: 'calxa', entity_columns: 'actuals' })
+    // Back to the page it was: nothing of the panel's is stored.
+    expect(applyPlacementOptions('subscription_detail', stored, { layout: 'accounts', entity_columns: 'none' }))
+      .toEqual({ total_budget: 'approved', labels: { anthropic: 'Claude' } })
+    expect(placementOptionsSummary('consolidated_pl', { layout: 'calxa', section: 'income', columns: 'actuals' }))
+      .toBe('Calxa P&L Comparison · Income only · Actuals only')
+    expect(placementOptionsSummary('consolidated_pl', {})).toBe('Standard')
   })
 
   it("offers exactly the money-flow values the page's own strict rule accepts", () => {

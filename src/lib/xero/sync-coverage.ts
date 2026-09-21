@@ -30,6 +30,7 @@
  */
 
 import { createServiceRoleClient } from '@/lib/supabase/admin';
+import { getLastSyncByTenantSince } from '@/lib/health-checks';
 
 /** 26h — see the module note. One tolerated late run, not two skipped nights. */
 export const SYNC_COVERAGE_WINDOW_MS = 26 * 60 * 60 * 1000;
@@ -88,23 +89,22 @@ export async function getXeroSyncCoverage(
     return { ...empty, uncheckable };
   }
 
-  const sinceIso = new Date(nowMs - windowMs).toISOString();
-  const { data: jobs, error: jobError } = await supabase
-    .from('sync_jobs')
-    .select('tenant_id')
-    .in('status', ['success', 'partial'])
-    .gte('finished_at', sinceIso);
+  // Which tenants synced in the window comes from the per-tenant sync clock the
+  // CFO board and the connection pills read: one reply, one entry per tenant.
+  // This used to read the jobs themselves, unordered and unpaged. PostgREST
+  // returns at most 1,000 rows, and an unordered read that hits the cap gets
+  // the OLDEST ones — so a busy window would drop the newest tenants and list
+  // connections that did sync as "did NOT sync".
+  const clock = await getLastSyncByTenantSince(supabase, nowMs - windowMs);
 
-  if (jobError) {
-    return { ...empty, ok: false, error: `sync_jobs query failed: ${jobError.message}`, uncheckable };
+  if (!clock.ok) {
+    return { ...empty, ok: false, error: `sync clock lookup failed: ${clock.error}`, uncheckable };
   }
 
-  // The outer per-BUSINESS sync_jobs row carries tenant_id = '' (about half the
-  // table). Filter explicitly rather than relying on a falsy check elsewhere.
+  // The clock never includes the outer per-BUSINESS sync_jobs row (tenant_id
+  // = ''). Trim and drop blanks anyway, so the keys join the trimmed ids below.
   const syncedTenants = new Set(
-    ((jobs ?? []) as Array<{ tenant_id: string | null }>)
-      .map((j) => (j.tenant_id ?? '').trim())
-      .filter((t) => t !== ''),
+    [...clock.byTenant.keys()].map((t) => t.trim()).filter((t) => t !== ''),
   );
 
   const missing: MissingSync[] = checkable
