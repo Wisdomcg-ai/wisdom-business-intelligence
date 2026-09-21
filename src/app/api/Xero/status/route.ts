@@ -1,16 +1,66 @@
+/**
+ * GET /api/Xero/status?business_id=
+ *
+ * One business's Xero connection — every org of it. Read by the banner above the
+ * monthly report, the forecast and cashflow pages, the integrations page, and the
+ * token keepalive those pages run every ten minutes.
+ *
+ * ── Why this was rewritten (2026-09-15) ─────────────────────────────────────
+ * This route used `resolveXeroBusinessId`, which returns `connections[0]` of the
+ * business's ACTIVE rows, and reported that one org as the business: connected,
+ * expired, "Last synced". A multi-org business shares one created_at across its
+ * rows, so the org was simply the lowest row id. For IICT Group that is IICT
+ * Group Limited, which syncs fine — so the monthly report read "Connected to
+ * Xero: IICT Group Limited · Last synced today" while IICT Group Pty Ltd had not
+ * synced since 10 Sep 2026, and the /cfo board (#531) said data_stale for the
+ * same business. Only that one org's token was kept fresh; dead rows were
+ * invisible, so a business whose every org had died read "Not connected"; and a
+ * failed read of xero_connections came back as "Not connected" too.
+ *
+ * Now:
+ *   - every row under both id forms is read, dead rows included, and a failed
+ *     read is a 500 — the pages render that as "couldn't check", never as
+ *     "not connected";
+ *   - EVERY live org's token is refreshed, one org at a time, then the rows are
+ *     re-read, because a refresh moves expires_at and a refusal deactivates the
+ *     row;
+ *   - the business is classified by `classifyBusinessConnections` — each org on
+ *     its own tenant's data clock, worst org wins — the same definition as the
+ *     coach pill and the /cfo board;
+ *   - a coach or super admin gets the coach's 48h data threshold, the owner and
+ *     team members the owner's 72h, the audience split of
+ *     /api/Xero/connection-health;
+ *   - active team members may look, as RLS already lets them; `can_manage` says
+ *     whether the caller may act (connect, reconnect, sync, disconnect).
+ *
+ * Response: `status`, `status_scope`, `more_orgs_needing_attention`,
+ * `last_sync_at`, `orgs`, `retired_orgs`, `can_manage` are the answer.
+ * `connected`, `expired`, `needsReconnect`, `connection` and `health` keep their
+ * names for older readers and are now derived from the whole business (see
+ * XeroStatusResponse).
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getSupabaseSecretKey } from '@/lib/supabase/keys'
-import { createRouteHandlerClient } from '@/lib/supabase/server';
-import { getValidAccessToken, checkConnectionHealth } from '@/lib/xero/token-manager';
-import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
-import { withQuerySchema } from '@/lib/api/with-schema';
+import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
-import * as Sentry from '@sentry/nextjs'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { getValidAccessToken, checkConnectionHealth, type TokenRefreshResult } from '@/lib/xero/token-manager';
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds';
+import { withQuerySchema } from '@/lib/api/with-schema';
+import { getLastSyncByTenant } from '@/lib/health-checks';
+import {
+  classifyBusinessConnections,
+  DATA_STALE_MS,
+  OWNER_DATA_STALE_MS,
+  type XeroConnectionStatusRow,
+  type XeroOrgClassification,
+} from '@/lib/xero/connection-status';
+import type { XeroStatusOrg, XeroStatusResponse } from '@/lib/xero/business-status-view';
 
 export const dynamic = 'force-dynamic';
 
-// Use service key to bypass RLS
+// Use service key to bypass RLS — access is enforced in code below.
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   getSupabaseSecretKey()
@@ -21,6 +71,35 @@ const GetQuerySchema = z
     business_id: z.string().optional(),
   })
   .passthrough();
+
+const CONNECTION_COLUMNS =
+  'id, business_id, tenant_id, tenant_name, display_name, include_in_consolidation, is_active, last_synced_at, updated_at, expires_at, created_at';
+
+type ConnectionRow = XeroConnectionStatusRow & { display_name?: string | null };
+
+/** Same window as the pill and the board, so a cold tenant reads old rather than never. */
+const SYNC_CLOCK_WINDOW_DAYS = 60;
+
+const CHECK_FAILED = 'Could not check the Xero connection';
+
+interface RefreshFailure {
+  row: XeroConnectionStatusRow;
+  result: TokenRefreshResult;
+}
+
+const orgName = (row: Pick<XeroConnectionStatusRow, 'tenant_name'>) => row.tenant_name?.trim() || 'Xero organisation';
+
+function toOrgView(org: XeroOrgClassification, rows: readonly ConnectionRow[]): XeroStatusOrg {
+  return {
+    connection_id: org.connectionId,
+    tenant_id: org.tenantId,
+    tenant_name: org.tenantName,
+    display_name: rows.find((r) => r.id === org.connectionId)?.display_name?.trim() || null,
+    status: org.status,
+    last_sync_at: org.lastSyncAt,
+    last_refresh_at: org.lastTokenRefreshAt,
+  };
+}
 
 async function getHandler(request: NextRequest) {
   try {
@@ -39,89 +118,179 @@ async function getHandler(request: NextRequest) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 });
     }
 
-    // Verify user has access to this business
-    const { data: business } = await supabaseAdmin
+    const { data: business, error: businessError } = await supabaseAdmin
       .from('businesses')
       .select('id, owner_id, assigned_coach_id')
       .eq('id', businessId)
-      .single();
+      .maybeSingle();
 
+    // 22P02: not a uuid, so no such business — a malformed id, not a failed check.
+    if (businessError && businessError.code !== '22P02') {
+      Sentry.captureException(businessError, { tags: { route: 'Xero/status' }, extra: { context: '[Xero Status] businesses read failed' } } as any);
+      return NextResponse.json({ error: CHECK_FAILED }, { status: 500 });
+    }
     if (!business) {
       return NextResponse.json({ error: 'Business not found' }, { status: 404 });
     }
 
-    // Allow owner, assigned coach, OR super_admin (platform operator managing client Xero).
-    let allowed = business.owner_id === user.id || business.assigned_coach_id === user.id;
-    if (!allowed) {
+    // Who may look: owner, assigned coach, super_admin, or an active team member —
+    // the people the xero_connections RLS policy and /api/Xero/connection-health
+    // admit. Who may ACT (connect, reconnect, sync, disconnect — each of those
+    // routes admits only owner, coach and super_admin) is `can_manage`, so a team
+    // member is not offered buttons that answer "Access denied".
+    //
+    // The data threshold follows the audience: a coach or super admin gets the
+    // coach's 48h — the /cfo board's and the coach pill's — even on a business
+    // they also own or belong to; the owner and team members get 72h.
+    const isOwner = business.owner_id === user.id;
+    const isCoach = business.assigned_coach_id === user.id;
+    let isSuperAdmin = false;
+    if (!isCoach) {
       const { data: roleRow } = await supabase
         .from('system_roles')
         .select('role')
         .eq('user_id', user.id)
         .maybeSingle();
-      if (roleRow?.role === 'super_admin') allowed = true;
+      isSuperAdmin = roleRow?.role === 'super_admin';
     }
-    if (!allowed) {
+    let isTeamMember = false;
+    if (!isOwner && !isCoach && !isSuperAdmin) {
+      const { data: memberships } = await supabaseAdmin
+        .from('business_users')
+        .select('id')
+        .eq('business_id', businessId)
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .limit(1);
+      isTeamMember = (memberships ?? []).length > 0;
+    }
+    if (!isOwner && !isCoach && !isSuperAdmin && !isTeamMember) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
+    const canManage = isOwner || isCoach || isSuperAdmin;
+    const dataStaleMs = isCoach || isSuperAdmin ? DATA_STALE_MS : OWNER_DATA_STALE_MS;
 
-    // Get Xero connection using admin client (resolves businesses.id vs business_profiles.id)
-    const { connection, connectionBusinessId } = await resolveXeroBusinessId(supabaseAdmin, businessId);
+    // Both id forms, dead rows included, in an order no write changes. The
+    // classification does not depend on order; the refresh-failure message does.
+    const ids = await resolveBusinessProfileIds(supabaseAdmin, businessId);
+    const readConnections = () =>
+      supabaseAdmin
+        .from('xero_connections')
+        .select(CONNECTION_COLUMNS)
+        .in('business_id', ids.all)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: true });
 
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[Xero Status] Connection for business:', businessId, 'resolved:', connectionBusinessId, 'found:', !!connection);
+    const initial = await readConnections();
+    if (initial.error) {
+      // Reading this as "no rows" is how a failed check used to render as
+      // "Not connected to Xero" above a report built from Xero data.
+      Sentry.captureException(initial.error, { tags: { route: 'Xero/status' }, extra: { context: '[Xero Status] xero_connections read failed' } } as any);
+      return NextResponse.json({ error: CHECK_FAILED }, { status: 500 });
     }
+    const initialRows = (initial.data ?? []) as ConnectionRow[];
 
-    if (!connection) {
-      return NextResponse.json({
-        connected: false,
-        connection: null
-      });
-    }
-
-    // Check connection health and refresh token if needed
-    const healthCheck = await checkConnectionHealth(connection);
-
-    // Proactively refresh token using the robust token manager
-    const tokenResult = await getValidAccessToken(connection, supabaseAdmin);
-
-    if (!tokenResult.success) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('[Xero Status] Token refresh failed:', tokenResult.error, tokenResult.message);
+    // Keep EVERY live org's token fresh — the keepalive relies on this route, and
+    // it used to refresh only the one org it reported. One org at a time: a single
+    // Xero sign-in stores the SAME refresh token on every org it connects
+    // (complete-connection), and the refresh lock is per row, so refreshing
+    // siblings in parallel would hand Xero one token several times at once — and
+    // a refusal deactivates a healthy org. The refresh cron and the sync
+    // orchestrator are sequential for the same reason.
+    const liveRows = initialRows.filter((r) => r.is_active === true);
+    const failures: RefreshFailure[] = [];
+    for (const row of liveRows) {
+      try {
+        const result = await getValidAccessToken({ id: row.id }, supabaseAdmin);
+        if (!result.success) failures.push({ row, result });
+      } catch (err) {
+        Sentry.captureException(err, { tags: { route: 'Xero/status', connection_id: row.id }, extra: { context: '[Xero Status] token refresh threw' } } as any);
+        failures.push({ row, result: { success: false, error: 'unknown', message: 'Token refresh failed' } });
       }
-      return NextResponse.json({
-        connected: false,
-        expired: true,
-        error: tokenResult.error,
-        message: tokenResult.message || 'Token expired and could not be refreshed. Please reconnect Xero.',
-        needsReconnect: tokenResult.shouldDeactivate,
-        connection: null
-      });
     }
 
-    // Re-fetch connection to get updated expiry time
-    const { data: updatedConnection } = await supabaseAdmin
-      .from('xero_connections')
-      .select('id, tenant_name, is_active, last_synced_at, expires_at')
-      .eq('id', connection.id)
-      .single();
-
-    return NextResponse.json({
-      connected: true,
-      expired: false,
-      health: {
-        isHealthy: healthCheck.isHealthy,
-        expiresInMinutes: healthCheck.expiresIn,
-        warnings: healthCheck.warnings
-      },
-      connection: {
-        id: updatedConnection?.id || connection.id,
-        tenant_name: updatedConnection?.tenant_name || connection.tenant_name,
-        is_active: updatedConnection?.is_active ?? connection.is_active,
-        last_synced_at: updatedConnection?.last_synced_at || connection.last_synced_at,
-        expires_at: updatedConnection?.expires_at || connection.expires_at
+    // A refresh moves expires_at and a refusal deactivates the row, so classify
+    // what the rows say now. If they cannot be re-read, the check did not finish.
+    let rows = initialRows;
+    if (liveRows.length > 0) {
+      const reread = await readConnections();
+      if (reread.error) {
+        Sentry.captureException(reread.error, { tags: { route: 'Xero/status' }, extra: { context: '[Xero Status] xero_connections re-read failed' } } as any);
+        return NextResponse.json({ error: CHECK_FAILED }, { status: 500 });
       }
-    });
+      rows = (reread.data ?? []) as ConnectionRow[];
+    }
 
+    // The token manager's verdict that a row must be switched off is terminal even
+    // when it has not written is_active=false itself (an undecryptable token): that
+    // org is disconnected, not green on a token clock that can no longer move.
+    const refusedIds = new Set(
+      failures.filter((f) => f.result.shouldDeactivate === true).map((f) => f.row.id),
+    );
+    const classifiedRows = rows.map((r) => (refusedIds.has(r.id) ? { ...r, is_active: false } : r));
+
+    // The data clock — the same lookup as the pill and the board. No rows, no
+    // orgs to look up.
+    const syncClock =
+      classifiedRows.length > 0
+        ? await getLastSyncByTenant(supabaseAdmin as never, SYNC_CLOCK_WINDOW_DAYS)
+        : { ok: true, byTenant: new Map<string, number>() };
+
+    const c = classifyBusinessConnections(classifiedRows, syncClock, Date.now(), dataStaleMs);
+
+    const liveNow = classifiedRows.filter((r) => r.is_active === true);
+    const expired = c.status === 'dead' || c.status === 'auth_stale';
+
+    let health: XeroStatusResponse['health'];
+    if (liveNow.length > 0) {
+      const perOrg = await Promise.all(liveNow.map((r) => checkConnectionHealth(r as never)));
+      const minutes = perOrg.map((h) => h.expiresIn).filter((m) => Number.isFinite(m));
+      health = {
+        isHealthy: perOrg.every((h) => h.isHealthy),
+        expiresInMinutes: minutes.length > 0 ? Math.min(...minutes) : null,
+        warnings: perOrg.flatMap((h, i) =>
+          h.warnings.map((w) => (liveNow.length > 1 ? `${orgName(liveNow[i])}: ${w}` : w)),
+        ),
+      };
+    }
+
+    const firstFailure = failures[0];
+    const body: XeroStatusResponse = {
+      status: c.status,
+      status_scope: c.statusScope,
+      more_orgs_needing_attention: c.moreOrgsNeedingAttention,
+      last_sync_at: c.lastSyncAt,
+      orgs: c.orgs.map((o) => toOrgView(o, rows)),
+      retired_orgs: c.retiredOrgs.map((o) => toOrgView(o, rows)),
+      can_manage: canManage,
+      connected: c.orgs.some((o) => o.status !== 'dead'),
+      expired,
+      // Any org, not only the headline: an org that stopped refreshing must not
+      // hide behind a sibling we could not check.
+      needsReconnect: c.orgs.some((o) => o.status === 'dead' || o.status === 'auth_stale'),
+      connection:
+        c.orgs.length > 0
+          ? {
+              id: c.connectionId,
+              tenant_name: c.tenantName,
+              is_active: c.status !== 'dead',
+              last_synced_at: c.lastSyncAt,
+              expires_at: c.expiresAt,
+            }
+          : null,
+      ...(health ? { health } : {}),
+      ...(firstFailure
+        ? {
+            error: firstFailure.result.error,
+            message:
+              liveRows.length > 1
+                ? `${orgName(firstFailure.row)}: ${firstFailure.result.message ?? 'Token refresh failed'}`
+                : firstFailure.result.message ?? 'Token refresh failed',
+          }
+        : {}),
+    };
+
+    return NextResponse.json(body);
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'Xero/status' }, extra: { context: "[Xero Status] Error" } } as any);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
