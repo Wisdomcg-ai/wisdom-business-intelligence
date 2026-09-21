@@ -73,6 +73,8 @@ interface UseQuarterlyReviewReturn {
   saveError: string | null;
   /** The review completed but the plan did not reach the strategic tables. */
   planSyncFailed: boolean;
+  /** The review completed but its actuals / snapshot were not recorded. */
+  historyWriteFailed: boolean;
   reviewType: ReviewType;
 
   // Quarter info
@@ -172,6 +174,10 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
   // True when the review was marked complete but its plan never reached the
   // strategic tables. Surfaced on the close screen — never silently green.
   const [planSyncFailed, setPlanSyncFailed] = useState(false);
+  // True when the review completed but its actuals / snapshot did not land. These
+  // are the rows next quarter's Scorecard and plan grid compare against, so losing
+  // them silently costs a quarter of history.
+  const [historyWriteFailed, setHistoryWriteFailed] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(options.businessId || null);
   const [profileBusinessId, setProfileBusinessId] = useState<string | null>(null); // business_profiles.id for sync
   const [userId, setUserId] = useState<string | null>(null);
@@ -665,6 +671,23 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
         captureReviewWriteFailure(err, 'post-sync-snapshot', { reviewId: review.id });
       }
 
+      // 3c. HISTORY — this review's actuals and the snapshot every later quarter
+      // reads back as "what happened in Qn". These used to run inside
+      // service.completeWorkshop AFTER the row was already marked completed, and
+      // swallowed their own errors, so a review that recorded nothing still said
+      // "Review Complete". They run here now, where a failure is reported.
+      try {
+        await quarterlyReviewService.createQuarterlySnapshot(review);
+        await quarterlyReviewService.saveKpiActuals(review);
+        setHistoryWriteFailed(false);
+      } catch (err) {
+        captureReviewWriteFailure(err, 'history-write', {
+          reviewId: review.id,
+          businessId: review.business_id,
+        });
+        setHistoryWriteFailed(true);
+      }
+
       // 4. COMPLETE the workshop
       const updated = await quarterlyReviewService.completeWorkshop(review.id);
       setReview(updated);
@@ -863,6 +886,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     hasUnsavedChanges,
     saveError,
     planSyncFailed,
+    historyWriteFailed,
     reviewType,
 
     // Quarter info

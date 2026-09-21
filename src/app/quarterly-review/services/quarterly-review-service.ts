@@ -716,12 +716,11 @@ export class QuarterlyReviewService {
 
     if (!data) throw new Error('Review not found or access denied');
 
-    // Create quarterly snapshot on completion
-    if (data) {
-      await this.createQuarterlySnapshot(data);
-      await this.saveKpiActuals(data);
-    }
-
+    // The history writes (createQuarterlySnapshot / saveKpiActuals) used to run
+    // HERE, after the row had already been flipped to 'completed', and swallowed
+    // their own failures — so a review that recorded nothing still reported
+    // success. They are now driven by the caller, which owns the one place that
+    // reports what did and did not land. See useQuarterlyReview.completeWorkshop.
     return data;
   }
 
@@ -750,8 +749,9 @@ export class QuarterlyReviewService {
     // Resolve it; without a profile id the FK would reject every row (the bug that lost actuals).
     const profileId = await resolveBusinessProfileId(supabase, review.business_id);
     if (!profileId) {
-      surfaceSupabaseError('saveKpiActuals.resolveProfile', new Error(`No business_profiles.id for review.business_id=${review.business_id}`));
-      return;
+      // Throw, don't return: the caller decides what the owner is told. Returning
+      // quietly is how this wrote nothing for months while reporting success.
+      throw new Error(`saveKpiActuals: no business_profiles.id for review.business_id=${review.business_id}`);
     }
 
     // Prepare KPI actuals for batch upsert
@@ -781,7 +781,12 @@ export class QuarterlyReviewService {
 
     if (error) {
       surfaceSupabaseError('saveKpiActuals', error);
-      // Don't throw - this is supplementary, shouldn't block completion
+      // Throw. Completion is still not blocked — the CALLER catches this and
+      // finishes the review — but it now knows the actuals did not land and can
+      // say so. "Supplementary, shouldn't block completion" was read as "nobody
+      // needs to know", and these rows are the history every later quarter
+      // compares against.
+      throw error;
     }
   }
 
@@ -796,8 +801,7 @@ export class QuarterlyReviewService {
     // quarterly_snapshots is keyed by business_profiles.id; review.business_id is a businesses.id.
     const profileId = await resolveBusinessProfileId(supabase, review.business_id);
     if (!profileId) {
-      surfaceSupabaseError('createQuarterlySnapshot.resolveProfile', new Error(`No business_profiles.id for review.business_id=${review.business_id}`));
-      return;
+      throw new Error(`createQuarterlySnapshot: no business_profiles.id for review.business_id=${review.business_id}`);
     }
 
     // Build financial snapshot
@@ -884,7 +888,8 @@ export class QuarterlyReviewService {
 
     if (error) {
       surfaceSupabaseError('createQuarterlySnapshot', error);
-      // Don't throw - this is supplementary, shouldn't block completion
+      // See saveKpiActuals: reported to the caller, which completes anyway.
+      throw error;
     }
   }
 

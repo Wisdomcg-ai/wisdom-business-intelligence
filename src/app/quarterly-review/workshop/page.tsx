@@ -62,6 +62,7 @@ function ReviewContent() {
     saveError,
     retrySave,
     planSyncFailed,
+    historyWriteFailed,
     quarterLabel,
     currentStep,
     stepsCompleted,
@@ -354,6 +355,7 @@ function ReviewContent() {
           <WorkshopCompleteStep
             review={review}
             planSyncFailed={planSyncFailed}
+            historyWriteFailed={historyWriteFailed}
           />
         );
       default:
