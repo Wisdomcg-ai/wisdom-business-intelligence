@@ -16,6 +16,8 @@ import {
   sumSplit,
   seedAnnualFromBaseline,
   seedAnnualNumbers,
+  isComplete,
+  marginPercent,
   year1EndDateFor,
   toQuarterlyTargetsJson,
   planningQuarterTargets,
@@ -26,6 +28,8 @@ import {
   saveFoundationAnnualPlan,
   saveFoundationQuarterlyTargets,
   addFoundationKpis,
+  trackPlanWrite,
+  planWritesSettled,
   FOUNDATION_OWNED_COLUMNS,
 } from '@/app/quarterly-review/services/foundation-plan-service';
 
@@ -63,9 +67,16 @@ describe('seeding this year from last quarter', () => {
     expect(seedAnnualFromBaseline(-5000)).toBe(-20000);
   });
 
-  it('seeds nothing from a line that was never entered', () => {
-    expect(seedAnnualFromBaseline(null)).toBe(0);
-    expect(seedAnnualFromBaseline(undefined)).toBe(0);
+  it('seeds nothing — a blank, not $0 — from a line that was never entered', () => {
+    expect(seedAnnualFromBaseline(null)).toBeNull();
+    expect(seedAnnualFromBaseline(undefined)).toBeNull();
+  });
+
+  it('leaves a skipped line blank, and a partial seed is not a plan', () => {
+    const seed = seedAnnualNumbers({ revenue: 100000 });
+    expect(seed).toEqual({ revenue: 400000, grossProfit: null, netProfit: null });
+    expect(isComplete(seed)).toBe(false);
+    expect(isComplete(seedAnnualNumbers({ revenue: 1, grossProfit: 1, netProfit: 0 }))).toBe(true);
   });
 
   it('seeds all three lines', () => {
@@ -74,6 +85,22 @@ describe('seeding this year from last quarter', () => {
       grossProfit: 200,
       netProfit: -40,
     });
+  });
+});
+
+describe('margins are stored the way the Goals wizard stores them', () => {
+  it('is a percentage to two decimals', () => {
+    expect(marginPercent(160000, 500000)).toBe(32);
+    expect(marginPercent(1, 3)).toBe(33.33);
+  });
+
+  it('carries a planned loss through as a negative margin', () => {
+    expect(marginPercent(-5000, 100000)).toBe(-5);
+  });
+
+  it('is 0, not a division by zero, when there is no revenue', () => {
+    expect(marginPercent(1000, 0)).toBe(0);
+    expect(marginPercent(1000, -1)).toBe(0);
   });
 });
 
@@ -209,6 +236,9 @@ describe('saving the annual plan never destroys an existing one', () => {
       year1_end_date: '2027-06-30',
       revenue_year3: null,
       net_profit_year2: null,
+      // 222,222 / 444,444 and 44,444 / 444,444
+      gross_margin_year1: 50,
+      net_margin_year1: 10,
     });
   });
 
@@ -224,6 +254,8 @@ describe('saving the annual plan never destroys an existing one', () => {
     const update = calls.find(c => c.op === 'update')!;
     const written = Object.keys(update.payload).filter(k => k !== 'updated_at');
     expect(written.sort()).toEqual([...FOUNDATION_OWNED_COLUMNS].sort());
+    // The margins move with the numbers they are derived from, never apart.
+    expect(update.payload).toMatchObject({ gross_margin_year1: 50, net_margin_year1: 10 });
     // Nothing else — above all, nothing that would zero their 3-year ladder,
     // core metrics or plan dates, which a full-row upsert would.
     for (const k of ['revenue_year2', 'revenue_year3', 'customers_year3', 'plan_start_date', 'plan_end_date', 'quarterly_targets']) {
@@ -308,5 +340,24 @@ describe('adding first KPIs', () => {
       addFoundationKpis(client, { profileId: 'p1', userId: 'u1', kpis: [kpi('a')] })
     ).rejects.toThrow(/already has KPIs/);
     expect(calls.some(c => c.op === 'upsert')).toBe(false);
+  });
+});
+
+describe('a reader waits for plan saves still in flight', () => {
+  it('does not resolve until the save lands', async () => {
+    let land!: () => void;
+    trackPlanWrite(new Promise<void>(r => (land = r)));
+    let settled = false;
+    const wait = planWritesSettled().then(() => (settled = true));
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    land();
+    await wait;
+    expect(settled).toBe(true);
+  });
+
+  it('still lets the reader go when the save failed', async () => {
+    trackPlanWrite(Promise.reject(new Error('network'))).catch(() => {});
+    await expect(planWritesSettled()).resolves.toBeUndefined();
   });
 });

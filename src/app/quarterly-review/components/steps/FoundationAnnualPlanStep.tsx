@@ -6,8 +6,14 @@ import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileI
 import { StepHeader } from '../StepHeader';
 import { MoneyInput } from '../MoneyInput';
 import type { QuarterlyReview, YearType } from '../../types';
-import { seedAnnualNumbers, year1EndDateFor, type FoundationNumbers } from '../../utils/foundation-plan';
-import { saveFoundationAnnualPlan } from '../../services/foundation-plan-service';
+import {
+  seedAnnualNumbers,
+  isComplete,
+  year1EndDateFor,
+  type FoundationNumbers,
+  type SeededNumbers,
+} from '../../utils/foundation-plan';
+import { saveFoundationAnnualPlan, trackPlanWrite } from '../../services/foundation-plan-service';
 import { captureReviewWriteFailure } from '../../utils/capture-write-failure';
 import { Check, Loader2, AlertTriangle } from 'lucide-react';
 
@@ -23,11 +29,10 @@ interface FoundationAnnualPlanStepProps {
   }) => void;
 }
 
-type Numbers = { revenue: number | null; grossProfit: number | null; netProfit: number | null };
+type Numbers = SeededNumbers;
 type SaveState = 'idle' | 'saving' | 'saved' | 'failed';
 
-const complete = (n: Numbers): n is FoundationNumbers =>
-  n.revenue !== null && n.grossProfit !== null && n.netProfit !== null;
+const complete = isComplete;
 
 const margin = (part: number | null, whole: number | null) =>
   part !== null && whole ? `${Math.round((part / whole) * 100)}%` : null;
@@ -43,6 +48,12 @@ const margin = (part: number | null, whole: number | null) =>
  * session for someone who has one — never overwrite it with a guess), then last
  * quarter's baseline × 4, then blank. Saves only when all three are filled, so a
  * half-typed form can never write $0 as a target.
+ *
+ * A suggestion the owner accepts as it stands IS their plan, so it saves as soon
+ * as the step opens — they must not have to edit a number to keep it. (Live test,
+ * 22 Sep 2026: accepting ×4 and clicking Continue saved nothing, and the next
+ * step said "set this year's numbers first".) A plan already on file is never
+ * re-saved just by opening the step.
  */
 export function FoundationAnnualPlanStep({ review, onUpdateConfidence }: FoundationAnnualPlanStepProps) {
   const supabase = useMemo(() => createClient(), []);
@@ -58,6 +69,10 @@ export function FoundationAnnualPlanStep({ review, onUpdateConfidence }: Foundat
   const [confidence, setConfidence] = useState<number | null>(review.annual_target_confidence ?? null);
   const [notes, setNotes] = useState<string>(review.confidence_notes ?? '');
   const dirty = useRef(false);
+  // What the screen shows but the database doesn't have yet — finished off if
+  // the step closes before the save delay runs out.
+  const pending = useRef<{ numbers: FoundationNumbers; yearType: YearType } | null>(null);
+  const profileRef = useRef<string | null>(null);
 
   const baselineSeed = useMemo(
     () =>
@@ -89,20 +104,27 @@ export function FoundationAnnualPlanStep({ review, onUpdateConfidence }: Foundat
         if (error) throw error;
         if (cancelled) return;
         setProfileId(pid);
-        if (data) {
-          const fromPlan =
-            data.revenue_year1 !== null || data.gross_profit_year1 !== null || data.net_profit_year1 !== null;
-          setSeededFrom(fromPlan ? 'plan' : hasBaseline ? 'baseline' : 'blank');
-          setYearType((data.year_type as YearType) || 'FY');
+        profileRef.current = pid;
+        const fromPlan =
+          !!data &&
+          (data.revenue_year1 !== null || data.gross_profit_year1 !== null || data.net_profit_year1 !== null);
+        if (data) setYearType((data.year_type as YearType) || 'FY');
+        if (fromPlan) {
+          setSeededFrom('plan');
           setNumbers({
-            revenue: data.revenue_year1 ?? (hasBaseline ? baselineSeed.revenue : null),
-            grossProfit: data.gross_profit_year1 ?? (hasBaseline ? baselineSeed.grossProfit : null),
-            netProfit: data.net_profit_year1 ?? (hasBaseline ? baselineSeed.netProfit : null),
+            revenue: data.revenue_year1 ?? null,
+            grossProfit: data.gross_profit_year1 ?? null,
+            netProfit: data.net_profit_year1 ?? null,
           });
           setSave('saved');
         } else if (hasBaseline) {
-          setNumbers({ ...baselineSeed });
+          // No plan yet: start from last quarter × 4. A line the baseline
+          // skipped stays blank. If all three are there, the suggestion is saved
+          // straight away (the auto-save below), so accepting it as it stands
+          // keeps it.
           setSeededFrom('baseline');
+          setNumbers({ ...baselineSeed });
+          if (complete(baselineSeed)) dirty.current = true;
         }
       } catch (err) {
         captureReviewWriteFailure(err, 'foundation-annual-load', { reviewId: review.id });
@@ -118,17 +140,23 @@ export function FoundationAnnualPlanStep({ review, onUpdateConfidence }: Foundat
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, review.business_id, review.id]);
 
+  const persist = (pid: string, values: FoundationNumbers, yt: YearType) =>
+    trackPlanWrite(
+      saveFoundationAnnualPlan(supabase, {
+        profileId: pid,
+        userId: review.user_id,
+        numbers: values,
+        yearType: yt,
+        year1EndDate: year1EndDateFor(yt, review.year),
+      })
+    );
+
   const doSave = async () => {
     if (!profileId || !complete(numbers)) return;
+    pending.current = null;
     setSave('saving');
     try {
-      await saveFoundationAnnualPlan(supabase, {
-        profileId,
-        userId: review.user_id,
-        numbers,
-        yearType,
-        year1EndDate: year1EndDateFor(yearType, review.year),
-      });
+      await persist(profileId, numbers, yearType);
       setSave('saved');
     } catch (err) {
       captureReviewWriteFailure(err, 'foundation-annual-save', { reviewId: review.id, profileId });
@@ -137,13 +165,29 @@ export function FoundationAnnualPlanStep({ review, onUpdateConfidence }: Foundat
   };
 
   // Debounced auto-save, like the rest of the workshop — only once all three
-  // numbers are in, and only after the owner has actually changed something.
+  // numbers are in, and only after something needs saving (an edit, or a
+  // suggestion that isn't on file yet).
   useEffect(() => {
     if (!loaded || !dirty.current || !complete(numbers)) return;
+    pending.current = { numbers, yearType };
     const t = setTimeout(doSave, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numbers, yearType, loaded]);
+
+  // Leaving the step before the delay runs out still saves what was on screen.
+  useEffect(
+    () => () => {
+      const p = pending.current;
+      const pid = profileRef.current;
+      if (!p || !pid) return;
+      persist(pid, p.numbers, p.yearType).catch(err =>
+        captureReviewWriteFailure(err, 'foundation-annual-save-on-leave', { reviewId: review.id, profileId: pid })
+      );
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   const edit = (patch: Partial<Numbers>) => {
     dirty.current = true;
