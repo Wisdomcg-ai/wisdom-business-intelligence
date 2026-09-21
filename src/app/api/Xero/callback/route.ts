@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { encrypt, verifySignedOAuthState } from '@/lib/utils/encryption';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { safeReturnPath, withReturnParams } from '@/lib/utils/safe-return-path';
 import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
 import { getXeroOrgTimezone } from '@/lib/xero/organisation';
 import { getAppBaseUrl } from '@/lib/config/brand'
@@ -172,7 +174,7 @@ async function getHandler(request: NextRequest) {
     let businessId: string;
     let returnTo: string = '/integrations';
 
-    const signedStateData = verifySignedOAuthState<{ business_id: string; return_to?: string; timestamp: number }>(state);
+    const signedStateData = verifySignedOAuthState<{ business_id: string; user_id?: string; return_to?: string; timestamp: number }>(state);
 
     if (!signedStateData) {
       Sentry.captureMessage('Invalid OAuth state - signature verification failed', 'error' as any);
@@ -189,8 +191,29 @@ async function getHandler(request: NextRequest) {
         new URL('/integrations?error=state_expired', request.url)
       );
     }
+
+    // S4 (22 Sep 2026): only the person who started this connect may finish it.
+    // The state is signed, but it used to name only the business — a client
+    // could send someone their Xero login link and that person's orgs were
+    // saved onto the client's business (Matt's full multi-org list pre-ticked).
+    // The callback is a top-level redirect back from Xero, so the session
+    // cookie is present; a state minted before this check (no user_id) is refused.
+    const sessionClient = await createRouteHandlerClient();
+    const { data: { user: sessionUser } } = await sessionClient.auth.getUser();
+    if (!signedStateData.user_id || !sessionUser || sessionUser.id !== signedStateData.user_id) {
+      Sentry.captureMessage('Xero callback: session is not the user who started the connect', {
+        level: 'warning',
+        tags: { route: 'Xero/callback', invariant: 'xero_oauth_state_user_mismatch' },
+        extra: { hasStateUser: !!signedStateData.user_id, hasSession: !!sessionUser },
+      } as any);
+      return NextResponse.redirect(
+        new URL('/integrations?error=session_mismatch', request.url)
+      );
+    }
+
     businessId = signedStateData.business_id;
-    returnTo = signedStateData.return_to || '/integrations';
+    // S2: re-checked here as well as when the state was minted.
+    returnTo = safeReturnPath(signedStateData.return_to);
 
     // Step 1: Exchange code for tokens
     if (process.env.NODE_ENV !== 'production') {
@@ -364,7 +387,7 @@ async function getHandler(request: NextRequest) {
     //
     // ?syncing=true is the forecast page's cue to run that sync.
     return NextResponse.redirect(
-      new URL(`${returnTo}?success=connected&syncing=true`, request.url)
+      new URL(withReturnParams(returnTo, { success: 'connected', syncing: 'true' }), request.url)
     );
 
   } catch (error) {

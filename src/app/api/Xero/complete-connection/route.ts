@@ -16,6 +16,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { encrypt, decrypt } from '@/lib/utils/encryption';
 import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
 import * as Sentry from '@sentry/nextjs'
+import { withReturnParams } from '@/lib/utils/safe-return-path';
 import { grantedScopesColumns, resolveGrantedScopes } from '@/lib/xero/granted-scopes';
 
 export const dynamic = 'force-dynamic';
@@ -216,7 +217,8 @@ async function postHandler(request: Request) {
       success: true,
       tenant_count: selectedTenants.length,
       tenant_names: selectedTenants.map((t) => t.tenantName),
-      redirect_to: `${pending.return_to || '/integrations'}?success=connected&syncing=true`,
+      // S2: the picker navigates to this — only ever a same-site path.
+      redirect_to: withReturnParams(pending.return_to, { success: 'connected', syncing: 'true' }),
     });
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'Xero/complete-connection' }, extra: { context: "[Xero Complete] Error" } } as any);

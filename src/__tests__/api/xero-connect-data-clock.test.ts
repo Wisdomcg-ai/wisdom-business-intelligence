@@ -174,9 +174,14 @@ vi.mock('@supabase/supabase-js', () => ({
 
 const OWNER = 'owner-user-1'
 
+/** Who the browser is logged in as when Xero redirects back. Reset to OWNER in beforeEach. */
+let sessionUserId: string | null = OWNER
+
 vi.mock('@/lib/supabase/server', () => ({
   createRouteHandlerClient: async () => ({
-    auth: { getUser: async () => ({ data: { user: { id: OWNER } }, error: null }) },
+    auth: {
+      getUser: async () => ({ data: { user: sessionUserId ? { id: sessionUserId } : null }, error: null }),
+    },
   }),
 }))
 
@@ -307,10 +312,20 @@ async function settle() {
 
 // ─── The routes ─────────────────────────────────────────────────────────────
 
-/** Xero redirecting the browser back after consent, with the state /api/Xero/auth signed. */
-async function xeroRedirectsBack(opts: { businessId: string; returnTo: string }) {
+/**
+ * Xero redirecting the browser back after consent, with the state /api/Xero/auth
+ * signed. `stateUserId` is who started the connect (null = a state minted before
+ * S4 added user_id); defaults to the owner, who is also the logged-in session.
+ */
+async function xeroRedirectsBack(opts: { businessId: string; returnTo: string; stateUserId?: string | null }) {
   const { GET } = await import('@/app/api/Xero/callback/route')
-  const state = createSignedOAuthState({ business_id: opts.businessId, return_to: opts.returnTo, timestamp: Date.now() })
+  const stateUserId = opts.stateUserId === undefined ? OWNER : opts.stateUserId
+  const state = createSignedOAuthState({
+    business_id: opts.businessId,
+    ...(stateUserId ? { user_id: stateUserId } : {}),
+    return_to: opts.returnTo,
+    timestamp: Date.now(),
+  })
   const url = `http://localhost/api/Xero/callback?code=auth-code-1&state=${encodeURIComponent(state)}`
   const res = await (GET as unknown as (req: Request) => Promise<Response>)(new NextRequest(url))
   await settle()
@@ -332,6 +347,7 @@ async function selectOrgs(body: { pending_id: string; tenant_ids: string[] }) {
 }
 
 beforeEach(() => {
+  sessionUserId = OWNER
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(NOW))
   vi.resetModules()
@@ -466,5 +482,90 @@ describe('POST /api/Xero/complete-connection — orgs picked from a multi-org co
       ['New Org A', 'pending_first_sync'],
       ['New Org B', 'pending_first_sync'],
     ])
+  })
+})
+
+/**
+ * S4 + S2 (22 Sep 2026 system diagnostic). The signed state used to name only
+ * the business, so a client could send someone their Xero login link and have
+ * that person's orgs saved onto the client's business; and return_to was
+ * followed wherever it pointed — an open redirect, and a javascript: link on the
+ * org picker. Refusals must happen before Xero is even asked for tokens.
+ */
+describe('GET /api/Xero/callback — only the person who started the connect can finish it (S4)', () => {
+  it("a connect link opened in someone else's session saves nothing and never exchanges the code", async () => {
+    database = fakeSupabase(businessWith([]))
+    const calls: string[] = []
+    vi.spyOn(global, 'fetch').mockImplementation(xero([{ tenantId: TENANT_NEW_A, tenantName: 'New Org A' }], calls))
+    sessionUserId = 'matt-super-admin'
+
+    const res = await xeroRedirectsBack({ businessId: BIZ, returnTo: '/integrations' })
+
+    expect(res.headers.get('location')).toBe('http://localhost/integrations?error=session_mismatch')
+    expect(calls).toEqual([])
+    expect(database.rows('xero_connections')).toEqual([])
+    expect(database.rows('pending_xero_connections')).toEqual([])
+  })
+
+  it('a state minted before the check (no user_id) is refused', async () => {
+    database = fakeSupabase(businessWith([]))
+    const calls: string[] = []
+    vi.spyOn(global, 'fetch').mockImplementation(xero([{ tenantId: TENANT_NEW_A, tenantName: 'New Org A' }], calls))
+
+    const res = await xeroRedirectsBack({ businessId: BIZ, returnTo: '/integrations', stateUserId: null })
+
+    expect(res.headers.get('location')).toBe('http://localhost/integrations?error=session_mismatch')
+    expect(calls).toEqual([])
+    expect(database.rows('xero_connections')).toEqual([])
+  })
+
+  it('no session at all is refused', async () => {
+    database = fakeSupabase(businessWith([]))
+    const calls: string[] = []
+    vi.spyOn(global, 'fetch').mockImplementation(xero([{ tenantId: TENANT_NEW_A, tenantName: 'New Org A' }], calls))
+    sessionUserId = null
+
+    const res = await xeroRedirectsBack({ businessId: BIZ, returnTo: '/integrations' })
+
+    expect(res.headers.get('location')).toBe('http://localhost/integrations?error=session_mismatch')
+    expect(calls).toEqual([])
+  })
+})
+
+describe('Xero connect never navigates off-site (S2)', () => {
+  for (const hostile of ['https://evil.example/phish', '//evil.example/phish', '/\\evil.example', 'javascript:alert(document.cookie)//']) {
+    it(`callback: return_to ${JSON.stringify(hostile)} lands on /integrations`, async () => {
+      database = fakeSupabase(businessWith([]))
+      vi.spyOn(global, 'fetch').mockImplementation(xero([{ tenantId: TENANT_NEW_A, tenantName: 'New Org A' }], []))
+
+      const res = await xeroRedirectsBack({ businessId: BIZ, returnTo: hostile })
+
+      expect(res.headers.get('location')).toBe('http://localhost/integrations?success=connected&syncing=true')
+    })
+  }
+
+  it('complete-connection: a hostile stored return_to becomes a same-site redirect_to', async () => {
+    database = fakeSupabase({
+      ...businessWith([]),
+      pending_xero_connections: [
+        {
+          id: 'pending-hostile',
+          business_id: BIZ,
+          user_id: OWNER,
+          encrypted_access_token: encrypt('access-shared'),
+          encrypted_refresh_token: encrypt('refresh-shared'),
+          token_expires_at: '2026-09-16T01:28:00.000Z',
+          tenants: [{ tenantId: TENANT_NEW_A, tenantName: 'New Org A' }],
+          return_to: 'javascript:alert(document.cookie)//',
+          created_at: '2026-09-16T00:58:00.000Z',
+        },
+      ],
+    })
+    vi.spyOn(global, 'fetch').mockImplementation(xero([], []))
+
+    const { status, json } = await selectOrgs({ pending_id: 'pending-hostile', tenant_ids: [TENANT_NEW_A] })
+
+    expect(status).toBe(200)
+    expect(json.redirect_to).toBe('/integrations?success=connected&syncing=true')
   })
 })
