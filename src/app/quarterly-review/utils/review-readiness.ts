@@ -140,3 +140,28 @@ export function planStepMode(
   if (override === 'standard') return 'normal';
   return r.hasPlan === 'no' ? 'build' : 'normal';
 }
+
+/**
+ * The program type that means "no coaching" — so no quarterly workshop either.
+ *
+ * `businesses.program_type` is the system's own record of what a client buys,
+ * set from each client's Profile tab. Its options are '1:1 Coaching',
+ * 'Think Bigger', 'Coaching + CFO Services' and 'CFO Services Only', and the
+ * app's own description of the last is "no coaching program".
+ *
+ * Deliberately keyed on program_type and NOT on `is_cfo_client`: that flag is
+ * true for 'Coaching + CFO Services' too, so excluding on it would drop clients
+ * like Efficient Living who do both and run workshops.
+ */
+export const CFO_ONLY_PROGRAM = 'CFO Services Only';
+
+/**
+ * Does this client take part in quarterly workshops?
+ *
+ * Only an explicit CFO-only program opts a client out. Blank means "not set",
+ * and a blank client stays in — dropping a coaching client from the list is the
+ * costlier mistake than showing a CFO client who doesn't need it.
+ */
+export function isInWorkshopProgramme(programType: string | null | undefined): boolean {
+  return programType !== CFO_ONLY_PROGRAM;
+}
