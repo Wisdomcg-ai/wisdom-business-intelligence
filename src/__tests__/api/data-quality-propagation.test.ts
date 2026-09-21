@@ -43,9 +43,13 @@ function makeMockSupabase(opts: MockOpts) {
       ctx._filters.push({ kind: 'in', col, val })
       return ctx
     }
+    ctx.is = () => ctx
     ctx.order = () => ctx
     ctx.limit = () => ctx
     ctx.range = () => ctx
+    // xero_pl_lines is paged by readAllRows; this fixture has no rows, so the
+    // first page is the empty one that ends the read.
+    ctx.gt = () => ctx
     ctx.maybeSingle = async () => {
       if (table === 'financial_forecasts') {
         return { data: opts.activeForecast, error: null }

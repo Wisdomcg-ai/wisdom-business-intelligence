@@ -393,21 +393,56 @@ export function iictState(opts: {
 
 /**
  * A service-role Supabase client over in-memory tables. Honours the filters
- * the resolvers use — .eq/.in/.is/.not('col','is',null)/.order/.range/.limit —
+ * the resolvers use — .eq/.in/.is/.not('col','is',null)/.gt/.order/.range/.limit —
  * because resolution IS a sequence of filters, and a harness that ignored
  * `.not()` would let an unlocked version resolve for the wrong reason.
  */
+/**
+ * The xero_pl_lines rows xero_pl_lines_wide_compat is built from: one per account
+ * per month, accruals, not deleted. Readers that page by id (readAllRows) read the
+ * table, because the view is a GROUP BY with no key to page by.
+ */
+function plLinesFromWide(wide: any[]): any[] {
+  const rows: any[] = []
+  for (const w of wide) {
+    for (const [month, amount] of Object.entries((w.monthly_values ?? {}) as Record<string, number>)) {
+      rows.push({
+        id: `pl-${String(rows.length + 1).padStart(6, '0')}`,
+        business_id: w.business_id,
+        tenant_id: w.tenant_id,
+        account_code: w.account_code,
+        account_name: w.account_name,
+        account_type: w.account_type,
+        period_month: `${month}-01`,
+        amount,
+        basis: 'accruals',
+        deleted_at: null,
+      })
+    }
+  }
+  return rows
+}
+
 export function memorySupabase(tables: Record<string, any[]>) {
-  type Filter = [string, unknown, 'eq' | 'neq' | 'in' | 'is' | 'not-is']
+  type Filter = [string, unknown, 'eq' | 'neq' | 'in' | 'is' | 'not-is' | 'gt']
   const build = (table: string, filters: Filter[] = [], order: { col: string; asc: boolean } | null = null): any => {
     const run = () => {
-      let rows = (tables[table] ?? []).filter((r) =>
+      // A test that gives only the view still has the table it is built from,
+      // derived here at read time so a row a test reshapes after setup is the
+      // same row in both. A test that sets xero_pl_lines itself keeps its own.
+      const source = table === 'xero_pl_lines' && !tables.xero_pl_lines
+        ? plLinesFromWide(tables.xero_pl_lines_wide_compat ?? [])
+        : (tables[table] ?? [])
+      let rows = source.filter((r) =>
         filters.every(([col, val, op]) => {
           const cell = r[col]
           if (op === 'eq') return cell === val
           if (op === 'neq') return cell !== val
           if (op === 'in') return Array.isArray(val) && (val as unknown[]).includes(cell)
           if (op === 'is') return val === null ? cell === null || cell === undefined : cell === val
+          // readAllRows' keyset cursor: the page after the last id read. A NULL
+          // cell is never greater than anything, as in Postgres.
+          if (op === 'gt') return cell !== null && cell !== undefined && (cell as any) > (val as any)
           return val === null ? cell !== null && cell !== undefined : cell !== val
         }),
       )
@@ -424,6 +459,7 @@ export function memorySupabase(tables: Record<string, any[]>) {
       in: (c: string, v: unknown[]) => build(table, [...filters, [c, v, 'in']], order),
       is: (c: string, v: unknown) => build(table, [...filters, [c, v, 'is']], order),
       not: (c: string, _op: string, v: unknown) => build(table, [...filters, [c, v, 'not-is']], order),
+      gt: (c: string, v: unknown) => build(table, [...filters, [c, v, 'gt']], order),
       or: () => q,
       order: (c: string, o?: { ascending?: boolean }) => build(table, filters, { col: c, asc: o?.ascending ?? true }),
       range: (from: number, to: number) => Promise.resolve({ data: run().slice(from, to + 1), error: null }),

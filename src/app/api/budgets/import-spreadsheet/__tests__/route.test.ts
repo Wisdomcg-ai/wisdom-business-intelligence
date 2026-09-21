@@ -49,9 +49,9 @@ function state() {
   tables.budget_versions = []
   tables.budget_lines = []
   tables.xero_accounts = [
-    { tenant_id: DRG, xero_account_id: 'a1', account_code: '477', account_name: 'Wages and Salaries - Admin', xero_type: 'WAGESEXPENSE', xero_status: 'ACTIVE' },
-    { tenant_id: EHC, xero_account_id: 'a2', account_code: '477', account_name: 'Wages and Salaries', xero_type: 'WAGESEXPENSE', xero_status: 'ACTIVE' },
-    { tenant_id: DRG, xero_account_id: 'a3', account_code: '485', account_name: 'Subscriptions', xero_type: 'OVERHEADS', xero_status: 'ACTIVE' },
+    { id: 'xa-1', tenant_id: DRG, xero_account_id: 'a1', account_code: '477', account_name: 'Wages and Salaries - Admin', xero_type: 'WAGESEXPENSE', xero_status: 'ACTIVE' },
+    { id: 'xa-2', tenant_id: EHC, xero_account_id: 'a2', account_code: '477', account_name: 'Wages and Salaries', xero_type: 'WAGESEXPENSE', xero_status: 'ACTIVE' },
+    { id: 'xa-3', tenant_id: DRG, xero_account_id: 'a3', account_code: '485', account_name: 'Subscriptions', xero_type: 'OVERHEADS', xero_status: 'ACTIVE' },
   ]
   tables.monthly_report_snapshots = []
   const mem = memorySupabase(tables)

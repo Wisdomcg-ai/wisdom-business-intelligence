@@ -31,6 +31,7 @@
 import * as Sentry from '@sentry/nextjs'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { readAllRows } from '@/lib/supabase/read-all-rows'
 // Phase 67-03 — FX engine wiring for multi-currency consolidated businesses.
 import { needsFxConsolidation } from '@/lib/utils/needs-fx-consolidation'
 import { buildConsolidation } from '@/lib/consolidation/engine'
@@ -200,6 +201,7 @@ export interface CashflowProjection {
 }
 
 interface RawXeroRow {
+  id: string
   account_code: string | null
   account_name: string
   account_type: string
@@ -563,30 +565,35 @@ export class ForecastReadService {
   // ────────────────────────────────────────────────────────────────────────
 
   /**
-   * Paginated fetch of xero_pl_lines for all resolved business IDs.
+   * Every xero_pl_lines row for all resolved business IDs.
    *
    * Supabase/PostgREST caps a single SELECT at 1000 rows. Without pagination,
    * multi-year tenants silently truncate — see Phase 44.1 hotfix
    * (2026-04-29) and the Step 2 reconciliation gap diagnosed via JDS (1830
-   * rows total, 1000-row cap was dropping ~$5.3M COGS + $3.8M OpEx).
+   * rows total, 1000-row cap was dropping ~$5.3M COGS + $3.8M OpEx). That
+   * hotfix paged with un-ORDERed `.range()` calls and stopped on a short page,
+   * so a sync between two pages could repeat one row and skip another, and a
+   * Max rows cap below 1,000 ended the read early. readAllRows pages by id to
+   * an empty page instead (15 Sep 2026: JDS 1,764 rows, Efficient Living 1,272).
+   *
+   * Accruals only and not soft-deleted, as xero_pl_lines_wide_compat reads the
+   * table: aggregateXeroRows SUMS per account and month, so a cash-basis twin
+   * from the WD.7 sync mirror would double every figure.
+   *
+   * Throws when the read cannot finish; getMonthlyComposite's callers turn that
+   * into a 500, never into a composite with accounts missing.
    */
   private async fetchAllXeroRows(businessIds: string[]): Promise<RawXeroRow[]> {
-    const all: RawXeroRow[] = []
-    const pageSize = 1000
-    let from = 0
-    while (true) {
-      const { data, error } = await this.supabase
+    const read = await readAllRows<RawXeroRow>('xero_pl_lines', () =>
+      this.supabase
         .from('xero_pl_lines')
-        .select('account_code, account_name, account_type, period_month, amount, tenant_id')
+        .select('id, account_code, account_name, account_type, period_month, amount, tenant_id')
         .in('business_id', businessIds)
-        .range(from, from + pageSize - 1)
-      if (error) throw error
-      if (!data || data.length === 0) break
-      all.push(...(data as RawXeroRow[]))
-      if (data.length < pageSize) break
-      from += pageSize
-    }
-    return all
+        .eq('basis', 'accruals')
+        .is('deleted_at', null),
+    )
+    if (!read.ok) throw read.error
+    return read.rows
   }
 
   /**
