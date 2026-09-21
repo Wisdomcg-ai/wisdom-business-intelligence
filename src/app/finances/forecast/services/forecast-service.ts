@@ -1,6 +1,8 @@
 'use client'
 
+import * as Sentry from '@sentry/nextjs'
 import { createClient } from '@/lib/supabase/client'
+import { readAllRows } from '@/lib/supabase/read-all-rows'
 import {
   calculateForecastPeriods as _calcPeriods,
   DEFAULT_YEAR_START_MONTH,
@@ -298,6 +300,11 @@ export class ForecastService {
    *
    * Avoids pushing the operator into a wizard build just to see YTD
    * performance + a defensible end-of-FY estimate.
+   *
+   * THROWS when the actuals cannot all be read. An empty return means this
+   * business has no actuals in the window, and the page answers that with the
+   * Create Forecast empty state — so a failed read must not return [] (it used
+   * to). The page's loader catches the throw and shows its error state.
    */
   static async loadActualsAsPLLines(
     businessId: string,
@@ -332,35 +339,38 @@ export class ForecastService {
       const startISO = `${fyStart.getFullYear()}-${String(fyStart.getMonth() + 1).padStart(2, '0')}-01`
       const endISO = `${fyEnd.getFullYear()}-${String(fyEnd.getMonth() + 1).padStart(2, '0')}-${String(fyEnd.getDate()).padStart(2, '0')}`
 
-      // Paginate to avoid the PostgREST 1000-row cap (multi-year tenants
-      // exceed it — Phase 44.1 hotfix pattern).
+      // Every row in the window, however many pages that takes — readAllRows
+      // pages by id to an empty page, because PostgREST cuts each response to
+      // 1,000 rows (JDS already has 976 in the current-FY window). Accruals
+      // only and not soft-deleted, exactly as xero_pl_lines_wide_compat reads
+      // the table: the sync can mirror a cash-basis twin of every month (WD.7),
+      // and summing it in below would double every figure.
       type RawRow = {
+        id: string
         account_code: string | null
         account_name: string | null
         account_type: string | null
         period_month: string
         amount: number
       }
-      const rows: RawRow[] = []
-      const pageSize = 1000
-      let from = 0
-      while (true) {
-        const { data, error } = await this.supabase
+      const read = await readAllRows<RawRow>('xero_pl_lines', () =>
+        this.supabase
           .from('xero_pl_lines')
-          .select('account_code, account_name, account_type, period_month, amount')
+          .select('id, account_code, account_name, account_type, period_month, amount')
           .in('business_id', idsToTry)
+          .eq('basis', 'accruals')
+          .is('deleted_at', null)
           .gte('period_month', startISO)
-          .lte('period_month', endISO)
-          .range(from, from + pageSize - 1)
-        if (error) {
-          console.error('[Forecast] Error loading actuals:', error)
-          return []
-        }
-        if (!data || data.length === 0) break
-        rows.push(...(data as RawRow[]))
-        if (data.length < pageSize) break
-        from += pageSize
+          .lte('period_month', endISO),
+      )
+      if (!read.ok) {
+        Sentry.captureException(read.error, {
+          tags: { invariant: 'forecast-actuals-read-incomplete' },
+          extra: { businessId, fiscalYear },
+        })
+        throw new Error('Could not load all of your Xero actuals. Please try again.')
       }
+      const rows = read.rows
 
       if (rows.length === 0) return []
 
@@ -460,7 +470,7 @@ export class ForecastService {
       return out
     } catch (err) {
       console.error('[Forecast] loadActualsAsPLLines error:', err)
-      return []
+      throw err
     }
   }
 

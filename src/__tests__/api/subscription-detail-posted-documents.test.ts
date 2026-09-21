@@ -60,6 +60,9 @@ function chainable(table: string): any {
   // The history table honours .eq on the columns a fixture row carries, so a
   // test can see WHICH rows a prune was allowed to read.
   const filters: [string, unknown][] = []
+  // A keyset page (readAllRows: budget_lines) asks for the rows after the last
+  // id it received; honouring that is what lets the read reach its empty page.
+  let after: [string, string] | null = null
   const c: any = {
     eq: (col: string, val: unknown) => { filters.push([col, val]); return c },
     in: () => c,
@@ -67,6 +70,7 @@ function chainable(table: string): any {
     is: () => c,
     gte: () => c,
     lte: () => c,
+    gt: (col: string, val: string) => { after = [col, val]; return c },
     not: () => c,
     range: () => c,
     order: () => c,
@@ -74,9 +78,13 @@ function chainable(table: string): any {
     maybeSingle: async () => ({ data: fx.single ?? null, error: fx.error ?? null }),
     single: async () => ({ data: fx.single ?? null, error: fx.error ?? null }),
     then: (resolve: any, reject?: any) => {
-      const rows = table !== 'subscription_vendor_actuals'
+      let rows = table !== 'subscription_vendor_actuals'
         ? (fx.rows ?? [])
         : (fx.rows ?? []).filter(r => filters.every(([col, val]) => !(col in r) || r[col] === val))
+      if (after) {
+        const [col, val] = after
+        rows = rows.filter(r => String(r[col]) > val)
+      }
       return Promise.resolve({ data: rows, error: fx.error ?? null }).then(resolve, reject)
     },
   }
