@@ -43,6 +43,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { toDateOnly, parseDateOnly } from '@/lib/utils/date-only'
 import { FinancialData, CoreMetricsData, KPIData, StrategicInitiative, YearType, MonthlyTargetsData } from '../types'
 import { STANDARD_KPIS, INDUSTRY_KPIS } from '../utils/constants'
 import { FinancialService } from '../services/financial-service'
@@ -339,11 +340,12 @@ export function useStrategicPlanning(
                 year1Months,
                 currentYearRemainingMonths
               },
-              // Phase 42: send plan period as ISO date strings (YYYY-MM-DD)
+              // Phase 42: send plan period as ISO date strings (YYYY-MM-DD).
+              // B2: the LOCAL calendar date — toISOString() sent the day before in Australia.
               planPeriod: planStartDate && planEndDate && year1EndDate ? {
-                planStartDate: planStartDate.toISOString().slice(0, 10),
-                planEndDate:   planEndDate.toISOString().slice(0, 10),
-                year1EndDate:  year1EndDate.toISOString().slice(0, 10),
+                planStartDate: toDateOnly(planStartDate),
+                planEndDate:   toDateOnly(planEndDate),
+                year1EndDate:  toDateOnly(year1EndDate),
               } : undefined,
             },
             kpis,
@@ -842,9 +844,12 @@ export function useStrategicPlanning(
 
         if (loadedPlanPeriod?.planStartDate) {
           // Existing plan — use persisted dates regardless of who is viewing.
-          resolvedPlanStart = new Date(loadedPlanPeriod.planStartDate as string)
-          resolvedPlanEnd   = new Date((loadedPlanPeriod.planEndDate ?? loadedPlanPeriod.planStartDate) as string)
-          resolvedYear1End  = new Date((loadedPlanPeriod.year1EndDate ?? loadedPlanPeriod.planStartDate) as string)
+          // B2: stored "YYYY-MM-DD" -> LOCAL midnight, the same representation the
+          // suggestion and the adjust dialog build (new Date(str) was UTC midnight).
+          const toPlanDate = (s: string) => parseDateOnly(s) ?? new Date(s)
+          resolvedPlanStart = toPlanDate(loadedPlanPeriod.planStartDate as string)
+          resolvedPlanEnd   = toPlanDate((loadedPlanPeriod.planEndDate ?? loadedPlanPeriod.planStartDate) as string)
+          resolvedYear1End  = toPlanDate((loadedPlanPeriod.year1EndDate ?? loadedPlanPeriod.planStartDate) as string)
           console.log('[Strategic Planning] Loaded persisted plan period:', loadedPlanPeriod)
         } else if (!loadedFinancialData) {
           // Truly new plan — generate suggestion. Both coach and owner view see the same.

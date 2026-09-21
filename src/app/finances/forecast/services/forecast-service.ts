@@ -15,8 +15,7 @@ import type {
   FinancialForecast,
   PLLine,
   ForecastEmployee,
-  PayrollSummary,
-  XeroConnection
+  PayrollSummary
 } from '../types'
 
 /**
@@ -717,43 +716,6 @@ export class ForecastService {
     } catch (err) {
       console.error('[Forecast] Error:', err)
       return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
-    }
-  }
-
-  /**
-   * Get Xero connection for a business
-   */
-  static async getXeroConnection(businessId: string): Promise<XeroConnection | null> {
-    try {
-      // xero_connections.business_id references business_profiles.id,
-      // but callers may pass businesses.id — collect both IDs to search
-      const idsToTry: string[] = [businessId]
-      const { data: profile } = await this.supabase
-        .from('business_profiles')
-        .select('id')
-        .eq('business_id', businessId)
-        .maybeSingle()
-      if (profile?.id && profile.id !== businessId) {
-        idsToTry.push(profile.id)
-      }
-
-      const { data, error } = await this.supabase
-        .from('xero_connections')
-        .select('*')
-        .in('business_id', idsToTry)
-        .eq('is_active', true)
-        .limit(1)
-        .maybeSingle()
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('[Forecast] Error loading Xero connection:', error)
-        return null
-      }
-
-      return data
-    } catch (err) {
-      console.error('[Forecast] Error:', err)
-      return null
     }
   }
 

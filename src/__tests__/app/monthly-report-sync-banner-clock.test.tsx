@@ -72,8 +72,27 @@ beforeEach(() => {
       return {
         ok: true,
         status: 200,
+        // The every-org shape /api/Xero/status answers since #533. A body without
+        // `status` and `orgs` is not a status answer (parseXeroStatusResponse),
+        // and the hook would rightly render "could not check" instead.
         json: async () => ({
+          status: 'connected',
+          status_scope: null,
+          more_orgs_needing_attention: 0,
+          last_sync_at: serverClock,
+          orgs: [{
+            connection_id: 'conn-a',
+            tenant_id: 'tenant-a',
+            tenant_name: 'Org A',
+            status: 'connected',
+            last_sync_at: serverClock,
+            last_refresh_at: serverClock,
+          }],
+          retired_orgs: [],
+          can_manage: true,
           connected: true,
+          expired: false,
+          needsReconnect: false,
           connection: {
             id: 'conn-a',
             tenant_name: 'Org A',

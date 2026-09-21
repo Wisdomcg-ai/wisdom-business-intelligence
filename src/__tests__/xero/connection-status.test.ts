@@ -20,6 +20,8 @@ import {
   classifyBusinessConnections,
   classifyXeroConnection,
   dataClockFor,
+  groupConnectionsByOrg,
+  isRetiredOrg,
   needsAttention,
   ACCESS_TOKEN_TTL_MS,
   TOKEN_VERIFIED_WINDOW_MS,
@@ -595,5 +597,28 @@ describe('classifyBusinessConnections — a business is as healthy as its worst 
       const c = expectOrderIndependent([org('t-a', { tenant_name: 'Zed Co' }), org('t-b', { tenant_name: 'Acme Co' })])
       expect(c.tenantName).toBe('Acme Co')
     })
+  })
+})
+
+describe('groupConnectionsByOrg / isRetiredOrg — the org rule, shared with /api/Xero/reactivate', () => {
+  it('groups both id forms of one org, trims tenant ids, and never groups blank ones', () => {
+    const groups = groupConnectionsByOrg([
+      row({ id: 'a', business_id: 'biz', tenant_id: 't-1' }),
+      row({ id: 'b', business_id: 'prof', tenant_id: ' t-1 ' }),
+      row({ id: 'c', tenant_id: 't-2' }),
+      row({ id: 'd', tenant_id: '' }),
+      row({ id: 'e', tenant_id: null }),
+    ])
+    expect(groups.map((g) => g.map((r) => r.id))).toEqual([['a', 'b'], ['c'], ['d'], ['e']])
+  })
+
+  it('retired only when EVERY row is switched off AND excluded from consolidation', () => {
+    const off = { is_active: false, include_in_consolidation: false }
+    expect(isRetiredOrg([off, off])).toBe(true)
+    expect(isRetiredOrg([off, { is_active: true, include_in_consolidation: false }])).toBe(false)
+    expect(isRetiredOrg([off, { is_active: false, include_in_consolidation: true }])).toBe(false)
+    expect(isRetiredOrg([{ is_active: null, include_in_consolidation: false }])).toBe(true)
+    expect(isRetiredOrg([{ is_active: false, include_in_consolidation: null }])).toBe(false)
+    expect(isRetiredOrg([])).toBe(false)
   })
 })

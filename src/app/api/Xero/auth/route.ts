@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { createSignedOAuthState } from '@/lib/utils/encryption';
+import { safeReturnPath } from '@/lib/utils/safe-return-path';
 import { getAppBaseUrl } from '@/lib/config/brand'
 import { withQuerySchema } from '@/lib/api/with-schema'
 import { z } from 'zod'
@@ -116,10 +117,17 @@ async function getHandler(request: NextRequest) {
     }
 
     // Create signed state parameter with business_id, return_to, and timestamp
-    // This prevents CSRF attacks by ensuring state can only be created by our server
+    // This prevents CSRF attacks by ensuring state can only be created by our server.
+    //
+    // S2/S4 (22 Sep 2026): return_to is reduced to a same-site path here (and
+    // re-checked at every later hop), and the state names the user who started
+    // the connect — the callback refuses to save tokens for anyone else, so a
+    // client can't send someone their "connect Xero" link and have that
+    // person's Xero orgs land on the client's business.
     const state = createSignedOAuthState({
       business_id: businessId,
-      return_to: returnTo || '/integrations',
+      user_id: user.id,
+      return_to: safeReturnPath(returnTo),
       timestamp: Date.now()
     });
 

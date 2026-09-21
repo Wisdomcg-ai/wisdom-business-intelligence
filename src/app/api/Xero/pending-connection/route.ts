@@ -5,6 +5,7 @@ import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { withQuerySchema } from '@/lib/api/with-schema';
 import { z } from 'zod';
 import * as Sentry from '@sentry/nextjs'
+import { safeReturnPath } from '@/lib/utils/safe-return-path';
 
 export const dynamic = 'force-dynamic';
 
@@ -106,7 +107,8 @@ async function getHandler(request: NextRequest) {
       pending_id: pending.id,
       business_id: pending.business_id,
       tenants: pending.tenants,
-      return_to: pending.return_to || '/integrations',
+      // S2: the picker navigates to this — only ever a same-site path.
+      return_to: safeReturnPath(pending.return_to),
     });
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'Xero/pending-connection' }, extra: { context: "[Xero Pending] Error" } } as any);

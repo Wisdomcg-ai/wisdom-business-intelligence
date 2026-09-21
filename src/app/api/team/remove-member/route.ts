@@ -6,6 +6,7 @@ import { csrfProtection } from '@/lib/security/csrf'
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
+import { checkFullAccountDeletion, type FullDeletionVerdict } from '@/lib/team/account-guards'
 
 // VALID-03 (observe mode): POST removes a team member from a business.
 const RemoveMemberPostSchema = z.object({
@@ -100,6 +101,24 @@ async function postHandler(request: Request) {
       return NextResponse.json({ error: 'Cannot remove the business owner' }, { status: 400 })
     }
 
+    // S1 (22 Sep 2026): decide what "delete completely" may do BEFORE touching
+    // anything. Invite used to add any existing account (a coach's, Matt's) to
+    // the caller's team, and this branch then deleted that account because it
+    // had no other business_users rows. The guard refuses privileged accounts
+    // and anyone who owns or coaches a business; a lookup failure refuses too.
+    let verdict: FullDeletionVerdict | null = null
+    if (deleteCompletely) {
+      try {
+        verdict = await checkFullAccountDeletion(adminSupabase, memberUserId, memberId)
+      } catch (guardError) {
+        Sentry.captureException(guardError, { tags: { route: 'team/remove-member', invariant: 'team_delete_guard_failed' } } as any)
+        return NextResponse.json({ error: "Couldn't confirm this account is safe to delete — nothing was changed. Try again." }, { status: 500 })
+      }
+      if (verdict.kind === 'refuse') {
+        return NextResponse.json({ error: verdict.reason }, { status: 403 })
+      }
+    }
+
     // Remove from business_users (scoped to the authorized business — see AUTHZ-SR-02 above)
     const { error: removeError } = await adminSupabase
       .from('business_users')
@@ -112,66 +131,69 @@ async function postHandler(request: Request) {
       return NextResponse.json({ error: 'Failed to remove team member' }, { status: 500 })
     }
 
-    // If deleteCompletely is true, remove from all tables and auth
-    if (deleteCompletely) {
-      // Check if user is in any other businesses
-      const { data: otherBusinesses } = await adminSupabase
-        .from('business_users')
-        .select('id')
-        .eq('user_id', memberUserId)
+    if (verdict?.kind === 'remove_only') {
+      return NextResponse.json({
+        success: true,
+        message: 'User removed from team (still in other businesses)',
+        deletedCompletely: false
+      })
+    }
 
-      // Only fully delete if they're not in any other businesses
-      if (!otherBusinesses || otherBusinesses.length === 0) {
-        // Delete from team_invites
-        await adminSupabase
-          .from('team_invites')
-          .delete()
-          .eq('email', (await adminSupabase
-            .from('users')
-            .select('email')
-            .eq('id', memberUserId)
-            .single()
-          ).data?.email || '')
+    if (verdict?.kind === 'delete') {
+      const { data: memberRow, error: emailError } = await adminSupabase
+        .from('users')
+        .select('email')
+        .eq('id', memberUserId)
+        .maybeSingle()
+      const memberEmail = (memberRow as { email?: string } | null)?.email
 
-        // Delete from system_roles
-        await adminSupabase
-          .from('system_roles')
-          .delete()
-          .eq('user_id', memberUserId)
-
-        // Delete from users table
-        await adminSupabase
-          .from('users')
-          .delete()
-          .eq('id', memberUserId)
-
-        // Delete from auth.users using Admin API
-        const deleteAuthResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${memberUserId}`,
-          {
-            method: 'DELETE',
-            headers: {
-              'apikey': getSupabaseSecretKey()
-            }
-          }
-        )
-
-        if (!deleteAuthResponse.ok) {
-          Sentry.captureMessage('[Remove Member] Failed to delete from auth.users', 'error' as any)
-        }
-
-        return NextResponse.json({
-          success: true,
-          message: 'User completely removed from the system',
-          deletedCompletely: true
-        })
-      } else {
-        return NextResponse.json({
-          success: true,
-          message: 'User removed from team (still in other businesses)',
-          deletedCompletely: false
-        })
+      // Every step is checked: a half-deleted account (auth login gone, role
+      // row left, or the reverse) is worse than either end state.
+      const failures: string[] = []
+      if (emailError) failures.push(`users email lookup: ${emailError.message}`)
+      if (memberEmail) {
+        const { error } = await adminSupabase.from('team_invites').delete().eq('email', memberEmail)
+        if (error) failures.push(`team_invites: ${error.message}`)
       }
+      {
+        const { error } = await adminSupabase.from('system_roles').delete().eq('user_id', memberUserId)
+        if (error) failures.push(`system_roles: ${error.message}`)
+      }
+      {
+        const { error } = await adminSupabase.from('users').delete().eq('id', memberUserId)
+        if (error) failures.push(`users: ${error.message}`)
+      }
+
+      // Delete from auth.users using Admin API
+      const deleteAuthResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${memberUserId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'apikey': getSupabaseSecretKey()
+          }
+        }
+      )
+      if (!deleteAuthResponse.ok) failures.push(`auth.users: HTTP ${deleteAuthResponse.status}`)
+
+      if (failures.length > 0) {
+        Sentry.captureMessage('[Remove Member] Account deletion incomplete', {
+          level: 'error',
+          tags: { route: 'team/remove-member', invariant: 'team_account_delete_incomplete' },
+          extra: { memberUserId, failures },
+        } as any)
+        return NextResponse.json({
+          success: false,
+          error: 'They were removed from the team, but their account could not be fully deleted. Contact support.',
+          deletedCompletely: false
+        }, { status: 500 })
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'User completely removed from the system',
+        deletedCompletely: true
+      })
     }
 
     return NextResponse.json({
