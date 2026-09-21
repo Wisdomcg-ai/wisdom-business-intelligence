@@ -52,6 +52,9 @@ export const SYS_CODES = {
   otherExpense: 'SYS-OTHER-EXPENSE',
 } as const
 
+/** The synthetic code convertOpEx writes for a Step 5 line with no Xero code: its list index. */
+const WIZARD_OPEX_CODE = /^opex-\d+$/
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -1084,10 +1087,22 @@ export function teamCoverageFromAssumptions(
  *      Generate after a Xero-budget seed otherwise double-counts the whole
  *      wages bill ($990,493 on Urban Road, NP +$536k on screen vs −$454k stored).
  *      Statutory on-costs classify as 'unmodelled' and are never covered.
+ *   5. Step 5 lines the coach removed or excluded (22 Sep 2026, D4 — Digital
+ *      Bond). A row coded `opex-N` can only have been written by convertOpEx
+ *      from a Step 5 line (N is the wizard's list index). When no CURRENT Step 5
+ *      line claims it, the coach deleted or excluded that line — the summary
+ *      dropped it, the stored P&L kept it. Digital Bond FY2027 carried six
+ *      (dividends, income tax, …: +$281,916 of OpEx); Dragon FY2027 carries
+ *      "Appointment Setting" (+$26,120, its whole parity gap). "Claims" mirrors
+ *      convertOpEx's own findMatchingLine (name first, then code), computed from
+ *      the ASSUMPTIONS rather than the converter's output, so a crashed OpEx
+ *      step (D-44.1-06) can never retire its own lines. Needs `existingLines`;
+ *      without them the rule is off. Real Xero-coded rows are never touched.
  */
 export function buildRetirePredicate(
-  assumptions: Pick<ForecastAssumptions, 'team' | 'subscriptions'> | null | undefined,
+  assumptions: Pick<ForecastAssumptions, 'team' | 'subscriptions' | 'opex'> | null | undefined,
   generatedLines: PLLine[],
+  existingLines?: PLLine[],
 ): (line: PLLine) => boolean {
   const coveredSubscriptionCodes = new Set(
     (assumptions?.subscriptions?.vendors ?? [])
@@ -1102,6 +1117,19 @@ export function buildRetirePredicate(
   )
   const coverage = teamCoverageFromAssumptions(assumptions)
   const teamReplacementPresent = generatedLines.some(gl => gl.account_code === SYS_CODES.wages)
+
+  // Rule 5: the existing rows the current Step 5 lines claim, exactly as
+  // convertOpEx would match them. Off when the step lists nothing (an unfilled
+  // or unloaded step must not retire the whole category) or without rows.
+  const step5Lines = assumptions?.opex?.lines ?? []
+  const claimedByStep5 = new Set<string>()
+  const step5RuleOn = !!existingLines && step5Lines.length > 0
+  if (step5RuleOn) {
+    for (const ol of step5Lines) {
+      const claimed = findMatchingLine(existingLines!, ol.accountName, ol.accountId)
+      if (claimed?.id) claimedByStep5.add(claimed.id)
+    }
+  }
 
   return (line: PLLine): boolean => {
     if (line.is_manual) return false
@@ -1120,6 +1148,16 @@ export function buildRetirePredicate(
     ) {
       return true
     }
+    if (
+      step5RuleOn &&
+      !!line.id &&
+      !!line.account_code &&
+      WIZARD_OPEX_CODE.test(line.account_code) &&
+      (line.category || 'Operating Expenses') === 'Operating Expenses' &&
+      !claimedByStep5.has(line.id)
+    ) {
+      return true
+    }
     return false
   }
 }
@@ -1132,12 +1170,12 @@ export function buildRetirePredicate(
  * never returned, so no category can vanish through this path.
  */
 export function findRetiredExistingLines(
-  assumptions: Pick<ForecastAssumptions, 'team' | 'subscriptions'> | null | undefined,
+  assumptions: Pick<ForecastAssumptions, 'team' | 'subscriptions' | 'opex'> | null | undefined,
   existingLines: PLLine[],
   resultLines: PLLine[],
 ): PLLine[] {
   const carried = new Set(resultLines.map(l => l.id).filter((id): id is string => !!id))
-  const isRetired = buildRetirePredicate(assumptions, resultLines)
+  const isRetired = buildRetirePredicate(assumptions, resultLines, existingLines)
   return existingLines.filter(el => !!el.id && !carried.has(el.id) && isRetired(el))
 }
 
@@ -1242,7 +1280,7 @@ export function convertAssumptionsToPLLines(ctx: ConvertContext): PLLine[] {
   // deletes the same rows via findRetiredExistingLines, because not re-emitting
   // a row does NOT remove it — the RPC upsert only touches accounts present in
   // the payload.
-  const isRetired = buildRetirePredicate(assumptions, generatedLines)
+  const isRetired = buildRetirePredicate(assumptions, generatedLines, existingLines)
 
   for (const el of existingLines) {
     if (el.id && !matchedExistingIds.has(el.id) && !isRetired(el)) {

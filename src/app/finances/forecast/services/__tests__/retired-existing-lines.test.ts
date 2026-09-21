@@ -281,3 +281,80 @@ describe('Existing retire rules still hold', () => {
     expect(buildRetirePredicate(a, [sysWages])(row('r-other', undefined, 'Sundry Expenses', 100))).toBe(false)
   })
 })
+
+/**
+ * Rule 5 — Step 5 lines the coach removed or excluded (22 Sep 2026, D4).
+ *
+ * Digital Bond FY2027: six rows coded opex-N (Ordinary Dividend Paid, Income
+ * Tax Expense, …) whose Step 5 lines the coach had removed/excluded were still
+ * carried forward on every Generate — stored OpEx +$281,916 over the approved
+ * summary. Dragon FY2027: "Appointment Setting" (opex-11), +$26,120 — its
+ * whole forecast_summary_parity gap. Nothing retired them because the RPC only
+ * upserts and no rule covered "the coach deleted this line".
+ */
+describe('Rule 5: Step 5 lines the coach removed are retired', () => {
+  const opexLine = (accountId: string, accountName: string, perMonth: number): OpExLineAssumption => ({
+    accountId, accountName, priorYearTotal: perMonth * 12, costBehavior: 'budgeted', budgetedMonthly: flat(Y1, perMonth),
+  })
+  const DIVIDEND = row('r-div', 'opex-0', 'Ordinary Dividend Paid', 13_628)
+  const INCOME_TAX = row('r-tax', 'opex-3', 'Income Tax Expense', 5_288)
+  const TRAVEL = row('r-travel', 'opex-6', 'Travel - International', 4_167)
+  const kept = [opexLine('opex-6', 'Travel - International', 4_167)]
+
+  it('the converter drops opex-N rows no current Step 5 line claims, and findRetired names them', () => {
+    const a = assumptions({ opexLines: kept })
+    const existing = [DIVIDEND, INCOME_TAX, TRAVEL]
+    const out = convertAssumptionsToPLLines(ctx(a, existing))
+
+    expect(out.map(l => l.account_name).sort()).toEqual(['Travel - International'])
+    expect(findRetiredExistingLines(a, existing, out).map(l => l.id).sort()).toEqual(['r-div', 'r-tax'])
+    expect(opexTotal(out)).toBe(4_167 * 12)
+  })
+
+  it('a line still in Step 5 keeps its row — matched by name', () => {
+    const a = assumptions({ opexLines: [opexLine('opex-9', 'Income Tax Expense', 5_288), ...kept] })
+    const out = convertAssumptionsToPLLines(ctx(a, [INCOME_TAX, TRAVEL]))
+    expect(out.map(l => l.id).sort()).toEqual(['r-tax', 'r-travel'])
+    expect(findRetiredExistingLines(a, [INCOME_TAX, TRAVEL], out)).toEqual([])
+  })
+
+  it('a renamed line keeps its row through the code fallback, like convertOpEx', () => {
+    const renamed = opexLine('opex-3', 'Company Tax', 5_288) // same index id, new name
+    const a = assumptions({ opexLines: [renamed, ...kept] })
+    const out = convertAssumptionsToPLLines(ctx(a, [INCOME_TAX, TRAVEL]))
+    expect(out.some(l => l.id === 'r-tax')).toBe(true)
+    expect(findRetiredExistingLines(a, [INCOME_TAX, TRAVEL], out)).toEqual([])
+  })
+
+  it('an index collision does not protect a stale row: its code now belongs to a line matched by name elsewhere', () => {
+    // Step 5 re-indexed: opex-3 is now "Rent", which already has its own row by name.
+    const rentRow = row('r-rent3', 'opex-9', 'Rent - Office', 7_000)
+    const a = assumptions({ opexLines: [opexLine('opex-3', 'Rent - Office', 7_000)] })
+    const out = convertAssumptionsToPLLines(ctx(a, [INCOME_TAX, rentRow]))
+    expect(findRetiredExistingLines(a, [INCOME_TAX, rentRow], out).map(l => l.id)).toEqual(['r-tax'])
+  })
+
+  it('never touches rows with a real Xero code, manual rows, or non-OpEx categories', () => {
+    const a = assumptions({ opexLines: kept })
+    const xeroCoded = row('r-xero', '64100', 'Advertising', 1_000)
+    const manual = row('r-man', 'opex-7', 'Director Fees', 2_000, { is_manual: true })
+    const cogs = row('r-cogs', 'opex-8', 'Freight', 3_000, { category: 'Cost of Sales' })
+    const isRetired = buildRetirePredicate(a, [], [xeroCoded, manual, cogs, TRAVEL])
+    expect(isRetired(xeroCoded)).toBe(false)
+    expect(isRetired(manual)).toBe(false)
+    expect(isRetired(cogs)).toBe(false)
+  })
+
+  it('a crashed OpEx step cannot retire its own lines: claims come from the assumptions, not the output', () => {
+    // generatedLines = [] simulates convertOpEx throwing (D-44.1-06).
+    const a = assumptions({ opexLines: kept })
+    const isRetired = buildRetirePredicate(a, [], [TRAVEL, DIVIDEND])
+    expect(isRetired(TRAVEL)).toBe(false)
+    expect(isRetired(DIVIDEND)).toBe(true)
+  })
+
+  it('is off when Step 5 lists nothing, or when existing rows are not supplied', () => {
+    expect(buildRetirePredicate(assumptions({ opexLines: [] }), [], [DIVIDEND])(DIVIDEND)).toBe(false)
+    expect(buildRetirePredicate(assumptions({ opexLines: kept }), [])(DIVIDEND)).toBe(false)
+  })
+})
