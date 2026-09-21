@@ -11,7 +11,12 @@ import { toast } from 'sonner'
 import PageHeader from '@/components/ui/PageHeader'
 import ForecastService from './services/forecast-service'
 import './forecast-styles.css'
-import type { FinancialForecast, PLLine, XeroConnection } from './types'
+import type { FinancialForecast, PLLine } from './types'
+import {
+  fetchXeroBusinessStatus,
+  type XeroStatusConnection,
+  type XeroStatusResponse,
+} from '@/lib/xero/business-status-view'
 // Code-split everything the operator cannot see on arrival. All of these are
 // already conditionally RENDERED — only the imports were eager, so the whole
 // module graph was downloaded and parsed before first paint. The wizard subtree
@@ -46,7 +51,7 @@ import ForecastEmptyState from './components/ForecastEmptyState'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useXeroSync } from './hooks/useXeroSync'
 import { useVersionManager } from './hooks/useVersionManager'
-import { useXeroKeepalive } from '@/hooks/useXeroKeepalive'
+import { useXeroKeepalive, type XeroConnectionStatus as XeroKeepaliveStatus } from '@/hooks/useXeroKeepalive'
 import { isPlanningSeasonActive, getAvailableFiscalYears, getCurrentFiscalYear, getFiscalYearLabel } from './utils/fiscal-year'
 import { getMonthsUntilYearEnd } from '@/lib/utils/fiscal-year-utils'
 import { FYSelectorTabs } from './components/FYSelectorTabs'
@@ -86,7 +91,11 @@ function FinancialForecastPageInner() {
   // staring at a $0 dashboard.
   const [pendingMaterializeCheck, setPendingMaterializeCheck] = useState(false)
   const [showMaterializeWarning, setShowMaterializeWarning] = useState(false)
-  const [xeroConnection, setXeroConnection] = useState<XeroConnection | null>(null)
+  // Present when the business has a live Xero org — gates keepalive and the post-OAuth sync.
+  const [xeroConnection, setXeroConnection] = useState<XeroStatusConnection | null>(null)
+  // The whole business, every org — what the Xero panel renders.
+  const [xeroStatus, setXeroStatus] = useState<XeroStatusResponse | null>(null)
+  const [xeroCheckFailed, setXeroCheckFailed] = useState(false)
 
   const [activeTab, setActiveTab] = useState<ForecastTab>(() => {
     // Phase 58 migration: force all existing users to Overview on first load.
@@ -160,8 +169,15 @@ function FinancialForecastPageInner() {
     businessId
   })
 
-  // Keep Xero tokens fresh while user is on this page
-  useXeroKeepalive(businessId || null, !!xeroConnection)
+  // Keep Xero tokens fresh while user is on this page — and re-render the panel
+  // from what each check finds, so a toast never contradicts it.
+  const handleKeepaliveCheck = useCallback((check: XeroKeepaliveStatus) => {
+    if (!check.response) return
+    setXeroStatus(check.response)
+    setXeroCheckFailed(false)
+    setXeroConnection(check.response.connected ? check.response.connection : null)
+  }, [])
+  useXeroKeepalive(businessId || null, !!xeroConnection, { onStatusChange: handleKeepaliveCheck })
 
   // Save active tab to localStorage whenever it changes (Phase 58: v2 key)
   useEffect(() => {
@@ -285,9 +301,7 @@ function FinancialForecastPageInner() {
       // PERF: the Xero connection status doesn't depend on anything below —
       // start it NOW and await it at the end, so it overlaps the forecast
       // load instead of adding a round-trip after it.
-      const xeroStatusPromise = fetch(`/api/Xero/status?business_id=${bizId}`)
-        .then(r => r.json())
-        .catch(() => null)
+      const xeroStatusPromise = fetchXeroBusinessStatus(bizId)
 
       // PERF: ONE business_profiles read for both fields. This table was
       // queried three separate times per page load — fiscal_year_start here,
@@ -404,21 +418,20 @@ function FinancialForecastPageInner() {
 
       // Xero connection — the request was started before the forecast load,
       // so by now it has usually resolved and this await is free.
-      try {
-        const statusData = await xeroStatusPromise
-        if (statusData?.connected && statusData.connection) {
-          setXeroConnection(statusData.connection)
-        } else if (statusData) {
-          setXeroConnection(null)
-        } else {
-          // Fall back to a direct query only if the API call actually failed.
-          const xeroConn = await ForecastService.getXeroConnection(bizId)
-          setXeroConnection(xeroConn)
-        }
-      } catch (err) {
-        console.error('[Forecast] Error loading Xero connection:', err)
-        const xeroConn = await ForecastService.getXeroConnection(bizId)
-        setXeroConnection(xeroConn)
+      //
+      // A failed check renders as "couldn't check". It used to fall back to a
+      // direct xero_connections query — `.limit(1)` with no order, so an
+      // arbitrary org of a multi-org business — and show it as "Connected to
+      // Xero"; and a 500 body read as "Not connected". Neither was an answer.
+      const xeroCheck = await xeroStatusPromise
+      if (xeroCheck.ok) {
+        setXeroStatus(xeroCheck.data)
+        setXeroCheckFailed(false)
+        setXeroConnection(xeroCheck.data.connected ? xeroCheck.data.connection : null)
+      } else {
+        setXeroStatus(null)
+        setXeroCheckFailed(true)
+        setXeroConnection(null)
       }
 
       finishLoading()
@@ -954,7 +967,8 @@ function FinancialForecastPageInner() {
         {/* Xero Status Bar */}
         <div className="mb-3 sm:mb-4 px-1">
           <XeroConnectionPanel
-            xeroConnection={xeroConnection}
+            status={xeroStatus}
+            checkFailed={xeroCheckFailed}
             isSaving={isSaving || isSyncing}
             isExpired={isConnectionExpired}
             onConnect={handleConnectXero}

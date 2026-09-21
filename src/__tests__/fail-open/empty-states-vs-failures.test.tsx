@@ -37,6 +37,7 @@ vi.mock('next/navigation', () => ({
 }))
 import { render, screen } from '@testing-library/react'
 import XeroConnectionBanner from '@/app/finances/monthly-report/components/XeroConnectionBanner'
+import type { XeroStatusResponse } from '@/lib/xero/business-status-view'
 import GoalsCard from '@/app/dashboard/components/GoalsCard'
 import CashflowTab from '@/app/finances/monthly-report/components/CashflowTab'
 import { Target } from 'lucide-react'
@@ -45,7 +46,7 @@ const noop = () => {}
 
 describe('PRES-09 — a failed status check is not "not connected"', () => {
   const base = {
-    xeroConnection: null,
+    status: null,
     isExpired: false,
     isLoading: false,
     isSyncing: false,
@@ -54,8 +55,24 @@ describe('PRES-09 — a failed status check is not "not connected"', () => {
     onManage: noop,
   }
 
+  // "Genuinely disconnected" is itself an answer from the status route — the
+  // banner no longer infers it from the absence of one.
+  const notConnected: XeroStatusResponse = {
+    status: 'none',
+    status_scope: null,
+    more_orgs_needing_attention: 0,
+    last_sync_at: null,
+    orgs: [],
+    retired_orgs: [],
+    can_manage: true,
+    connected: false,
+    expired: false,
+    needsReconnect: false,
+    connection: null,
+  }
+
   it('genuinely disconnected still says so, with the Connect action', () => {
-    render(<XeroConnectionBanner {...base} />)
+    render(<XeroConnectionBanner {...base} status={notConnected} />)
     expect(screen.getByText(/Not connected to Xero/i)).toBeTruthy()
     expect(screen.getByText(/Connect Xero/i)).toBeTruthy()
   })
