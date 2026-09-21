@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Building2, CheckSquare, Square, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
+import { safeReturnPath } from '@/lib/utils/safe-return-path';
 
 interface Tenant {
   tenantId: string;
@@ -47,7 +48,8 @@ export default function SelectOrgPage() {
         // Pre-select ALL tenants by default — multi-tenant consolidation is the
         // common path. Users can uncheck any they don't want.
         setSelectedTenantIds(new Set(fetchedTenants.map((t) => t.tenantId)));
-        if (data.return_to) setReturnTo(data.return_to);
+        // S2: never navigate to anything but a same-site path, whatever the API returns.
+        if (data.return_to) setReturnTo(safeReturnPath(data.return_to));
 
         if (businessId) {
           try {
@@ -102,7 +104,7 @@ export default function SelectOrgPage() {
         return;
       }
 
-      router.push(data.redirect_to || '/integrations?success=connected');
+      router.push(safeReturnPath(data.redirect_to, '/integrations?success=connected'));
     } catch {
       setError('Connection failed. Please try again.');
       setConnecting(false);

@@ -1,6 +1,7 @@
 'use client'
 
 import { StrategicInitiative, FinancialData, KPIData, YearType } from '../types'
+import { parseDateOnly } from '@/lib/utils/date-only'
 import { ChevronDown, ChevronUp, AlertCircle, GripVertical, TrendingUp, X, UserPlus, Check, HelpCircle, DollarSign, Target, Activity } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -126,7 +127,8 @@ export default function Step4AnnualPlan({
   const planStartDate = useMemo<Date | null>(() => {
     if (!planStartDateProp) return null
     if (planStartDateProp instanceof Date) return planStartDateProp
-    const d = new Date(planStartDateProp)
+    // B2: a "YYYY-MM-DD" string is a calendar date — local midnight, not UTC.
+    const d = parseDateOnly(planStartDateProp) ?? new Date(planStartDateProp)
     return isNaN(d.getTime()) ? null : d
   }, [planStartDateProp])
 

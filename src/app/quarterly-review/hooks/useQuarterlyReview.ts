@@ -8,6 +8,7 @@ import { quarterlyReviewService } from '../services/quarterly-review-service';
 import { migrateStep, migrateSteps } from '../utils/step-migration';
 import { captureReviewWriteFailure } from '../utils/capture-write-failure';
 import { strategicSyncService } from '../services/strategic-sync-service';
+import { planWritesSettled } from '../services/foundation-plan-service';
 import { assemblePlanData } from '@/app/one-page-plan/services/plan-data-assembler';
 import { planSnapshotService } from '@/app/one-page-plan/services/plan-snapshot-service';
 import type {
@@ -536,6 +537,10 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     setIsCompleting(true);
 
     try {
+      // A first-session plan step finishes its own save as it closes. Let that
+      // land before the strategic sync reads and rewrites the same plan row.
+      await planWritesSettled();
+
       // Flush any pending auto-save first to prevent race conditions
       if (hasUnsavedChanges) {
         try {

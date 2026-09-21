@@ -27,7 +27,8 @@ interface MockOpts {
   /** xero_pl_lines_wide_compat fallback rows. */
   xeroWideRows?: Array<{ account_name: string; account_type: string; monthly_values: Record<string, number> }>
   xeroConnections: Array<{ tenant_id: string; business_id: string }>
-  latestSyncJobsByTenant: Record<string, { status: string; started_at: string; reconciliation?: any } | null>
+  /** An Error value makes that tenant's sync_jobs read fail, rather than return no rows. */
+  latestSyncJobsByTenant: Record<string, { status: string; started_at: string; reconciliation?: any } | null | Error>
 }
 
 function makeMockSupabase(opts: MockOpts) {
@@ -52,7 +53,9 @@ function makeMockSupabase(opts: MockOpts) {
       if (table === 'sync_jobs') {
         const tenantFilter = ctx._filters.find((f: any) => f.kind === 'eq' && f.col === 'tenant_id')
         const tenantId = tenantFilter?.val
-        return { data: tenantId ? (opts.latestSyncJobsByTenant[tenantId] ?? null) : null, error: null }
+        const row = tenantId ? (opts.latestSyncJobsByTenant[tenantId] ?? null) : null
+        if (row instanceof Error) return { data: null, error: row }
+        return { data: row, error: null }
       }
       return { data: null, error: null }
     }
@@ -161,4 +164,65 @@ describe('data_quality surfaces in all 4 consumer routes (structural)', () => {
       expect(hasDirect || returnsSummary, `${route.relPath} must surface data_quality (directly or via summary)`).toBe(true)
     })
   }
+})
+
+/**
+ * The third state. `data_quality` alone cannot distinguish "this tenant has
+ * never synced" from "we could not read sync_jobs" — both leave us without a
+ * row, but only the first is news about Xero. That ambiguity is what the broken
+ * sync_jobs RLS policy exploited: on the RLS-bound pl-summary path every read
+ * came back empty and every business looked like it had never synced.
+ */
+describe('getHistoricalSummary — quality_check_failed propagation', () => {
+  it('a readable source reports the tier as measured on the active-forecast path', async () => {
+    const supabase = makeMockSupabase({
+      activeForecast: { id: 'forecast-1' },
+      forecastPlLines: [],
+      xeroConnections: [{ tenant_id: 'tenant-A', business_id: 'biz-1' }],
+      latestSyncJobsByTenant: {
+        'tenant-A': { status: 'success', started_at: new Date(Date.now() - 60_000).toISOString() },
+      },
+    })
+    const result = await getHistoricalSummary(supabase, 'biz-1', 2026)
+    expect(result.data_quality).toBe('verified')
+    expect(result.quality_check_failed).toBe(false)
+  })
+
+  it('a genuinely empty source stays no_sync WITHOUT flagging a failure', async () => {
+    const supabase = makeMockSupabase({
+      activeForecast: null,
+      xeroWideRows: [],
+      xeroConnections: [{ tenant_id: 'tenant-A', business_id: 'biz-1' }],
+      latestSyncJobsByTenant: { 'tenant-A': null },
+    })
+    const result = await getHistoricalSummary(supabase, 'biz-1', 2026)
+    expect(result.data_quality).toBe('no_sync')
+    expect(result.quality_check_failed).toBe(false)
+  })
+
+  it('an unreadable sync_jobs flags the summary — the wizard shows "couldn\'t verify"', async () => {
+    // Exactly the shape the broken RLS policy produced: connections readable,
+    // sync_jobs not.
+    const supabase = makeMockSupabase({
+      activeForecast: null,
+      xeroWideRows: [
+        { account_name: 'Sales', account_type: 'revenue', monthly_values: { '2026-01': 1000 } },
+      ],
+      xeroConnections: [{ tenant_id: 'tenant-A', business_id: 'biz-1' }],
+      latestSyncJobsByTenant: { 'tenant-A': new Error('permission denied for table sync_jobs') },
+    })
+    const result = await getHistoricalSummary(supabase, 'biz-1', 2026)
+    expect(result.quality_check_failed).toBe(true)
+  })
+
+  it('flags it on the active-forecast path too', async () => {
+    const supabase = makeMockSupabase({
+      activeForecast: { id: 'forecast-1' },
+      forecastPlLines: [],
+      xeroConnections: [{ tenant_id: 'tenant-A', business_id: 'biz-1' }],
+      latestSyncJobsByTenant: { 'tenant-A': new Error('permission denied for table sync_jobs') },
+    })
+    const result = await getHistoricalSummary(supabase, 'biz-1', 2026)
+    expect(result.quality_check_failed).toBe(true)
+  })
 })

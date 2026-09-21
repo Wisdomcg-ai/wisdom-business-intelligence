@@ -7,6 +7,7 @@ import { formatDollar, parseDollarInput } from '@/app/goals/utils/formatting';
 import { calculateQuarters } from '@/app/goals/utils/quarters';
 import { getInitials, getColorForName, parseTeamFromProfile, type TeamMember } from '@/app/goals/utils/team';
 import { getCategoryStyle, getCardClasses } from '@/app/goals/utils/design-tokens';
+import { snapshotActual } from '../../utils/snapshot-actuals';
 import type {
   QuarterlyReview,
   InitiativeDecision,
@@ -598,9 +599,11 @@ export function QuarterlyPlanStep({
           const qId = `q${String(snap.snapshot_quarter).replace(/^Q/i, '')}`;
           const fin = snap.financial_snapshot as any;
           if (fin) {
-            const revenue = fin.revenue || fin.revenue_actual || 0;
-            const grossProfit = fin.grossProfit || fin.gross_profit_actual || 0;
-            const netProfit = fin.netProfit || fin.net_profit_actual || 0;
+            // financial_snapshot stores each line as { target, actual, variance };
+            // reading it as a bare number took the whole object. See snapshotActual.
+            const revenue = snapshotActual(fin.revenue, fin.revenue_actual);
+            const grossProfit = snapshotActual(fin.grossProfit, fin.gross_profit_actual);
+            const netProfit = snapshotActual(fin.netProfit, fin.net_profit_actual);
             loadedFinancials[qId] = {
               revenue,
               grossProfit,

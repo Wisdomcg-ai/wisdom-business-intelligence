@@ -614,6 +614,13 @@ export interface HistoricalPLSummary {
   data_quality?: import('@/lib/services/forecast-read-service').DataQuality
   per_tenant_quality?: import('@/lib/services/forecast-read-service').PerTenantQuality[]
 
+  // The quality CHECK itself could not be run — a read behind `data_quality`
+  // errored, so the tier above is a default, not a measurement. Consumers pass
+  // this to DataIntegrityBanner's `checkFailed`, which takes precedence over
+  // the tier. Distinct from a genuine 'no_sync': that one is news about Xero,
+  // this one is news about our own read.
+  quality_check_failed?: boolean
+
   // Phase 67-04 — surfaced when the multi-currency engine path produced this
   // summary. Lets Step 2 render a missing-rate banner so the user knows when
   // any month's foreign-currency tenant was left untranslated (never silently

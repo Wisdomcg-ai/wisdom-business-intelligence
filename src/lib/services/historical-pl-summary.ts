@@ -246,6 +246,7 @@ export async function getHistoricalSummary(
         has_xero_data: false,
         data_quality: fallbackQuality.data_quality,
         per_tenant_quality: fallbackQuality.per_tenant_quality,
+        quality_check_failed: fallbackQuality.quality_check_failed,
       }
     }
     xeroLines = rawLines as WideXeroRow[]
@@ -258,6 +259,7 @@ export async function getHistoricalSummary(
       has_xero_data: false,
       data_quality: fallbackQuality.data_quality,
       per_tenant_quality: fallbackQuality.per_tenant_quality,
+      quality_check_failed: fallbackQuality.quality_check_failed,
     }
   }
 
@@ -265,7 +267,11 @@ export async function getHistoricalSummary(
   // (already computed in 44.2-07 path); fallback path computes via the
   // public wrapper so both surfaces produce the same shape.
   const dataQuality = composite
-    ? { data_quality: composite.data_quality, per_tenant_quality: composite.per_tenant_quality }
+    ? {
+        data_quality: composite.data_quality,
+        per_tenant_quality: composite.per_tenant_quality,
+        quality_check_failed: composite.quality_check_failed,
+      }
     : await createForecastReadService(supabase).getDataQualityForBusiness(ids.all)
 
   // Determine periods using centralized fiscal year logic.
@@ -316,6 +322,7 @@ export async function getHistoricalSummary(
     coverage,
     data_quality: dataQuality.data_quality,
     per_tenant_quality: dataQuality.per_tenant_quality,
+    quality_check_failed: dataQuality.quality_check_failed,
     fx_context: fxContext,
   }
 }
