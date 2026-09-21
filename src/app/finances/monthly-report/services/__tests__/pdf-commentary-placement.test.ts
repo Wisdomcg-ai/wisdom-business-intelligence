@@ -7,11 +7,12 @@
  * that the standing lines sit first in the same list instead of overprinting
  * it; and that a pack with no commentary config draws the block it always did.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { MonthlyReportPDFService } from '../monthly-report-pdf-service'
 import { fixtureReport, line, textRuns, pageContaining } from './pdf-pack-fixture'
-import type { GeneratedReport, VarianceCommentary, VarianceCommentaryEntry } from '../../types'
+import type { GeneratedReport, StandingCommentaryLine, VarianceCommentary, VarianceCommentaryEntry } from '../../types'
 import type { PDFLayout } from '../../types/pdf-layout'
+import type { PackInsertState } from '@/lib/monthly-report/pack-inserts'
 
 const drafted = (reason: VarianceCommentaryEntry['trigger_reason'], facts: string, clause: string | null): VarianceCommentaryEntry => ({
   vendor_summary: [],
@@ -255,5 +256,79 @@ describe('commentary placement in the pack', () => {
     expect(all).not.toContain('COMMENTARY')
     expect(all).not.toContain('Refer to')
     expect(pageContaining(doc, 'Alcotraz')).toBe(-1)
+  })
+})
+
+// IICT Group's August 2026 pack printed "Wages and Salaries | Refer to Payrun
+// Summary Page (page not in this pack)" in red while page 12 — an uploaded page
+// titled "Payrun Summary" — sat in the same pack.
+describe('a standing line that refers to an uploaded page', () => {
+  const PAYRUN: StandingCommentaryLine = { label: 'Wages and Salaries', refer_to: 'Payrun Summary Page' }
+  const DANGLING = 'page not in this pack'
+
+  const expensePage = {
+    id: 'p-exp', orientation: 'landscape',
+    widgets: [{ id: 'w-exp', type: 'budget_vs_actual', col: 0, row: 0, colSpan: 3, rowSpan: 3, config: { section: 'expense' } }],
+  }
+  const uploadPage = (titleOverride?: string) => ({
+    id: 'p-up', orientation: 'portrait',
+    widgets: [{ id: 'w-up', type: 'uploaded_insert', col: 0, row: 0, colSpan: 2, rowSpan: 3, ...(titleOverride ? { titleOverride } : {}) }],
+  })
+  const layoutWith = (...pages: object[]) => ({ version: 1, pages } as PDFLayout)
+
+  /** Every page's text, as one line, with the PDF string escapes undone. */
+  const packText = (doc: any) => [...Array(doc.getNumberOfPages())].map((_, i) => pageText(doc, i + 1)).join(' ')
+  const render = (standing: StandingCommentaryLine[], pdfLayout?: PDFLayout, inserts?: Record<string, PackInsertState>) => {
+    const r = report()
+    r.settings.standing_commentary = standing
+    return new MonthlyReportPDFService(r, { commentary, ...(pdfLayout ? { pdfLayout } : {}), ...(inserts ? { inserts } : {}) }).generate() as any
+  }
+
+  afterEach(() => vi.restoreAllMocks())
+
+  // An uploaded placement prints a page whether or not there is a file to merge;
+  // what that page says is the proof it is in the pack.
+  it.each<[string, Record<string, PackInsertState> | undefined, string]>([
+    ['a ready file', { 'w-up': { status: 'ready', pageCount: 2, filename: 'payrun-aug.pdf', sizeBytes: 90_000 } }, 'uploaded file payrun-aug.pdf goes here'],
+    ['nothing uploaded for the month', { 'w-up': { status: 'missing' } }, "The Payrun Summary page for August 2026 hasn't been uploaded."],
+    ['a file that could not be added', { 'w-up': { status: 'unavailable', reason: 'the uploaded file could not be downloaded' } }, "The Payrun Summary page for August 2026 couldn't be added to this pack."],
+    ['uploads that were never loaded', undefined, "The Payrun Summary page for August 2026 couldn't be added to this pack."],
+  ])('a placement titled for the target is in the pack — %s', (_state, inserts, printedOnItsPage) => {
+    const text = packText(render([PAYRUN], layoutWith(expensePage, uploadPage('Payrun Summary')), inserts))
+    expect(text).toContain(printedOnItsPage)
+    expect(text).toContain('Refer to Payrun Summary Page')
+    expect(text).not.toContain(DANGLING)
+  })
+
+  it('with no uploaded placement in the layout the line is still flagged — the gate is not weakened', () => {
+    const text = packText(render([PAYRUN], layoutWith(expensePage)))
+    expect(text).toContain(`Refer to Payrun Summary Page (${DANGLING})`)
+  })
+
+  it('an uploaded placement with no title is called "Uploaded page" and does not satisfy a line that refers to another page', () => {
+    const doc = render([PAYRUN], layoutWith(expensePage, uploadPage()))
+    expect(doc.getNumberOfPages()).toBe(2) // the placement printed its page
+    expect(pageText(doc, 2)).toContain('Uploaded page')
+    expect(packText(doc)).toContain(`Refer to Payrun Summary Page (${DANGLING})`)
+  })
+
+  it('a legacy pack with no layout in force is unchanged: an uploaded page is not among its pages', () => {
+    const text = packText(render([PAYRUN, { label: 'Overview', refer_to: 'Executive Summary' }]))
+    expect(text).toContain(`Refer to Payrun Summary Page (${DANGLING})`)
+    expect(text).toContain('Refer to Executive Summary')
+    expect(text).not.toContain(`Refer to Executive Summary (${DANGLING})`)
+  })
+
+  it('a pack that fell back to the legacy order places no uploaded page, so the line is flagged there too', () => {
+    // The layout pass throws once, after drawing the layout's own pages. The
+    // service discards the layout and draws the legacy order, which has no
+    // uploaded page for the line to point at.
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const footers = vi.spyOn(MonthlyReportPDFService.prototype as any, 'addAllFooters')
+      .mockImplementationOnce(() => { throw new Error('layout render failed') })
+    const text = packText(render([PAYRUN], layoutWith(expensePage, uploadPage('Payrun Summary'))))
+    expect(footers).toHaveBeenCalledTimes(2) // the layout pass threw, the legacy pass finished
+    expect(text).not.toContain('The Payrun Summary page')
+    expect(text).toContain(`Refer to Payrun Summary Page (${DANGLING})`)
   })
 })

@@ -158,6 +158,7 @@ import {
 import {
   insertCardMessage,
   insertLabel,
+  insertPlacements,
   INSERTS_NOT_LOADED_REASON,
   type PackInsertState,
 } from '@/lib/monthly-report/pack-inserts'
@@ -2359,6 +2360,8 @@ export class MonthlyReportPDFService {
         if (w.type === 'ratio_analysis') labels.push((w.titleOverride ?? '').trim() || 'Ratio Analysis')
       }
     }
+    // An uploaded page prints a sheet in every state (file, missing, unavailable), so no data gate.
+    for (const p of insertPlacements(this.activeLayout)) labels.push(p.label)
     if (this.options.cashflowForecast) labels.push('Cashflow Forecast', 'Cashflow')
     if (this.options.fullYearReport) {
       labels.push('Full Year Projection', 'Full Year')
