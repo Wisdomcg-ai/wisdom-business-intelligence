@@ -45,7 +45,7 @@ interface UseReviewReadinessResult extends ReviewReadiness {
  * say which space they came from.
  */
 export function useReviewReadiness(
-  review: { id: string; business_id: string; quarter: number; year: number } | null
+  review: { id: string; business_id: string; quarter: number; year: number; created_at?: string } | null
 ): UseReviewReadinessResult {
   const [readiness, setReadiness] = useState<ReviewReadiness>(UNKNOWN_READINESS);
   const [sessionMode, setSessionModeState] = useState<SessionModeOverride>(DEFAULT_SESSION_MODE);
@@ -55,6 +55,7 @@ export function useReviewReadiness(
   const reviewId = review?.id;
   const quarter = review?.quarter;
   const year = review?.year;
+  const reviewCreatedAt = review?.created_at;
 
   useEffect(() => {
     if (!businessesId || !reviewId || !quarter || !year) return;
@@ -128,9 +129,22 @@ export function useReviewReadiness(
         !profileResolved || !profileId
           ? { hasPlan: 'unknown', hasKpis: 'unknown', hasPriorRocks: 'unknown' }
           : {
-              hasPlan: await probe('plan', () =>
-                count('business_financial_goals', q => q.eq('business_id', profileId))
-              ),
+              // "Did they ARRIVE with a plan?" — not "is there a plan now". The
+              // first session creates the plan part-way through (step 9), so a
+              // plain existence check would flip steps 9–10 back to the standard
+              // screens on the next page load, mid-session. A plan created during
+              // this review still counts as being built in it.
+              hasPlan: await probe('plan', async () => {
+                const { data, error } = await supabase
+                  .from('business_financial_goals')
+                  .select('created_at')
+                  .eq('business_id', profileId)
+                  .maybeSingle();
+                if (error) throw error;
+                if (!data) return 0;
+                if (!reviewCreatedAt || !data.created_at) return 1;
+                return new Date(data.created_at).getTime() < new Date(reviewCreatedAt).getTime() ? 1 : 0;
+              }),
               hasKpis: await probe('kpis', () =>
                 count('business_kpis', q => q.eq('business_id', profileId))
               ),
@@ -150,7 +164,7 @@ export function useReviewReadiness(
     return () => {
       cancelled = true;
     };
-  }, [businessesId, reviewId, quarter, year]);
+  }, [businessesId, reviewId, quarter, year, reviewCreatedAt]);
 
   const setSessionMode = useCallback(
     async (mode: SessionModeOverride): Promise<boolean> => {

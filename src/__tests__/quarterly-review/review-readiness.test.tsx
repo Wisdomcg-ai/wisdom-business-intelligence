@@ -107,7 +107,12 @@ vi.mock('@/lib/supabase/client', () => ({
           return builder;
         },
         neq: () => builder,
-        maybeSingle: async () => ({ data: { id: PROFILE_ID }, error: null }),
+        // Record single-row reads too: the plan check now reads the plan's
+        // created_at (did they ARRIVE with a plan?) rather than counting rows.
+        maybeSingle: async () => {
+          spy.queries.push({ table, eq: { ...eq } });
+          return { data: { id: PROFILE_ID }, error: null };
+        },
         then: (resolve: (v: unknown) => unknown) => {
           spy.queries.push({ table, eq: { ...eq } });
           return Promise.resolve({ count: 0, error: null }).then(resolve);
