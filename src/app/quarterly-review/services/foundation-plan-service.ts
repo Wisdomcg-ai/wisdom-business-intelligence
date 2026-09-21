@@ -18,7 +18,7 @@
  * business_financial_goals.business_id is UNIQUE, so a second plan cannot exist.
  */
 import type { FoundationNumbers, FoundationSplit } from '../utils/foundation-plan';
-import { toQuarterlyTargetsJson, FOUNDATION_KPI_LIMIT } from '../utils/foundation-plan';
+import { toQuarterlyTargetsJson, marginPercent, FOUNDATION_KPI_LIMIT } from '../utils/foundation-plan';
 import type { YearType } from '../types';
 
 type Client = { from: (table: string) => any };
@@ -33,8 +33,44 @@ export interface FoundationKpi {
   description?: string;
 }
 
-/** Only the columns a first session sets. Nothing else is ever written. */
-const OWNED_ANNUAL_COLUMNS = ['revenue_year1', 'gross_profit_year1', 'net_profit_year1', 'year_type'] as const;
+/**
+ * Only the columns a first session sets. Nothing else is ever written.
+ *
+ * The two margins are derived from the three numbers and written WITH them, so
+ * they can never disagree: the Goals wizard and the Forecast wizard both read
+ * the stored margin, not the dollars (see marginPercent).
+ */
+const OWNED_ANNUAL_COLUMNS = [
+  'revenue_year1',
+  'gross_profit_year1',
+  'net_profit_year1',
+  'gross_margin_year1',
+  'net_margin_year1',
+  'year_type',
+] as const;
+
+// ---------------------------------------------------------------------------
+// Saves still in flight.
+//
+// A step saves on a short delay after typing, and finishes any pending save as
+// it closes — so clicking Continue straight after an edit (or straight after
+// the suggestion appears) never loses it. But the NEXT step then reads the plan
+// while that save may still be on the wire, and would see no plan, or the old
+// numbers. Every plan write is tracked here, and a reader awaits them first.
+// ---------------------------------------------------------------------------
+const inFlight = new Set<Promise<unknown>>();
+
+export function trackPlanWrite<T>(write: Promise<T>): Promise<T> {
+  inFlight.add(write);
+  const done = () => inFlight.delete(write);
+  write.then(done, done);
+  return write;
+}
+
+/** Resolves once every plan write started so far has finished, failed or not. */
+export async function planWritesSettled(): Promise<void> {
+  await Promise.allSettled([...inFlight]);
+}
 
 /**
  * Save this year's three numbers.
@@ -42,8 +78,8 @@ const OWNED_ANNUAL_COLUMNS = ['revenue_year1', 'gross_profit_year1', 'net_profit
  * New plan → INSERT, with the 2- and 3-year money targets explicitly NULL so a
  *   plan nobody has projected forward reads as "not set", not as a $0 target.
  *   Every reader of those columns already tolerates NULL (checked 22 Sep 2026).
- * Existing plan → UPDATE only revenue/GP/NP year 1 and the year type. The plan
- *   year-end is filled only if it is empty; it is never moved.
+ * Existing plan → UPDATE only revenue/GP/NP year 1, their two margins and the
+ *   year type. The plan year-end is filled only if it is empty; it is never moved.
  */
 export async function saveFoundationAnnualPlan(
   supabase: Client,
@@ -64,10 +100,15 @@ export async function saveFoundationAnnualPlan(
     .maybeSingle();
   if (readError) throw readError;
 
+  const revenue = Math.round(numbers.revenue);
+  const grossProfit = Math.round(numbers.grossProfit);
+  const netProfit = Math.round(numbers.netProfit);
   const owned = {
-    revenue_year1: Math.round(numbers.revenue),
-    gross_profit_year1: Math.round(numbers.grossProfit),
-    net_profit_year1: Math.round(numbers.netProfit),
+    revenue_year1: revenue,
+    gross_profit_year1: grossProfit,
+    net_profit_year1: netProfit,
+    gross_margin_year1: marginPercent(grossProfit, revenue),
+    net_margin_year1: marginPercent(netProfit, revenue),
     year_type: yearType,
   };
 

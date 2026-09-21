@@ -35,20 +35,39 @@ const dollars = (n: number): number => (Number.isFinite(n) ? Math.round(n) : 0);
  * Seed an annual target from one quarter's actual: last quarter × 4.
  *
  * It is a starting point to edit, not a forecast — a first-timer adjusts a
- * number rather than inventing one. A missing or negative-free baseline seeds 0;
- * a loss (negative net profit) is carried through honestly, not clamped.
+ * number rather than inventing one. A loss (negative net profit) is carried
+ * through honestly, not clamped. A line that was never entered seeds NOTHING
+ * (null), never $0 — a blank box, not a $0 target someone could save by accident.
  */
-export function seedAnnualFromBaseline(quarterActual: number | null | undefined): number {
-  if (quarterActual === null || quarterActual === undefined || !Number.isFinite(quarterActual)) return 0;
+export function seedAnnualFromBaseline(quarterActual: number | null | undefined): number | null {
+  if (quarterActual === null || quarterActual === undefined || !Number.isFinite(quarterActual)) return null;
   return dollars(quarterActual * 4);
 }
 
-export function seedAnnualNumbers(baseline: Partial<FoundationNumbers> | null | undefined): FoundationNumbers {
+export type SeededNumbers = { [K in keyof FoundationNumbers]: number | null };
+
+export function seedAnnualNumbers(baseline: Partial<FoundationNumbers> | null | undefined): SeededNumbers {
   return {
     revenue: seedAnnualFromBaseline(baseline?.revenue),
     grossProfit: seedAnnualFromBaseline(baseline?.grossProfit),
     netProfit: seedAnnualFromBaseline(baseline?.netProfit),
   };
+}
+
+export const isComplete = (n: SeededNumbers): n is FoundationNumbers =>
+  n.revenue !== null && n.grossProfit !== null && n.netProfit !== null;
+
+/**
+ * A margin as the Goals wizard stores it: a percentage to two decimals
+ * (160,000 of 500,000 → 32). Zero when there is no revenue to divide by.
+ *
+ * Stored alongside the dollars because readers use the stored margin, not the
+ * dollars: the Forecast wizard seeds `gross_margin_year1 || 50`, so a plan
+ * saved without margins opens its forecast at 50% gross / 15% net.
+ */
+export function marginPercent(part: number, revenue: number): number {
+  if (!Number.isFinite(part) || !Number.isFinite(revenue) || revenue <= 0) return 0;
+  return Math.round((part / revenue) * 100 * 100) / 100;
 }
 
 /**

@@ -16,7 +16,12 @@ import {
   type FoundationSplit,
   type QuarterSplit,
 } from '../../utils/foundation-plan';
-import { saveFoundationQuarterlyTargets, addFoundationKpis } from '../../services/foundation-plan-service';
+import {
+  saveFoundationQuarterlyTargets,
+  addFoundationKpis,
+  trackPlanWrite,
+  planWritesSettled,
+} from '../../services/foundation-plan-service';
 import { captureReviewWriteFailure } from '../../utils/capture-write-failure';
 import { Check, Loader2, AlertTriangle } from 'lucide-react';
 
@@ -75,7 +80,18 @@ export function FoundationQuarterlyPlanStep({ review, onUpdateQuarterlyTargets }
   const [existingKpis, setExistingKpis] = useState<number | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [kpiSave, setKpiSave] = useState<SaveState>('idle');
+  // Whether the quarters on screen came from the plan (someone set them) or are
+  // the even split — so the screen only claims "we've split your year evenly"
+  // when it did.
+  const [fromStored, setFromStored] = useState(false);
   const dirty = useRef(false);
+  // The split on screen that isn't saved yet — finished off if the step closes
+  // before the save delay runs out. Skipping it would leave the review with no
+  // planning-quarter targets, and completing it would write $0 for the quarter.
+  const pending = useRef<FoundationSplit | null>(null);
+  const profileRef = useRef<string | null>(null);
+  const latest = useRef({ review, onUpdateQuarterlyTargets });
+  latest.current = { review, onUpdateQuarterlyTargets };
   const planningIdx = Math.min(Math.max(review.quarter, 1), 4) - 1;
 
   useEffect(() => {
@@ -84,6 +100,9 @@ export function FoundationQuarterlyPlanStep({ review, onUpdateQuarterlyTargets }
       try {
         const pid = await resolveBusinessProfileId(supabase, review.business_id);
         if (!pid) throw new Error('No business profile for this review');
+        // The previous step may still be saving this year's numbers (it
+        // finishes its save as it closes). Read after it lands, not before.
+        await planWritesSettled();
         const [goalsRes, kpiRes] = await Promise.all([
           supabase
             .from('business_financial_goals')
@@ -101,6 +120,7 @@ export function FoundationQuarterlyPlanStep({ review, onUpdateQuarterlyTargets }
         if (cancelled) return;
 
         setProfileId(pid);
+        profileRef.current = pid;
         setExistingKpis(kpiRes.count ?? 0);
         const g = goalsRes.data;
         if (g && g.revenue_year1 !== null && g.gross_profit_year1 !== null && g.net_profit_year1 !== null) {
@@ -112,6 +132,7 @@ export function FoundationQuarterlyPlanStep({ review, onUpdateQuarterlyTargets }
           setAnnual(a);
           const stored = splitFromStored(g.quarterly_targets);
           setSplit(stored ?? evenSplitAll(a));
+          setFromStored(!!stored);
           if (stored) setSave('saved');
           else dirty.current = true; // an even split nobody has saved yet
         }
@@ -127,13 +148,18 @@ export function FoundationQuarterlyPlanStep({ review, onUpdateQuarterlyTargets }
     };
   }, [supabase, review.business_id, review.id]);
 
+  const persist = async (pid: string, s: FoundationSplit) => {
+    await trackPlanWrite(saveFoundationQuarterlyTargets(supabase, { profileId: pid, split: s }));
+    const { review: r, onUpdateQuarterlyTargets: onUpdate } = latest.current;
+    onUpdate({ ...planningQuarterTargets(s, r.quarter), kpis: r.quarterly_targets?.kpis ?? [] });
+  };
+
   const doSave = async () => {
     if (!profileId || !split) return;
+    pending.current = null;
     setSave('saving');
     try {
-      await saveFoundationQuarterlyTargets(supabase, { profileId, split });
-      const slice = planningQuarterTargets(split, review.quarter);
-      onUpdateQuarterlyTargets({ ...slice, kpis: review.quarterly_targets?.kpis ?? [] });
+      await persist(profileId, split);
       setSave('saved');
     } catch (err) {
       captureReviewWriteFailure(err, 'foundation-quarterly-save', { reviewId: review.id, profileId });
@@ -143,10 +169,28 @@ export function FoundationQuarterlyPlanStep({ review, onUpdateQuarterlyTargets }
 
   useEffect(() => {
     if (!loaded || !split || !dirty.current) return;
+    pending.current = split;
     const t = setTimeout(doSave, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [split, loaded]);
+
+  // Leaving the step before the delay runs out still saves what was on screen.
+  useEffect(
+    () => () => {
+      const s = pending.current;
+      const pid = profileRef.current;
+      if (!s || !pid) return;
+      persist(pid, s).catch(err =>
+        captureReviewWriteFailure(err, 'foundation-quarterly-save-on-leave', {
+          reviewId: latest.current.review.id,
+          profileId: pid,
+        })
+      );
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   const setCell = (line: Line, qi: number, v: number | null) => {
     if (!split || v === null) return;
@@ -214,8 +258,17 @@ export function FoundationQuarterlyPlanStep({ review, onUpdateQuarterlyTargets }
         <>
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 mb-6">
             <p className="text-sm text-gray-700">
-              We&apos;ve split your year evenly. If some quarters are busier than others, change them —
-              the quarter you&apos;re planning now is highlighted.
+              {fromStored ? (
+                <>
+                  These are this year&apos;s quarters. Change any that have moved — the quarter you&apos;re
+                  planning now is highlighted.
+                </>
+              ) : (
+                <>
+                  We&apos;ve split your year evenly. If some quarters are busier than others, change them —
+                  the quarter you&apos;re planning now is highlighted.
+                </>
+              )}
             </p>
           </div>
 
