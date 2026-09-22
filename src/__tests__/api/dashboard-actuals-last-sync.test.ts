@@ -115,6 +115,10 @@ function stubQuery(table: string) {
   return builder
 }
 
+// The route reads fx_rates as the service role (fx_rates is coach/super-admin
+// only under RLS), so the stand-in answers from the same in-memory tables.
+;(SERVICE_ROLE as unknown as { from: (table: string) => unknown }).from = (table: string) => stubQuery(table)
+
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const PROFILE_ID = '04e9b68f-0000-4d05-8e9c-87f4254ef11f' // what the dashboard posts
@@ -193,9 +197,11 @@ beforeEach(() => {
     ],
     xero_pl_lines_wide_compat: [],
     xero_connections: [],
+    fx_rates: [],
   }
   vi.mocked(getLastSyncByTenant).mockReset()
   vi.mocked(Sentry.captureException).mockClear()
+  vi.mocked(Sentry.captureMessage).mockClear()
 })
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -520,5 +526,124 @@ describe('dashboard-actuals — a failed read is a 500, never charts that quietl
 
     expect(readsOf('financial_forecasts')).toHaveLength(2)
     expect(status).toBe(500)
+  })
+})
+
+/**
+ * F1 (22 Sep 2026 system diagnostic) — the charts added foreign money to AUD.
+ *
+ * Every org's monthly_values went into one total with no FX translation and no
+ * include_in_consolidation check, so IICT Group Limited's HK$1m of revenue was
+ * drawn as A$1m instead of about A$195,000. Same conventions as the
+ * consolidation engine: month-average rates, excluded orgs are not summed, a
+ * blank functional_currency is AUD-and-flagged rather than guessed.
+ */
+describe('dashboard-actuals — a multi-currency business is drawn in AUD', () => {
+  const rate = (month: string, value: number, pair = 'HKD/AUD') => ({
+    currency_pair: pair, rate_type: 'monthly_average', period: `${month}-01`, rate: value, source: 'oxr',
+  })
+
+  const twoOrgs = (over: { hkdIncluded?: boolean; hkdCurrency?: string | null } = {}) => [
+    connection({ id: 'conn-aud', tenant_id: 'tenant-aud', tenant_name: 'IICT (Aust) Pty Ltd', functional_currency: 'AUD' }),
+    connection({
+      id: 'conn-hkd', tenant_id: 'tenant-hkd', tenant_name: 'IICT Group Limited',
+      functional_currency: over.hkdCurrency === undefined ? 'HKD' : over.hkdCurrency,
+      include_in_consolidation: over.hkdIncluded ?? true,
+    }),
+  ]
+
+  it('translates the foreign org at the month-average rate and adds the AUD org as is', async () => {
+    db.tables.xero_connections = twoOrgs()
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-aud', revenue: 300 }, { tenant_id: 'tenant-hkd', revenue: 1_000_000 })
+    db.tables.fx_rates = [rate(FIRST_MONTH, 0.195)]
+    vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({}))
+
+    const { status, json } = await getCharts()
+
+    expect(status).toBe(200)
+    // 300 AUD + HK$1,000,000 × 0.195 = 195,300 — not 1,000,300.
+    expect(json.data.months[0]).toMatchObject({ revenueActual: 195_300 })
+    const [fxRead] = readsOf('fx_rates')
+    expect(fxRead.filters).toEqual(expect.arrayContaining([['eq', 'currency_pair', 'HKD/AUD'], ['eq', 'rate_type', 'monthly_average']]))
+  })
+
+  it('a month with no rate carries no actuals rather than foreign money counted as AUD', async () => {
+    db.tables.xero_connections = twoOrgs()
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-aud', revenue: 300 }, { tenant_id: 'tenant-hkd', revenue: 1_000_000 })
+    db.tables.fx_rates = [] // the FX cron only stores closed months
+    vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({}))
+
+    const { status, json } = await getCharts()
+
+    expect(status).toBe(200)
+    expect(json.data.months[0].revenueActual).toBeNull()
+    expect(json.data.months[0].gpActual).toBeNull()
+    // The plan is still drawn — only the actuals are unknown.
+    expect(json.data.months[0].revenueForecast).toBe(1000)
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('no FX rate'),
+      expect.objectContaining({ tags: expect.objectContaining({ invariant: 'dashboard_actuals_month_untranslated' }) }),
+    )
+  })
+
+  it('an org the coach excluded from the consolidation is not in the total', async () => {
+    db.tables.xero_connections = twoOrgs({ hkdIncluded: false })
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-aud', revenue: 300 }, { tenant_id: 'tenant-hkd', revenue: 1_000_000 })
+    db.tables.fx_rates = [rate(FIRST_MONTH, 0.195)]
+    vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({}))
+
+    const { json } = await getCharts()
+
+    expect(json.data.months[0]).toMatchObject({ revenueActual: 300 })
+  })
+
+  it('a blank functional_currency beside a foreign org is treated as AUD and flagged', async () => {
+    db.tables.xero_connections = twoOrgs({ hkdCurrency: 'HKD' }).concat([
+      connection({ id: 'conn-unknown', tenant_id: 'tenant-unknown', tenant_name: 'Newly connected', functional_currency: null }),
+    ])
+    db.tables.xero_pl_lines_wide_compat = mirror(
+      { tenant_id: 'tenant-aud', revenue: 300 },
+      { tenant_id: 'tenant-hkd', revenue: 1_000 },
+      { tenant_id: 'tenant-unknown', revenue: 50 },
+    )
+    db.tables.fx_rates = [rate(FIRST_MONTH, 0.2)]
+    vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({}))
+
+    const { json } = await getCharts()
+
+    expect(json.data.months[0]).toMatchObject({ revenueActual: 300 + 200 + 50 })
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('missing functional_currency'),
+      expect.objectContaining({ tags: expect.objectContaining({ invariant: 'dashboard_actuals_missing_functional_currency' }) }),
+    )
+  })
+
+  it('an all-AUD business is unchanged, and no rate is looked up', async () => {
+    db.tables.xero_connections = [
+      connection({ id: 'conn-a', tenant_id: 'tenant-a', tenant_name: 'A Pty Ltd', functional_currency: 'AUD' }),
+      connection({ id: 'conn-b', tenant_id: 'tenant-b', tenant_name: 'B Pty Ltd', functional_currency: 'AUD' }),
+    ]
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-a', revenue: 600 }, { tenant_id: 'tenant-b', revenue: 300 })
+    vi.mocked(getLastSyncByTenant).mockResolvedValue(syncClock({}))
+
+    const { json } = await getCharts()
+
+    expect(json.data.months[0]).toMatchObject({ revenueActual: 900 })
+    expect(readsOf('fx_rates')).toHaveLength(0)
+  })
+
+  it('several orgs whose currencies could not be read carry no actuals — the chart still answers', async () => {
+    db.tables.xero_connections = { error: { message: 'permission denied for table xero_connections', code: '42501' } }
+    db.tables.xero_pl_lines_wide_compat = mirror({ tenant_id: 'tenant-a', revenue: 600 }, { tenant_id: 'tenant-b', revenue: 300 })
+
+    const { status, json } = await getCharts()
+
+    expect(status).toBe(200)
+    expect(json.data.lastSync).toEqual({ status: 'unknown' })
+    expect(json.data.months[0].revenueActual).toBeNull()
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('several orgs'),
+      expect.objectContaining({ tags: expect.objectContaining({ invariant: 'dashboard_actuals_currency_unknown' }) }),
+    )
   })
 })

@@ -48,6 +48,7 @@ import type {
   PLLine,
 } from '@/app/finances/forecast/types'
 import { loadBusinessContext } from './engine'
+import { loadClosingSpotRate } from './fx'
 import type {
   ConsolidationBusiness,
   ConsolidationTenant,
@@ -73,8 +74,11 @@ export interface ConsolidatedCashflowTenant {
   display_order: number
   functional_currency: string
   months: ConsolidatedCashflowMonth[]
+  /** In this org's functional currency — the consolidated total translates it. */
   opening_balance: number
   closing_balance: number
+  /** True when the bank balance could not be read at all (not the same as $0). */
+  opening_unknown?: boolean
 }
 
 /** Full consolidated cashflow response shape. */
@@ -117,20 +121,33 @@ export interface BuildConsolidatedCashflowOpts {
 // Per-tenant opening balance loader
 // ────────────────────────────────────────────────────────────────────────────
 
+/** Month-end before the FY starts — the date an opening balance is as of ('YYYY-MM-DD'). */
+export function priorMonthEndDate(fyStartDate: string): string {
+  const [y, m] = fyStartDate.split('-').map(Number)
+  // Day 0 of the FY-start month is the last day of the month before it.
+  const end = new Date(y, m - 1, 0)
+  const mm = String(end.getMonth() + 1).padStart(2, '0')
+  const dd = String(end.getDate()).padStart(2, '0')
+  return `${end.getFullYear()}-${mm}-${dd}`
+}
+
 /**
  * Read tenant-specific opening bank balance from `xero_balance_sheet_lines`.
  *
  * Strategy: sum asset-type rows where the account name looks like a bank
  * account ('bank', 'cash', 'current account', 'savings') using the month-prior
- * closing balance as the FY-start opening. Returns 0 when no data (engine
- * treats 0 opening as a valid input; consolidation then relies on cashflow
- * assumptions `opening_bank_balance` for the combined view).
+ * closing balance as the FY-start opening. Returns 0 when there is no data
+ * (engine treats 0 opening as a valid input), and `null` when the read itself
+ * failed — F2 (22 Sep 2026): a failed read was indistinguishable from a
+ * genuinely empty bank, so an org's cash silently became $0 in the total.
+ *
+ * The figure is in the TENANT's functional currency; the caller translates it.
  */
 async function loadTenantOpeningBankBalance(
   supabase: any,
   tenant: ConsolidationTenant,
   fyStartDate: string,
-): Promise<number> {
+): Promise<number | null> {
   // Month-end prior to FY start = opening balance for FY start
   const [y, m] = fyStartDate.split('-').map(Number)
   const prior = new Date(y, m - 2, 1)  // previous month
@@ -145,7 +162,7 @@ async function loadTenantOpeningBankBalance(
     .eq('tenant_id', tenant.tenant_id)
     .eq('account_type', 'asset')
 
-  if (error || !data) return 0
+  if (error || !data) return null
 
   const BANK_KEYWORDS = ['bank', 'cash', 'current account', 'savings', 'cheque']
   let balance = 0
@@ -162,6 +179,78 @@ async function loadTenantOpeningBankBalance(
     balance += Number(priorValue ?? fyStartValue ?? 0)
   }
   return balance
+}
+
+
+/**
+ * The consolidated opening bank balance, in the presentation currency (F2).
+ *
+ * Every org's bank balance is in ITS functional currency. They were summed
+ * as-is: IICT Group Limited's HK$1.83m counted as A$1.83m, overstating group
+ * cash by roughly A$1.5m, while fx_context was hard-coded empty so nothing
+ * said so. Each foreign balance is translated at the closing-spot rate for the
+ * day it is as of (the day before the FY starts), exactly as the consolidated
+ * balance sheet does.
+ *
+ * Never guesses: an org whose rate is missing, or whose balance could not be
+ * read, is LEFT OUT of the total and named in `notes` / `missing_rates`, rather
+ * than counted as though it were already in the presentation currency.
+ */
+export async function consolidatedOpeningBalance(
+  tenants: Array<{
+    display_name: string
+    functional_currency: string
+    opening_balance: number
+    opening_unknown?: boolean
+  }>,
+  presentationCurrency: string,
+  openingAsOf: string,
+  loadRate: (currencyPair: string, asOf: string) => Promise<number | null>,
+): Promise<{
+  total: number
+  rates_used: Record<string, number>
+  missing_rates: Array<{ currency_pair: string; period: string }>
+  notes: string[]
+}> {
+  const presentation = (presentationCurrency || 'AUD').toUpperCase()
+  const rates_used: Record<string, number> = {}
+  const missing_rates: Array<{ currency_pair: string; period: string }> = []
+  const notes: string[] = []
+  let total = 0
+
+  for (const tenant of tenants) {
+    if (tenant.opening_unknown) {
+      notes.push(
+        `${tenant.display_name}: bank balance could not be read, so it is not in the ` +
+          `consolidated opening balance — the total is understated.`,
+      )
+      continue
+    }
+    const currency = (tenant.functional_currency || presentation).toUpperCase()
+    if (currency === presentation) {
+      total += tenant.opening_balance
+      continue
+    }
+    const pair = `${currency}/${presentation}`
+    let rate: number | null = null
+    try {
+      rate = await loadRate(pair, openingAsOf)
+    } catch {
+      rate = null
+    }
+    if (rate === null || !Number.isFinite(rate) || rate <= 0) {
+      missing_rates.push({ currency_pair: pair, period: openingAsOf })
+      notes.push(
+        `${tenant.display_name}: no ${pair} closing rate for ${openingAsOf}, so its opening ` +
+          `bank balance is left out of the consolidated total rather than counted as ${presentation}.`,
+      )
+      continue
+    }
+    rates_used[`${pair}::${openingAsOf}`] = rate
+    total += tenant.opening_balance * rate
+  }
+
+  return { total, rates_used, missing_rates, notes }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -429,13 +518,16 @@ export async function buildConsolidatedCashflow(
     tenants.map(async (tenant) => {
       let tenantMonths: ConsolidatedCashflowMonth[]
       let tenantOpening = 0
+      let openingUnknown = false
 
       if (baseline) {
-        tenantOpening = await loadTenantOpeningBankBalance(
+        const loaded = await loadTenantOpeningBankBalance(
           supabase,
           tenant,
           opts.fyStartDate,
         )
+        openingUnknown = loaded === null
+        tenantOpening = loaded ?? 0
 
         // Override the assumption's opening_bank_balance with the tenant-
         // specific value. All other assumptions are shared.
@@ -498,6 +590,7 @@ export async function buildConsolidatedCashflow(
         months: threadedMonths,
         opening_balance: tenantOpening,
         closing_balance: tenantClosing,
+        opening_unknown: openingUnknown,
       }
     }),
   )
@@ -532,7 +625,19 @@ export async function buildConsolidatedCashflow(
           closing_balance: 0,
         }))
 
-  const summedOpening = byTenant.reduce((sum, t) => sum + t.opening_balance, 0)
+  // F2 (22 Sep 2026): see consolidatedOpeningBalance — foreign bank balances
+  // used to be summed into AUD one-for-one.
+  const presentation = (business.presentation_currency || 'AUD').toUpperCase()
+  const openingAsOf = priorMonthEndDate(opts.fyStartDate)
+  const opening = await consolidatedOpeningBalance(
+    byTenant,
+    presentation,
+    openingAsOf,
+    (pair, asOf) => loadClosingSpotRate(supabase, pair, asOf),
+  )
+  const { rates_used, missing_rates } = opening
+  const summedOpening = opening.total
+  notes.push(...opening.notes)
 
   const combined = combineMemberForecasts(
     [{ opening_balance: summedOpening, months: businessWideMonths }],
@@ -548,10 +653,9 @@ export async function buildConsolidatedCashflow(
     )
   }
 
-  // FX context — consolidated cashflow FX translation is deferred (V1 only
-  // handles AUD-AUD consolidations at the cashflow level; HKD opening-balance
-  // translation is a future iteration aligned with the P&L/BS FX path).
-  const fx_context = { rates_used: {}, missing_rates: [] as Array<{ currency_pair: string; period: string }> }
+  // Opening balances are translated above; the cash MOVEMENTS come from the one
+  // business-wide forecast baseline (see step 4), already in the presentation currency.
+  const fx_context = { rates_used, missing_rates }
 
   return {
     business,

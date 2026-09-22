@@ -14,9 +14,11 @@
  *      keeps its own pre-combine running balance
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   combineMemberForecasts,
+  consolidatedOpeningBalance,
+  priorMonthEndDate,
   type ConsolidatedCashflowMonth,
 } from './cashflow'
 
@@ -142,5 +144,108 @@ describe('combineMemberForecasts — opening balance threading (Iteration 34.2)'
       expect(m.opening_balance).toBe(0)
       expect(m.closing_balance).toBe(0)
     }
+  })
+})
+
+/**
+ * F2 (22 Sep 2026 system diagnostic) — the consolidated opening bank balance
+ * added foreign money to AUD. IICT Group Limited's HK$1.83m was counted as
+ * A$1.83m (about A$1.5m too much), and fx_context was hard-coded empty, so no
+ * banner could say a rate was missing.
+ */
+describe('consolidatedOpeningBalance — foreign bank balances are translated, never assumed', () => {
+  const AS_OF = '2026-06-30'
+  const org = (
+    display_name: string,
+    functional_currency: string,
+    opening_balance: number,
+    opening_unknown?: boolean,
+  ) => ({ display_name, functional_currency, opening_balance, opening_unknown })
+
+  const rateOf = (rates: Record<string, number>) => async (pair: string) =>
+    pair in rates ? rates[pair] : null
+
+  it('translates the foreign org at the closing-spot rate and adds the AUD org as is', async () => {
+    const result = await consolidatedOpeningBalance(
+      [org('IICT (Aust) Pty Ltd', 'AUD', 250_000), org('IICT Group Limited', 'HKD', 1_830_000)],
+      'AUD',
+      AS_OF,
+      rateOf({ 'HKD/AUD': 0.19 }),
+    )
+    // 250,000 + HK$1,830,000 × 0.19 = 597,700 — not 2,080,000.
+    expect(result.total).toBeCloseTo(597_700, 2)
+    expect(result.rates_used).toEqual({ 'HKD/AUD::2026-06-30': 0.19 })
+    expect(result.missing_rates).toEqual([])
+    expect(result.notes).toEqual([])
+  })
+
+  it('leaves an org out — and says so — when its rate is missing', async () => {
+    const result = await consolidatedOpeningBalance(
+      [org('IICT (Aust) Pty Ltd', 'AUD', 250_000), org('IICT Group Limited', 'HKD', 1_830_000)],
+      'AUD',
+      AS_OF,
+      rateOf({}),
+    )
+    expect(result.total).toBe(250_000)
+    expect(result.missing_rates).toEqual([{ currency_pair: 'HKD/AUD', period: AS_OF }])
+    expect(result.notes[0]).toContain('IICT Group Limited')
+    expect(result.notes[0]).toContain('HKD/AUD')
+  })
+
+  it('a rate lookup that throws is treated as missing, not as 1:1', async () => {
+    const result = await consolidatedOpeningBalance(
+      [org('IICT Group Limited', 'HKD', 1_830_000)],
+      'AUD',
+      AS_OF,
+      async () => { throw new Error('fx_rates unreachable') },
+    )
+    expect(result.total).toBe(0)
+    expect(result.missing_rates).toHaveLength(1)
+  })
+
+  it.each([0, -0.19, Number.NaN, Number.POSITIVE_INFINITY])('refuses a nonsense rate (%p)', async (rate) => {
+    const result = await consolidatedOpeningBalance(
+      [org('IICT Group Limited', 'HKD', 1_830_000)],
+      'AUD',
+      AS_OF,
+      async () => rate as number,
+    )
+    expect(result.total).toBe(0)
+    expect(result.missing_rates).toHaveLength(1)
+  })
+
+  it('an unreadable bank balance is left out and named, not counted as $0', async () => {
+    const result = await consolidatedOpeningBalance(
+      [org('Dragon Roofing Pty Ltd', 'AUD', 0, true), org('Dragon Trading', 'AUD', 40_000)],
+      'AUD',
+      AS_OF,
+      rateOf({}),
+    )
+    expect(result.total).toBe(40_000)
+    expect(result.notes[0]).toContain('Dragon Roofing Pty Ltd')
+    expect(result.notes[0]).toContain('could not be read')
+  })
+
+  it('an all-AUD group needs no rate at all', async () => {
+    const loadRate = vi.fn(async () => 0.19)
+    const result = await consolidatedOpeningBalance(
+      [org('A Pty Ltd', 'AUD', 10_000), org('B Pty Ltd', '', 20_000)],
+      'AUD',
+      AS_OF,
+      loadRate,
+    )
+    expect(result.total).toBe(30_000)
+    expect(loadRate).not.toHaveBeenCalled()
+  })
+})
+
+describe('priorMonthEndDate', () => {
+  it.each([
+    ['2026-07-01', '2026-06-30'],
+    ['2026-01-01', '2025-12-31'],
+    ['2026-03-01', '2026-02-28'],
+    ['2028-03-01', '2028-02-29'],
+  ])('the day before %s is %s', (fyStart, expected) => {
+    expect(priorMonthEndDate(fyStart)).toBe(expected)
   })
 })
