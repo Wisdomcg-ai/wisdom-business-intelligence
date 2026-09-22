@@ -197,6 +197,8 @@ export default function MonthlyReportPage() {
   const [selectedMonth, setSelectedMonth] = useState(getDefaultReportMonth())
   const [fiscalYear, setFiscalYear] = useState(() => getFiscalYearForMonth(getDefaultReportMonth()))
   const [settings, setSettings] = useState<MonthlyReportSettings | null>(null)
+  /** The settings could not be read — not the same as a business that has none (D1). */
+  const [settingsUnavailable, setSettingsUnavailable] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showLayoutEditor, setShowLayoutEditor] = useState(false)
 
@@ -630,9 +632,12 @@ export default function MonthlyReportPage() {
       }
       setBusinessId(bizId)
 
-      // Load settings
+      // Load settings. A failure leaves them UNSET rather than defaulted: the
+      // settings panel and the PDF layout editor both post the whole key set
+      // back, so saving from defaults would wipe the real ones (D1).
       const s = await loadSettings(bizId)
       setSettings(s)
+      setSettingsUnavailable(s === null)
 
       setIsInitializing(false)
     } catch (err) {
@@ -2240,6 +2245,17 @@ export default function MonthlyReportPage() {
         {reportControls && !canGenerate && !report && mappings.length > 0 && (
           <div className="mb-6 p-4 bg-white rounded-lg border border-gray-200 text-center">
             <p className="text-sm text-gray-700">{CONSOLIDATED_COACH_ONLY_MESSAGE}</p>
+          </div>
+        )}
+
+        {/* The settings could not be read: say so rather than showing defaults
+            that a later save would write over the real ones (D1). */}
+        {settingsUnavailable && (
+          <div className="mb-6 p-4 bg-amber-50 rounded-lg border border-amber-200" role="alert">
+            <p className="text-sm text-amber-900">
+              This report&apos;s settings couldn&apos;t be loaded, so the settings and PDF layout
+              editors are unavailable and nothing here can be saved over them. Reload the page to try again.
+            </p>
           </div>
         )}
 

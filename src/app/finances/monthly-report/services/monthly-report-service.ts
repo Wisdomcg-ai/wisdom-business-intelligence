@@ -33,17 +33,34 @@ const DEFAULT_SETTINGS: MonthlyReportSettings = {
   budget_forecast_id: null,
 }
 
-export async function loadSettings(businessId: string): Promise<MonthlyReportSettings> {
+/**
+ * The business's report settings, or `null` when they could not be read.
+ *
+ * D1 (22 Sep 2026 diagnostic): this returned DEFAULT_SETTINGS on any failure,
+ * which is indistinguishable from a business that has never saved any. Both
+ * writers (the settings panel and the PDF layout editor) then post the whole
+ * key set back, and the route fills every absent key with a default — so one
+ * failed GET followed by any save wiped the pinned budget forecast, the
+ * subscription account codes, the wages account names and every section
+ * toggle. A business with no row is NOT this case: the API answers with
+ * defaults and `is_default: true`, which is a real answer and returns settings.
+ */
+export async function loadSettings(businessId: string): Promise<MonthlyReportSettings | null> {
   try {
     const res = await fetch(`/api/monthly-report/settings?business_id=${businessId}`)
+    if (!res.ok) {
+      console.error('[MonthlyReportService] Settings request failed:', res.status)
+      return null
+    }
     const data = await res.json()
-    if (data.settings) {
+    if (data?.settings) {
       return data.settings
     }
-    return { ...DEFAULT_SETTINGS, business_id: businessId }
+    console.error('[MonthlyReportService] Settings response carried no settings')
+    return null
   } catch (err) {
     console.error('[MonthlyReportService] Error loading settings:', err)
-    return { ...DEFAULT_SETTINGS, business_id: businessId }
+    return null
   }
 }
 
