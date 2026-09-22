@@ -1246,13 +1246,9 @@
      {
       "label": "Opening Debtors Collected",
       "value": 55000
-     },
-     {
-      "label": "Sales Revenue",
-      "value": 55000
      }
     ],
-    "cash_inflows": 110000,
+    "cash_inflows": 55000,
     "cogs_lines": [
      {
       "label": "Opening Creditors Paid",
@@ -1260,7 +1256,7 @@
      },
      {
       "label": "Cost of Goods Sold",
-      "value": 33000
+      "value": 12100
      }
     ],
     "expense_groups": [
@@ -1333,7 +1329,7 @@
       "subtotal": 500
      }
     ],
-    "cash_outflows": 87060,
+    "cash_outflows": 66160,
     "asset_lines": [],
     "movement_in_assets": 0,
     "liability_lines": [
@@ -1365,8 +1361,8 @@
     "movement_in_liabilities": -19126.67,
     "other_income_lines": [],
     "other_inflows": 0,
-    "net_movement": 3813.33,
-    "bank_at_end": 45813.33,
+    "net_movement": -30286.67,
+    "bank_at_end": 11713.33,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -1376,7 +1372,7 @@
     "month": "2025-08",
     "monthLabel": "Aug 2025",
     "source": "forecast",
-    "bank_at_beginning": 45813.33,
+    "bank_at_beginning": 11713.33,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -1477,7 +1473,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -31226.67,
-    "bank_at_end": 14586.66,
+    "bank_at_end": -19513.34,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -1487,7 +1483,7 @@
     "month": "2025-09",
     "monthLabel": "Sep 2025",
     "source": "forecast",
-    "bank_at_beginning": 14586.66,
+    "bank_at_beginning": -19513.34,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -1597,7 +1593,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -17336.67,
-    "bank_at_end": -2750.01,
+    "bank_at_end": -36850.01,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -1607,7 +1603,7 @@
     "month": "2025-10",
     "monthLabel": "Oct 2025",
     "source": "forecast",
-    "bank_at_beginning": -2750.01,
+    "bank_at_beginning": -36850.01,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -1702,7 +1698,7 @@
     "liability_lines": [
      {
       "label": "GST / BAS Payment",
-      "value": -2441.82
+      "value": 658.18
      },
      {
       "label": "PAYG Instalments",
@@ -1721,11 +1717,11 @@
       "value": -410
      }
     ],
-    "movement_in_liabilities": -11518.49,
+    "movement_in_liabilities": -8418.49,
     "other_income_lines": [],
     "other_inflows": 0,
-    "net_movement": -32378.49,
-    "bank_at_end": -35128.5,
+    "net_movement": -29278.49,
+    "bank_at_end": -66128.5,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -1735,7 +1731,7 @@
     "month": "2025-11",
     "monthLabel": "Nov 2025",
     "source": "forecast",
-    "bank_at_beginning": -35128.5,
+    "bank_at_beginning": -66128.5,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -1840,7 +1836,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -4136.67,
-    "bank_at_end": -39265.17,
+    "bank_at_end": -70265.17,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -1850,7 +1846,7 @@
     "month": "2025-12",
     "monthLabel": "Dec 2025",
     "source": "forecast",
-    "bank_at_beginning": -39265.17,
+    "bank_at_beginning": -70265.17,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -1959,7 +1955,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -5536.67,
-    "bank_at_end": -44801.84,
+    "bank_at_end": -75801.84,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -1969,7 +1965,7 @@
     "month": "2026-01",
     "monthLabel": "Jan 2026",
     "source": "forecast",
-    "bank_at_beginning": -44801.84,
+    "bank_at_beginning": -75801.84,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -2078,7 +2074,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -5536.67,
-    "bank_at_end": -50338.51,
+    "bank_at_end": -81338.51,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -2088,7 +2084,7 @@
     "month": "2026-02",
     "monthLabel": "Feb 2026",
     "source": "forecast",
-    "bank_at_beginning": -50338.51,
+    "bank_at_beginning": -81338.51,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -2210,7 +2206,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -13016.67,
-    "bank_at_end": -63355.18,
+    "bank_at_end": -94355.18,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -2220,7 +2216,7 @@
     "month": "2026-03",
     "monthLabel": "Mar 2026",
     "source": "forecast",
-    "bank_at_beginning": -63355.18,
+    "bank_at_beginning": -94355.18,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -2329,7 +2325,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -5536.67,
-    "bank_at_end": -68891.85,
+    "bank_at_end": -99891.85,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -2339,7 +2335,7 @@
     "month": "2026-04",
     "monthLabel": "Apr 2026",
     "source": "forecast",
-    "bank_at_beginning": -68891.85,
+    "bank_at_beginning": -99891.85,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -2456,7 +2452,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -12176.67,
-    "bank_at_end": -81068.52,
+    "bank_at_end": -112068.52,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -2466,7 +2462,7 @@
     "month": "2026-05",
     "monthLabel": "May 2026",
     "source": "forecast",
-    "bank_at_beginning": -81068.52,
+    "bank_at_beginning": -112068.52,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -2575,7 +2571,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -5536.67,
-    "bank_at_end": -86605.19,
+    "bank_at_end": -117605.19,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -2585,7 +2581,7 @@
     "month": "2026-06",
     "monthLabel": "Jun 2026",
     "source": "forecast",
-    "bank_at_beginning": -86605.19,
+    "bank_at_beginning": -117605.19,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -2694,7 +2690,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -5536.67,
-    "bank_at_end": -92141.86,
+    "bank_at_end": -123141.86,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -2713,10 +2709,10 @@
     },
     {
      "label": "Sales Revenue",
-     "value": 632500
+     "value": 577500
     }
    ],
-   "cash_inflows": 687500,
+   "cash_inflows": 632500,
    "cogs_lines": [
     {
      "label": "Opening Creditors Paid",
@@ -2724,7 +2720,7 @@
     },
     {
      "label": "Cost of Goods Sold",
-     "value": 396000
+     "value": 375100
     }
    ],
    "expense_groups": [
@@ -2797,7 +2793,7 @@
      "subtotal": 6000
     }
    ],
-   "cash_outflows": 703720,
+   "cash_outflows": 682820,
    "asset_lines": [
     {
      "label": "Stock on Hand",
@@ -2812,7 +2808,7 @@
    "liability_lines": [
     {
      "label": "GST / BAS Payment",
-     "value": -15961.82
+     "value": -12861.82
     },
     {
      "label": "PAYG Withholding",
@@ -2843,13 +2839,13 @@
      "value": -9800
     }
    ],
-   "movement_in_liabilities": -88921.86,
+   "movement_in_liabilities": -85821.86,
    "other_income_lines": [],
    "other_inflows": 0,
-   "net_movement": -134141.86,
-   "bank_at_end": -92141.86
+   "net_movement": -165141.86,
+   "bank_at_end": -123141.86
   },
-  "lowest_bank_balance": -92141.86,
+  "lowest_bank_balance": -123141.86,
   "lowest_bank_month": "2026-06"
  },
  "no options, payroll summary (the latent double-PAYG path)": {
@@ -2907,13 +2903,9 @@
      {
       "label": "Opening Debtors Collected",
       "value": 55000
-     },
-     {
-      "label": "Sales Revenue",
-      "value": 55000
      }
     ],
-    "cash_inflows": 110000,
+    "cash_inflows": 55000,
     "cogs_lines": [
      {
       "label": "Opening Creditors Paid",
@@ -2921,7 +2913,7 @@
      },
      {
       "label": "Cost of Goods Sold",
-      "value": 33000
+      "value": 12100
      }
     ],
     "expense_groups": [
@@ -2990,7 +2982,7 @@
       "subtotal": 500
      }
     ],
-    "cash_outflows": 85680,
+    "cash_outflows": 64780,
     "asset_lines": [],
     "movement_in_assets": 0,
     "liability_lines": [
@@ -3022,8 +3014,8 @@
     "movement_in_liabilities": -19126.67,
     "other_income_lines": [],
     "other_inflows": 0,
-    "net_movement": 5193.33,
-    "bank_at_end": 47193.33,
+    "net_movement": -28906.67,
+    "bank_at_end": 13093.33,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -3033,7 +3025,7 @@
     "month": "2025-08",
     "monthLabel": "Aug 2025",
     "source": "forecast",
-    "bank_at_beginning": 47193.33,
+    "bank_at_beginning": 13093.33,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -3130,7 +3122,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -29846.67,
-    "bank_at_end": 17346.66,
+    "bank_at_end": -16753.34,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -3140,7 +3132,7 @@
     "month": "2025-09",
     "monthLabel": "Sep 2025",
     "source": "forecast",
-    "bank_at_beginning": 17346.66,
+    "bank_at_beginning": -16753.34,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -3242,7 +3234,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -15546.67,
-    "bank_at_end": 1799.99,
+    "bank_at_end": -32300.01,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -3252,7 +3244,7 @@
     "month": "2025-10",
     "monthLabel": "Oct 2025",
     "source": "forecast",
-    "bank_at_beginning": 1799.99,
+    "bank_at_beginning": -32300.01,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -3338,7 +3330,7 @@
     "liability_lines": [
      {
       "label": "GST / BAS Payment",
-      "value": -2441.82
+      "value": 658.18
      },
      {
       "label": "PAYG Withholding",
@@ -3361,11 +3353,11 @@
       "value": -166.67
      }
     ],
-    "movement_in_liabilities": -22448.49,
+    "movement_in_liabilities": -19348.49,
     "other_income_lines": [],
     "other_inflows": 0,
-    "net_movement": -22128.49,
-    "bank_at_end": -20328.5,
+    "net_movement": -19028.49,
+    "bank_at_end": -51328.5,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -3375,7 +3367,7 @@
     "month": "2025-11",
     "monthLabel": "Nov 2025",
     "source": "forecast",
-    "bank_at_beginning": -20328.5,
+    "bank_at_beginning": -51328.5,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -3472,7 +3464,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -2346.67,
-    "bank_at_end": -22675.17,
+    "bank_at_end": -53675.17,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -3482,7 +3474,7 @@
     "month": "2025-12",
     "monthLabel": "Dec 2025",
     "source": "forecast",
-    "bank_at_beginning": -22675.17,
+    "bank_at_beginning": -53675.17,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -3579,7 +3571,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -2346.67,
-    "bank_at_end": -25021.84,
+    "bank_at_end": -56021.84,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -3589,7 +3581,7 @@
     "month": "2026-01",
     "monthLabel": "Jan 2026",
     "source": "forecast",
-    "bank_at_beginning": -25021.84,
+    "bank_at_beginning": -56021.84,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -3690,7 +3682,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -6486.67,
-    "bank_at_end": -31508.51,
+    "bank_at_end": -62508.51,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -3700,7 +3692,7 @@
     "month": "2026-02",
     "monthLabel": "Feb 2026",
     "source": "forecast",
-    "bank_at_beginning": -31508.51,
+    "bank_at_beginning": -62508.51,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -3814,7 +3806,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -21226.67,
-    "bank_at_end": -52735.18,
+    "bank_at_end": -83735.18,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -3824,7 +3816,7 @@
     "month": "2026-03",
     "monthLabel": "Mar 2026",
     "source": "forecast",
-    "bank_at_beginning": -52735.18,
+    "bank_at_beginning": -83735.18,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -3921,7 +3913,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -2346.67,
-    "bank_at_end": -55081.85,
+    "bank_at_end": -86081.85,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -3931,7 +3923,7 @@
     "month": "2026-04",
     "monthLabel": "Apr 2026",
     "source": "forecast",
-    "bank_at_beginning": -55081.85,
+    "bank_at_beginning": -86081.85,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -4044,7 +4036,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -17926.67,
-    "bank_at_end": -73008.52,
+    "bank_at_end": -104008.52,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -4054,7 +4046,7 @@
     "month": "2026-05",
     "monthLabel": "May 2026",
     "source": "forecast",
-    "bank_at_beginning": -73008.52,
+    "bank_at_beginning": -104008.52,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -4151,7 +4143,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -2346.67,
-    "bank_at_end": -75355.19,
+    "bank_at_end": -106355.19,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -4161,7 +4153,7 @@
     "month": "2026-06",
     "monthLabel": "Jun 2026",
     "source": "forecast",
-    "bank_at_beginning": -75355.19,
+    "bank_at_beginning": -106355.19,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -4258,7 +4250,7 @@
     "other_income_lines": [],
     "other_inflows": 0,
     "net_movement": -2346.67,
-    "bank_at_end": -77701.86,
+    "bank_at_end": -108701.86,
     "net_profit": -3380,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -4277,10 +4269,10 @@
     },
     {
      "label": "Sales Revenue",
-     "value": 632500
+     "value": 577500
     }
    ],
-   "cash_inflows": 687500,
+   "cash_inflows": 632500,
    "cogs_lines": [
     {
      "label": "Opening Creditors Paid",
@@ -4288,7 +4280,7 @@
     },
     {
      "label": "Cost of Goods Sold",
-     "value": 396000
+     "value": 375100
     }
    ],
    "expense_groups": [
@@ -4357,7 +4349,7 @@
      "subtotal": 6000
     }
    ],
-   "cash_outflows": 687160,
+   "cash_outflows": 666260,
    "asset_lines": [
     {
      "label": "Stock on Hand",
@@ -4368,7 +4360,7 @@
    "liability_lines": [
     {
      "label": "GST / BAS Payment",
-     "value": -17761.82
+     "value": -14661.82
     },
     {
      "label": "PAYG Withholding",
@@ -4391,13 +4383,13 @@
      "value": -2000.04
     }
    ],
-   "movement_in_liabilities": -110841.86,
+   "movement_in_liabilities": -107741.86,
    "other_income_lines": [],
    "other_inflows": 0,
-   "net_movement": -119701.86,
-   "bank_at_end": -77701.86
+   "net_movement": -150701.86,
+   "bank_at_end": -108701.86
   },
-  "lowest_bank_balance": -77701.86,
+  "lowest_bank_balance": -108701.86,
   "lowest_bank_month": "2026-06"
  },
  "no options, monthly reporter, six actual months": {
@@ -7490,13 +7482,9 @@
      {
       "label": "Opening Debtors Collected",
       "value": 55000
-     },
-     {
-      "label": "Sales Revenue",
-      "value": 55000
      }
     ],
-    "cash_inflows": 110000,
+    "cash_inflows": 55000,
     "cogs_lines": [
      {
       "label": "Opening Creditors Paid",
@@ -7504,7 +7492,7 @@
      },
      {
       "label": "Cost of Goods Sold",
-      "value": 33000
+      "value": 12100
      }
     ],
     "expense_groups": [
@@ -7577,7 +7565,7 @@
       "subtotal": 1043.06
      }
     ],
-    "cash_outflows": 86223.06,
+    "cash_outflows": 65323.06,
     "asset_lines": [],
     "movement_in_assets": 0,
     "liability_lines": [
@@ -7618,8 +7606,8 @@
      }
     ],
     "other_inflows": 57.87,
-    "net_movement": -2317.96,
-    "bank_at_end": 39682.04,
+    "net_movement": -36417.96,
+    "bank_at_end": 5582.04,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 7026.1,
@@ -7629,7 +7617,7 @@
     "month": "2025-08",
     "monthLabel": "Aug 2025",
     "source": "forecast",
-    "bank_at_beginning": 39682.04,
+    "bank_at_beginning": 5582.04,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -7735,7 +7723,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": -30331.86,
-    "bank_at_end": 9350.18,
+    "bank_at_end": -24749.82,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -7745,7 +7733,7 @@
     "month": "2025-09",
     "monthLabel": "Sep 2025",
     "source": "forecast",
-    "bank_at_beginning": 9350.18,
+    "bank_at_beginning": -24749.82,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -7860,7 +7848,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": -16441.86,
-    "bank_at_end": -7091.68,
+    "bank_at_end": -41191.68,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -7870,7 +7858,7 @@
     "month": "2025-10",
     "monthLabel": "Oct 2025",
     "source": "forecast",
-    "bank_at_beginning": -7091.68,
+    "bank_at_beginning": -41191.68,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -7969,7 +7957,7 @@
     "liability_lines": [
      {
       "label": "GST / BAS Payment",
-      "value": -2321.14
+      "value": 778.86
      },
      {
       "label": "PAYG Withholding",
@@ -8000,7 +7988,7 @@
       "value": -410
      }
     ],
-    "movement_in_liabilities": -29763.91,
+    "movement_in_liabilities": -26663.91,
     "other_income_lines": [
      {
       "label": "Bank Interest Income",
@@ -8008,8 +7996,8 @@
      }
     ],
     "other_inflows": 57.87,
-    "net_movement": -74729.1,
-    "bank_at_end": -81820.78,
+    "net_movement": -71629.1,
+    "bank_at_end": -112820.78,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 7026.1,
@@ -8019,7 +8007,7 @@
     "month": "2025-11",
     "monthLabel": "Nov 2025",
     "source": "forecast",
-    "bank_at_beginning": -81820.78,
+    "bank_at_beginning": -112820.78,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -8129,7 +8117,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": -3241.86,
-    "bank_at_end": -85062.64,
+    "bank_at_end": -116062.64,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -8139,7 +8127,7 @@
     "month": "2025-12",
     "monthLabel": "Dec 2025",
     "source": "forecast",
-    "bank_at_beginning": -85062.64,
+    "bank_at_beginning": -116062.64,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -8253,7 +8241,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": -4641.86,
-    "bank_at_end": -89704.5,
+    "bank_at_end": -120704.5,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -8263,7 +8251,7 @@
     "month": "2026-01",
     "monthLabel": "Jan 2026",
     "source": "forecast",
-    "bank_at_beginning": -89704.5,
+    "bank_at_beginning": -120704.5,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -8381,7 +8369,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": -8781.86,
-    "bank_at_end": -98486.36,
+    "bank_at_end": -129486.36,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -8391,7 +8379,7 @@
     "month": "2026-02",
     "monthLabel": "Feb 2026",
     "source": "forecast",
-    "bank_at_beginning": -98486.36,
+    "bank_at_beginning": -129486.36,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -8526,7 +8514,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": -28587.05,
-    "bank_at_end": -127073.41,
+    "bank_at_end": -158073.41,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 7026.1,
@@ -8536,7 +8524,7 @@
     "month": "2026-03",
     "monthLabel": "Mar 2026",
     "source": "forecast",
-    "bank_at_beginning": -127073.41,
+    "bank_at_beginning": -158073.41,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -8655,7 +8643,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": -8641.86,
-    "bank_at_end": -135715.27,
+    "bank_at_end": -166715.27,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -8665,7 +8653,7 @@
     "month": "2026-04",
     "monthLabel": "Apr 2026",
     "source": "forecast",
-    "bank_at_beginning": -135715.27,
+    "bank_at_beginning": -166715.27,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -8799,7 +8787,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": -27167.51,
-    "bank_at_end": -162882.78,
+    "bank_at_end": -193882.78,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 7026.1,
@@ -8809,7 +8797,7 @@
     "month": "2026-05",
     "monthLabel": "May 2026",
     "source": "forecast",
-    "bank_at_beginning": -162882.78,
+    "bank_at_beginning": -193882.78,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -8923,7 +8911,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": -4641.86,
-    "bank_at_end": -167524.64,
+    "bank_at_end": -198524.64,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -8933,7 +8921,7 @@
     "month": "2026-06",
     "monthLabel": "Jun 2026",
     "source": "forecast",
-    "bank_at_beginning": -167524.64,
+    "bank_at_beginning": -198524.64,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -9047,7 +9035,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": -4641.86,
-    "bank_at_end": -172166.5,
+    "bank_at_end": -203166.5,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -9066,10 +9054,10 @@
     },
     {
      "label": "Sales Revenue",
-     "value": 632500
+     "value": 577500
     }
    ],
-   "cash_inflows": 687500,
+   "cash_inflows": 632500,
    "cogs_lines": [
     {
      "label": "Opening Creditors Paid",
@@ -9077,7 +9065,7 @@
     },
     {
      "label": "Cost of Goods Sold",
-     "value": 396000
+     "value": 375100
     }
    ],
    "expense_groups": [
@@ -9150,7 +9138,7 @@
      "subtotal": 12516.72
     }
    ],
-   "cash_outflows": 693676.72,
+   "cash_outflows": 672776.72,
    "asset_lines": [
     {
      "label": "Stock on Hand",
@@ -9169,7 +9157,7 @@
    "liability_lines": [
     {
      "label": "GST / BAS Payment",
-     "value": -15599.78
+     "value": -12499.78
     },
     {
      "label": "PAYG Withholding",
@@ -9204,7 +9192,7 @@
      "value": -9800
     }
    ],
-   "movement_in_liabilities": -150684.22,
+   "movement_in_liabilities": -147584.22,
    "other_income_lines": [
     {
      "label": "Bank Interest Income",
@@ -9212,10 +9200,10 @@
     }
    ],
    "other_inflows": 694.44,
-   "net_movement": -214166.5,
-   "bank_at_end": -172166.5
+   "net_movement": -245166.5,
+   "bank_at_end": -203166.5
   },
-  "lowest_bank_balance": -172166.5,
+  "lowest_bank_balance": -203166.5,
   "lowest_bank_month": "2026-06"
  },
  "consolidation options (settings, xeroAccounts)": {
@@ -9273,13 +9261,9 @@
      {
       "label": "Opening Debtors Collected",
       "value": 55000
-     },
-     {
-      "label": "Sales Revenue",
-      "value": 55000
      }
     ],
-    "cash_inflows": 110000,
+    "cash_inflows": 55000,
     "cogs_lines": [
      {
       "label": "Opening Creditors Paid",
@@ -9287,7 +9271,7 @@
      },
      {
       "label": "Cost of Goods Sold",
-      "value": 33000
+      "value": 12100
      }
     ],
     "expense_groups": [
@@ -9360,7 +9344,7 @@
       "subtotal": 1043.06
      }
     ],
-    "cash_outflows": 74362.42,
+    "cash_outflows": 53462.42,
     "asset_lines": [],
     "movement_in_assets": 0,
     "liability_lines": [
@@ -9401,8 +9385,8 @@
      }
     ],
     "other_inflows": 57.87,
-    "net_movement": 9542.68,
-    "bank_at_end": 18642.68,
+    "net_movement": -24557.32,
+    "bank_at_end": -15457.32,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 7026.1,
@@ -9412,7 +9396,7 @@
     "month": "2025-08",
     "monthLabel": "Aug 2025",
     "source": "forecast",
-    "bank_at_beginning": 18642.68,
+    "bank_at_beginning": -15457.32,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -9518,7 +9502,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": -18471.22,
-    "bank_at_end": 171.46,
+    "bank_at_end": -33928.54,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -9528,7 +9512,7 @@
     "month": "2025-09",
     "monthLabel": "Sep 2025",
     "source": "forecast",
-    "bank_at_beginning": 171.46,
+    "bank_at_beginning": -33928.54,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -9639,7 +9623,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": -4171.22,
-    "bank_at_end": -3999.76,
+    "bank_at_end": -38099.76,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -9649,7 +9633,7 @@
     "month": "2025-10",
     "monthLabel": "Oct 2025",
     "source": "forecast",
-    "bank_at_beginning": -3999.76,
+    "bank_at_beginning": -38099.76,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -9739,7 +9723,7 @@
     "liability_lines": [
      {
       "label": "GST / BAS Payment",
-      "value": -2290.17
+      "value": 809.83
      },
      {
       "label": "PAYG Instalments",
@@ -9758,7 +9742,7 @@
       "value": -166.67
      }
     ],
-    "movement_in_liabilities": -17982.94,
+    "movement_in_liabilities": -14882.94,
     "other_income_lines": [
      {
       "label": "Bank Interest Income",
@@ -9766,8 +9750,8 @@
      }
     ],
     "other_inflows": 57.87,
-    "net_movement": -6287.49,
-    "bank_at_end": -10287.25,
+    "net_movement": -3187.49,
+    "bank_at_end": -41287.25,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 7026.1,
@@ -9777,7 +9761,7 @@
     "month": "2025-11",
     "monthLabel": "Nov 2025",
     "source": "forecast",
-    "bank_at_beginning": -10287.25,
+    "bank_at_beginning": -41287.25,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -9883,7 +9867,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": 9028.78,
-    "bank_at_end": -1258.47,
+    "bank_at_end": -32258.47,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -9893,7 +9877,7 @@
     "month": "2025-12",
     "monthLabel": "Dec 2025",
     "source": "forecast",
-    "bank_at_beginning": -1258.47,
+    "bank_at_beginning": -32258.47,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -9999,7 +9983,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": 9028.78,
-    "bank_at_end": 7770.31,
+    "bank_at_end": -23229.69,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -10009,7 +9993,7 @@
     "month": "2026-01",
     "monthLabel": "Jan 2026",
     "source": "forecast",
-    "bank_at_beginning": 7770.31,
+    "bank_at_beginning": -23229.69,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -10115,7 +10099,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": 9028.78,
-    "bank_at_end": 16799.09,
+    "bank_at_end": -14200.91,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -10125,7 +10109,7 @@
     "month": "2026-02",
     "monthLabel": "Feb 2026",
     "source": "forecast",
-    "bank_at_beginning": 16799.09,
+    "bank_at_beginning": -14200.91,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -10248,7 +10232,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": -7075.12,
-    "bank_at_end": 9723.97,
+    "bank_at_end": -21276.03,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 7026.1,
@@ -10258,7 +10242,7 @@
     "month": "2026-03",
     "monthLabel": "Mar 2026",
     "source": "forecast",
-    "bank_at_beginning": 9723.97,
+    "bank_at_beginning": -21276.03,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -10364,7 +10348,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": 9028.78,
-    "bank_at_end": 18752.75,
+    "bank_at_end": -12247.25,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -10374,7 +10358,7 @@
     "month": "2026-04",
     "monthLabel": "Apr 2026",
     "source": "forecast",
-    "bank_at_beginning": 18752.75,
+    "bank_at_beginning": -12247.25,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -10492,7 +10476,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": -4536.22,
-    "bank_at_end": 14216.53,
+    "bank_at_end": -16783.47,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 7026.1,
@@ -10502,7 +10486,7 @@
     "month": "2026-05",
     "monthLabel": "May 2026",
     "source": "forecast",
-    "bank_at_beginning": 14216.53,
+    "bank_at_beginning": -16783.47,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -10608,7 +10592,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": 9028.78,
-    "bank_at_end": 23245.31,
+    "bank_at_end": -7754.69,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -10618,7 +10602,7 @@
     "month": "2026-06",
     "monthLabel": "Jun 2026",
     "source": "forecast",
-    "bank_at_beginning": 23245.31,
+    "bank_at_beginning": -7754.69,
     "income_lines": [
      {
       "label": "Sales Revenue",
@@ -10724,7 +10708,7 @@
     ],
     "other_inflows": 57.87,
     "net_movement": 9028.78,
-    "bank_at_end": 32274.09,
+    "bank_at_end": 1274.09,
     "net_profit": 9368.13,
     "depreciation_addback": 1000,
     "company_tax_payment": 0,
@@ -10743,10 +10727,10 @@
     },
     {
      "label": "Sales Revenue",
-     "value": 632500
+     "value": 577500
     }
    ],
-   "cash_inflows": 687500,
+   "cash_inflows": 632500,
    "cogs_lines": [
     {
      "label": "Opening Creditors Paid",
@@ -10754,7 +10738,7 @@
     },
     {
      "label": "Cost of Goods Sold",
-     "value": 396000
+     "value": 375100
     }
    ],
    "expense_groups": [
@@ -10827,7 +10811,7 @@
      "subtotal": 12516.72
     }
    ],
-   "cash_outflows": 551349.04,
+   "cash_outflows": 530449.04,
    "asset_lines": [
     {
      "label": "Stock on Hand",
@@ -10838,7 +10822,7 @@
    "liability_lines": [
     {
      "label": "GST / BAS Payment",
-     "value": -17306.87
+     "value": -14206.87
     },
     {
      "label": "PAYG Withholding",
@@ -10865,7 +10849,7 @@
      "value": -2000.04
     }
    ],
-   "movement_in_liabilities": -104471.31,
+   "movement_in_liabilities": -101371.31,
    "other_income_lines": [
     {
      "label": "Bank Interest Income",
@@ -10873,10 +10857,10 @@
     }
    ],
    "other_inflows": 694.44,
-   "net_movement": 23174.09,
-   "bank_at_end": 32274.09
+   "net_movement": -7825.91,
+   "bank_at_end": 1274.09
   },
-  "lowest_bank_balance": -10287.25,
+  "lowest_bank_balance": -41287.25,
   "lowest_bank_month": "2025-10"
  },
  "pack v1 options (signedExpenses)": {
