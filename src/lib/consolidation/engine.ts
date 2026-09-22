@@ -32,7 +32,7 @@ import {
   accountAlignmentKey,
   type AlignedAccount,
 } from './account-alignment'
-import { loadEliminationRulesForBusiness, applyEliminations } from './eliminations'
+import { loadEliminationRulesForBusiness, applyEliminationsByMonth } from './eliminations'
 import type { ApprovedBudgetOutcome } from '@/lib/budgets/consolidated-budget'
 
 interface LoadedContext {
@@ -244,21 +244,28 @@ export async function loadTenantSnapshots(
 /**
  * Combine per-tenant columns into a single consolidated column.
  * Formula: consolidated[account][month] = Σ tenants[account][month]
- *          plus reportMonth-scoped eliminations (applied only at reportMonth).
+ *          plus that month's eliminations.
+ *
+ * F4 (22 Sep 2026): eliminations used to be applied at the report month only,
+ * so every other column — and therefore YTD and the full year — still carried
+ * the intercompany trade. They are now keyed by month.
  */
 export function combineTenants(
   byTenant: EntityColumn[],
   universe: AlignedAccount[],
-  eliminations: EliminationEntry[],
+  eliminationsByMonth: Record<string, EliminationEntry[]>,
   fyMonths: readonly string[],
-  reportMonth: string,
 ): { lines: ConsolidatedLine[] } {
-  const elimsByKey = new Map<string, EliminationEntry[]>()
-  for (const e of eliminations) {
-    const key = accountAlignmentKey({ account_type: e.account_type, account_name: e.account_name })
-    const arr = elimsByKey.get(key) ?? []
-    arr.push(e)
-    elimsByKey.set(key, arr)
+  const elimsByMonthAndKey = new Map<string, Map<string, EliminationEntry[]>>()
+  for (const [month, entries] of Object.entries(eliminationsByMonth)) {
+    const byKey = new Map<string, EliminationEntry[]>()
+    for (const e of entries) {
+      const key = accountAlignmentKey({ account_type: e.account_type, account_name: e.account_name })
+      const arr = byKey.get(key) ?? []
+      arr.push(e)
+      byKey.set(key, arr)
+    }
+    elimsByMonthAndKey.set(month, byKey)
   }
 
   const lines = universe.map((u) => {
@@ -273,10 +280,8 @@ export function combineTenants(
         )
         sum += lineInTenant?.monthly_values[m] ?? 0
       }
-      if (m === reportMonth) {
-        const elims = elimsByKey.get(u.key) ?? []
-        sum += elims.reduce((acc, e) => acc + e.amount, 0)
-      }
+      const elims = elimsByMonthAndKey.get(m)?.get(u.key) ?? []
+      sum += elims.reduce((acc, e) => acc + e.amount, 0)
       monthly[m] = sum
     }
     return {
@@ -774,7 +779,10 @@ export async function buildConsolidation(
   // 9. Elimination application — business-scoped rules, filter BS-only (intercompany_loan)
   const allRules = await loadEliminationRulesForBusiness(supabase, opts.businessId)
   const plRules = allRules.filter((r) => r.rule_type !== 'intercompany_loan')
-  const eliminations = applyEliminations(plRules, byTenant, opts.reportMonth)
+  // Every month, not just the report month — YTD and the full year are
+  // consolidated figures too (F4).
+  const eliminationsByMonth = applyEliminationsByMonth(plRules, byTenant, opts.fyMonths)
+  const eliminations = eliminationsByMonth[opts.reportMonth] ?? []
 
   // 10. Combine actuals (with eliminations) and budgets.
   //     Budget combination branches on mode:
@@ -784,9 +792,8 @@ export async function buildConsolidation(
   const consolidatedActuals = combineTenants(
     byTenant,
     universe,
-    eliminations,
+    eliminationsByMonth,
     opts.fyMonths,
-    opts.reportMonth,
   )
 
   let consolidatedBudget: ConsolidatedLine[]
