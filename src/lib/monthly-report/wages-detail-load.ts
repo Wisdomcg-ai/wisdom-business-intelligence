@@ -17,6 +17,9 @@ import * as Sentry from '@sentry/nextjs'
 import { forecastBelongsToBusiness } from '@/lib/budgets/owned-forecast'
 import { resolveBudget } from '@/lib/budgets/resolve-budget'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
+
+/** The report's currency. A wages row from an org in another currency is not added to it. */
+const PRESENTATION_CURRENCY = 'AUD'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import {
   matchEmployeeName,
@@ -202,11 +205,11 @@ export async function loadWagesDetail(
   const employeePlanForecastId: string | null = resolvedBudget.forecastId
 
   // ===== 2. Fetch DB data in parallel =====
-  const [plResult, payrollFlagResult, mappingsResult, forecastEmpResult, forecastSettingsResult] = await Promise.all([
+  const [plResult, payrollFlagResult, mappingsResult, forecastEmpResult, forecastSettingsResult, connectionsResult] = await Promise.all([
     // Actuals from xero_pl_lines (search both ID formats)
     supabase
       .from('xero_pl_lines_wide_compat')
-      .select('account_name, monthly_values')
+      .select('tenant_id, account_name, monthly_values')
       .in('business_id', ids.all),
     // is_from_payroll, for the resolved budget's lines. The resolver does not
     // carry the flag (budget_versions has no such notion), and the fourth
@@ -240,9 +243,19 @@ export async function loadWagesDetail(
           .eq('id', employeePlanForecastId)
           .single()
       : Promise.resolve({ data: null }),
+    // Which org each mirror row belongs to, and in what currency (F5).
+    supabase
+      .from('xero_connections')
+      .select('tenant_id, functional_currency')
+      .in('business_id', ids.all),
   ])
 
-  const plLines = (plResult.data || []) as { account_name: string; monthly_values: Record<string, number> | null }[]
+  const plLines = (plResult.data || []) as {
+    tenant_id?: string | null
+    account_name: string
+    monthly_values: Record<string, number> | null
+  }[]
+  const wagesConnections = (connectionsResult?.data || []) as { tenant_id: string; functional_currency: string | null }[]
   const payrollLineIds = new Set(
     ((payrollFlagResult.data || []) as { id: string; is_from_payroll: boolean | null }[])
       .filter((r) => r.is_from_payroll)
@@ -284,7 +297,54 @@ export async function loadWagesDetail(
   }
 
   // ===== 3. Build lookups for P&L matching =====
-  const actualLookup = buildFuzzyLookup(plLines, (item) => item.account_name)
+  //
+  // F5 (22 Sep 2026 diagnostic): the mirror holds ONE ROW PER ORG per account,
+  // and the lookup returns a single line — so a multi-org business showed one
+  // org's wages and called it the total. Dragon Roofing's $40,000 and $25,000
+  // read as $40,000 (or $25,000, whichever row came first). Rows for the same
+  // account name are summed.
+  //
+  // Only orgs in the report's currency are summed: adding another currency's
+  // wages one-for-one would be the F1 bug in a different place. A foreign org's
+  // rows are left out and reported rather than silently mixed in.
+  const foreignTenants = new Set(
+    (wagesConnections ?? [])
+      .filter((c) => {
+        const currency = (c.functional_currency ?? '').toString().trim().toUpperCase()
+        return currency !== '' && currency !== PRESENTATION_CURRENCY
+      })
+      .map((c) => c.tenant_id as string),
+  )
+  const excludedForeignRows: string[] = []
+  const summedByName = new Map<string, { account_name: string; monthly_values: Record<string, number> }>()
+  for (const line of plLines) {
+    const tenantId = (line as { tenant_id?: string | null }).tenant_id ?? ''
+    if (foreignTenants.has(tenantId)) {
+      excludedForeignRows.push(`${line.account_name} (${tenantId})`)
+      continue
+    }
+    const key = (line.account_name ?? '').trim().toLowerCase()
+    const existing = summedByName.get(key)
+    if (!existing) {
+      summedByName.set(key, {
+        account_name: line.account_name,
+        monthly_values: { ...(line.monthly_values ?? {}) },
+      })
+      continue
+    }
+    for (const [month, value] of Object.entries(line.monthly_values ?? {})) {
+      existing.monthly_values[month] = (existing.monthly_values[month] ?? 0) + (value ?? 0)
+    }
+  }
+  if (excludedForeignRows.length > 0) {
+    Sentry.captureMessage('[WagesDetail] wages rows in another currency were left out of the totals', {
+      level: 'warning' as any,
+      tags: { invariant: 'wages_detail_foreign_org_excluded', route: 'monthly-report/wages-detail' },
+      extra: { business_id, report_month, rows: excludedForeignRows.slice(0, 20) },
+    } as any)
+  }
+
+  const actualLookup = buildFuzzyLookup([...summedByName.values()], (item) => item.account_name)
 
   const xeroToForecast = new Map<string, string>()
   const forecastToXero = new Map<string, string>()
