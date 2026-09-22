@@ -55,6 +55,13 @@ vi.mock('@supabase/supabase-js', () => ({
 vi.mock('@/lib/supabase/server', () => ({
   createRouteHandlerClient: vi.fn(async () => currentAuthMock),
 }))
+// Business access is granted for every case here — these tests vary the
+// SECTION permission, not access to the business itself. (The route now uses
+// the canonical helper, which also admits super_admins and members.)
+vi.mock('@/lib/utils/verify-business-access', () => ({
+  verifyBusinessAccess: vi.fn(async () => true),
+}))
+
 vi.mock('@/lib/utils/rate-limiter', () => ({
   checkRateLimit: vi.fn(() => ({ allowed: true })),
   createRateLimitKey: vi.fn((p: string, id: string) => `${p}:${id}`),

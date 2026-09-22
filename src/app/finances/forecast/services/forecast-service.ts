@@ -1,6 +1,8 @@
 'use client'
 
+import * as Sentry from '@sentry/nextjs'
 import { createClient } from '@/lib/supabase/client'
+import { readAllRows } from '@/lib/supabase/read-all-rows'
 import {
   calculateForecastPeriods as _calcPeriods,
   DEFAULT_YEAR_START_MONTH,
@@ -8,12 +10,12 @@ import {
   getFiscalYearEndDate,
   generateFiscalMonthKeys,
 } from '@/lib/utils/fiscal-year-utils'
+import { pickForecast, forecastPeriodsFor } from '@/lib/forecast/select-forecast'
 import type {
   FinancialForecast,
   PLLine,
   ForecastEmployee,
-  PayrollSummary,
-  XeroConnection
+  PayrollSummary
 } from '../types'
 
 /**
@@ -140,17 +142,28 @@ export class ForecastService {
   static async getOrCreateForecast(
     businessId: string,
     userId: string,
-    fiscalYear: number
+    fiscalYear: number,
+    /**
+     * Perf: callers that have ALREADY resolved the profile id can pass it and
+     * skip the lookup below. The forecast page queried business_profiles three
+     * separate times per load (fiscal_year_start, prior-FY id, and this one),
+     * each a full browser→DB round-trip on a strictly sequential path.
+     */
+    knownProfileId?: string | null,
   ): Promise<{ forecast: FinancialForecast | null; error?: string }> {
     try {
       // financial_forecasts.business_id FK references business_profiles(id),
       // but callers pass businesses.id — collect both IDs to search
       const idsToTry: string[] = [businessId]
-      const { data: profile } = await this.supabase
-        .from('business_profiles')
-        .select('id')
-        .eq('business_id', businessId)
-        .maybeSingle()
+      let profile: { id: string } | null = knownProfileId ? { id: knownProfileId } : null
+      if (!profile) {
+        const { data } = await this.supabase
+          .from('business_profiles')
+          .select('id')
+          .eq('business_id', businessId)
+          .maybeSingle()
+        profile = data
+      }
       if (profile?.id && profile.id !== businessId) {
         idsToTry.push(profile.id)
       }
@@ -164,26 +177,15 @@ export class ForecastService {
         .order('updated_at', { ascending: false })
         .limit(10)
 
-      if (existing && existing.length > 0) {
-        // Prefer a forecast that has assumptions (wizard-generated) over empty ones
-        const forecast = existing.find(f => f.assumptions != null) || existing[0]
-        // Map wizard_v4 assumptions from category_assumptions if dedicated column doesn't exist
-        if (!forecast.assumptions && forecast.category_assumptions?.wizard_v4?.assumptions) {
-          forecast.assumptions = forecast.category_assumptions.wizard_v4.assumptions
-        }
+      // Selection (active → has assumptions → newest) and the period check are
+      // shared with scripts/preview-pack.ts — see lib/forecast/select-forecast.
+      const forecast = pickForecast(existing)
+      if (forecast) {
         console.log('[Forecast] Found existing forecast:', forecast.id, 'fiscal_year:', forecast.fiscal_year)
 
         // Calculate correct periods based on current date (handles rolling forecasts)
-        const periods = this.calculateForecastPeriods(fiscalYear)
-
         // Check if forecast needs updating (dates changed — fiscal_year already matched by query)
-        const needsUpdate =
-          forecast.baseline_start_month !== periods.baseline_start_month ||
-          forecast.baseline_end_month !== periods.baseline_end_month ||
-          forecast.actual_start_month !== periods.actual_start_month ||
-          forecast.actual_end_month !== periods.actual_end_month ||
-          forecast.forecast_start_month !== periods.forecast_start_month ||
-          forecast.forecast_end_month !== periods.forecast_end_month
+        const { periods, needsUpdate } = forecastPeriodsFor(forecast, fiscalYear)
 
         if (needsUpdate) {
           console.log('[Forecast] Updating forecast dates:', {
@@ -200,13 +202,14 @@ export class ForecastService {
             isRolling: periods.is_rolling
           })
 
+          // The period columns are maintenance (rolling forecasts move their
+          // windows); the NAME is the operator's. This sync used to rewrite it
+          // to the default on every visit — "FY2026 Forecast (Apr 2026)" became
+          // "FY2026 Financial Forecast" just by opening the page (8 Sep 2026).
           const { error: updateError} = await this.supabase
             .from('financial_forecasts')
             .update({
               fiscal_year: fiscalYear,
-              name: periods.is_rolling
-                ? `FY${fiscalYear} Forecast (${new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })})`
-                : `FY${fiscalYear} Financial Forecast`,
               baseline_start_month: periods.baseline_start_month,
               baseline_end_month: periods.baseline_end_month,
               actual_start_month: periods.actual_start_month,
@@ -220,11 +223,8 @@ export class ForecastService {
           if (updateError) {
             console.error('[Forecast] Error updating forecast:', updateError)
           } else {
-            // Return updated forecast
+            // Return updated forecast (name untouched — see above)
             forecast.fiscal_year = fiscalYear
-            forecast.name = periods.is_rolling
-              ? `FY${fiscalYear} Forecast (${new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })})`
-              : `FY${fiscalYear} Financial Forecast`
             forecast.baseline_start_month = periods.baseline_start_month
             forecast.baseline_end_month = periods.baseline_end_month
             forecast.actual_start_month = periods.actual_start_month
@@ -258,6 +258,12 @@ export class ForecastService {
         forecast_start_month: periods.forecast_start_month,
         forecast_end_month: periods.forecast_end_month,
         is_completed: false,
+        // H4: auto-created shells must NOT be active. Merely opening the
+        // cashflow or forecast page used to mint an is_active=true, zero-line
+        // row that the monthly report then picked up as the budget (silently
+        // $0) and the wizard auto-discovered as its write target. Only a
+        // completed Generate publishes (activate_forecast_locked).
+        is_active: false,
         last_reviewed_at: new Date().toISOString(),
       }
 
@@ -293,6 +299,11 @@ export class ForecastService {
    *
    * Avoids pushing the operator into a wizard build just to see YTD
    * performance + a defensible end-of-FY estimate.
+   *
+   * THROWS when the actuals cannot all be read. An empty return means this
+   * business has no actuals in the window, and the page answers that with the
+   * Create Forecast empty state — so a failed read must not return [] (it used
+   * to). The page's loader catches the throw and shows its error state.
    */
   static async loadActualsAsPLLines(
     businessId: string,
@@ -327,35 +338,38 @@ export class ForecastService {
       const startISO = `${fyStart.getFullYear()}-${String(fyStart.getMonth() + 1).padStart(2, '0')}-01`
       const endISO = `${fyEnd.getFullYear()}-${String(fyEnd.getMonth() + 1).padStart(2, '0')}-${String(fyEnd.getDate()).padStart(2, '0')}`
 
-      // Paginate to avoid the PostgREST 1000-row cap (multi-year tenants
-      // exceed it — Phase 44.1 hotfix pattern).
+      // Every row in the window, however many pages that takes — readAllRows
+      // pages by id to an empty page, because PostgREST cuts each response to
+      // 1,000 rows (JDS already has 976 in the current-FY window). Accruals
+      // only and not soft-deleted, exactly as xero_pl_lines_wide_compat reads
+      // the table: the sync can mirror a cash-basis twin of every month (WD.7),
+      // and summing it in below would double every figure.
       type RawRow = {
+        id: string
         account_code: string | null
         account_name: string | null
         account_type: string | null
         period_month: string
         amount: number
       }
-      const rows: RawRow[] = []
-      const pageSize = 1000
-      let from = 0
-      while (true) {
-        const { data, error } = await this.supabase
+      const read = await readAllRows<RawRow>('xero_pl_lines', () =>
+        this.supabase
           .from('xero_pl_lines')
-          .select('account_code, account_name, account_type, period_month, amount')
+          .select('id, account_code, account_name, account_type, period_month, amount')
           .in('business_id', idsToTry)
+          .eq('basis', 'accruals')
+          .is('deleted_at', null)
           .gte('period_month', startISO)
-          .lte('period_month', endISO)
-          .range(from, from + pageSize - 1)
-        if (error) {
-          console.error('[Forecast] Error loading actuals:', error)
-          return []
-        }
-        if (!data || data.length === 0) break
-        rows.push(...(data as RawRow[]))
-        if (data.length < pageSize) break
-        from += pageSize
+          .lte('period_month', endISO),
+      )
+      if (!read.ok) {
+        Sentry.captureException(read.error, {
+          tags: { invariant: 'forecast-actuals-read-incomplete' },
+          extra: { businessId, fiscalYear },
+        })
+        throw new Error('Could not load all of your Xero actuals. Please try again.')
       }
+      const rows = read.rows
 
       if (rows.length === 0) return []
 
@@ -455,7 +469,7 @@ export class ForecastService {
       return out
     } catch (err) {
       console.error('[Forecast] loadActualsAsPLLines error:', err)
-      return []
+      throw err
     }
   }
 
@@ -702,43 +716,6 @@ export class ForecastService {
     } catch (err) {
       console.error('[Forecast] Error:', err)
       return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
-    }
-  }
-
-  /**
-   * Get Xero connection for a business
-   */
-  static async getXeroConnection(businessId: string): Promise<XeroConnection | null> {
-    try {
-      // xero_connections.business_id references business_profiles.id,
-      // but callers may pass businesses.id — collect both IDs to search
-      const idsToTry: string[] = [businessId]
-      const { data: profile } = await this.supabase
-        .from('business_profiles')
-        .select('id')
-        .eq('business_id', businessId)
-        .maybeSingle()
-      if (profile?.id && profile.id !== businessId) {
-        idsToTry.push(profile.id)
-      }
-
-      const { data, error } = await this.supabase
-        .from('xero_connections')
-        .select('*')
-        .in('business_id', idsToTry)
-        .eq('is_active', true)
-        .limit(1)
-        .maybeSingle()
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('[Forecast] Error loading Xero connection:', error)
-        return null
-      }
-
-      return data
-    } catch (err) {
-      console.error('[Forecast] Error:', err)
-      return null
     }
   }
 

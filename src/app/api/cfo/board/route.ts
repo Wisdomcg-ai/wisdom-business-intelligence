@@ -1,0 +1,384 @@
+/**
+ * GET /api/cfo/board?month=YYYY-MM — the CFO production board.
+ *
+ * Fleet-wide (every business with a Xero connection row, active or dead —
+ * a dead connection is exactly what the board must surface, not hide).
+ * NO financial figures by design: performance lives in the monthly report;
+ * this page answers "where is every client in this month's report cycle,
+ * and what's blocking me". Replaces /api/cfo/summaries.
+ *
+ * Coach-only surface on a service-role client → app-layer authz (role gate +
+ * assigned_coach_id collection scoping; super_admin sees all).
+ */
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import { createClient } from '@supabase/supabase-js'
+import * as Sentry from '@sentry/nextjs'
+import { withQuerySchema } from '@/lib/api/with-schema'
+import { getSupabaseSecretKey } from '@/lib/supabase/keys'
+import { createRouteHandlerClient } from '@/lib/supabase/server'
+import {
+  classifyBusinessConnections,
+  needsAttention,
+  type XeroConnectionStatusRow,
+  type XeroOrgClassification,
+} from '@/lib/xero/connection-status'
+import { getLastSyncByTenant } from '@/lib/health-checks'
+import {
+  deriveStage,
+  dueDateForMonth,
+  daysOverdue,
+  summariseRecon,
+  deriveSection,
+  type BoardSection,
+} from '@/lib/cfo/board-logic'
+import { summariseDashboardCaptures, deriveReadiness, type CaptureRow } from '@/lib/cfo/dashboard-capture'
+
+export const dynamic = 'force-dynamic'
+
+// Module-level service-role client (mirrors flag-client/route.ts)
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  getSupabaseSecretKey()
+)
+
+const QuerySchema = z
+  .object({
+    month: z.string().optional(),
+  })
+  .passthrough()
+
+async function getHandler(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const month = searchParams.get('month') ?? ''
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return NextResponse.json({ error: 'month=YYYY-MM is required' }, { status: 400 })
+    }
+    const periodMonth = `${month}-01`
+
+    // Caller identity from the cookie-bound client; all data via service role.
+    const authClient = await createRouteHandlerClient()
+    const { data: { user }, error: authError } = await authClient.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: roleRow } = await supabase
+      .from('system_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    const isSuperAdmin = roleRow?.role === 'super_admin'
+    const isCoach = roleRow?.role === 'coach'
+    if (!isSuperAdmin && !isCoach) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
+    let bizQuery = supabase.from('businesses').select('id, name, assigned_coach_id')
+    if (!isSuperAdmin) {
+      bizQuery = bizQuery.eq('assigned_coach_id', user.id)
+    }
+    const { data: businesses, error: bizError } = await bizQuery
+    if (bizError) throw new Error(`businesses query failed: ${bizError.message}`)
+    const allowedIds = (businesses ?? []).map(b => b.id)
+    if (allowedIds.length === 0) {
+      return NextResponse.json({ month, clients: [], hidden: [], stats: emptyStats() })
+    }
+
+    // Dual-ID expansion: connection rows carry business_id in EITHER id-space.
+    const { data: profiles } = await supabase
+      .from('business_profiles')
+      .select('id, business_id')
+      .in('business_id', allowedIds)
+    const profileIdToBizId = new Map<string, string>()
+    for (const p of profiles ?? []) profileIdToBizId.set(p.id, p.business_id)
+    const allIdForms = [...allowedIds, ...(profiles ?? []).map(p => p.id)]
+
+    // ALL connection rows, dead included — the board exists to surface them.
+    // Ordered by columns no write touches: every token refresh and every sync
+    // bumps updated_at, and ordering by it let the last-written org stand in
+    // for the whole business.
+    const { data: connections, error: connError } = await supabase
+      .from('xero_connections')
+      .select('id, business_id, tenant_id, tenant_name, include_in_consolidation, is_active, last_synced_at, updated_at, expires_at, created_at')
+      .in('business_id', allIdForms)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+    if (connError) throw new Error(`connections query failed: ${connError.message}`)
+
+    const connsByBiz = new Map<string, XeroConnectionStatusRow[]>()
+    for (const conn of (connections ?? []) as XeroConnectionStatusRow[]) {
+      const canonical = profileIdToBizId.get(conn.business_id) ?? conn.business_id
+      const list = connsByBiz.get(canonical) ?? []
+      list.push(conn)
+      connsByBiz.set(canonical, list)
+    }
+
+    // Settings are needed BEFORE fleet assembly: badge-only clients join the
+    // fleet via board_manual_include, not via a connection row.
+    const { data: settingsRows, error: settingsError } = await supabase
+      .from('monthly_report_settings')
+      .select('business_id, report_due_day, bookkeeper_name, bookkeeper_email, hide_from_board, recon_ignored_accounts, board_manual_include, manual_tenant_key')
+      .in('business_id', allowedIds)
+    if (settingsError) throw new Error(`settings query failed: ${settingsError.message}`)
+    const settingsByBiz = new Map((settingsRows ?? []).map(s => [s.business_id, s]))
+
+    // Fleet = businesses with at least one connection row (locked decision),
+    // plus badge-only clients (board_manual_include — e.g. Distinct
+    // Directions, whose Xero org is at the connected-app limit, 5 Sep 2026).
+    // The manual flag is ignored once a real connection exists.
+    const fleetIds = allowedIds.filter(id =>
+      (connsByBiz.get(id) ?? []).length > 0 || settingsByBiz.get(id)?.board_manual_include === true,
+    )
+    if (fleetIds.length === 0) {
+      return NextResponse.json({ month, clients: [], hidden: [], stats: emptyStats() })
+    }
+
+    const [cycleRes, checksRes, bucketsRes, syncClock, capturesRes] = await Promise.all([
+      supabase
+        .from('cfo_report_status')
+        .select('business_id, status, generated_at, approved_at, sent_at, discussed_at, manual_status_override')
+        .eq('period_month', periodMonth)
+        .in('business_id', fleetIds),
+      supabase
+        .from('reconciliation_checks')
+        .select('business_id, tenant_id, status, checked_at, source, total_unreconciled_count, total_unreconciled_value, error_message')
+        .in('business_id', fleetIds),
+      supabase
+        .from('reconciliation_snapshots')
+        .select('business_id, tenant_id, month, unreconciled_count, unreconciled_value, currency, bank_account_name')
+        .in('business_id', fleetIds),
+      getLastSyncByTenant(supabase as never, 60),
+      // Dashboard badge captures — the banner-exact number the API can't
+      // give (Xero, 2 Sep 2026). Latest per tenant, shown beside the API count.
+      supabase
+        .from('reconciliation_dashboard_captures')
+        .select('business_id, tenant_id, captured_at, total_count, accounts, method, notes')
+        .in('business_id', fleetIds)
+        .order('captured_at', { ascending: false })
+        .limit(2000),
+    ])
+    for (const [label, res] of [
+      ['cycle', cycleRes],
+      ['checks', checksRes],
+      ['buckets', bucketsRes],
+    ] as const) {
+      if ((res as { error: { message: string } | null }).error) {
+        throw new Error(`${label} query failed: ${(res as any).error.message}`)
+      }
+    }
+
+    const cycleByBiz = new Map((cycleRes.data ?? []).map(c => [c.business_id, c]))
+    const checksByBiz = groupBy(checksRes.data ?? [], r => r.business_id)
+    const bucketsByBiz = groupBy(bucketsRes.data ?? [], r => r.business_id)
+    // A captures-query failure must not take the board down — the badge is
+    // supplementary; the API count still renders. Captured, never swallowed.
+    if ((capturesRes as { error: { message: string } | null }).error) {
+      Sentry.captureMessage('[cfo/board] dashboard captures query failed', {
+        level: 'warning',
+        extra: { error: (capturesRes as any).error.message },
+      } as any)
+    }
+    const capturesByBiz = groupBy(
+      ((capturesRes as any).data ?? []) as CaptureRow[],
+      r => r.business_id,
+    )
+
+    const todayIso = new Date().toISOString()
+    const now = Date.now()
+
+    // Hidden clients drop out of sections and stats but are returned by name
+    // so the page can offer a restore list — hide, never delete.
+    const hidden = fleetIds
+      .filter(id => settingsByBiz.get(id)?.hide_from_board === true)
+      .map(id => ({
+        business_id: id,
+        business_name: (businesses ?? []).find(b => b.id === id)?.name ?? '(Unnamed)',
+      }))
+      .sort((a, b) => a.business_name.localeCompare(b.business_name))
+    const visibleIds = fleetIds.filter(id => settingsByBiz.get(id)?.hide_from_board !== true)
+
+    const clients = visibleIds.map(businessId => {
+      const biz = (businesses ?? []).find(b => b.id === businessId)
+      const conns = connsByBiz.get(businessId) ?? []
+      const settings = settingsByBiz.get(businessId)
+      // Badge-only client: on the board via the manual flag, no connection
+      // rows at all. No API data exists for it — the badge capture is its
+      // ONLY reconciliation source, and that absence is presented neutrally
+      // ('browser_only'), never as a broken connection.
+      const isBadgeOnly = conns.length === 0
+      const manualTenantKey = isBadgeOnly && typeof settings?.manual_tenant_key === 'string' && settings.manual_tenant_key.trim()
+        ? [settings.manual_tenant_key.trim()]
+        : null
+      // A badge-only client with NO configured key must read as never-
+      // captured. An empty expected list would make summariseDashboardCaptures
+      // count EVERY historical capture row under any old key as full coverage
+      // — a fresh zero under an abandoned key would render green. The
+      // unmatchable sentinel forces the summary to null instead (fail-closed).
+      const activeTenants = isBadgeOnly
+        ? (manualTenantKey ?? ['__manual-tenant-key-not-configured__'])
+        : Array.from(
+            new Set(conns.filter(c => c.is_active && c.tenant_id).map(c => c.tenant_id)),
+          )
+
+      // Every org, each on its own data clock; the worst one is the business's
+      // status. One "representative" row meant IICT Group read connected
+      // whenever a healthy sibling had been written last, while IICT Group Pty
+      // Ltd 403'd on every sync (10 Sep 2026).
+      const classification = classifyBusinessConnections(conns, syncClock, now)
+      const cycle = cycleByBiz.get(businessId) ?? null
+      const stage = deriveStage(cycle)
+      const dueDate = dueDateForMonth(month, settings?.report_due_day ?? null)
+      const overdue = daysOverdue(dueDate, todayIso)
+      const recon = summariseRecon(
+        checksByBiz.get(businessId) ?? [],
+        bucketsByBiz.get(businessId) ?? [],
+        activeTenants.length,
+      )
+      const dashboard_capture = summariseDashboardCaptures(
+        capturesByBiz.get(businessId) ?? [],
+        activeTenants.filter((t): t is string => typeof t === 'string'),
+      )
+      // The board's ONE reconciliation question (demote decision, 5 Sep):
+      // computed from the captured badge against the selected report month.
+      // The API count no longer drives sections — it survives as a demoted
+      // secondary line in the expanded panel.
+      const readiness = deriveReadiness(
+        dashboard_capture,
+        (settings?.recon_ignored_accounts as string[] | null) ?? [],
+        month,
+        todayIso,
+      )
+      const section: BoardSection = deriveSection({
+        stage,
+        daysOverdue: overdue,
+        // A badge-only client HAS no connection to need attention — its
+        // readiness verdict (never/stale until the round covers it) is the
+        // honest gate.
+        connectionNeedsAttention: isBadgeOnly ? false : needsAttention(classification.status),
+        readiness: readiness.state,
+      })
+
+      return {
+        business_id: businessId,
+        business_name: biz?.name ?? '(Unnamed)',
+        section,
+        stage,
+        cycle: {
+          generated_at: cycle?.generated_at ?? null,
+          approved_at: cycle?.approved_at ?? null,
+          sent_at: cycle?.sent_at ?? null,
+          discussed_at: cycle?.discussed_at ?? null,
+          status: cycle?.status ?? null,
+        },
+        due_day: settings?.report_due_day ?? null,
+        due_date: dueDate,
+        days_overdue: overdue,
+        connection: isBadgeOnly
+          ? {
+              status: 'browser_only',
+              needs_attention: false,
+              last_sync_at: null,
+              tenant_count: activeTenants.length,
+              tenant_names: [],
+              status_scope: null,
+              more_orgs_needing_attention: 0,
+              orgs: [],
+            }
+          : {
+              status: classification.status,
+              needs_attention: needsAttention(classification.status),
+              last_sync_at: classification.lastSyncAt,
+              tenant_count: activeTenants.length,
+              tenant_names: conns
+                .filter(c => c.is_active && c.tenant_name)
+                .map(c => c.tenant_name),
+              // The org the status is about when only part of a multi-org
+              // business has it ("IICT Group Pty Ltd"); null when business-wide.
+              status_scope: classification.statusScope,
+              // Other orgs needing attention in a lesser state, so one broken
+              // org never hides another; the expanded row lists every org.
+              more_orgs_needing_attention: classification.moreOrgsNeedingAttention,
+              orgs: [
+                ...classification.orgs.map(o => orgForBoard(o, false)),
+                ...classification.retiredOrgs.map(o => orgForBoard(o, true)),
+              ],
+            },
+        recon,
+        dashboard_capture,
+        readiness,
+        recon_ignored_accounts: (settings?.recon_ignored_accounts as string[] | null) ?? [],
+        bookkeeper: {
+          name: settings?.bookkeeper_name ?? null,
+          email: settings?.bookkeeper_email ?? null,
+        },
+      }
+    })
+
+    // Urgency order inside the payload so the page can render top-to-bottom.
+    const sectionRank: Record<BoardSection, number> = { overdue: 0, blocked: 1, in_progress: 2, sent: 3 }
+    clients.sort((a, b) => {
+      const d = sectionRank[a.section] - sectionRank[b.section]
+      if (d !== 0) return d
+      const oa = a.days_overdue ?? -1
+      const ob = b.days_overdue ?? -1
+      if (oa !== ob) return ob - oa
+      return a.business_name.localeCompare(b.business_name)
+    })
+
+    const stats = {
+      overdue: clients.filter(c => c.section === 'overdue').length,
+      blocked: clients.filter(c => c.section === 'blocked').length,
+      in_progress: clients.filter(c => c.section === 'in_progress').length,
+      sent: clients.filter(c => c.section === 'sent').length,
+      discussed: clients.filter(c => c.stage === 'discussed').length,
+    }
+
+    // Latest recon-round request — drives the "Update from Xero" button's
+    // state. Read errors degrade to null (button still renders, just without
+    // run status), never a board failure.
+    const { data: reconRound } = await supabase
+      .from('recon_round_requests')
+      .select('id, status, source, requested_at, started_at, finished_at, result_note')
+      .order('requested_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    return NextResponse.json({ month, clients, hidden, stats, recon_round: reconRound ?? null })
+  } catch (error) {
+    Sentry.captureException(error, {
+      tags: { route: 'cfo/board' },
+      extra: { context: '[CFO Board] request failed' },
+    } as any)
+    return NextResponse.json({ error: 'Failed to load board' }, { status: 500 })
+  }
+}
+
+/** One org's line in the expanded row. A retired org is listed but never flagged. */
+function orgForBoard(org: XeroOrgClassification, retired: boolean) {
+  return {
+    tenant_name: org.tenantName,
+    status: org.status,
+    needs_attention: !retired && needsAttention(org.status),
+    retired,
+    last_sync_at: org.lastSyncAt,
+  }
+}
+
+function emptyStats() {
+  return { overdue: 0, blocked: 0, in_progress: 0, sent: 0, discussed: 0 }
+}
+
+function groupBy<T>(rows: T[], key: (row: T) => string): Map<string, T[]> {
+  const map = new Map<string, T[]>()
+  for (const row of rows) {
+    const k = key(row)
+    const list = map.get(k) ?? []
+    list.push(row)
+    map.set(k, list)
+  }
+  return map
+}
+
+export const GET = withQuerySchema('cfo/board', QuerySchema, getHandler)

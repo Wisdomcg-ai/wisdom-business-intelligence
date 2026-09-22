@@ -4,6 +4,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Send, Sparkles, Loader2, TrendingUp, Users, DollarSign, Target, BarChart3, Settings, PiggyBank, CheckCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { WizardStep, ForecastWizardState, formatCurrency } from '../types';
+import { generateFiscalMonthKeys } from '@/lib/utils/fiscal-year-utils';
+import { budgetedTotal } from '@/lib/forecast/budgeted-line';
 
 // Generate a unique session ID for grouping conversation messages
 const generateSessionId = () => crypto.randomUUID();
@@ -412,6 +414,15 @@ Planned Changes:
               const monthlySum = Object.values(l.year1Monthly || {}).reduce((s, v) => s + (v || 0), 0);
               return sum + monthlySum;
             }, 0);
+
+            if (line.costBehavior === 'budgeted') {
+              // Explicit per-month amounts — same projection as the summary.
+              return budgetedTotal(
+                line,
+                generateFiscalMonthKeys(fiscalYear + year - 1),
+                line.annualIncreasePct ?? (state.defaultOpExIncreasePct || 3),
+              );
+            }
 
             const y1Amount = (() => {
               switch (line.costBehavior) {

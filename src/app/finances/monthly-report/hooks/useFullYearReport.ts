@@ -6,7 +6,7 @@ export function useFullYearReport(businessId: string) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const loadFullYear = useCallback(async (fiscalYear: number) => {
+  const loadFullYear = useCallback(async (fiscalYear: number, reportMonth?: string) => {
     if (!businessId) return
     setIsLoading(true)
     setError(null)
@@ -18,6 +18,9 @@ export function useFullYearReport(businessId: string) {
         body: JSON.stringify({
           business_id: businessId,
           fiscal_year: fiscalYear,
+          // Which month's pack this is. Without it the route reads the clock,
+          // and a re-export months later would restate the month it was for.
+          report_month: reportMonth,
         }),
       })
 
@@ -38,5 +41,13 @@ export function useFullYearReport(businessId: string) {
     }
   }, [businessId])
 
-  return { fullYearReport, isLoading, error, loadFullYear }
+  // WA.4 — the page lazy-loads with a `!fullYearReport` guard, so a fiscal-year
+  // switch must clear the cache or the Full Year/Trends/Charts tabs keep
+  // showing the previous FY.
+  const clearFullYear = useCallback(() => {
+    setFullYearReport(null)
+    setError(null)
+  }, [])
+
+  return { fullYearReport, isLoading, error, loadFullYear, clearFullYear }
 }

@@ -12,11 +12,21 @@
  *   - isConsolidationGroup    — null = detection in flight; false = single-tenant;
  *                               true = multi-tenant (2+ connections)
  *   - generateConsolidated    — trigger a fetch for a given month
+ *   - reportFor               — the cached report, only if it is for that month + year
+ *   - prime                   — put a report Generate already fetched in the cache
  *
  * Detection = single query: COUNT(xero_connections WHERE business_id=X AND is_active AND include_in_consolidation) >= 2
+ *
+ * The cache holds ONE report and records which month it is (DRG-16). The
+ * export used to reuse it whatever month it was: a July per-entity table could
+ * print in the August pack, and IICT opened on July (rate stored), moved to
+ * August (none) and generated, and the August pack's pre-flight read July's
+ * empty missing-rate list and passed. Only the latest request owns the cache —
+ * a load superseded by another, by prime or by clear still answers its caller
+ * but no longer writes over what replaced it.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface ConsolidatedReportPayload {
@@ -30,6 +40,11 @@ export function useConsolidatedReport(
   businessId: string | null | undefined,
 ) {
   const [report, setReport] = useState<any | null>(null)
+  // The month and fiscal year `report` was generated (or primed) for (DRG-16).
+  const [reportPeriod, setReportPeriod] = useState<{ reportMonth: string; fiscalYear: number } | null>(null)
+  // Bumped by every request, every prime() and every clear(); a response whose
+  // number is no longer current has been superseded and is not cached.
+  const latestRequest = useRef(0)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isConsolidationGroup, setIsConsolidationGroup] = useState<
@@ -65,6 +80,8 @@ export function useConsolidatedReport(
   const generateConsolidated = useCallback(
     async (reportMonth: string, fiscalYear: number) => {
       if (!businessId || !isConsolidationGroup) return null
+      const request = ++latestRequest.current
+      const current = () => request === latestRequest.current
       setIsLoading(true)
       setError(null)
       try {
@@ -81,22 +98,69 @@ export function useConsolidatedReport(
           error?: string
         } = await res.json().catch(() => ({}))
         if (!res.ok) {
-          setError(
-            body.error ??
-              `Failed to load consolidated report (${res.status})`,
-          )
+          if (current()) {
+            setError(
+              body.error ??
+                `Failed to load consolidated report (${res.status})`,
+            )
+          }
           return null
         }
-        setReport(body.report ?? null)
+        // The caller gets the month it asked for either way; only the cache
+        // refuses a response a month change, a prime or a newer request has
+        // overtaken.
+        if (current()) {
+          setReport(body.report ?? null)
+          setReportPeriod(body.report ? { reportMonth, fiscalYear } : null)
+        }
         return body.report ?? null
       } catch (err: any) {
-        setError(err?.message ?? 'Network error loading consolidated report')
+        if (current()) setError(err?.message ?? 'Network error loading consolidated report')
         return null
       } finally {
-        setIsLoading(false)
+        if (current()) setIsLoading(false)
       }
     },
     [businessId, isConsolidationGroup],
+  )
+
+  // The consolidated response a Generate already adapted into the statements
+  // (useMonthlyReport's onConsolidatedReport): the per-entity page then prints
+  // the same generation, with no second request, and a report cached before
+  // the rates were loaded stops refusing the export once Generate has run.
+  const prime = useCallback((primed: any, reportMonth: string, fiscalYear: number) => {
+    latestRequest.current++
+    setReport(primed ?? null)
+    setReportPeriod(primed ? { reportMonth, fiscalYear } : null)
+    setError(null)
+    setIsLoading(false)
+  }, [])
+
+  // WA.4 — the page lazy-loads with a `!report` guard, so a fiscal-year switch
+  // must clear the cache or the consolidated tabs keep showing the previous FY.
+  // DRG-16 — and a month change, and it must also stop a request still in
+  // flight from refilling the cache with the month just left.
+  const clear = useCallback(() => {
+    latestRequest.current++
+    setReport(null)
+    setReportPeriod(null)
+    setError(null)
+    setIsLoading(false)
+  }, [])
+
+  /**
+   * The cached report, only when it was generated for this month and fiscal
+   * year, else null — the caller loads the right one rather than print another
+   * month's per-entity figures, or check another month's exchange rates. The
+   * export reads this rather than `report`, which is whatever the tab last
+   * loaded.
+   */
+  const reportFor = useCallback(
+    (reportMonth: string, fiscalYear: number) =>
+      report && reportPeriod?.reportMonth === reportMonth && reportPeriod?.fiscalYear === fiscalYear
+        ? report
+        : null,
+    [report, reportPeriod],
   )
 
   return {
@@ -105,5 +169,8 @@ export function useConsolidatedReport(
     error,
     isConsolidationGroup,
     generateConsolidated,
+    reportFor,
+    prime,
+    clear,
   }
 }

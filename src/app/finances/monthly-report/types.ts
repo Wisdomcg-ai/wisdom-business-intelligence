@@ -1,6 +1,6 @@
 // Monthly Report Types
 
-export type ReportTab = 'report' | 'full-year' | 'trends' | 'charts' | 'subscriptions' | 'wages' | 'cashflow' | 'balance-sheet' | 'balance-sheet-consolidated' | 'cashflow-consolidated' | 'mapping' | 'history' | 'consolidated'
+export type ReportTab = 'report' | 'full-year' | 'trends' | 'charts' | 'subscriptions' | 'wages' | 'cashflow' | 'balance-sheet' | 'balance-sheet-consolidated' | 'cashflow-consolidated' | 'external-data' | 'mapping' | 'history' | 'consolidated'
 
 export type ReportStatus = 'draft' | 'final'
 
@@ -32,6 +32,10 @@ export interface ReportSections {
   balance_sheet: boolean
   cashflow: boolean
   trend_charts: boolean
+  /** WD.7 — opt-in: sync also mirrors the cash-basis P&L (paymentsOnly=true).
+   *  Doubles the per-month Xero P&L requests for this business, so off by
+   *  default; the Cash-vs-Accruals page needs it on plus one sync cycle. */
+  cash_basis?: boolean
   // Chart toggles
   chart_cash_runway: boolean
   chart_cumulative_net_cash: boolean
@@ -46,6 +50,26 @@ export interface ReportSections {
   chart_subscription_creep: boolean
 }
 
+// WD.3 — a standing "refer to …" commentary bullet rendered under the
+// Budget-vs-Actual statement every month, regardless of variance triggers.
+// Printed "label | Refer to <refer_to>", first in the commentary list.
+export interface StandingCommentaryLine {
+  label: string
+  refer_to: string
+  /**
+   * The pack page the line points at, when refer_to is not that page's name
+   * ("summary page" → "Contractor Analysis"). Only the in-pack check reads it.
+   */
+  target?: string
+  /**
+   * The accounts the line speaks for, by name or code, when the label is not
+   * the account's own name ("Wages & Salaries" → "Employ - Wages & Salaries").
+   * A claimed account prints the standing line in place of its supplier list.
+   * The label always claims the account it names exactly.
+   */
+  accounts?: string[]
+}
+
 export interface MonthlyReportSettings {
   id?: string
   business_id: string
@@ -56,9 +80,46 @@ export interface MonthlyReportSettings {
   show_budget_next_month: boolean
   show_budget_annual_total: boolean
   budget_forecast_id?: string | null
+  /**
+   * Where the budget column comes from. Absent on the 19 businesses with no
+   * settings row, so read it positively — `=== 'budget_version'`.
+   */
+  budget_source?: 'forecast' | 'budget_version'
   subscription_account_codes?: string[]
+  /**
+   * Xero account codes whose vendor detail feeds the Contractor Analysis page
+   * (Urban Road: 61400). Empty/absent = the page is not part of this pack.
+   */
+  contractor_account_codes?: string[] | null
+  /**
+   * Xero AccountIDs the pack counts as bank — Where Did Our Money Go and the
+   * cashflow's opening balance (see opening-bank, parseBankAccountIds).
+   * Empty/absent = every asset account in the balance sheet's Bank section.
+   */
+  bank_account_ids?: string[] | null
+  /**
+   * The pack's cashflow model v2 switch and settings (cash-model-config).
+   * Absent/null or enabled: false = the v1 cashflow pages, as every client
+   * printed before. Read raw; parseCashModelConfig decides what it means.
+   */
+  cash_model?: unknown
   wages_account_names?: string[]
   pdf_layout?: import('./types/pdf-layout').PDFLayout | null
+  /** WD.3 — standing commentary bullets; null/undefined = none. */
+  standing_commentary?: StandingCommentaryLine[] | null
+  /**
+   * The order the expense group headings run in. Membership lives on
+   * `account_mappings.report_subcategory`; this is the coach's editorial
+   * choice, which matches no property of the accounts. Null/absent = the
+   * expense pages stay a flat list, which is what every client that has not
+   * opted in gets.
+   */
+  expense_group_order?: string[] | null
+  /**
+   * The pack's mark: the WisdomBI lockup (absent / 'wisdombi') or the
+   * business's own image. See lib/monthly-report/pack-logo-setting.
+   */
+  pack_logo?: import('@/lib/monthly-report/pack-logo-setting').PackLogoSetting | null
   created_at?: string
   updated_at?: string
 }
@@ -85,6 +146,10 @@ export interface ReportTemplate {
   budget_forecast_id?: string | null
   subscription_account_codes?: string[]
   wages_account_names?: string[]
+  /** WC.3 — optional saved PDF page layout. null/undefined = this template
+   *  does not manage the layout; applying it leaves the business's layout
+   *  untouched. */
+  pdf_layout?: import('./types/pdf-layout').PDFLayout | null
   created_at?: string
   updated_at?: string
 }
@@ -98,6 +163,7 @@ export const DEFAULT_SECTIONS: ReportSections = {
   balance_sheet: false,
   cashflow: false,
   trend_charts: true,
+  cash_basis: false,
   // P&L charts ON by default
   chart_revenue_vs_expenses: true,
   chart_revenue_breakdown: true,
@@ -159,6 +225,25 @@ export interface ReportLine {
   budget_annual_total: number
   // Prior year
   prior_year: number | null
+  /**
+   * The expense group this account belongs to ("Employment Expense", "Bank and
+   * Other Fees", …), from `account_mappings.report_subcategory`.
+   *
+   * Calxa gathers 49 expense accounts under nine headings with a subtotal each;
+   * ours printed them as one flat alphabetical list, which is why the expense
+   * pages read as a ledger export. Null on every client that has not grouped
+   * its chart yet — and a null group renders exactly as today, so nothing
+   * changes for anyone until a coach opts in.
+   */
+  group?: string | null
+  /**
+   * The account's Xero code, and ONLY a Xero code — null when the line has no
+   * code this business's Xero data vouches for (a forecast wizard's
+   * 'opex-28' or 'SYS-TEAM-WAGES' is not one). Drives statement order: the
+   * pack lists accounts by code, compared as text. Absent on snapshots saved
+   * before it existed. See src/lib/monthly-report/statement-order.ts.
+   */
+  account_code?: string | null
 }
 
 export interface ReportSection {
@@ -173,6 +258,12 @@ export interface ReportSummary {
   gross_profit: { actual: number; budget: number; variance: number; gp_percent: number }
   opex: { actual: number; budget: number; variance: number; variance_percent: number }
   net_profit: { actual: number; budget: number; variance: number; np_percent: number }
+  // WA.1 — Other Income/Expenses removed from GP and opex; Operating Profit is
+  // a real line. Optional because snapshots saved before the restructure lack
+  // them — consumers must render conditionally.
+  operating_profit?: { actual: number; budget: number; variance: number; op_percent: number }
+  other_income?: { actual: number; budget: number; variance: number; variance_percent: number }
+  other_expenses?: { actual: number; budget: number; variance: number; variance_percent: number }
 }
 
 export interface GeneratedReport {
@@ -183,11 +274,49 @@ export interface GeneratedReport {
   sections: ReportSection[]
   summary: ReportSummary
   gross_profit_row: ReportLine
+  /** WA.1 — GP − Operating Expenses. Optional: pre-restructure snapshots lack it. */
+  operating_profit_row?: ReportLine
   net_profit_row: ReportLine
   is_draft: boolean
   unreconciled_count: number
   has_budget: boolean
   budget_forecast_name?: string
+  /**
+   * What the budget column on THIS report actually is — emitted by the route
+   * from the resolver, not copied from settings, because a client switched to
+   * the budget store whose version will not resolve has budget_source
+   * 'budget_version' in settings and no budget at all here.
+   *
+   * Anything that puts the word "Budget" in front of a reader has to consult
+   * it. One pack now shows an approved budget and a forecast side by side on
+   * the Full Year page, so an unqualified "Budget" elsewhere in the same pack
+   * names neither of them.
+   */
+  budget_source?: 'forecast' | 'budget_version' | 'none'
+  /** budget_versions.id when budget_source is 'budget_version'. */
+  budget_version_id?: string | null
+  /**
+   * Every version a consolidated report's budget was read from — one per Xero
+   * organisation for Dragon Roofing & Easy Hail. budget_version_id is the first.
+   */
+  budget_version_ids?: string[]
+  /**
+   * The specifics behind no_budget_reason, when the reason alone cannot name
+   * them: which organisation has no version, which months have no exchange
+   * rate. Emitted by the consolidated route; absent elsewhere.
+   */
+  no_budget_detail?: string | null
+  /**
+   * Why there is no budget, when the client is on the budget store — emitted by
+   * generate/route.ts straight off the resolver. Undefined on a snapshot frozen
+   * before the field existed, and null on the forecast path (the resolver only
+   * explains itself for a budget-store client).
+   *
+   * Anything that shows a reader an empty budget column has to say why: a
+   * column of dashes with nothing explaining it gets read as "we budgeted
+   * nothing", which is a different and false claim.
+   */
+  no_budget_reason?: import('@/lib/budgets/resolve-budget').NoBudgetReason | null
   /**
    * True when this report was produced by `/api/monthly-report/consolidated`
    * (i.e. the underlying business is a consolidation parent). Enables
@@ -196,6 +325,15 @@ export interface GeneratedReport {
    * blocking the snapshot path (Phase 35 will ship consolidated snapshots).
    */
   is_consolidation?: boolean
+  /**
+   * The exchange rates the consolidation behind THESE figures had no rate for
+   * (its fx_context.missing_rates), recorded at Generate and saved with the
+   * snapshot. Pre-flight refuses export on it (IICT-04). It is the report's
+   * own: the page's per-entity consolidated report can be another month's or
+   * another generation's, and is never loaded for a client. Undefined on a
+   * report saved before the field existed, and on a single-entity report.
+   */
+  consolidation_fx?: { missing_rates: Array<{ currency_pair: string; period: string }> }
 }
 
 // ============================================
@@ -229,8 +367,28 @@ export interface ReconciliationStatus {
   unreconciled_count: number
   unreconciled_total: number
   has_more: boolean
-  bank_accounts: { name: string; count: number; balance: number }[]
+  /** Per-account attribution of the unreconciled count (accounts with items
+   *  only; org-prefixed for multi-org businesses). Xero's reconcile badge is
+   *  per account, so this names where a nonzero count actually lives. */
+  bank_accounts: { name: string; count: number; total: number }[]
+  /** Which population the count measures. 'account_transactions' = recorded
+   *  transactions never matched to a statement line; uncoded bank-feed lines
+   *  (Xero's reconcile badge) are INVISIBLE to that count. */
+  source?: 'account_transactions' | 'statement_lines'
   is_clean: boolean
+  /**
+   * FLEET-04 (26 Aug 2026): true when one or more connected Xero orgs could not
+   * be checked (no connection, expired token, or a failed BankTransactions
+   * call). The count is then INCOMPLETE and `is_clean` is forced false — a
+   * check that did not run is not a clean bill of health. Multi-org businesses
+   * (Dragon, IICT) previously always hit this path silently and were shown a
+   * green "All transactions reconciled" tick.
+   */
+  check_failed?: boolean
+  orgs_checked?: number
+  orgs_total?: number
+  failure_reason?: string
+  no_connection?: boolean
 }
 
 // ============================================
@@ -259,7 +417,22 @@ export interface ForecastPLLine {
 export interface FullYearMonthData {
   month: string           // 'YYYY-MM'
   actual: number
+  /**
+   * The FORECAST for this month — "where will we land". Kept as `budget`
+   * because that is what the API has always called it; renaming it here would
+   * only move the confusion, and the approved budget now sits beside it under
+   * its own name.
+   */
   budget: number
+  /**
+   * The APPROVED budget for this month, out of budget_versions/budget_lines —
+   * "what were we held to". Null, never 0, when the client is not on the budget
+   * store or the store could not answer: a zero in a budget column reads as a
+   * deliberate decision to spend nothing, and every variance measured off it
+   * comes out favourable. An account the budget genuinely does not mention is a
+   * real 0 and the route sends 0 for it — the two cases are not the same.
+   */
+  approved_budget: number | null
   prior_year: number      // actual value from same month one year earlier (Phase 26)
   source: 'actual' | 'forecast'
 }
@@ -269,9 +442,21 @@ export interface FullYearLine {
   category: string
   months: FullYearMonthData[]    // 12 entries
   projected_total: number        // actuals + remaining forecast
-  annual_budget: number          // full year budget
-  variance_amount: number
+  annual_budget: number          // full year FORECAST total
+  /** Full year APPROVED total; null on the same terms as approved_budget. */
+  approved_annual_budget: number | null
+  variance_amount: number        // projection vs FORECAST, not vs the approved budget
   variance_percent: number
+  /** Real Xero code or null, on the same terms as ReportLine.account_code. */
+  account_code?: string | null
+  /**
+   * The expense group heading this account prints under, on the same terms as
+   * ReportLine.group and from the same reader (mappingGroup in
+   * lib/monthly-report/expense-groups), so the Full Year page and the Actual vs
+   * Budget page of one pack group every account identically. Absent on a
+   * payload built before the route emitted it, which renders as a flat list.
+   */
+  group?: string | null
 }
 
 export interface FullYearSection {
@@ -287,6 +472,35 @@ export interface FullYearReport {
   sections: FullYearSection[]
   gross_profit: FullYearLine
   net_profit: FullYearLine
+  /**
+   * The label of the budget version the approved column came from, so the page
+   * can name its yardstick instead of printing an anonymous second money
+   * column. Null whenever there is no approved budget.
+   */
+  approved_budget_label?: string | null
+  /**
+   * The months ('YYYY-MM') the resolved approved budget has rows for, or null
+   * when there is no approved budget. A month outside it is not a budget of 0 —
+   * the version simply does not reach it — and the Full Year page must not
+   * print it as one (approvedBudgetGaps). Optional: older snapshots lack it.
+   */
+  approved_months_covered?: string[] | null
+  /**
+   * Did an active forecast exist for this fiscal year at all?
+   *
+   * False is not "the forecast is zero" — it is "there is no forecast", and the
+   * Forecast and variance columns must render a mark rather than a number.
+   * Optional because a snapshot frozen before the route emitted it carries no
+   * value; hasForecastBudget reads the evidence in that case.
+   */
+  forecast_available?: boolean
+  /**
+   * The coach's heading order, copied from monthly_report_settings. A FALLBACK
+   * only: the renderers prefer the monthly report's own settings, which is what
+   * the Actual vs Budget page in the same pack reads. Null/absent = headings
+   * sort A-Z, exactly as they would there.
+   */
+  expense_group_order?: string[] | null
 }
 
 // ============================================
@@ -320,7 +534,7 @@ export interface VendorTransaction {
   vendor: string          // Clean vendor name for this specific transaction
   context: string | null  // Additional detail only when it adds value (e.g. invoice description)
   amount: number
-  type: 'invoice' | 'bank'
+  type: 'invoice' | 'bank' | 'credit_note'
 }
 
 export interface VendorSummary {
@@ -341,6 +555,9 @@ export type CommentaryTriggerReason =
   | 'expense_favourable_significant'
   | 'bs_movement_dollar'
   | 'bs_movement_percent'
+  // Triggered nothing, but moved, in a section whose commentary lists every
+  // account that did (see commentary-placement coverage).
+  | 'account_activity'
 
 export interface VarianceCommentaryEntry {
   vendor_summary: VendorSummary[]  // Grouped by vendor, sorted by amount desc
@@ -350,6 +567,27 @@ export interface VarianceCommentaryEntry {
   // Phase 71-04 (S1): why this commentary row was surfaced. Optional for
   // backward-compat with pre-71-04 snapshots that lack the field.
   trigger_reason?: CommentaryTriggerReason
+  /**
+   * The generated facts: suppliers largest-first (converted, capped, credits
+   * named) and the ratio clause. Rebuilt from scratch on every generate, which
+   * is why it is separate from `coach_note` — facts that recompute cannot go
+   * stale, and prose that is never overwritten cannot be lost.
+   */
+  draft_note?: string
+  /**
+   * The two halves of draft_note, stored apart so a placement can print the
+   * supplier list without the ratio clause. Absent on commentary drafted before
+   * they existed; such an entry prints draft_note whole.
+   */
+  draft_facts?: string
+  draft_clause?: string | null
+  /**
+   * Coach-only. A document that could not be converted out of its currency, or
+   * a vendor list that sums past its own account. When this is non-empty the
+   * draft is NOT printed: the pack would be quoting a list we already know to
+   * be wrong.
+   */
+  draft_warnings?: string[]
 }
 
 export interface VarianceCommentary {
@@ -363,16 +601,43 @@ export interface VarianceCommentary {
 export interface SubscriptionVendorLine {
   vendor_name: string
   vendor_key: string
+  /** The gross document amounts (GST included where charged), as every page has always quoted them. */
   prior_month_actual: number
   actual: number
   budget: number
   variance: number
+  /**
+   * The same vendor in the P&L's money — net of GST, in the organisation's
+   * currency — for a placement that opts in (subscription-page `basis`).
+   * Variance is still against `budget`, the gross vendor budget. Absent on the
+   * stored history (the harness) and on responses from before it existed.
+   */
+  statement?: { prior_month_actual: number; actual: number; variance: number; months?: Record<string, number>; by_tenant?: Record<string, number> }
+  /**
+   * The report month per Xero organisation, for a page that prints a column
+   * each (Calxa's Dragon · Easy Hail — DRG-30). In the same money as `actual`,
+   * every organisation stated in the report's currency. Absent on a
+   * single-organisation business, the stored history, and older responses.
+   */
+  by_tenant?: Record<string, number>
+  /**
+   * The vendor month by month, gross, over the window the caller asked for
+   * (`months` on the route; the Contractors Payment Summary's three) — a month
+   * with nothing posted is 0. Absent when no window was asked for: the page has
+   * always been two months, and those are prior_month_actual and actual.
+   */
+  months?: Record<string, number>
   /**
    * Number of current-month bank-transaction lines that contributed to `actual`.
    * Zero means the vendor surfaced solely from `subscription_budgets` backfill
    * (Phase 71-05 / S2) and the UI should render a "not billed this month" badge.
    */
   transaction_count: number
+  /**
+   * The department this vendor belongs to, from `subscription_budgets.category`.
+   * Only the Contractor Analysis page reads it; subscriptions leave it null.
+   */
+  category?: string | null
 }
 
 export interface SubscriptionAccountGroup {
@@ -383,12 +648,130 @@ export interface SubscriptionAccountGroup {
   total_actual: number
   total_budget: number
   total_variance: number
+  /**
+   * Where total_budget came from: the approved budget (budget-store clients),
+   * the forecast line, or — neither having one — the sum of the vendor budgets.
+   * 'none' is a budget-store client with no version in force: total_budget is
+   * 0 and total_budget_absent says why. Absent on responses cached before it
+   * existed.
+   */
+  total_budget_source?: 'approved_budget' | 'forecast' | 'vendor_sum' | 'none'
+  /** Why there is no budget, when total_budget_source is 'none' ("no approved budget version is locked for FY2027"). */
+  total_budget_absent?: string
+  /**
+   * A budget-store client only: the TOTAL budget this page printed before the
+   * store — the forecast line, else the vendor budgets — with its variance
+   * against total_actual. The standard layout prints it unless its placement
+   * asks for the approved budget (subscription-page `total_budget`), so moving
+   * a client onto the store does not move this page unasked.
+   */
+  pre_budget_store_total?: { budget: number; variance: number; source: 'forecast' | 'vendor_sum' }
+  /**
+   * The account's report month per organisation, for the per-entity columns:
+   * the ledger's figures, or the vendor rows' own split wherever `total_actual`
+   * falls back to them, so the columns always add to the total beside them.
+   */
+  total_by_tenant?: Record<string, number>
+  /** Lines left out of every vendor's `statement` figure because they could not be stated in the organisation's currency (the gross figures include them). */
+  unconverted?: SubscriptionUnconvertedLine[]
+  /** The account over the window the caller asked for. Absent when none was. */
+  window?: SubscriptionAccountWindow
+}
+
+/**
+ * One account month by month, for a page that prints more than this month and
+ * last (the Contractors Payment Summary).
+ */
+export interface SubscriptionAccountWindow {
+  /** Oldest first, ending at the report month. */
+  months: string[]
+  /** The ledger's figure for the account (xero_pl_lines), or the vendor rows added up when the ledger has no row for it — see actual_source. */
+  actual: Record<string, number>
+  actual_source: 'ledger' | 'vendor_sum'
+  /**
+   * The account's budget for each month, on the yardstick total_budget uses —
+   * the approved budget for a budget-store client, the forecast otherwise.
+   * Null is "no budget for this month", never $0: June 2026 is FY2026, and
+   * Urban Road has no approved budget for FY2026. budget_absent says why.
+   */
+  budget: Record<string, number | null>
+  budget_absent?: Record<string, string>
+}
+
+export interface SubscriptionUnconvertedLine {
+  vendor_name: string
+  /** Signed, in the document's own currency. */
+  amount: number
+  source_currency: string | null
+  /** True for the report month, false for the month before. */
+  is_current: boolean
+  /** Set only for a month further back than the month before (a window month): is_current is false and does not name it. */
+  month?: string
+  reason: string
+}
+
+export interface SubscriptionLeakageLine {
+  vendor_key: string
+  vendor_name: string
+  actual: number
+  expected: number
+  delta: number
+}
+
+/** Phase 3 (18 Aug 2026): the three subscription-leakage classes a coach acts
+ *  on, computed server-side from the same vendor rows the table shows. */
+export interface SubscriptionLeakageSummary {
+  new_unbudgeted: SubscriptionLeakageLine[]
+  price_rises: SubscriptionLeakageLine[]
+  lapsed_still_budgeted: SubscriptionLeakageLine[]
+  totals: { new_unbudgeted: number; price_rises: number; lapsed_still_budgeted: number }
 }
 
 export interface SubscriptionDetailData {
   accounts: SubscriptionAccountGroup[]
   grand_total: { prior_month: number; actual: number; budget: number; variance: number }
   report_month: string
+  /** Optional: absent on cached/legacy responses. */
+  leakage?: SubscriptionLeakageSummary
+  /**
+   * Whether every connected org was read, whole, for both months. False when
+   * there is no Xero connection, an org's token was unavailable, or a fetch
+   * came back short — then an empty `accounts` is NOT "nothing was spent", and
+   * incomplete_reason says what was not read. Absent on responses from before
+   * it existed, and from a payload file: unknown, not complete.
+   */
+  complete?: boolean
+  incomplete_reason?: string
+  /**
+   * Present when no vendor row could be given a `statement` figure in ONE
+   * currency: the business's orgs keep their books in different currencies
+   * (or several orgs and one records none — null in `currencies`). Each org's
+   * lines are in its own currency and the rows add orgs together, so the gross
+   * figures mix currencies too. A page asking for net states this instead of
+   * printing vendor figures.
+   */
+  statement_unavailable?: { reason: 'mixed_currencies'; currencies: (string | null)[] }
+  /**
+   * The page could not be produced at all: an organisation keeps its books in
+   * another currency and a month it reads has no rate stored, so nothing can
+   * be stated in the report's currency (IICT-35). `accounts` is empty and the
+   * page prints this reason instead of figures — never a total that is two
+   * currencies added together.
+   */
+  translation_unavailable?: { missing: { currency_pair: string; period: string }[]; organisations: string[] }
+  /** The organisations read, in the coach's display order, for the per-entity columns. */
+  tenants?: { tenant_id: string; name: string }[]
+  /**
+   * Xero organisations that posted to these accounts in a month this report
+   * covers and are NOT connected any more (IICT Group Pty Ltd since 10 Sep
+   * 2026). Their ledger rows are in no total here — nothing left says which
+   * currency they are in, and the crawl read no vendor rows for them — and the
+   * page says so rather than drop the money silently. Absent: nothing was left
+   * out.
+   */
+  unconnected_tenants?: string[]
+  /** A budget-store client only: grand_total.budget as it was before the store (see pre_budget_store_total). */
+  pre_budget_store_grand_budget?: number
 }
 
 // ============================================
@@ -425,16 +808,128 @@ export interface WagesEmployeeLine {
   pay_runs: WagesPayRunEntry[]
   variance: number
   variance_percent: number
-  source: 'xero' | 'forecast' | 'both'
+  /** 'roster': on the Payroll Report roster with a weekly salary, and not paid this month. */
+  source: 'xero' | 'forecast' | 'both' | 'roster'
+  /**
+   * The Payroll Report roster gives this employee no weekly salary, so there
+   * is no budget to measure them against: budget_total and variance are 0 and
+   * every surface prints a dash. Only ever set on a roster-budgeted page.
+   */
+  budget_missing?: boolean
+}
+
+// WE.1b — one external-metrics series as the GET route returns it, threaded
+// into the PDF so the entered inserts (Lumary clinic income, Hubstaff hours…)
+// render as report pages. Shape mirrors /api/monthly-report/external-metrics.
+export interface ExternalMetricSeriesData {
+  id: string
+  series_key: string
+  display_name: string
+  dimension_label: string
+  measures: { key: string; label: string; format?: string }[]
+  reconciles_to_account_name?: string | null
+  reconcile_measure_key?: string | null
+  values: { dimension_value: string; measure_key: string; scenario: 'actual' | 'budget'; value: number }[]
+  /**
+   * The trend window's values, month by month — loaded only when a placement
+   * asks for a trend (P10, external-metric-config). Absent otherwise, and on
+   * responses from before it existed.
+   */
+  history?: { period_month: string; dimension_value: string; measure_key: string; scenario: 'actual' | 'budget'; value: number }[]
+  tie?: {
+    series_total: number
+    account_actual: number
+    account_name: string
+    delta: number
+    within_tolerance: boolean
+    comparable: boolean
+  } | null
+}
+
+/**
+ * What produced a budget column on a page that resolves its own budget.
+ *
+ * The wages page reads a budget of its own rather than slicing the report's, so
+ * it carries the resolver's three fields back with the figures. Everything a
+ * reader is told about that column is derived from THIS, never from settings —
+ * a client switched to the budget store whose version will not resolve has
+ * budget_source='budget_version' in settings and no budget at all on the page.
+ */
+export interface BudgetProvenance {
+  source: 'budget_version' | 'forecast' | 'none'
+  /** The version's label / the forecast's name. */
+  label?: string | null
+  /** Why there is no budget, when the client is on the budget store. */
+  reason?: import('@/lib/budgets/resolve-budget').NoBudgetReason | null
+  /** Names the fiscal year in the absent sentence. */
+  fiscal_year?: number | string | null
 }
 
 export interface WagesDetailData {
   accounts: WagesAccountLine[]
+  /**
+   * What the account-level Budget column on this page IS. The page resolves its
+   * own budget — it is not a slice of the report's — so it carries its own
+   * provenance back rather than letting the surface guess from settings.
+   *
+   * Optional: a response cached before this field existed has none, and is
+   * rendered with exactly the words it carried then (see wagesYardstick).
+   */
+  budget_provenance?: BudgetProvenance
+  /**
+   * Is there a per-employee plan for this month at all? A forecast has one;
+   * the approved budget is not split by employee, so a budget-store client
+   * has one only when its Payroll Report roster supplies weekly salaries
+   * (employee_roster). False: the per-employee Budget and Variance columns are
+   * dashes rather than $0 against a full actual.
+   *
+   * Optional for the same reason budget_provenance is.
+   */
+  employee_plan_available?: boolean
+  /**
+   * Present only when the per-employee Budget came — or was meant to come —
+   * from the Payroll Report roster's weekly salaries: no forecast employee
+   * plan applied, and a roster gives someone a weekly salary.
+   *
+   * 'applied'      budgets are weekly salary × this month's pay runs, and a
+   *                rostered employee who was not paid keeps a row and their
+   *                budget. `missing` names the paid employees the roster gives
+   *                no weekly salary; `unchecked` the unpaid ones with a weekly
+   *                salary but no Xero employee record to say whether they were
+   *                employed. When either is not empty, employee_totals.budget
+   *                covers only the rest and is not printed as the team's budget.
+   * 'unavailable'  the month's pay runs could not be counted in weeks without
+   *                guessing; `reason` says why.
+   */
+  employee_roster?:
+    | { status: 'applied'; missing: string[]; unchecked: string[] }
+    | { status: 'unavailable'; reason: import('@/lib/monthly-report/wages-roster-budget').RosterBudgetUnavailableReason }
   employees: WagesEmployeeLine[]
   employee_totals: { actual: number; budget: number; variance: number }
   grand_total: { actual: number; budget: number; variance: number }
   payroll_available: boolean
   pay_run_dates: string[]
+  /** WB.4 — five-Friday detection: more pay runs than the calendar's typical
+   *  month is a budget-phasing note, not an overspend. Optional: older cached
+   *  responses lack it. */
+  phasing?: {
+    pay_runs_in_month: number
+    typical_runs: number
+    calendar_type: string
+    extra_run: boolean
+  } | null
+  /** WB.5 — PAY-TIES (warning-only): Σ payslip gross(+super when the account
+   *  list includes a super account) vs the configured P&L wage accounts. */
+  ties?: {
+    payroll_gross: number
+    payroll_super: number
+    payroll_side: number
+    accounts_actual: number
+    includes_super_account: boolean
+    delta: number
+    within_tolerance: boolean
+    comparable: boolean
+  } | null
 }
 
 // ============================================
@@ -450,6 +945,13 @@ export interface BalanceSheetRow {
   prior: number | null     // Prior period actuals
   variance: number | null  // current - prior
   variance_pct: number | null  // null = N/A (prior is 0)
+  /**
+   * Headings and totals only. 0 is a class (Asset, Total Liability, Net
+   * Assets, Equity); 1 is a group inside one (Bank, Total Current Assets).
+   * The page styles the two apart. Absent on rows built before it existed —
+   * readers treat absent as 0.
+   */
+  depth?: 0 | 1
 }
 
 export type BalanceSheetCompare = 'yoy' | 'mom'
@@ -462,5 +964,51 @@ export interface BalanceSheetData {
   prior_label: string        // e.g. "Mar 2025"
   rows: BalanceSheetRow[]
   balances: boolean          // true if Total Asset - Total Liability === Total Equity
+  /**
+   * Only on a sheet that combines several Xero organisations, built from the
+   * stored mirror (lib/monthly-report/consolidated-balance-sheet.ts). One
+   * organisation's sheet never carries it, so its page prints exactly as it
+   * did.
+   */
+  consolidation?: BalanceSheetConsolidation
+}
+
+/**
+ * Bank Balances & Movement (Calxa p17) — the same five columns as the balance
+ * sheet, over the chosen bank, cash-on-hand and credit-card accounts only, with
+ * each Xero organisation's under its own heading when there is more than one.
+ * Built by lib/monthly-report/bank-balances.ts.
+ */
+export interface BankBalancesData {
+  business_id: string
+  /** Last day of the report month, YYYY-MM-DD. */
+  report_date: string
+  /** Last day of the month before it — null when no organisation has a sheet then. */
+  prior_date: string | null
+  current_label: string      // e.g. "Aug 2026"
+  prior_label: string        // e.g. "Jul 2026"; '' when there is no comparison
+  rows: BalanceSheetRow[]
+  /** The organisations the page covers, in display order. */
+  organisations: { name: string; currency: string }[]
+  /** Printed under the table: how a foreign organisation was translated, and the credit-card convention. */
+  notes: string[]
+  /** Printed above the table: what the page could not check. */
+  warnings: string[]
+}
+
+export interface BalanceSheetConsolidation {
+  /** The organisations the sheet adds together, in display order. */
+  organisations: { name: string; currency: string }[]
+  /**
+   * One line each, printed under the table: what was eliminated, and how a
+   * foreign organisation was translated.
+   */
+  notes: string[]
+  /**
+   * Printed above the table, with the page's other warnings: what the sheet
+   * was asked to do and did not — an intercompany loan whose two sides do not
+   * agree is shown in full, not netted.
+   */
+  warnings: string[]
 }
 

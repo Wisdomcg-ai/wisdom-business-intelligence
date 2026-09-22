@@ -7,6 +7,7 @@
 // resolved businesses.id.
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { FROZEN_BALANCE_SHEETS_KEY } from '@/lib/monthly-report/balance-sheet-freeze'
 
 export type ReportStatus = 'draft' | 'ready_for_review' | 'approved' | 'sent'
 
@@ -14,9 +15,21 @@ export interface ReportStatusState {
   status: ReportStatus | null
   sentAt: string | null
   approvedAt: string | null
+  /**
+   * Package B: when an Approve & Send kept the balance sheets its PDF printed,
+   * while the coach has not reopened them (null otherwise). Exports print that
+   * copy, and it outlives the silent reverts to draft — so this can be set
+   * whatever the status, and is how the bar knows to offer the reopen.
+   */
+  sentBalanceSheetAt: string | null
   loading: boolean
   error: string | null
 }
+
+// The kept copy's two stamps only, never the sheets themselves. One template
+// literal, so the typed client can still read the columns out of it.
+const SELECT =
+  `status, sent_at, approved_at, sent_balance_sheet_at:snapshot_data->${FROZEN_BALANCE_SHEETS_KEY}->>frozen_at, sent_balance_sheet_reopened_at:snapshot_data->${FROZEN_BALANCE_SHEETS_KEY}->>reopened_at` as const
 
 export function useReportStatus(
   businessId: string | null,
@@ -26,6 +39,7 @@ export function useReportStatus(
     status: null,
     sentAt: null,
     approvedAt: null,
+    sentBalanceSheetAt: null,
     loading: true,
     error: null,
   })
@@ -36,6 +50,7 @@ export function useReportStatus(
         status: null,
         sentAt: null,
         approvedAt: null,
+        sentBalanceSheetAt: null,
         loading: false,
         error: null,
       })
@@ -46,7 +61,7 @@ export function useReportStatus(
       const supabase = createClient()
       const { data, error } = await supabase
         .from('cfo_report_status')
-        .select('status, sent_at, approved_at')
+        .select(SELECT)
         .eq('business_id', businessId)
         .eq('period_month', periodMonth)
         .maybeSingle()
@@ -55,6 +70,7 @@ export function useReportStatus(
         status: (data?.status as ReportStatus | undefined) ?? 'draft',
         sentAt: data?.sent_at ?? null,
         approvedAt: data?.approved_at ?? null,
+        sentBalanceSheetAt: data?.sent_balance_sheet_reopened_at ? null : (data?.sent_balance_sheet_at ?? null),
         loading: false,
         error: null,
       })
@@ -63,6 +79,7 @@ export function useReportStatus(
         status: null,
         sentAt: null,
         approvedAt: null,
+        sentBalanceSheetAt: null,
         loading: false,
         error: err instanceof Error ? err.message : 'Unknown error',
       })

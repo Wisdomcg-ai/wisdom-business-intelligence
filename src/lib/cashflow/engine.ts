@@ -21,6 +21,7 @@ import {
   resolveIsDepreciation,
 } from './account-resolution'
 import { computeCompanyTaxByMonth } from './company-tax'
+import { dueMonthKey, type BasePeriods } from './schedules'
 
 // ============================================================================
 // Expense Group Classification
@@ -37,18 +38,40 @@ const EXPENSE_GROUP_KEYWORDS: Record<string, string[]> = {
   'Other Operating Expenses': [],
 }
 
+/**
+ * The keyword headings in the order the engine emits them. Exported for the
+ * monthly-report pack, which prints them in this order after the coach's own
+ * mapping groups; the engine's output does not change.
+ */
+export const KEYWORD_EXPENSE_GROUP_ORDER: readonly string[] = Object.keys(EXPENSE_GROUP_KEYWORDS)
+
 const GST_EXEMPT_KEYWORDS = [
   'wage', 'salary', 'super', 'payg', 'worker', 'insurance',
   'bank interest', 'depreciation', 'amortisation', 'amortization',
 ]
 
-function classifyExpenseGroup(accountName: string): string {
+export function classifyExpenseGroup(accountName: string): string {
   const lower = accountName.toLowerCase()
   for (const [group, keywords] of Object.entries(EXPENSE_GROUP_KEYWORDS)) {
     if (group === 'Other Operating Expenses') continue
     if (keywords.some(kw => lower.includes(kw))) return group
   }
   return 'Other Operating Expenses'
+}
+
+/**
+ * The heading an expense line is paid under: the coach's mapping group when
+ * the caller supplies one (`report_group`), the account-name keywords
+ * otherwise.
+ *
+ * The keywords misfile real charts of accounts — Urban Road's Insurance excl
+ * Workers Comp matched 'worker' into Employment Expense, Telephone & Internet
+ * matched 'internet' into IT, and 'airfare' never matches "Air Fares" — while
+ * the other pages of the same pack group by account_mappings. The group moves
+ * a line between headings only; what is paid, and when, is unchanged.
+ */
+function expenseGroupOf(line: PLLine): string {
+  return line.report_group?.trim() || classifyExpenseGroup(line.account_name)
 }
 
 function isGSTExemptExpense(accountName: string): boolean {
@@ -287,6 +310,91 @@ export interface CashflowEngineOptions {
   xeroAccounts?: import('./account-resolution').XeroAccountRef[]
   /** Capex by month (YYYY-MM → cash outflow in AUD). Positive number = outflow. */
   capexByMonth?: Record<string, number>
+  /**
+   * Keep the sign of a Cost of Sales or expense month: a credit reduces the
+   * payments instead of becoming one.
+   *
+   * Off by default, and only the monthly-report pack turns it on. The COGS and
+   * OpEx loops take `Math.abs` of every month, which turns a credit into a
+   * payment — Urban Road's Repairs & Maintenance Warehouse was credited
+   * $502.83 in July and printed as a $543 outflow. The pack's lines come from
+   * the Xero P&L, where a positive expense is a cost and a negative one is a
+   * credit, so the sign carries meaning there.
+   *
+   * It does not carry meaning in every forecast. Stored forecast_pl_lines are
+   * not all monthly P&L movements: one forecast's Wages and Salaries actuals
+   * are a cumulative year-to-date series with a single −$659,999.88 reversal
+   * in April, and the abs is what keeps that month a payment. Flipping the
+   * default would turn it into a receipt.
+   */
+  signedExpenses?: boolean
+
+  // ── Cash model v2 (the monthly-report pack only) ─────────────────────────
+  //
+  // Every option below defaults off, and with all of them absent the engine's
+  // output is byte-identical to what it was before they existed
+  // (engine.golden.test.ts pins the wizard's, the consolidation's and the v1
+  // pack's runs). They exist because the v1 pack's forecast months were built
+  // on proxies Urban Road's August 2026 Calxa pack does not use: a copy of the
+  // first month's own sales standing in for opening debtors, GST guessed from
+  // account-name keywords, BAS in fixed months, and operating expenses paid
+  // the month they accrue while Calxa pays them on creditor days (its Sep Ad
+  // Spend 25,018 and Oct 20,235 only work on DPO).
+
+  /**
+   * The GST rate of a line (0.10, 0.15, 0), from its Xero tax type. Used to
+   * gross up receipts and payments and to accrue GST per line. Null for a line
+   * whose tax type is unknown: that line keeps today's keyword treatment.
+   */
+  gstRateForLine?: (line: PLLine) => number | null
+  /**
+   * With gstRateForLine: 'accrual' accrues each month's GST on the P&L
+   * (sum of accrual x rate); 'cash' on the cash received and paid for each
+   * line. Default 'accrual'.
+   */
+  gstBasis?: 'accrual' | 'cash'
+  /**
+   * The first month's DSO/DPO stand-in for opening balances: a copy of that
+   * month's own later-bucket sales and COGS. Default true. False when the
+   * caller supplies the real opening debtors and creditors.
+   */
+  firstMonthSpill?: boolean
+  /**
+   * Opening debtors collected in the first month, allocated across the named
+   * lines by weight (Calxa's rule: the last actual month's GST-inclusive
+   * amounts). All weights 0 -> one 'Opening Debtors Collected' row.
+   */
+  openingReceivables?: { amount: number; weights: Record<string, number> }
+  /** Opening creditors paid in the first month, allocated as openingReceivables. */
+  openingPayables?: { amount: number; weights: Record<string, number> }
+  /** Pay operating expenses on DPO timing, as Cost of Sales. Payroll lines excepted. */
+  opexTimedByDpo?: boolean
+  /**
+   * Payroll by account code, without a PayrollSummary. A wages line is paid
+   * NET (accrual x (1 - PAYG rate)) in its month under its own name and its
+   * PAYG accrues to the PAYG liability; a super line is not paid as an expense
+   * and accrues to the super liability. By code (trimmed, any case), never by
+   * keyword, so Staff Amenities and Workers' Compensation are paid as the
+   * expenses they are.
+   *
+   * Deliberately not routed through PayrollSummary: that path pays GROSS wages
+   * and also remits payg_monthly, so it would pay PAYG twice. The defect is
+   * latent (nothing writes forecast_payroll_summary) and left alone here.
+   */
+  payroll?: { wagesCodes: string[]; superCodes: string[]; paygRateByMonth: Record<string, number> }
+  /**
+   * When the ATO and super payments fall due. Each month's GST, PAYG and super
+   * accrual is its own bucket, paid in dueMonthKey(month, schedule). Without
+   * it the WD.5 opening-snapshot logic runs as it always has.
+   */
+  schedules?: { gst: BasePeriods; paygw: BasePeriods; super: BasePeriods }
+  /**
+   * Balances owed at the start, each paid in its own month (one due before
+   * the first month is paid in the first). Only read with `schedules`.
+   */
+  openingLiabilities?: { label: string; kind: 'gst' | 'paygw' | 'super' | 'other'; amount: number; dueMonth: string }[]
+  /** Row labels for the scheduled payments: the Xero account names. */
+  liabilityLabels?: { gst?: string; paygw?: string; super?: string }
 }
 
 export function generateCashflowForecast(
@@ -300,6 +408,7 @@ export function generateCashflowForecast(
   const settings = options.settings ?? null
   const xeroAccounts = options.xeroAccounts ?? []
   const capexByMonth = options.capexByMonth ?? {}
+  const expenseAmount = (v: number) => (options.signedExpenses ? v : Math.abs(v))
   // Build ordered list of all months in the forecast
   const allMonths = buildMonthList(forecast)
 
@@ -331,9 +440,10 @@ export function generateCashflowForecast(
 
   // Build cash receipts/payments arrays with timing offsets
   // For each P&L month, spread across cash months
-  const cashReceipts: Record<string, { label: string; amount: number }[]> = {}
-  const cashCOGSPayments: Record<string, { label: string; amount: number }[]> = {}
-  const cashOpExPayments: Record<string, { label: string; amount: number; group: string }[]> = {}
+  // `gst` is the GST inside `amount`, carried only for v2's cash-basis GST.
+  const cashReceipts: Record<string, { label: string; amount: number; gst?: number }[]> = {}
+  const cashCOGSPayments: Record<string, { label: string; amount: number; gst?: number }[]> = {}
+  const cashOpExPayments: Record<string, { label: string; amount: number; group: string; gst?: number }[]> = {}
 
   // Initialize all months
   for (const mk of allMonths) {
@@ -345,7 +455,60 @@ export function generateCashflowForecast(
   // Opening debtors/creditors are already-outstanding balances from before the
   // forecast period. They should be collected/paid in month 0 (not delayed by
   // DSO/DPO, since DSO/DPO applies to NEW sales/purchases during the forecast).
-  if (assumptions.opening_trade_debtors > 0 && allMonths.length > 0) {
+  // ── v2 set-up (inert unless the options are passed) ──
+  const v2Rate = options.gstRateForLine
+  /** The v2 rate for a line, or `fallback` (today's treatment) when unknown. */
+  const rateOf = (line: PLLine, fallback: number): number => {
+    if (!v2Rate) return fallback
+    if (!assumptions.gst_registered) return 0
+    const r = v2Rate(line)
+    return r === null || r === undefined || !Number.isFinite(r) ? fallback : r
+  }
+  const opexFallbackRate = (line: PLLine) =>
+    isGSTExemptExpense(line.account_name) ? 0 : gstRate * assumptions.gst_applicable_expense_pct
+  const gstAccrualByMonth: Record<string, number> = {}
+  const spill = options.firstMonthSpill !== false
+  // Matched trimmed and case-insensitively, as the pack's actual months and
+  // its account check match them: an exact match here let a code typed in
+  // another case tie July and August and then pay the budget's wages gross.
+  const payrollCode = (c: string) => c.trim().toLowerCase()
+  const payrollCodes = options.payroll
+    ? { wages: new Set(options.payroll.wagesCodes.map(payrollCode)), super: new Set(options.payroll.superCodes.map(payrollCode)) }
+    : null
+  const isWagesLine = (l: PLLine) => !!payrollCodes && !!l.account_code && payrollCodes.wages.has(payrollCode(l.account_code))
+  const isSuperLine = (l: PLLine) => !!payrollCodes && !!l.account_code && payrollCodes.super.has(payrollCode(l.account_code))
+  const paygAccrualByMonth: Record<string, number> = {}
+  const superAccrualByMonth: Record<string, number> = {}
+
+  const allocateOpening = (
+    opening: { amount: number; weights: Record<string, number> },
+    lumpLabel: string,
+    place: (label: string, amount: number) => void,
+  ) => {
+    if (allMonths.length === 0 || !Number.isFinite(opening.amount) || Math.abs(opening.amount) < 0.005) return
+    const entries = Object.entries(opening.weights).filter(([, w]) => Number.isFinite(w) && w !== 0)
+    const total = entries.reduce((s, [, w]) => s + w, 0)
+    if (entries.length === 0 || Math.abs(total) < 1e-9) {
+      place(lumpLabel, opening.amount)
+      return
+    }
+    for (const [label, w] of entries) place(label, opening.amount * (w / total))
+  }
+
+  // On a cash GST basis the GST inside the opening debtors and creditors is
+  // not charged again when they are collected and paid: the caller's opening
+  // GST liability is the ledger's GST account, which Xero posts when the
+  // invoice or bill is raised, so it already holds that GST. Counting it on
+  // receipt too paid it twice. (Accrual basis never reads these amounts.)
+  const openingGstOf = (amount: number, r: number) => (options.gstBasis === 'cash' ? 0 : amount * (r / (1 + r)))
+
+  if (options.openingReceivables) {
+    allocateOpening(options.openingReceivables, 'Opening Debtors Collected', (label, amount) => {
+      const line = revenueLines.find((l) => l.account_name === label)
+      const r = line ? rateOf(line, gstRate) : 0
+      cashReceipts[allMonths[0]].push({ label, amount, gst: openingGstOf(amount, r) })
+    })
+  } else if (assumptions.opening_trade_debtors > 0 && allMonths.length > 0) {
     const debtorGross = assumptions.opening_trade_debtors // Already GST-inclusive from BS
     cashReceipts[allMonths[0]].push({
       label: 'Opening Debtors Collected',
@@ -353,7 +516,19 @@ export function generateCashflowForecast(
     })
   }
 
-  if (assumptions.opening_trade_creditors > 0 && allMonths.length > 0) {
+  if (options.openingPayables) {
+    allocateOpening(options.openingPayables, 'Opening Creditors Paid', (label, amount) => {
+      const opex = opexLines.find((l) => l.account_name === label)
+      if (opex) {
+        const r = rateOf(opex, opexFallbackRate(opex))
+        cashOpExPayments[allMonths[0]].push({ label, amount, group: expenseGroupOf(opex), gst: openingGstOf(amount, r) })
+        return
+      }
+      const cogs = cogsLines.find((l) => l.account_name === label)
+      const r = cogs ? rateOf(cogs, gstRate) : 0
+      cashCOGSPayments[allMonths[0]].push({ label, amount, gst: openingGstOf(amount, r) })
+    })
+  } else if (assumptions.opening_trade_creditors > 0 && allMonths.length > 0) {
     const creditorGross = assumptions.opening_trade_creditors // Already GST-inclusive from BS
     cashCOGSPayments[allMonths[0]].push({
       label: 'Opening Creditors Paid',
@@ -368,7 +543,9 @@ export function generateCashflowForecast(
       const accrualAmount = getLineValue(line, mk, forecast)
       if (accrualAmount === 0) continue
 
-      const gstInclusive = accrualAmount * (1 + gstRate)
+      const lineRate = rateOf(line, gstRate)
+      const gstInclusive = accrualAmount * (1 + lineRate)
+      if (v2Rate) gstAccrualByMonth[mk] = (gstAccrualByMonth[mk] ?? 0) + accrualAmount * lineRate
 
       for (const split of dsoSplit) {
         const targetIdx = i + split.offset
@@ -376,6 +553,7 @@ export function generateCashflowForecast(
           cashReceipts[allMonths[targetIdx]].push({
             label: line.account_name,
             amount: gstInclusive * split.portion,
+            ...(v2Rate ? { gst: accrualAmount * lineRate * split.portion } : {}),
           })
         }
       }
@@ -384,7 +562,7 @@ export function generateCashflowForecast(
       // collections from pre-forecast sales. Opening debtors is the BS receivable
       // balance; this spillover represents the normal flow of prior-month revenue
       // landing in month 0 (they are additive, not duplicates).
-      if (i === 0) {
+      if (i === 0 && spill) {
         for (const split of dsoSplit) {
           if (split.offset > 0) {
             cashReceipts[allMonths[0]].push({
@@ -397,14 +575,41 @@ export function generateCashflowForecast(
     }
   }
 
+  /**
+   * v2 payroll: a wages line paid net in its own month with its PAYG accrued;
+   * a super line accrued to the liability and never paid as an expense.
+   */
+  const addPayrollLine = (line: PLLine) => {
+    const group = expenseGroupOf(line)
+    for (const mk of allMonths) {
+      const accrual = expenseAmount(getLineValue(line, mk, forecast))
+      if (accrual === 0) continue
+      if (isSuperLine(line)) {
+        superAccrualByMonth[mk] = (superAccrualByMonth[mk] ?? 0) + accrual
+        continue
+      }
+      const rate = options.payroll?.paygRateByMonth[mk] ?? 0
+      paygAccrualByMonth[mk] = (paygAccrualByMonth[mk] ?? 0) + accrual * rate
+      cashOpExPayments[mk].push({ label: line.account_name, amount: accrual * (1 - rate), group, gst: 0 })
+    }
+  }
+
   // Spread COGS across months with DPO timing
   for (const line of cogsLines) {
+    // v2 payroll by code: a wages or super account filed under Cost of Sales
+    // (manufacturing wages) is payroll all the same.
+    if (isWagesLine(line) || isSuperLine(line)) {
+      addPayrollLine(line)
+      continue
+    }
     for (let i = 0; i < monthCount; i++) {
       const mk = allMonths[i]
-      const accrualAmount = Math.abs(getLineValue(line, mk, forecast))
+      const accrualAmount = expenseAmount(getLineValue(line, mk, forecast))
       if (accrualAmount === 0) continue
 
-      const gstInclusive = accrualAmount * (1 + gstRate)
+      const lineRate = rateOf(line, gstRate)
+      const gstInclusive = accrualAmount * (1 + lineRate)
+      if (v2Rate) gstAccrualByMonth[mk] = (gstAccrualByMonth[mk] ?? 0) - accrualAmount * lineRate
 
       for (const split of dpoSplit) {
         const targetIdx = i + split.offset
@@ -412,12 +617,13 @@ export function generateCashflowForecast(
           cashCOGSPayments[allMonths[targetIdx]].push({
             label: line.account_name,
             amount: gstInclusive * split.portion,
+            ...(v2Rate ? { gst: accrualAmount * lineRate * split.portion } : {}),
           })
         }
       }
 
       // First-month spillover for COGS (same logic as revenue)
-      if (i === 0) {
+      if (i === 0 && spill) {
         for (const split of dpoSplit) {
           if (split.offset > 0) {
             cashCOGSPayments[allMonths[0]].push({
@@ -444,12 +650,35 @@ export function generateCashflowForecast(
     // via the xero_accounts lookup; otherwise falls back to keyword matching.
     if (resolveIsDepreciation(line, settings, depnLookup)) continue
 
-    const group = classifyExpenseGroup(line.account_name)
+    if (isWagesLine(line) || isSuperLine(line)) {
+      addPayrollLine(line)
+      continue
+    }
+
+    const group = expenseGroupOf(line)
 
     for (let i = 0; i < monthCount; i++) {
       const mk = allMonths[i]
-      const accrualAmount = Math.abs(getLineValue(line, mk, forecast))
+      const accrualAmount = expenseAmount(getLineValue(line, mk, forecast))
       if (accrualAmount === 0) continue
+
+      if (v2Rate) {
+        const lineRate = rateOf(line, opexFallbackRate(line))
+        gstAccrualByMonth[mk] = (gstAccrualByMonth[mk] ?? 0) - accrualAmount * lineRate
+        const splits = options.opexTimedByDpo ? dpoSplit : [{ offset: 0, portion: 1 }]
+        for (const split of splits) {
+          const targetIdx = i + split.offset
+          if (targetIdx < monthCount) {
+            cashOpExPayments[allMonths[targetIdx]].push({
+              label: line.account_name,
+              amount: accrualAmount * (1 + lineRate) * split.portion,
+              group,
+              gst: accrualAmount * lineRate * split.portion,
+            })
+          }
+        }
+        continue
+      }
 
       // GST treatment
       let cashAmount: number
@@ -459,8 +688,38 @@ export function generateCashflowForecast(
         cashAmount = accrualAmount * (1 + gstRate * assumptions.gst_applicable_expense_pct)
       }
 
+      if (options.opexTimedByDpo) {
+        for (const split of dpoSplit) {
+          const targetIdx = i + split.offset
+          if (targetIdx < monthCount) {
+            cashOpExPayments[allMonths[targetIdx]].push({ label: line.account_name, amount: cashAmount * split.portion, group })
+          }
+        }
+        continue
+      }
+
       // OpEx paid immediately in accrual month (per Calxa Rule 7)
       cashOpExPayments[mk].push({ label: line.account_name, amount: cashAmount, group })
+    }
+  }
+
+  // v2 liabilities: each month's accrual is its own bucket, paid when it falls due.
+  const scheduled = options.schedules ?? null
+  type Bucket = { gst: number; paygw: number; super: number; other: { label: string; amount: number }[] }
+  const buckets: Record<string, Bucket> = {}
+  const bucketFor = (mk: string): Bucket => (buckets[mk] ??= { gst: 0, paygw: 0, super: 0, other: [] })
+  if (scheduled && allMonths.length > 0) {
+    const first = allMonths[0]
+    for (const o of options.openingLiabilities ?? []) {
+      if (!Number.isFinite(o.amount) || Math.abs(o.amount) < 0.005) continue
+      // A balance already due by the first month is paid in the first month.
+      const b = bucketFor(o.dueMonth < first ? first : o.dueMonth)
+      if (o.kind === 'other') b.other.push({ label: o.label, amount: o.amount })
+      else b[o.kind] += o.amount
+    }
+    for (const mk of allMonths) {
+      if (paygAccrualByMonth[mk]) bucketFor(dueMonthKey(mk, scheduled.paygw)).paygw += paygAccrualByMonth[mk]
+      if (superAccrualByMonth[mk]) bucketFor(dueMonthKey(mk, scheduled.super)).super += superAccrualByMonth[mk]
     }
   }
 
@@ -469,12 +728,12 @@ export function generateCashflowForecast(
   const netProfitByMonth: Record<string, number> = {}
   for (const mk of allMonths) {
     const rev = revenueLines.reduce((s, l) => s + getLineValue(l, mk, forecast), 0)
-    const cogs = cogsLines.reduce((s, l) => s + Math.abs(getLineValue(l, mk, forecast)), 0)
+    const cogs = cogsLines.reduce((s, l) => s + expenseAmount(getLineValue(l, mk, forecast)), 0)
     const opex = opexLines.reduce((s, l) => {
       // Exclude depreciation/amortisation from net profit for cash-relevant tax
       // (depreciation IS a tax-deductible expense so it reduces taxable income —
       // keeping it here is correct for simple tax approximation).
-      return s + Math.abs(getLineValue(l, mk, forecast))
+      return s + expenseAmount(getLineValue(l, mk, forecast))
     }, 0)
     netProfitByMonth[mk] = rev - cogs - opex
   }
@@ -487,6 +746,17 @@ export function generateCashflowForecast(
     if (rate <= 0 || schedule === 'none') return {}
     return computeCompanyTaxByMonth(allMonths, netProfitByMonth, { rate, schedule })
   })()
+
+  // The keyword groups in their usual order, then any group a line names that
+  // the keywords do not know, in the order the lines arrive. Without the tail
+  // an account under a mapping heading such as "Foreign Currency Gains and
+  // Losses" would be paid for — its cash is in totalExpenseCash — and then
+  // left off every expense row, so the rows would not add up to the outflow.
+  const expenseGroupOrder = [...Object.keys(EXPENSE_GROUP_KEYWORDS)]
+  for (const line of opexLines) {
+    const g = expenseGroupOf(line)
+    if (!expenseGroupOrder.includes(g)) expenseGroupOrder.push(g)
+  }
 
   // Build monthly cashflow data
   const months: CashflowForecastMonth[] = []
@@ -538,7 +808,7 @@ export function generateCashflowForecast(
 
     // Build expense groups
     const expenseGroups: CashflowExpenseGroup[] = []
-    const groupOrder = Object.keys(EXPENSE_GROUP_KEYWORDS)
+    const groupOrder = expenseGroupOrder
     for (const groupName of groupOrder) {
       const items = expenseGroupMap[groupName]
       if (!items || items.length === 0) continue
@@ -559,10 +829,30 @@ export function generateCashflowForecast(
     const cashOutflows = round2(totalCOGS + totalExpenseCash)
 
     // ---- GST tracking ----
+    // WD.5 — a payment made THIS month settles the liability accrued up to
+    // LAST month-end. The old code added the current month's GST/PAYG/super to
+    // the accrual first and then paid the whole balance, so every October BAS
+    // (for the Jul–Sep quarter) also swept up October's own GST — one month of
+    // each quarter's tax was paid a quarter early. We snapshot the OPENING
+    // balances here; payments below consume the snapshots, and the current
+    // month's accruals are added after the payment decision.
+    const openingGST = accruedGST
+    const openingPAYGWH = accruedPAYGWH
+    const openingSuper = accruedSuper
+    const openingPAYGInstalment = accruedPAYGInstalment
+
     let monthGSTCollected = 0
     let monthGSTPaid = 0
 
-    if (assumptions.gst_registered && gstRate > 0) {
+    if (assumptions.gst_registered && gstRate > 0 && v2Rate) {
+      // v2: per line, by tax type, carried as one net figure in
+      // monthGSTCollected; asset and stock credits still land in monthGSTPaid.
+      monthGSTCollected = options.gstBasis === 'cash'
+        ? (cashReceipts[mk] ?? []).reduce((s, x) => s + (x.gst ?? 0), 0)
+          - (cashCOGSPayments[mk] ?? []).reduce((s, x) => s + (x.gst ?? 0), 0)
+          - (cashOpExPayments[mk] ?? []).reduce((s, x) => s + (x.gst ?? 0), 0)
+        : (gstAccrualByMonth[mk] ?? 0)
+    } else if (assumptions.gst_registered && gstRate > 0) {
       // GST collected on income
       monthGSTCollected = cashInflows * (gstRate / (1 + gstRate))
 
@@ -577,21 +867,23 @@ export function generateCashflowForecast(
           }
         }
       }
-
-      accruedGST += (monthGSTCollected - monthGSTPaid)
+      // NOTE: asset/stock GST credits are added to monthGSTPaid in the assets
+      // block below — the accrual roll-forward happens AFTER that block, so
+      // those credits now reach the BAS (previously they were computed after
+      // the accrual update and silently dropped, overstating every BAS).
     }
 
-    // Accrue PAYG WH from payroll
-    if (payrollSummary) {
-      accruedPAYGWH += Math.abs(payrollSummary.payg_monthly?.[mk] || 0)
-      accruedSuper += Math.abs(payrollSummary.superannuation_monthly?.[mk] || 0)
-    }
-
-    // Accrue PAYG Instalment (quarterly)
-    if (assumptions.payg_instalment_frequency !== 'none' && assumptions.payg_instalment_amount > 0) {
-      // Accrue monthly (1/3 of quarterly amount)
-      accruedPAYGInstalment += assumptions.payg_instalment_amount / 3
-    }
+    // Current-month PAYG WH / super accruals (rolled into the balances after
+    // the payment decision below).
+    // (v2 payroll without schedules accrues into the same balances.)
+    const monthPAYGWH = (payrollSummary ? Math.abs(payrollSummary.payg_monthly?.[mk] || 0) : 0)
+      + (scheduled ? 0 : (paygAccrualByMonth[mk] ?? 0))
+    const monthSuper = (payrollSummary ? Math.abs(payrollSummary.superannuation_monthly?.[mk] || 0) : 0)
+      + (scheduled ? 0 : (superAccrualByMonth[mk] ?? 0))
+    const monthPAYGInstalment =
+      assumptions.payg_instalment_frequency !== 'none' && assumptions.payg_instalment_amount > 0
+        ? assumptions.payg_instalment_amount / 3
+        : 0
 
     // ---- Balance Sheet — Assets ----
     const assetLines: CashflowLine[] = []
@@ -627,60 +919,98 @@ export function generateCashflowForecast(
     // ---- Balance Sheet — Liabilities ----
     const liabilityLines: CashflowLine[] = []
 
+    // WD.5 — every ATO/super payment settles the OPENING balance (what was
+    // owed at last month-end), never the current month's own accrual. A
+    // quarterly October BAS covers Jul–Sep; October's GST belongs to the
+    // February BAS. Monthly reporters pay last month's net this month
+    // (the "21st of the following month" the old comment promised but the
+    // old code didn't do). Current-month accruals are rolled forward at the
+    // end of this block.
+
+    if (scheduled) {
+      // This month's GST, now that the asset and stock credits are in, joins
+      // the bucket it is due in (this one, on a same-month schedule).
+      if (assumptions.gst_registered && gstRate > 0) {
+        bucketFor(dueMonthKey(mk, scheduled.gst)).gst += monthGSTCollected - monthGSTPaid
+      }
+      const due = buckets[mk]
+      const labels = options.liabilityLabels ?? {}
+      const paid: { label: string; amount: number }[] = due
+        ? [
+            { label: labels.gst ?? 'GST / BAS Payment', amount: due.gst },
+            { label: labels.paygw ?? 'PAYG Withholding', amount: due.paygw },
+            { label: labels.super ?? 'Superannuation', amount: due.super },
+            ...due.other,
+          ]
+        : []
+      for (const [label, amount] of Object.entries(aggregateByLabel(paid))) {
+        if (Math.abs(amount) >= 0.01) liabilityLines.push({ label, value: round2(-amount) })
+      }
+    }
+
     // GST/BAS Payment
-    if (assumptions.gst_registered) {
-      let gstPayment = 0
+    let gstPayment = 0
+    if (assumptions.gst_registered && !scheduled) {
       if (assumptions.gst_reporting_frequency === 'quarterly' && isBASPaymentMonth(monthNum)) {
-        gstPayment = accruedGST
-        accruedGST = 0
+        gstPayment = openingGST
       } else if (assumptions.gst_reporting_frequency === 'monthly') {
-        // Monthly reporters pay 21st of following month — model as next month
-        // For simplicity, we pay the prior month's GST this month
-        if (i > 0) {
-          gstPayment = monthGSTCollected - monthGSTPaid
-          // Already tracked in accruedGST, reset
-        }
-        gstPayment = accruedGST
-        accruedGST = 0
+        gstPayment = openingGST
       }
       if (Math.abs(gstPayment) >= 0.01) {
         liabilityLines.push({ label: 'GST / BAS Payment', value: round2(-gstPayment) })
+      } else {
+        gstPayment = 0
       }
     }
 
     // PAYG Withholding
     let paygWHPayment = 0
-    if (assumptions.payg_wh_reporting_frequency === 'quarterly' && isBASPaymentMonth(monthNum)) {
-      paygWHPayment = accruedPAYGWH
-      accruedPAYGWH = 0
+    if (scheduled) {
+      // Paid from its buckets above.
+    } else if (assumptions.payg_wh_reporting_frequency === 'quarterly' && isBASPaymentMonth(monthNum)) {
+      paygWHPayment = openingPAYGWH
     } else if (assumptions.payg_wh_reporting_frequency === 'monthly') {
-      paygWHPayment = accruedPAYGWH
-      accruedPAYGWH = 0
+      paygWHPayment = openingPAYGWH
     }
     if (Math.abs(paygWHPayment) >= 0.01) {
       liabilityLines.push({ label: 'PAYG Withholding', value: round2(-paygWHPayment) })
+    } else {
+      paygWHPayment = 0
     }
 
     // PAYG Instalments
+    let paygInstalmentPayment = 0
     if (assumptions.payg_instalment_frequency === 'quarterly' && isBASPaymentMonth(monthNum)) {
-      if (Math.abs(accruedPAYGInstalment) >= 0.01) {
-        liabilityLines.push({ label: 'PAYG Instalments', value: round2(-accruedPAYGInstalment) })
-        accruedPAYGInstalment = 0
+      if (Math.abs(openingPAYGInstalment) >= 0.01) {
+        paygInstalmentPayment = openingPAYGInstalment
+        liabilityLines.push({ label: 'PAYG Instalments', value: round2(-paygInstalmentPayment) })
       }
     }
 
     // Superannuation
     let superPayment = 0
-    if (assumptions.super_payment_frequency === 'quarterly' && isSuperPaymentMonth(monthNum)) {
-      superPayment = accruedSuper
-      accruedSuper = 0
+    if (scheduled) {
+      // Paid from its buckets above.
+    } else if (assumptions.super_payment_frequency === 'quarterly' && isSuperPaymentMonth(monthNum)) {
+      superPayment = openingSuper
     } else if (assumptions.super_payment_frequency === 'monthly') {
-      superPayment = accruedSuper
-      accruedSuper = 0
+      superPayment = openingSuper
     }
     if (Math.abs(superPayment) >= 0.01) {
       liabilityLines.push({ label: 'Superannuation', value: round2(-superPayment) })
+    } else {
+      superPayment = 0
     }
+
+    // Roll the balances forward: opening − paid + this month's accrual.
+    // (monthGSTPaid now includes the asset/stock input credits added in the
+    // assets block above — previously dropped.)
+    accruedGST = assumptions.gst_registered && gstRate > 0
+      ? openingGST - gstPayment + (monthGSTCollected - monthGSTPaid)
+      : openingGST - gstPayment
+    accruedPAYGWH = openingPAYGWH - paygWHPayment + monthPAYGWH
+    accruedPAYGInstalment = openingPAYGInstalment - paygInstalmentPayment + monthPAYGInstalment
+    accruedSuper = openingSuper - superPayment + monthSuper
 
     // Phase 28.2: Company Tax (active only when explicit settings enabled + schedule has a payment this month)
     const companyTax = companyTaxByMonth[mk]
@@ -850,7 +1180,7 @@ function aggregateByLabel(items: { label: string; amount: number }[]): Record<st
   return result
 }
 
-function buildTotals(months: CashflowForecastMonth[]): CashflowForecastMonth {
+export function buildTotals(months: CashflowForecastMonth[]): CashflowForecastMonth {
   if (months.length === 0) {
     return {
       month: 'total',

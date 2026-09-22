@@ -3,9 +3,10 @@
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine, ReferenceArea,
 } from 'recharts'
-import type { FullYearReport } from '../../types'
+import type { FullYearReport, FullYearMonthData } from '../../types'
 import { CHART_COLORS } from './chart-colors'
 import { fmtCurrency, fmtAxisTick, getMonthLabel, ChartCard } from './chart-utils'
+import { forwardSeriesBasis, forwardSeriesBudget, forwardSeriesBasisNote, forwardSeriesLabel } from '../../utils/full-year-basis'
 
 export interface RevenueVsExpensesDataPoint {
   month: string
@@ -15,21 +16,36 @@ export interface RevenueVsExpensesDataPoint {
   source: 'actual' | 'forecast'
 }
 
+/**
+ * Actual months always; the open months only when something fills them — the
+ * approved budget where the report carries one that covers them, else the
+ * forecast (forwardSeriesBasis).
+ *
+ * With neither, every open month is 0 — so the chart drew revenue AND expenses
+ * falling to zero from the first open month, which reads as a business
+ * stopping. An absence is not a projection: the series ends at the last closed
+ * month and the page says why.
+ */
 export function transformRevenueVsExpensesData(report: FullYearReport): RevenueVsExpensesDataPoint[] {
+  const basis = forwardSeriesBasis(report)
+  const budgetOf = (md: FullYearMonthData | undefined) => forwardSeriesBudget(md, basis)
   const revSection = report.sections.find(s => s.category === 'Revenue')
   const cogsSection = report.sections.find(s => s.category === 'Cost of Sales')
   const opexSection = report.sections.find(s => s.category === 'Operating Expenses')
   const otherIncSection = report.sections.find(s => s.category === 'Other Income')
   const otherExpSection = report.sections.find(s => s.category === 'Other Expenses')
 
+  // Mapped over the WHOLE year first: `i` indexes the section month arrays, and
+  // filtering before the map would misalign them the moment a closed month is
+  // not the first one. The forward months are dropped after.
   return report.gross_profit.months.map((gpMonth, i) => {
     const isActual = gpMonth.source === 'actual'
     const revActual = (revSection?.subtotal.months[i]?.actual || 0) + (otherIncSection?.subtotal.months[i]?.actual || 0)
-    const revBudget = (revSection?.subtotal.months[i]?.budget || 0) + (otherIncSection?.subtotal.months[i]?.budget || 0)
+    const revBudget = budgetOf(revSection?.subtotal.months[i]) + budgetOf(otherIncSection?.subtotal.months[i])
     const cogsActual = cogsSection?.subtotal.months[i]?.actual || 0
-    const cogsBudget = cogsSection?.subtotal.months[i]?.budget || 0
+    const cogsBudget = budgetOf(cogsSection?.subtotal.months[i])
     const opexActual = (opexSection?.subtotal.months[i]?.actual || 0) + (otherExpSection?.subtotal.months[i]?.actual || 0)
-    const opexBudget = (opexSection?.subtotal.months[i]?.budget || 0) + (otherExpSection?.subtotal.months[i]?.budget || 0)
+    const opexBudget = budgetOf(opexSection?.subtotal.months[i]) + budgetOf(otherExpSection?.subtotal.months[i])
 
     return {
       month: gpMonth.month,
@@ -38,17 +54,17 @@ export function transformRevenueVsExpensesData(report: FullYearReport): RevenueV
       expenses: isActual ? (cogsActual + opexActual) : (cogsBudget + opexBudget),
       source: gpMonth.source,
     }
-  })
+  }).filter((point) => basis !== null || point.source === 'actual')
 }
 
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label, forwardLabel }: any) {
   if (!active || !payload?.length) return null
   const source = payload[0]?.payload?.source
   return (
     <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-3 text-xs">
       <p className="font-semibold text-gray-900 mb-1">
         {label}
-        {source === 'forecast' && <span className="ml-1.5 text-gray-400 font-normal">(Forecast)</span>}
+        {source === 'forecast' && <span className="ml-1.5 text-gray-400 font-normal">({forwardLabel})</span>}
       </p>
       {payload.map((entry: any) => (
         <div key={entry.dataKey} className="flex items-center justify-between gap-4 py-0.5">
@@ -75,6 +91,8 @@ interface Props {
 
 export default function RevenueVsExpensesTrendChart({ fullYearReport }: Props) {
   const data = transformRevenueVsExpensesData(fullYearReport)
+  const forwardAbsentNote = forwardSeriesBasisNote(fullYearReport)
+  const forwardLabel = forwardSeriesLabel(fullYearReport)
   if (data.length === 0) return null
 
   // Find the boundary between actual and forecast
@@ -84,15 +102,20 @@ export default function RevenueVsExpensesTrendChart({ fullYearReport }: Props) {
 
   return (
     <ChartCard title="Revenue vs Expenses Trend" subtitle="Monthly revenue and total expenses with profit gap" tooltip="Shows your total income vs total costs each month. The gap between the two lines is your profit. A widening gap means profitability is improving; if the lines cross, you're making a loss that month.">
+      {forwardAbsentNote && (
+        <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {forwardAbsentNote}
+        </p>
+      )}
       <ResponsiveContainer width="100%" height={300}>
         <AreaChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} />
           <YAxis tickFormatter={fmtAxisTick} tick={{ fontSize: 11 }} />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip forwardLabel={forwardLabel} />} />
           <Legend />
           {firstForecastLabel && lastForecastLabel && (
-            <ReferenceArea x1={firstForecastLabel} x2={lastForecastLabel} fill="#f8fafc" fillOpacity={0.8} label={{ value: 'Forecast', position: 'insideTopRight', fontSize: 10, fill: '#94a3b8' }} />
+            <ReferenceArea x1={firstForecastLabel} x2={lastForecastLabel} fill="#f8fafc" fillOpacity={0.8} label={{ value: forwardLabel, position: 'insideTopRight', fontSize: 10, fill: '#94a3b8' }} />
           )}
           {firstForecastLabel && (
             <ReferenceLine x={firstForecastLabel} stroke="#94a3b8" strokeDasharray="4 4" strokeWidth={1} />

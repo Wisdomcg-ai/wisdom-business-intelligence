@@ -9,6 +9,8 @@ import { csrfProtection } from '@/lib/security/csrf'
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
+import { escapeHtml } from '@/lib/utils/validation'
+import { lookupSystemRole, isPrivilegedRole } from '@/lib/team/account-guards'
 
 // VALID-03 (observe mode): models the team-invite body (matches destructure :46-56).
 const InviteBodySchema = z.object({
@@ -116,6 +118,109 @@ async function postHandler(request: Request) {
     }
 
     const businessName = ownedBusiness?.business_name || 'the team'
+    const inviterName = user.user_metadata?.first_name
+      ? `${user.user_metadata.first_name} ${user.user_metadata.last_name || ''}`
+      : user.email?.split('@')[0] || 'Someone'
+
+    /**
+     * Add an account that ALREADY exists to this team. One path for both
+     * places that find an existing account, so the S1 guards can't be skipped.
+     *
+     * S1 (22 Sep 2026): this used to add any account — a coach's, Matt's — as
+     * an active member and overwrite its name; remove-member could then delete
+     * it. Only a super_admin may add a coach or super_admin account, and an
+     * existing profile row is never rewritten.
+     */
+    const addExistingUserToTeam = async (existingUserId: string) => {
+      let existingRole: string | null
+      try {
+        existingRole = await lookupSystemRole(adminSupabase, existingUserId)
+      } catch (roleLookupError) {
+        Sentry.captureException(roleLookupError, { tags: { route: 'team/invite', invariant: 'team_invite_role_guard_failed' } } as any)
+        return NextResponse.json({ error: "Couldn't check this account — nothing was changed. Try again." }, { status: 500 })
+      }
+      if (isPrivilegedRole(existingRole) && !isSuperAdmin) {
+        return NextResponse.json(
+          { error: 'That email belongs to a coach or administrator account, which can’t be added to a team.' },
+          { status: 403 },
+        )
+      }
+
+      // Insert-if-missing only: never overwrite an existing person's name.
+      const { error: profileError } = await adminSupabase
+        .from('users')
+        .upsert({
+          id: existingUserId,
+          email: email.toLowerCase(),
+          first_name: firstName,
+          last_name: lastName || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id', ignoreDuplicates: true })
+      if (profileError) {
+        Sentry.captureMessage(`team/invite: users profile insert failed — ${profileError.message}`, {
+          level: 'warning', tags: { route: 'team/invite', invariant: 'team_invite_profile_insert_failed' },
+        } as any)
+      }
+
+      // Check if already a team member (use admin to bypass RLS)
+      const { data: existingMember } = await adminSupabase
+        .from('business_users')
+        .select('id')
+        .eq('business_id', businessId)
+        .eq('user_id', existingUserId)
+        .maybeSingle()
+
+      if (existingMember) {
+        return NextResponse.json({ error: 'This user is already a team member' }, { status: 400 })
+      }
+
+      // Add existing user directly to team (use admin to bypass RLS)
+      const { error: insertError } = await adminSupabase
+        .from('business_users')
+        .insert({
+          business_id: businessId,
+          user_id: existingUserId,
+          role: role,
+          status: 'active',
+          invited_by: user.id,
+          invited_at: new Date().toISOString(),
+          section_permissions: sectionPermissions || {}
+        })
+
+      if (insertError) {
+        Sentry.captureException(insertError, { tags: { route: 'team/invite' }, extra: { context: "[Team Invite] Insert error" } } as any)
+        return NextResponse.json({ error: 'Failed to add team member' }, { status: 500 })
+      }
+
+      // sendEmail never throws — it returns {success, error}. Discarding the
+      // result meant a failed notification still reported success, and the new
+      // member simply never learned they were added.
+      const notifyResult = await sendEmail({
+        to: email,
+        subject: `You've been added to ${businessName} on ${APP_NAME}`,
+        html: `
+          <p>Hi ${escapeHtml(firstName)},</p>
+          <p><strong>${escapeHtml(inviterName)}</strong> has added you to <strong>${escapeHtml(businessName)}</strong> on ${APP_NAME}.</p>
+          <p>You can now access the team's business data by logging in with your existing account.</p>
+          <p><a href="${getAppBaseUrl()}/auth/login" style="display: inline-block; background: ${BRAND_COLORS.orange}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
+        `
+      })
+      if (!notifyResult.success) {
+        Sentry.captureMessage(`team/invite: added-to-team email failed — ${notifyResult.error ?? 'unknown'}`, {
+          level: 'error', tags: { invariant: 'team_invite_email_failed' },
+        } as any)
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: notifyResult.success
+          ? `${firstName} has been added to your team`
+          : `${firstName} has been added to your team, but the notification email failed to send — let them know directly`,
+        emailSent: notifyResult.success,
+        userExists: true
+      })
+    }
 
     // Check if user already exists - first try public users table, then auth
     const { data: existingPublicUser } = await supabase
@@ -149,80 +254,7 @@ async function postHandler(request: Request) {
     }
 
     if (existingAuthUser) {
-      // Ensure user exists in public users table with their info (use admin client to bypass RLS)
-      await adminSupabase
-        .from('users')
-        .upsert({
-          id: existingAuthUser.id,
-          email: email.toLowerCase(),
-          first_name: firstName,
-          last_name: lastName || null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' })
-
-      // Check if already a team member (use admin to bypass RLS)
-      const { data: existingMember } = await adminSupabase
-        .from('business_users')
-        .select('id')
-        .eq('business_id', businessId)
-        .eq('user_id', existingAuthUser.id)
-        .maybeSingle()
-
-      if (existingMember) {
-        return NextResponse.json({ error: 'This user is already a team member' }, { status: 400 })
-      }
-
-      // Add existing user directly to team (use admin to bypass RLS)
-      const { error: insertError } = await adminSupabase
-        .from('business_users')
-        .insert({
-          business_id: businessId,
-          user_id: existingAuthUser.id,
-          role: role,
-          status: 'active',
-          invited_by: user.id,
-          invited_at: new Date().toISOString(),
-          section_permissions: sectionPermissions || {}
-        })
-
-      if (insertError) {
-        Sentry.captureException(insertError, { tags: { route: 'team/invite' }, extra: { context: "[Team Invite] Insert error" } } as any)
-        return NextResponse.json({ error: 'Failed to add team member' }, { status: 500 })
-      }
-
-      // Send notification email
-      const inviterName = user.user_metadata?.first_name
-        ? `${user.user_metadata.first_name} ${user.user_metadata.last_name || ''}`
-        : user.email?.split('@')[0] || 'Someone'
-
-      // sendEmail never throws — it returns {success, error}. Discarding the
-      // result meant a failed notification still reported success, and the new
-      // member simply never learned they were added.
-      const notifyResult = await sendEmail({
-        to: email,
-        subject: `You've been added to ${businessName} on ${APP_NAME}`,
-        html: `
-          <p>Hi ${firstName},</p>
-          <p><strong>${inviterName}</strong> has added you to <strong>${businessName}</strong> on ${APP_NAME}.</p>
-          <p>You can now access the team's business data by logging in with your existing account.</p>
-          <p><a href="${getAppBaseUrl()}/auth/login" style="display: inline-block; background: ${BRAND_COLORS.orange}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
-        `
-      })
-      if (!notifyResult.success) {
-        Sentry.captureMessage(`team/invite: added-to-team email failed — ${notifyResult.error ?? 'unknown'}`, {
-          level: 'error', tags: { invariant: 'team_invite_email_failed' },
-        } as any)
-      }
-
-      return NextResponse.json({
-        success: true,
-        message: notifyResult.success
-          ? `${firstName} has been added to your team`
-          : `${firstName} has been added to your team, but the notification email failed to send — let them know directly`,
-        emailSent: notifyResult.success,
-        userExists: true
-      })
+      return addExistingUserToTeam(existingAuthUser.id)
     }
 
     // User doesn't exist in our check - try to create auth account
@@ -307,77 +339,7 @@ async function postHandler(request: Request) {
               console.log('[Team Invite] Found existing user:', foundUser.id)
             }
 
-            // Ensure user exists in public users table (use admin to bypass RLS)
-            await adminSupabase
-              .from('users')
-              .upsert({
-                id: foundUser.id,
-                email: email.toLowerCase(),
-                first_name: firstName,
-                last_name: lastName || null,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              }, { onConflict: 'id' })
-
-            // Check if already a team member (use admin to bypass RLS)
-            const { data: existingMember } = await adminSupabase
-              .from('business_users')
-              .select('id')
-              .eq('business_id', businessId)
-              .eq('user_id', foundUser.id)
-              .maybeSingle()
-
-            if (existingMember) {
-              return NextResponse.json({ error: 'This user is already a team member' }, { status: 400 })
-            }
-
-            // Add existing user to team (use admin to bypass RLS)
-            const { error: insertError } = await adminSupabase
-              .from('business_users')
-              .insert({
-                business_id: businessId,
-                user_id: foundUser.id,
-                role: role,
-                status: 'active',
-                invited_by: user.id,
-                invited_at: new Date().toISOString(),
-                section_permissions: sectionPermissions || {}
-              })
-
-            if (insertError) {
-              Sentry.captureException(insertError, { tags: { route: 'team/invite' }, extra: { context: "[Team Invite] Insert error" } } as any)
-              return NextResponse.json({ error: 'Failed to add team member' }, { status: 500 })
-            }
-
-            // Send notification email
-            const inviterName = user.user_metadata?.first_name
-              ? `${user.user_metadata.first_name} ${user.user_metadata.last_name || ''}`
-              : user.email?.split('@')[0] || 'Someone'
-
-            const notifyResult = await sendEmail({
-              to: email,
-              subject: `You've been added to ${businessName} on ${APP_NAME}`,
-              html: `
-                <p>Hi ${firstName},</p>
-                <p><strong>${inviterName}</strong> has added you to <strong>${businessName}</strong> on ${APP_NAME}.</p>
-                <p>You can now access the team's business data by logging in with your existing account.</p>
-                <p><a href="${getAppBaseUrl()}/auth/login" style="display: inline-block; background: ${BRAND_COLORS.orange}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Log In Now</a></p>
-              `
-            })
-            if (!notifyResult.success) {
-              Sentry.captureMessage(`team/invite: added-to-team email failed — ${notifyResult.error ?? 'unknown'}`, {
-                level: 'error', tags: { invariant: 'team_invite_email_failed' },
-              } as any)
-            }
-
-            return NextResponse.json({
-              success: true,
-              message: notifyResult.success
-                ? `${firstName} has been added to your team`
-                : `${firstName} has been added to your team, but the notification email failed to send — let them know directly`,
-              emailSent: notifyResult.success,
-              userExists: true
-            })
+            return addExistingUserToTeam(foundUser.id)
           } else {
             Sentry.captureException(email, { tags: { route: 'team/invite' }, extra: { context: "[Team Invite] Could not find existing user by email" } } as any)
           }
@@ -452,9 +414,6 @@ async function postHandler(request: Request) {
       }
 
       // Send invitation email with credentials
-      const inviterName = user.user_metadata?.first_name
-        ? `${user.user_metadata.first_name} ${user.user_metadata.last_name || ''}`
-        : user.email?.split('@')[0] || 'Your colleague'
 
       const loginUrl = getAppBaseUrl()
 
@@ -476,17 +435,17 @@ async function postHandler(request: Request) {
               <img src="${BRAND_LOGO_URL}" alt="${APP_NAME}" style="max-width: 180px; height: auto;" />
             </div>
 
-            <h2 style="color: ${BRAND_COLORS.navy};">You're Invited to Join ${businessName}</h2>
+            <h2 style="color: ${BRAND_COLORS.navy};">You're Invited to Join ${escapeHtml(businessName)}</h2>
 
-            <p>Hi ${firstName},</p>
+            <p>Hi ${escapeHtml(firstName)},</p>
 
-            <p><strong>${inviterName}</strong> has invited you to join <strong>${businessName}</strong> on ${APP_NAME} - a business intelligence platform for tracking goals, metrics, and growth.</p>
+            <p><strong>${escapeHtml(inviterName)}</strong> has invited you to join <strong>${escapeHtml(businessName)}</strong> on ${APP_NAME} - a business intelligence platform for tracking goals, metrics, and growth.</p>
 
-            ${position ? `<p>You've been added as: <strong>${position}</strong></p>` : ''}
+            ${position ? `<p>You've been added as: <strong>${escapeHtml(position)}</strong></p>` : ''}
 
             <div style="background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 20px; margin: 20px 0;">
               <p style="margin: 0 0 10px 0;"><strong>Your login credentials:</strong></p>
-              <p style="margin: 0;"><strong>Email:</strong> ${email}</p>
+              <p style="margin: 0;"><strong>Email:</strong> ${escapeHtml(email)}</p>
               <p style="margin: 10px 0 0 0;"><strong>Temporary Password:</strong></p>
               <code style="background: #fff; padding: 8px 16px; border-radius: 4px; font-size: 16px; display: inline-block;">${generatedPassword}</code>
               <p style="margin: 10px 0 0 0; font-size: 14px; color: #92400e;">Please change this after your first login.</p>
@@ -499,13 +458,13 @@ async function postHandler(request: Request) {
             </div>
 
             <p style="color: #6b7280; font-size: 14px;">
-              If you have any questions, reach out to ${inviterName} or your team administrator.
+              If you have any questions, reach out to ${escapeHtml(inviterName)} or your team administrator.
             </p>
 
             <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
             <p style="color: #9ca3af; font-size: 12px; text-align: center;">
               ${APP_NAME} - Business Intelligence Platform<br>
-              This email was sent to ${email}
+              This email was sent to ${escapeHtml(email)}
             </p>
           </body>
           </html>
@@ -577,9 +536,6 @@ async function postHandler(request: Request) {
       }
 
       // Send invite email with token link
-      const inviterName = user.user_metadata?.first_name
-        ? `${user.user_metadata.first_name} ${user.user_metadata.last_name || ''}`
-        : user.email?.split('@')[0] || 'Someone'
 
       const inviteUrl = `${getAppBaseUrl()}/accept-invite?token=${inviteToken}`
 
@@ -589,8 +545,8 @@ async function postHandler(request: Request) {
         to: email,
         subject: `${inviterName} invited you to join ${businessName}`,
         html: `
-          <p>Hi ${firstName},</p>
-          <p><strong>${inviterName}</strong> has invited you to join <strong>${businessName}</strong> on ${APP_NAME}.</p>
+          <p>Hi ${escapeHtml(firstName)},</p>
+          <p><strong>${escapeHtml(inviterName)}</strong> has invited you to join <strong>${escapeHtml(businessName)}</strong> on ${APP_NAME}.</p>
           <p>Click the button below to create your account and join the team:</p>
           <p><a href="${inviteUrl}" style="display: inline-block; background: ${BRAND_COLORS.orange}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px;">Accept Invitation</a></p>
           <p style="font-size: 12px; color: #666;">This invitation will expire in 7 days.</p>

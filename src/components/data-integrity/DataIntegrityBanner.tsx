@@ -23,6 +23,20 @@ import { DataIntegrityDetailDrawer } from './DataIntegrityDetailDrawer'
 export interface DataIntegrityBannerProps {
   quality: DataQuality
   perTenantQuality: PerTenantQuality[]
+  /**
+   * PRES-07 / PRES-08 — the quality CHECK itself could not be run (the endpoint
+   * errored, returned non-2xx, or the page never had a group-aware quality path
+   * at all). This is a THIRD state, distinct from both "verified" and any known
+   * bad tier: we do not know, and saying nothing would render as a clean bill of
+   * health. It takes precedence over `quality`, because a `quality` value that
+   * was never actually computed carries no information.
+   *
+   * Kept as a prop rather than a sixth DataQuality member on purpose: the union
+   * feeds QUALITY_RANK, aggregateDataQualityAcrossBusinesses and two forecast
+   * wizard steps that switch on specific tiers, and none of those should have to
+   * reason about "we could not check".
+   */
+  checkFailed?: boolean
   /** ISO timestamp of the latest sync across tenants (any tenant — for headline copy). */
   lastSyncAt?: string | null
   /** Optional re-sync trigger; surfaces a "Re-sync now" CTA when present. */
@@ -81,8 +95,34 @@ export function DataIntegrityBanner({
   perTenantQuality,
   lastSyncAt,
   onResync,
+  checkFailed = false,
 }: DataIntegrityBannerProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
+
+  // Checked BEFORE 'verified', deliberately. Every caller seeds its quality
+  // state to 'verified', so an unreachable check used to fall straight through
+  // this function's `return null` and render nothing at all — pixel-identical to
+  // a page whose tenants had all reconciled cleanly minutes ago.
+  if (checkFailed) {
+    return (
+      <div
+        data-integrity="unverified"
+        data-quality="unknown"
+        className="flex items-start gap-3 rounded border px-4 py-3 bg-amber-50 border-amber-300 text-amber-800"
+        role="alert"
+      >
+        <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-sm">Couldn&apos;t verify this data against Xero</div>
+          <div className="text-sm mt-0.5">
+            The figures below are shown as-is. We could not reach the check that
+            confirms they match Xero, so treat them as unconfirmed.
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (quality === 'verified') return null
   const style = STYLE_BY_QUALITY[quality]
   const copy = copyFor(quality, perTenantQuality, lastSyncAt)

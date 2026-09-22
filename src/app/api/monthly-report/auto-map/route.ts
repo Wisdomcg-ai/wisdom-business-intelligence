@@ -3,8 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
-import { buildFuzzyLookup } from '@/lib/utils/account-matching'
-import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { autoMapAccounts } from '@/lib/monthly-report/auto-map'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -23,30 +22,19 @@ const supabase = createClient(
   getSupabaseSecretKey()
 )
 
-// Map Xero account_type to report_category
-function mapAccountTypeToCategory(accountType: string): string {
-  switch ((accountType || '').toLowerCase()) {
-    case 'revenue':
-      return 'Revenue'
-    case 'cogs':
-      return 'Cost of Sales'
-    case 'opex':
-      return 'Operating Expenses'
-    case 'other_income':
-      return 'Other Income'
-    case 'other_expense':
-      return 'Other Expenses'
-    default:
-      return 'Operating Expenses'
-  }
-}
-
 /**
  * POST /api/monthly-report/auto-map
- * Auto-generates initial account mappings from xero_pl_lines.
- * Matching priority:
- *   1. Exact account_code match (most reliable)
- *   2. Fuzzy name match (exact → normalized → word-order independent)
+ *
+ * Auto-generates account mappings from synced Xero P&L accounts.
+ *
+ * WA.5a: non-destructive. The mapping logic lives in
+ * `src/lib/monthly-report/auto-map.ts` (shared with the sync path) and only
+ * ever fills gaps: new accounts get rows, unconfirmed unlinked rows can gain a
+ * forecast link, and confirmed rows are never touched. The previous
+ * implementation blanket-upserted every account — one click of the Auto-Map
+ * button reset every confirmed mapping (is_confirmed=false), recomputed
+ * hand-corrected categories, and rewired forecast links by fuzzy match. See the
+ * module header there for the full account.
  */
 async function postHandler(request: Request) {
   try {
@@ -90,31 +78,9 @@ async function postHandler(request: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // Resolve dual business IDs (businesses.id vs business_profiles.id)
-    const ids = await resolveBusinessProfileIds(supabase, business_id)
+    const result = await autoMapAccounts(supabase, business_id)
 
-    // 1. Query all Xero accounts including account_code (if column exists)
-    let { data: xeroAccounts, error: xeroError } = await supabase
-      .from('xero_pl_lines_wide_compat')
-      .select('account_name, account_code, account_type, section')
-      .in('business_id', ids.all)
-
-    // Fallback: if account_code column doesn't exist yet
-    if (xeroError?.message?.includes('account_code')) {
-      const fallback = await supabase
-        .from('xero_pl_lines_wide_compat')
-        .select('account_name, account_type, section')
-        .in('business_id', ids.all)
-      xeroAccounts = (fallback.data || []).map(a => ({ ...a, account_code: null })) as any
-      xeroError = fallback.error
-    }
-
-    if (xeroError) {
-      Sentry.captureException(xeroError, { tags: { route: 'monthly-report/auto-map' }, extra: { context: "[Auto-Map] Error fetching xero_pl_lines" } } as any)
-      return NextResponse.json({ error: 'Failed to fetch Xero accounts' }, { status: 500 })
-    }
-
-    if (!xeroAccounts || xeroAccounts.length === 0) {
+    if (result.xeroAccounts === 0) {
       return NextResponse.json({
         success: true,
         mapped_count: 0,
@@ -123,130 +89,29 @@ async function postHandler(request: Request) {
       })
     }
 
-    // Deduplicate by account_name
-    const uniqueAccounts = new Map<string, { account_name: string; account_code: string | null; account_type: string; section: string }>()
-    for (const acc of xeroAccounts) {
-      if (acc.account_name && !uniqueAccounts.has(acc.account_name)) {
-        uniqueAccounts.set(acc.account_name, {
-          account_name: acc.account_name,
-          account_code: acc.account_code || null,
-          account_type: acc.account_type || '',
-          section: acc.section || '',
-        })
-      }
-    }
-
-    // 2. Find active budget forecast to match forecast P&L lines
-    let forecastPLLines: { id: string; account_name: string; account_code: string | null }[] = []
-    let matchedToForecastCount = 0
-    let matchedByCode = 0
-    let matchedByName = 0
-
-    let activeForecast: any = null
-    let forecastError: any = null
-    const { data: fc, error: err } = await supabase
-      .from('financial_forecasts')
-      .select('id')
-      .in('business_id', ids.all)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (fc) { activeForecast = fc }
-    if (err) { forecastError = err }
-
-    if (forecastError) {
-      Sentry.captureException(forecastError, { tags: { route: 'monthly-report/auto-map' }, extra: { context: "[Auto-Map] Error fetching active forecast" } } as any)
-    }
-
-    if (activeForecast) {
-      const { data: plLines, error: plError } = await supabase
-        .from('forecast_pl_lines')
-        .select('id, account_name, account_code')
-        .eq('forecast_id', activeForecast.id)
-
-      if (plError) {
-        Sentry.captureException(plError, { tags: { route: 'monthly-report/auto-map' }, extra: { context: "[Auto-Map] Error fetching forecast_pl_lines" } } as any)
-      } else {
-        forecastPLLines = plLines || []
-      }
-    }
-
-    // Build code-based lookup: account_code → forecast line
-    const forecastByCode = new Map<string, { id: string; account_name: string }>()
-    for (const line of forecastPLLines) {
-      if (line.account_code) {
-        forecastByCode.set(line.account_code, { id: line.id, account_name: line.account_name })
-      }
-    }
-
-    // Build fuzzy name lookup (fallback)
-    const findForecastByName = buildFuzzyLookup(
-      forecastPLLines,
-      (line) => line.account_name
-    )
-
-    // 3. Build mapping rows
-    const mappingRows = Array.from(uniqueAccounts.values()).map(acc => {
-      const reportCategory = mapAccountTypeToCategory(acc.account_type)
-
-      // Priority 1: Match by account_code (deterministic, handles name variations)
-      let forecastMatch: { id: string; account_name: string } | undefined
-      if (acc.account_code) {
-        forecastMatch = forecastByCode.get(acc.account_code)
-        if (forecastMatch) matchedByCode++
-      }
-
-      // Priority 2: Fuzzy name match (exact → normalized → word-order independent)
-      if (!forecastMatch) {
-        forecastMatch = findForecastByName(acc.account_name)
-        if (forecastMatch) matchedByName++
-      }
-
-      if (forecastMatch) matchedToForecastCount++
-
-      return {
-        business_id,
-        xero_account_code: acc.account_code || null,
-        xero_account_name: acc.account_name,
-        xero_account_type: acc.account_type || null,
-        report_category: reportCategory,
-        report_subcategory: acc.section || null,
-        forecast_pl_line_id: forecastMatch?.id || null,
-        forecast_pl_line_name: forecastMatch?.account_name || null,
-        is_auto_mapped: true,
-        is_confirmed: false,
-        updated_at: new Date().toISOString(),
-      }
-    })
-
-    // 4. Upsert all mappings
-    const { data: upserted, error: upsertError } = await supabase
-      .from('account_mappings')
-      .upsert(mappingRows, {
-        onConflict: 'business_id,xero_account_name',
-        ignoreDuplicates: false,
-      })
-      .select()
-
-    if (upsertError) {
-      Sentry.captureException(upsertError, { tags: { route: 'monthly-report/auto-map' }, extra: { context: "[Auto-Map] Error upserting mappings" } } as any)
-      return NextResponse.json(
-        { error: upsertError.message || 'Failed to create auto-mappings' },
-        { status: 500 }
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(
+        `[Auto-Map] ${result.created} created, ${result.forecastLinksAdded} forecast links added, ` +
+        `${result.preserved} existing rows preserved (${result.confirmedPreserved} confirmed), ` +
+        `${result.matchedToForecast} matched to forecast (${result.matchedByCode} by code, ${result.matchedByName} by name)`,
       )
     }
 
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[Auto-Map] Success: ${upserted?.length || 0} accounts mapped, ${matchedToForecastCount} matched to forecast (${matchedByCode} by code, ${matchedByName} by name)`)
-    }
-
+    // Response shape kept compatible with the mapping editor's toast:
+    // mapped_count is the number of rows auto-map actually created this run.
     return NextResponse.json({
       success: true,
-      mapped_count: upserted?.length || 0,
-      matched_to_forecast_count: matchedToForecastCount,
-      matched_by_code: matchedByCode,
-      matched_by_name: matchedByName,
+      mapped_count: result.created,
+      matched_to_forecast_count: result.matchedToForecast,
+      matched_by_code: result.matchedByCode,
+      matched_by_name: result.matchedByName,
+      forecast_links_added: result.forecastLinksAdded,
+      preserved_count: result.preserved,
+      confirmed_preserved_count: result.confirmedPreserved,
+      // The editor treats mapped_count === 0 as "nothing synced yet". When rows
+      // exist but nothing was created, that read is wrong — everything was
+      // already mapped. Give it the signal to say so.
+      already_mapped: result.created === 0 && result.preserved > 0,
     })
 
   } catch (error) {

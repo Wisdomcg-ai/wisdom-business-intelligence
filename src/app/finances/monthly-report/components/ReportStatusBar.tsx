@@ -27,6 +27,12 @@ export type UserRole = 'coach' | 'super_admin' | 'client'
 export interface ReportStatusBarProps {
   status: ReportStatus | null
   sentAt: string | null
+  /**
+   * Package B: when an Approve & Send kept the balance sheets its PDF printed
+   * and the coach has not reopened them (useReportStatus). Absent or null:
+   * the bar is exactly as before.
+   */
+  sentBalanceSheetAt?: string | null
   role: UserRole
   onMarkReady: () => Promise<void> | void
   onApproveAndSend: () => Promise<void> | void
@@ -82,7 +88,19 @@ export default function ReportStatusBar(props: ReportStatusBarProps) {
       } else if (e.body?.timedOut) {
         toast.error('Email send timed out — click Resend to retry')
       } else {
-        toast.error('Email send failed — click Resend to retry')
+        // Phase C (CFO-only clients): surface the REAL reason. The route and
+        // the page handlers throw specific messages ("No owner_email
+        // configured on this business", "Not your assigned client", …) that
+        // used to be swallowed into one generic toast, leaving the coach
+        // guessing. Fall back to the generic message only when nothing
+        // usable was thrown.
+        const detail =
+          e.body?.error ?? (err instanceof Error && err.message ? err.message : null)
+        toast.error(
+          detail
+            ? `${actionKey === 'mark_ready' || actionKey === 'revert' ? 'Action failed' : 'Send failed'}: ${detail}`
+            : 'Email send failed — click Resend to retry',
+        )
       }
     } finally {
       setBusy(null)
@@ -90,6 +108,26 @@ export default function ReportStatusBar(props: ReportStatusBarProps) {
   }
 
   const sentAtLabel = status === 'sent' && props.sentAt ? formatSentAt(props.sentAt) : ''
+
+  // Package B: a sent month's exports print the balance sheet the client was
+  // sent until the coach reopens it — and the first save after a send silently
+  // flips the pill back to Draft (D-16), where Revert to Draft is not offered.
+  // So the bar says so whatever the status, and from draft or ready for review
+  // offers the reopen. It is the same revert_to_draft action: on a month that
+  // is no longer approved or sent, it changes only the balance sheet.
+  const keepsSentSheet = isCoach && !!props.sentBalanceSheetAt
+  const keptSheetDate = keepsSentSheet ? formatSentAt(props.sentBalanceSheetAt!) : ''
+  const reopenSheetButton = keepsSentSheet && (
+    <button
+      type="button"
+      disabled={busy !== null}
+      onClick={() => run('revert', props.onRevertToDraft, 'Balance sheet reopened')}
+      title="Exports print the current balance sheet again. The next Approve & Send keeps what it prints."
+      className="px-3 py-1.5 rounded-md text-sm text-slate-600 hover:text-slate-900 disabled:opacity-60"
+    >
+      Reopen balance sheet
+    </button>
+  )
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
@@ -99,6 +137,14 @@ export default function ReportStatusBar(props: ReportStatusBarProps) {
         {label}
         {sentAtLabel ? ` · ${sentAtLabel}` : ''}
       </span>
+      {keepsSentSheet && (
+        <span
+          className="text-xs text-slate-600"
+          title="While this month's P&L is the one that was sent, exports and resends print the balance sheet the client was sent, not the live one on the Balance Sheet tab."
+        >
+          {`Balance sheet as sent${keptSheetDate ? ` ${keptSheetDate}` : ''}`}
+        </span>
+      )}
       {isCoach && status === 'draft' && (
         <>
           <button
@@ -121,19 +167,23 @@ export default function ReportStatusBar(props: ReportStatusBarProps) {
           >
             {busy === 'approve_and_send' ? 'Sending…' : 'Approve & Send'}
           </button>
+          {reopenSheetButton}
         </>
       )}
       {isCoach && status === 'ready_for_review' && (
-        <button
-          type="button"
-          disabled={busy !== null}
-          onClick={() =>
-            run('approve_and_send', props.onApproveAndSend, 'Report sent')
-          }
-          className="px-3 py-1.5 rounded-md text-sm bg-[#F5821F] text-white hover:opacity-90 disabled:opacity-60"
-        >
-          {busy === 'approve_and_send' ? 'Sending…' : 'Approve & Send'}
-        </button>
+        <>
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() =>
+              run('approve_and_send', props.onApproveAndSend, 'Report sent')
+            }
+            className="px-3 py-1.5 rounded-md text-sm bg-[#F5821F] text-white hover:opacity-90 disabled:opacity-60"
+          >
+            {busy === 'approve_and_send' ? 'Sending…' : 'Approve & Send'}
+          </button>
+          {reopenSheetButton}
+        </>
       )}
       {isCoach && (status === 'approved' || status === 'sent') && (
         <>

@@ -3,10 +3,12 @@
  *
  * Collects the 4 trigger types that should fire a commentary row:
  *
- *   1. Expense over-budget        — variance_amount ≤ -$500              (existing rule, preserved)
+ *   1. Expense over-budget        — over by MORE than $500 (variance_amount < -$500, in cents)
  *   2. Revenue under-budget       — shortfall ≥ $500 OR ≥ 10% of budget  (whichever fires)
  *   3. Favourable expense swing   — variance ≥ $500 AND ≥ 20% of budget  (both required)
  *   4. Balance-sheet movement     — |MoM change| ≥ $5,000 OR ≥ 10% of opening
+ *   5. Activity (opt-in)          — any other cost account that moved, in the
+ *                                   categories a pack's commentary covers in full
  *
  * Each emitted line carries a `trigger_reason` so the commentary route + UI
  * know WHY the row surfaced. The same account never appears in more than one
@@ -31,11 +33,24 @@ export type TriggerReason =
   | 'expense_favourable_significant'
   | 'bs_movement_dollar'
   | 'bs_movement_percent'
+  | 'account_activity'
 
 export interface TriggerLine {
   account_name: string
   xero_account_name: string
   trigger_reason: TriggerReason
+  /**
+   * The figures the statement prints for this line, carried so the commentary's
+   * ratio is a share of the same numbers rather than a second derivation. The
+   * report's budget has already been through the resolver, the effective-date
+   * stitching and the account-code matching; re-deriving it downstream is a
+   * second answer waiting to disagree with the first.
+   *
+   * `budget` is null when the report has no budget at all — distinct from a
+   * budget that is genuinely zero, which is a real plan of nothing.
+   */
+  actual: number
+  budget: number | null
 }
 
 export interface TriggerPayload {
@@ -43,11 +58,18 @@ export interface TriggerPayload {
   revenue_lines: TriggerLine[]
   favourable_expense_lines: TriggerLine[]
   bs_lines: TriggerLine[]
+  /**
+   * Every other account that moved this month, in the categories named by
+   * `options.allWithActivity`. Empty unless a pack asks for it: Calxa's COGS
+   * commentary names the suppliers of all ten cost of sales accounts Urban Road
+   * used in August, and only four of them crossed a variance threshold.
+   */
+  activity_lines: TriggerLine[]
 }
 
 // ─── Thresholds (locked per CONTEXT D-S1) ──────────────────────────────────
 
-const EXPENSE_OVER_DOLLAR = 500            // existing rule — unchanged
+const EXPENSE_OVER_DOLLAR = 500            // strictly more than — see (1) below
 const REVENUE_SHORTFALL_DOLLAR = 500
 const REVENUE_SHORTFALL_PCT = 0.10
 const FAVOURABLE_EXPENSE_DOLLAR = 500
@@ -68,11 +90,34 @@ function lineXeroName(line: ReportLine): string {
   return line.xero_account_name || line.account_name
 }
 
-function toTriggerLine(line: ReportLine, reason: TriggerReason): TriggerLine {
+// WD.3 — FX excluded from commentary (house rule). Currency gains/losses are
+// accounting noise to a non-numbers owner, swing past $500 constantly on
+// multi-currency clients (IICT), and nobody can "manage" them month to month.
+const FX_KEYWORDS = [
+  'currency gain', 'currency loss', 'exchange gain', 'exchange loss',
+  'realised gain', 'realised loss', 'unrealised gain', 'unrealised loss',
+  'realized gain', 'realized loss', 'unrealized gain', 'unrealized loss',
+  'fx gain', 'fx loss', 'foreign exchange', 'foreign currency',
+  // The FX account split (sync, sections.fx_account_split) replaces Xero's
+  // merged "Foreign Currency Gains and Losses" row with the three system
+  // accounts. Unrealised/Realised Currency Gains already match 'currency
+  // gain'; Bank Revaluations (Urban Road 497) matches nothing above and would
+  // start triggering commentary the day it gets its own name.
+  'bank revaluation',
+]
+
+export function isFxAccount(accountName: string): boolean {
+  const lower = accountName.toLowerCase()
+  return FX_KEYWORDS.some(kw => lower.includes(kw))
+}
+
+function toTriggerLine(line: ReportLine, reason: TriggerReason, hasBudget = true): TriggerLine {
   return {
     account_name: line.account_name,
     xero_account_name: lineXeroName(line),
     trigger_reason: reason,
+    actual: line.actual,
+    budget: hasBudget ? line.budget : null,
   }
 }
 
@@ -81,11 +126,18 @@ function toTriggerLine(line: ReportLine, reason: TriggerReason): TriggerLine {
 export function collectCommentaryTriggers(
   report: GeneratedReport,
   balanceSheet?: BalanceSheetData | null,
+  options: { allWithActivity?: readonly string[] } = {},
 ): TriggerPayload {
+  const activityCategories = new Set(options.allWithActivity ?? [])
+  const activity_lines: TriggerLine[] = []
   const expense_lines: TriggerLine[] = []
   const revenue_lines: TriggerLine[] = []
   const favourable_expense_lines: TriggerLine[] = []
   const bs_lines: TriggerLine[] = []
+  // A report with no budget still triggers commentary (the favourable and BS
+  // rules do not need one), but its lines must carry budget: null rather than
+  // the 0 the shape defaults to — downstream a 0 is a plan, an absence is not.
+  const hasBudget = report.has_budget !== false
 
   for (const section of report.sections) {
     const category = section.category as string
@@ -93,10 +145,16 @@ export function collectCommentaryTriggers(
     if (EXPENSE_CATEGORIES.has(category)) {
       for (const line of section.lines) {
         if (line.is_budget_only) continue
+        // WD.3 house rule: FX never fires commentary.
+        if (isFxAccount(line.account_name)) continue
 
-        // (1) Expense over-budget — existing trigger, unchanged
-        if (line.variance_amount <= -EXPENSE_OVER_DOLLAR) {
-          expense_lines.push(toTriggerLine(line, 'expense_over_budget_dollar'))
+        // (1) Expense over-budget — actual − budget > $500, the house rule in
+        // every client's monthly-report skill ("≤$500 overs are not noted").
+        // This fired at ≤ −500, so a line exactly $500 over was commented on
+        // (DRG-28). Compared in whole cents, so float residue on an exact $500
+        // (1,500.10 − 1,000.10 = 499.99999…) does not decide it either way.
+        if (Math.round(line.variance_amount * 100) < -EXPENSE_OVER_DOLLAR * 100) {
+          expense_lines.push(toTriggerLine(line, 'expense_over_budget_dollar', hasBudget))
           continue // mutually exclusive with favourable on the same row
         }
 
@@ -105,31 +163,49 @@ export function collectCommentaryTriggers(
           const pct = line.variance_amount / line.budget
           if (pct >= FAVOURABLE_EXPENSE_PCT) {
             favourable_expense_lines.push(
-              toTriggerLine(line, 'expense_favourable_significant'),
+              toTriggerLine(line, 'expense_favourable_significant', hasBudget),
             )
+            continue
           }
+        }
+
+        // (5) Activity — only where a pack's commentary covers every account
+        // that moved. Whole cents, so a rounding residue is not a movement.
+        if (activityCategories.has(category) && Number.isFinite(line.actual) && Math.round(line.actual * 100) !== 0) {
+          activity_lines.push(toTriggerLine(line, 'account_activity', hasBudget))
         }
       }
     } else if (REVENUE_CATEGORIES.has(category)) {
       for (const line of section.lines) {
         if (line.is_budget_only) continue
+        // WD.3 house rule: FX never fires commentary (FX gains sit in Other
+        // Income on multi-currency clients).
+        if (isFxAccount(line.account_name)) continue
 
         // (2) Revenue under-budget — shortfall ≥ $500 OR ≥ 10% of budget
-        // Convention: variance_amount = budget - actual. POSITIVE variance on
-        // a revenue line means actual < budget (a shortfall).
-        const shortfall = line.variance_amount
+        //
+        // The sign is the opposite of what this used to assume, and the comment
+        // that asserted otherwise is why it went unnoticed. calcVariance
+        // (src/lib/monthly-report/shared.ts:46) writes
+        //   amount = isRevenue ? actual - budget : budget - actual
+        // so a POSITIVE variance on a revenue line is a BEAT, not a shortfall.
+        // Reading it the other way fired commentary on every revenue account
+        // that did well and on none that missed: Urban Road's August tagged
+        // NZ Sales (+$48,338) "under budget" while Framed Prints (-$9,043),
+        // USA Sales (-$6,678) and Shipping (-$5,421) triggered nothing.
+        const shortfall = -line.variance_amount
         if (shortfall <= 0) continue // revenue beat / met budget — not a trigger
 
         const dollarFires = shortfall >= REVENUE_SHORTFALL_DOLLAR
         if (dollarFires) {
-          revenue_lines.push(toTriggerLine(line, 'revenue_under_budget_dollar'))
+          revenue_lines.push(toTriggerLine(line, 'revenue_under_budget_dollar', hasBudget))
           continue
         }
 
         if (line.budget > 0) {
           const pct = shortfall / line.budget
           if (pct >= REVENUE_SHORTFALL_PCT) {
-            revenue_lines.push(toTriggerLine(line, 'revenue_under_budget_percent'))
+            revenue_lines.push(toTriggerLine(line, 'revenue_under_budget_percent', hasBudget))
           }
         }
       }
@@ -159,7 +235,7 @@ export function collectCommentaryTriggers(
     }
   }
 
-  return { expense_lines, revenue_lines, favourable_expense_lines, bs_lines }
+  return { expense_lines, revenue_lines, favourable_expense_lines, bs_lines, activity_lines }
 }
 
 function bsToTriggerLine(row: BalanceSheetRow, reason: TriggerReason): TriggerLine {
@@ -167,5 +243,10 @@ function bsToTriggerLine(row: BalanceSheetRow, reason: TriggerReason): TriggerLi
     account_name: row.label,
     xero_account_name: row.label,
     trigger_reason: reason,
+    // A balance sheet is not budgeted, so `budget` is null rather than 0 — the
+    // difference between "no plan exists" and "the plan was nothing". A BS row
+    // never earns a ratio clause for the same reason.
+    actual: row.current ?? 0,
+    budget: null,
   }
 }

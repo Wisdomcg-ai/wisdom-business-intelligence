@@ -249,6 +249,10 @@ const programTypes = [
   { value: '1:1 Coaching', label: '1:1 Coaching', description: 'One-on-one business coaching sessions' },
   { value: 'Think Bigger', label: 'Think Bigger', description: 'Group coaching program for business growth' },
   { value: 'Coaching + CFO Services', label: 'Coaching + CFO Services', description: 'Coaching combined with fractional CFO support' },
+  // Phase D (CFO-only clients): CFO-only engagements — forecasting, monthly
+  // reporting and cashflow with no coaching program. Any CFO program type
+  // sets businesses.is_cfo_client server-side, which drives the /cfo dashboard.
+  { value: 'CFO Services Only', label: 'CFO Only', description: 'Financial forecasting, monthly reporting & cashflow — no coaching program' },
 ]
 
 // Step Components
@@ -425,7 +429,7 @@ function Step2ProgramSetup({ data, updateData, errors }: StepProps) {
         <label className="block text-sm font-medium text-gray-700 mb-3">
           Program Type <span className="text-red-500">*</span>
         </label>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {programTypes.map((program) => (
             <button
               key={program.value}

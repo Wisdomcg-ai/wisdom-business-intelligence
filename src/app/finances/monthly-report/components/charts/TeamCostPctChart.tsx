@@ -6,6 +6,7 @@ import {
 import type { FullYearReport } from '../../types'
 import { CHART_COLORS } from './chart-colors'
 import { fmtCurrency, fmtAxisTick, getMonthLabel, ChartCard } from './chart-utils'
+import { hasForecastBudget, forwardSeriesAbsentNote } from '../../utils/full-year-approved'
 
 export interface TeamCostDataPoint {
   monthLabel: string
@@ -16,13 +17,24 @@ export interface TeamCostDataPoint {
   source: 'actual' | 'forecast'
 }
 
+/**
+ * Actual months always; forecast months only when there IS a forecast.
+ *
+ * Both series here — wages and revenue — fall back to `months[i].budget` for a
+ * month the FY has not reached. With no effective forecast that is 0, so the
+ * page charted a team costing nothing against revenue of nothing, and a "% of
+ * revenue" line computed from the pair.
+ */
 export function transformTeamCostData(report: FullYearReport, wagesAccountNames: string[]): TeamCostDataPoint[] {
   const revSection = report.sections.find(s => s.category === 'Revenue')
   if (!revSection) return []
 
   // Find wage lines across all sections
   const wageNames = new Set(wagesAccountNames.map(n => n.toLowerCase()))
+  const forward = hasForecastBudget(report)
 
+  // Mapped over the WHOLE year first — `i` indexes the section month arrays —
+  // and the forward months dropped after.
   return report.gross_profit.months.map((gpMonth, i) => {
     const isActual = gpMonth.source === 'actual'
     const revenue = isActual
@@ -50,7 +62,7 @@ export function transformTeamCostData(report: FullYearReport, wagesAccountNames:
       pctOfRevenue,
       source: gpMonth.source,
     }
-  })
+  }).filter((point) => forward || point.source === 'actual')
 }
 
 function CustomTooltip({ active, payload, label }: any) {
@@ -84,6 +96,7 @@ interface Props {
 
 export default function TeamCostPctChart({ fullYearReport, wagesAccountNames }: Props) {
   const data = transformTeamCostData(fullYearReport, wagesAccountNames)
+  const forwardAbsentNote = forwardSeriesAbsentNote(fullYearReport)
   if (data.length === 0 || wagesAccountNames.length === 0) return null
 
   const lastActualIdx = data.reduce((acc, d, i) => d.source === 'actual' ? i : acc, -1)
@@ -92,6 +105,11 @@ export default function TeamCostPctChart({ fullYearReport, wagesAccountNames }: 
 
   return (
     <ChartCard title="Team Cost as % of Revenue" subtitle="Monthly wages spend vs percentage of revenue" tooltip="Shows how much of your revenue goes to paying your team. The bars show the dollar amount, and the line shows the percentage. If the percentage is climbing while revenue is flat, your team costs are growing faster than your income — worth investigating.">
+      {forwardAbsentNote && (
+        <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {forwardAbsentNote}
+        </p>
+      )}
       <ResponsiveContainer width="100%" height={300}>
         <ComposedChart data={data} margin={{ top: 5, right: 60, left: 10, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />

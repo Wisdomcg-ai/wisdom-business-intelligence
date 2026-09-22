@@ -6,6 +6,7 @@ import { X, Loader2, ChevronLeft, ChevronRight, Check, RefreshCw, Cloud, CloudOf
 import { toast } from 'sonner';
 import { useDebouncedCallback } from '@/lib/hooks/use-debounced-callback';
 import { useForecastWizard } from './useForecastWizard';
+import { hasUsablePLLineData } from './wizard-init-guard';
 import { StepBar } from './components/StepBar';
 import { YearTabs } from './components/YearTabs';
 import { AICFOPanel } from './components/AICFOPanel';
@@ -25,6 +26,7 @@ import { WIZARD_STEPS, PriorYearData, TeamMember, Goals } from './types';
 // _xeroImportedAt, _xeroFingerprint) flow through every entry path.
 import { enrichWizardMemberFromXeroEmployee } from './utils/xero-payroll-mapping';
 import { resolvePriorYearSecondary } from './utils/resolve-prior-year-secondaries';
+import { mergeSavedTeamMembers, keepHandAddedMembers, savedMemberToTeamMember, normaliseName, type SavedTeamMember } from './utils/merge-saved-team';
 
 interface ForecastWizardV4Props {
   businessId: string;
@@ -38,6 +40,20 @@ interface ForecastWizardV4Props {
   onClose: () => void;
 }
 
+/**
+ * Which assumptions object should the wizard OPEN on?
+ *
+ * `assumptions` is now publish-only (what produced the stored P&L) and
+ * `draft_assumptions` holds work in progress, so an operator who was mid-edit
+ * must get their draft back — otherwise separating the two columns would look
+ * like losing their work. NULL draft (the normal case, and always so right
+ * after a Generate) falls through to the published record.
+ */
+function pickWizardAssumptions(forecast: { assumptions?: unknown; draft_assumptions?: unknown } | null | undefined) {
+  if (!forecast) return null
+  return (forecast.draft_assumptions ?? forecast.assumptions ?? null) as any
+}
+
 export function ForecastWizardV4({
   businessId,
   businessName,
@@ -49,7 +65,7 @@ export function ForecastWizardV4({
   onComplete,
   onClose,
 }: ForecastWizardV4Props) {
-  const { state, actions, summary, wasRestoredFromStorage, clearLocalStorage } = useForecastWizard(fiscalYear - 1, businessId, startFresh);
+  const { state, actions, summary, wasRestoredFromStorage, clearLocalStorage } = useForecastWizard(fiscalYear - 1, businessId, startFresh, existingForecastId);
   const wizardPathname = usePathname();
   const integrationsHref = wizardPathname.includes('/coach/clients/')
     ? wizardPathname.replace(/\/view\/.*$/, '/view/integrations')
@@ -100,15 +116,39 @@ export function ForecastWizardV4({
       clearLocalStorage();
     }
 
+    // Boot-scoped GET dedupe.
+    //
+    // The restore path fetched /api/forecast/{id} TWICE in one open: once in the
+    // Promise.all batch below (for forecast_duration and team) and again later
+    // for the prior-year assumptions. Same URL, same data — but every hop pays
+    // auth.getUser + verifyBusinessAccess + permission checks before it touches
+    // a row, so the duplicate is pure added latency on the boot the operator is
+    // staring at.
+    //
+    // Scoped to THIS boot and cleared on entry, so reopening the wizard after a
+    // save always refetches — a module-level cache would serve stale assumptions.
+    const bootCache = new Map<string, Promise<Response>>();
+    const bootFetch = (url: string): Promise<Response> => {
+      const hit = bootCache.get(url);
+      // Response bodies are single-use; hand every caller its own clone.
+      if (hit) return hit.then((r) => r.clone());
+      const inflight = fetch(url);
+      bootCache.set(url, inflight);
+      return inflight.then((r) => r.clone());
+    };
+
     const loadData = async () => {
+      bootCache.clear();
       // Check if state was restored from localStorage with meaningful data
       // If so, skip API fetching and initialization (but not if starting fresh)
-      const hasRestoredData = !startFresh && (
-        state.opexLines?.length > 0 ||
-        state.revenueLines?.length > 0 ||
-        state.teamMembers?.length > 0 ||
-        state.priorYear !== null
-      );
+      //
+      // Phase A (CFO-only clients): the guard MUST require actual P&L line
+      // data. The previous `|| state.teamMembers?.length > 0 || state.priorYear
+      // !== null` arms let a draft from a failed-seed session (priorYear set,
+      // all line arrays empty) skip the full init forever — the display-only
+      // refresh below never rebuilds lines, so the operator generated 0-line
+      // forecasts on every retry (Dragon Roofing, Efficient Living).
+      const hasRestoredData = !startFresh && hasUsablePLLineData(state);
 
       if (hasRestoredData) {
         console.log('[ForecastWizardV4] State restored from localStorage, skipping full API initialization');
@@ -125,6 +165,14 @@ export function ForecastWizardV4({
           teamMembers: state.teamMembers?.length,
         });
 
+        // PERF: pl-summary is the slowest call on this path (~400ms server-side
+        // before network) and depends on nothing in the batch below. Start it
+        // here so it overlaps, and await it in its own block further down —
+        // saving a full sequential round-trip on every restored-draft open.
+        const plSummaryPromise = fetch(
+          `/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`,
+        ).catch(() => null);
+
         // Always refresh goals, business profile, and team (if missing) so they stay in sync
         try {
           const fetchPromises: Promise<Response>[] = [
@@ -135,12 +183,31 @@ export function ForecastWizardV4({
           const needsTeam = !state.teamMembers || state.teamMembers.length === 0;
           if (needsTeam) {
             fetchPromises.push(fetch(`/api/Xero/employees?business_id=${businessId}`));
-            // Also fetch saved forecast assumptions as fallback
-            if (existingForecastId) {
-              fetchPromises.push(fetch(`/api/forecast/${existingForecastId}`));
-            }
           }
-          const [goalsRes, profileRes, teamRes, forecastRes] = await Promise.all(fetchPromises);
+          // ALWAYS load the saved forecast row when we have an id — not just as a
+          // team fallback. It carries `forecast_duration`, and a restored draft
+          // has no other source for it: buildAssumptions never persisted the
+          // duration, so Step 1 fell back to the 3-year default on every reopen.
+          const forecastIdx = needsTeam ? 3 : 2;
+          if (existingForecastId) {
+            fetchPromises.push(bootFetch(`/api/forecast/${existingForecastId}`));
+          }
+          const settled = await Promise.all(fetchPromises);
+          const [goalsRes, profileRes] = settled;
+          const teamRes = needsTeam ? settled[2] : undefined;
+          const forecastRes = existingForecastId ? settled[forecastIdx] : undefined;
+
+          // Restore the saved duration. Uses hydrate (not set) because a restored
+          // draft carries durationLocked: true, which makes setForecastDuration a
+          // no-op — the reason #374 did not fix this path.
+          if (forecastRes?.ok) {
+            try {
+              const dur = Number((await forecastRes.clone().json())?.forecast?.forecast_duration);
+              if (dur === 1 || dur === 2 || dur === 3) {
+                actionsRef.current.hydrateForecastDuration(dur);
+              }
+            } catch { /* duration restore is best-effort */ }
+          }
 
           if (goalsRes.ok) {
             const goalsData = await goalsRes.json();
@@ -198,6 +265,7 @@ export function ForecastWizardV4({
           // Refresh team members if they were missing from cache
           if (needsTeam) {
             let teamLoaded = false;
+            const xeroNamesLoaded = new Set<string>();
             // Try Xero employees first
             if (teamRes?.ok) {
               const teamData = await teamRes.json();
@@ -218,6 +286,7 @@ export function ForecastWizardV4({
                     salary = emp.hourly_rate * (emp.hours_per_week || defaultHours) * 52;
                   }
                   if (!salary) salary = 80000;
+                  xeroNamesLoaded.add(normaliseName(emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`));
                   actionsRef.current.addTeamMember({
                     ...enriched,
                     name: emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown',
@@ -232,21 +301,34 @@ export function ForecastWizardV4({
                 teamLoaded = true;
               }
             }
-            // Fallback: restore from saved forecast assumptions
-            if (!teamLoaded && forecastRes?.ok) {
+            // Saved team: the whole team when Xero returned nobody, otherwise
+            // only the members the operator added by hand (contractors paid
+            // through bills etc.) — Xero payroll never lists those, and the
+            // old `Xero ?? saved` rule silently dropped them.
+            if (forecastRes?.ok) {
               const forecastData = await forecastRes.json();
-              const savedAssumptions = forecastData?.forecast?.assumptions;
-              if (savedAssumptions?.team?.existingTeam?.length > 0) {
-                console.log('[ForecastWizardV4] Refreshing team from saved assumptions:', savedAssumptions.team.existingTeam.length, 'members');
-                for (const emp of savedAssumptions.team.existingTeam) {
+              const savedAssumptions = pickWizardAssumptions(forecastData?.forecast);
+              const savedExistingTeam: SavedTeamMember[] = savedAssumptions?.team?.existingTeam ?? [];
+              if (savedExistingTeam.length > 0) {
+                const toAdd = teamLoaded
+                  ? savedExistingTeam.filter(
+                      (emp) => emp.isFromXero === false && !xeroNamesLoaded.has(normaliseName(emp.name)),
+                    )
+                  : savedExistingTeam;
+                if (toAdd.length > 0) {
+                  console.log('[ForecastWizardV4] Refreshing team from saved assumptions:', toAdd.length, teamLoaded ? 'hand-added member(s)' : 'members');
+                }
+                for (const emp of toAdd) {
+                  const member = savedMemberToTeamMember(emp);
                   actionsRef.current.addTeamMember({
-                    name: emp.name,
-                    role: emp.role,
-                    type: (emp.employmentType as 'full-time' | 'part-time' | 'casual' | 'contractor') || 'full-time',
-                    hoursPerWeek: emp.hoursPerWeek || 38,
-                    currentSalary: emp.currentSalary,
-                    increasePct: emp.salaryIncreasePct || 3,
-                    isFromXero: emp.isFromXero ?? false,
+                    name: member.name,
+                    role: member.role,
+                    type: member.type,
+                    contractorType: member.contractorType,
+                    hoursPerWeek: member.hoursPerWeek,
+                    currentSalary: member.currentSalary,
+                    increasePct: member.increasePct,
+                    isFromXero: member.isFromXero,
                   });
                 }
               }
@@ -258,8 +340,8 @@ export function ForecastWizardV4({
 
         // Always refresh Xero P&L data — cached priorYear may be stale or computed from buggy logic
         try {
-          const plRes = await fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`);
-          if (plRes.ok) {
+          const plRes = await plSummaryPromise;
+          if (plRes?.ok) {
             const plData = await plRes.json();
             const freshPriorFY = plData.summary?.prior_fy;
             if (freshPriorFY && freshPriorFY.total_revenue != null) {
@@ -278,6 +360,8 @@ export function ForecastWizardV4({
               const opexByLine = (freshPriorFY.operating_expenses_by_category || []).map((cat: any, idx: number) => ({
                 id: `opex-${idx}`, name: cat.account_name || cat.category,
                 total: cat.total, monthlyAvg: cat.monthly_average || cat.total / 12, isOneOff: false,
+                // Carry the Xero code so the subscription double-count guard works.
+                account_code: cat.account_code,
               }));
 
               const freshPriorYear: PriorYearData = {
@@ -360,6 +444,26 @@ export function ForecastWizardV4({
               //     path further down calls it
               actionsRef.current.setPriorYearDisplay(freshPriorYear);
 
+              // fix/step3-cogs-actuals: also refresh the YTD actuals source.
+              // Restored drafts carry the currentYTD captured at their last
+              // full init — drafts saved before COGS actuals existed in the
+              // payload would otherwise keep locking actual months at $0.
+              const freshYtd = plData.summary?.current_ytd;
+              if (freshYtd) {
+                const roundedRevByMonth: Record<string, number> = {};
+                Object.entries(freshYtd.revenue_by_month || {}).forEach(([k, v]) => {
+                  roundedRevByMonth[k] = Math.round(v as number);
+                });
+                actionsRef.current.setCurrentYTD({
+                  revenue_by_month: roundedRevByMonth,
+                  total_revenue: Math.round(freshYtd.total_revenue || 0),
+                  months_count: freshYtd.months_count || 0,
+                  revenue_lines: freshYtd.revenue_lines,
+                  cogs_by_month: freshYtd.cogs_by_month,
+                  cogs_lines: freshYtd.cogs_lines,
+                });
+              }
+
               // COGS=0 re-sync hack removed — pl-summary now reads directly from
               // xero_pl_lines with correct account_type enum. No stale data possible.
             }
@@ -380,6 +484,7 @@ export function ForecastWizardV4({
               if (activeForecast?.id) {
                 resolvedId = activeForecast.id;
                 setForecastId(activeForecast.id);
+                actionsRef.current.setForecastIdentity(activeForecast.id);
                 console.log('[ForecastWizardV4] Loaded forecast ID from versions API:', activeForecast.id);
               }
             }
@@ -395,10 +500,10 @@ export function ForecastWizardV4({
         if (priorYearMissing && resolvedId) {
           try {
             console.log('[ForecastWizardV4] Prior year missing from cache, loading from saved forecast:', resolvedId);
-            const forecastRes = await fetch(`/api/forecast/${resolvedId}`);
+            const forecastRes = await bootFetch(`/api/forecast/${resolvedId}`);
             if (forecastRes.ok) {
               const forecastData = await forecastRes.json();
-              const savedAssumptions = forecastData?.forecast?.assumptions || null;
+              const savedAssumptions = pickWizardAssumptions(forecastData?.forecast);
               if (savedAssumptions) {
                 // ─── PRIOR-YEAR MONTHLY RESTORE (fix/step2-byMonth-priorYear-restore) ──
                 // Hotfix: read category-level priorYear monthly figures from the
@@ -542,7 +647,18 @@ export function ForecastWizardV4({
       setIsLoading(true);
       setError(null);
 
-      // Try to load prior year from a locked prior-FY forecast (richer than Xero P&L)
+      // Try to load prior year from a locked prior-FY forecast (richer than Xero P&L).
+      //
+      // This chain used to be awaited INLINE before anything else was issued, so
+      // its two serial hops (versions → actuals-summary) gated goals, employees,
+      // the business profile and the current-FY versions probe — four requests
+      // that depend on none of it. Each hop pays auth + business-access +
+      // permission checks server-side before touching data, so the serialisation
+      // was pure added boot latency. It now runs as a promise and everything
+      // independent of it is issued in parallel below; only the Xero pl-summary
+      // fallback decision genuinely needs its result, and that await sits as
+      // late as possible.
+      const priorChain = (async (): Promise<{ fromForecast: boolean; data: PriorYearData | null }> => {
       let priorYearFromForecast = false;
       let priorYearForecastData: PriorYearData | null = null;
       try {
@@ -596,18 +712,28 @@ export function ForecastWizardV4({
       } catch (e) {
         console.warn('[ForecastWizardV4] Could not load prior forecast actuals, will try Xero:', e);
       }
+      return { fromForecast: priorYearFromForecast, data: priorYearForecastData };
+      })();
 
       try {
-        // Build fetch requests - include existing forecast if we're editing one
-        // Skip Xero P&L fetch if we already loaded prior year from a locked forecast
-        const fetchPromises: Promise<Response>[] = [
-          fetch(`/api/goals?business_id=${businessId}`),
-          priorYearFromForecast
-            ? Promise.resolve(new Response(JSON.stringify({ summary: null }), { status: 200 }))
-            : fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`),
-          fetch(`/api/Xero/employees?business_id=${businessId}`),
-          fetch(`/api/business-profile?business_id=${businessId}`),
-        ];
+        // Everything with no dependency on the prior-FY chain goes out NOW.
+        const goalsP = fetch(`/api/goals?business_id=${businessId}`);
+        const teamP = fetch(`/api/Xero/employees?business_id=${businessId}`);
+        const profileP = fetch(`/api/business-profile?business_id=${businessId}`);
+        // The current-FY versions probe is independent of the PRIOR-FY chain
+        // too — it used to wait behind it for no reason.
+        const versionsCurP =
+          !existingForecastId && !startFresh
+            ? fetch(`/api/forecasts/versions?business_id=${businessId}&fiscal_year=${fiscalYear}`)
+            : null;
+
+        // Only the pl-summary fallback decision needs the prior chain: a locked
+        // prior forecast makes the Xero P&L fetch unnecessary. Await it here —
+        // the four requests above are already in flight while it resolves.
+        const { fromForecast: priorYearFromForecast, data: priorYearForecastData } = await priorChain;
+        const plP = priorYearFromForecast
+          ? Promise.resolve(new Response(JSON.stringify({ summary: null }), { status: 200 }))
+          : fetch(`/api/Xero/pl-summary?business_id=${businessId}&fiscal_year=${fiscalYear}`);
 
         // If editing an existing forecast, fetch its saved assumptions.
         // Otherwise auto-discover the active forecast for this FY, UNLESS
@@ -615,27 +741,26 @@ export function ForecastWizardV4({
         // means the user explicitly wants a brand-new forecast row, not the
         // saved assumptions of whatever's already active for this FY.
         let resolvedForecastId = existingForecastId || null;
-        if (!resolvedForecastId && !startFresh) {
+        if (versionsCurP) {
           try {
-            const versionsRes = await fetch(`/api/forecasts/versions?business_id=${businessId}&fiscal_year=${fiscalYear}`);
+            const versionsRes = await versionsCurP;
             if (versionsRes.ok) {
               const versionsData = await versionsRes.json();
               const active = (versionsData.versions || []).find((v: { is_active?: boolean }) => v.is_active) || (versionsData.versions || [])[0];
               if (active?.id) {
                 resolvedForecastId = active.id;
                 setForecastId(active.id);
+                actionsRef.current.setForecastIdentity(active.id);
                 console.log('[ForecastWizardV4] Auto-discovered active forecast:', active.id);
               }
             }
           } catch { /* ignore */ }
         }
 
-        if (resolvedForecastId) {
-          fetchPromises.push(fetch(`/api/forecast/${resolvedForecastId}`));
-        }
+        const forecastP = resolvedForecastId ? fetch(`/api/forecast/${resolvedForecastId}`) : null;
 
-        const responses = await Promise.all(fetchPromises);
-        const [goalsRes, plRes, teamRes, profileRes, forecastRes] = responses;
+        const [goalsRes, plRes, teamRes, profileRes] = await Promise.all([goalsP, plP, teamP, profileP]);
+        const forecastRes = forecastP ? await forecastP : undefined;
 
         const dataPromises: Promise<any>[] = [
           goalsRes.ok ? goalsRes.json() : Promise.resolve({ goals: null }),
@@ -654,13 +779,30 @@ export function ForecastWizardV4({
         const [goalsData, plData, teamData, profileData, existingForecastData] = await Promise.all(dataPromises);
 
         // Extract saved assumptions from existing forecast
-        const savedAssumptions = existingForecastData?.forecast?.assumptions || existingForecastData?.assumptions || null;
+        const savedAssumptions = pickWizardAssumptions(existingForecastData?.forecast) ?? (existingForecastData?.draft_assumptions ?? existingForecastData?.assumptions ?? null);
 
         // Check lock status — prevent edits on locked forecasts
         const loadedForecast = existingForecastData?.forecast || existingForecastData || null;
         if (loadedForecast?.is_locked) {
           setIsReadOnly(true);
           console.log('[ForecastWizardV4] Forecast is locked — read-only mode activated');
+        }
+
+        // Restore the saved forecast DURATION.
+        //
+        // `forecast_duration` is persisted on the forecast row but was never read
+        // back: `buildAssumptions` does not carry it, and nothing here applied it.
+        // So reopening a saved forecast silently reset Step 1 to the
+        // createInitialState default of 3 years — the operator picks 1 year, and
+        // it is 3 again next time. It only ever appeared to stick because the
+        // localStorage draft happened to carry it; the moment that draft is
+        // absent or discarded, the default wins.
+        //
+        // Applied here, before any navigation, while `durationLocked` is still
+        // false — `setForecastDuration` refuses once the operator has left Step 1.
+        const savedDuration = Number(loadedForecast?.forecast_duration);
+        if (savedDuration === 1 || savedDuration === 2 || savedDuration === 3) {
+          actionsRef.current.hydrateForecastDuration(savedDuration as 1 | 2 | 3);
         }
 
         console.log('[ForecastWizardV4] Loaded existing forecast:', {
@@ -817,12 +959,14 @@ export function ForecastWizardV4({
             firstFewCategories: priorFY?.operating_expenses_by_category?.slice(0, 3),
           });
           if (priorFY?.operating_expenses_by_category?.length > 0) {
-            opexByLine = priorFY.operating_expenses_by_category.map((cat: { category: string; account_name: string; total: number; monthly_average: number }, idx: number) => ({
+            opexByLine = priorFY.operating_expenses_by_category.map((cat: { category: string; account_name: string; total: number; monthly_average: number; account_code?: string }, idx: number) => ({
               id: `opex-${idx}`,
               name: cat.account_name || cat.category,
               total: cat.total,
               monthlyAvg: cat.monthly_average || (cat.total / 12),
               isOneOff: false,
+              // Carry the Xero code so the subscription double-count guard works.
+              account_code: cat.account_code,
             }));
           } else if (savedAssumptions?.opex?.lines?.length > 0) {
             opexByLine = savedAssumptions.opex.lines.map((line: {
@@ -895,10 +1039,14 @@ export function ForecastWizardV4({
                 : Array(12).fill(100 / 12),
           };
 
-          // Build team - prefer fresh Xero data, fall back to saved assumptions
-          let team: TeamMember[] = [];
+          // Build team — fresh Xero payroll for the people Xero knows, MERGED
+          // with the saved team so hand-added members (contractors paid
+          // through bills, a director on no payroll) survive a reopen. The old
+          // `Xero ?? saved` rule dropped Urban Road's 13 contractors and their
+          // bonus every time the forecast was opened (7 Sep 2026).
+          let xeroTeam: TeamMember[] = [];
           if (teamData.employees?.length > 0) {
-            team = teamData.employees.map(
+            xeroTeam = teamData.employees.map(
               (emp: any) => {
                 // Phase 52 (XERO-S4-01..04): single canonical mapper. See Site 1
                 // comment above (around line ~175) for rationale. Site-specific
@@ -930,30 +1078,14 @@ export function ForecastWizardV4({
                 };
               }
             );
-          } else if (savedAssumptions?.team?.existingTeam?.length > 0) {
-            // Fall back to saved existing team when Xero data unavailable
+          }
+          const savedExistingTeam = savedAssumptions?.team?.existingTeam ?? [];
+          if (xeroTeam.length === 0 && savedExistingTeam.length > 0) {
             console.log('[ForecastWizardV4] No Xero employees, reconstructing from saved assumptions');
-            team = savedAssumptions.team.existingTeam.map((emp: {
-              employeeId: string;
-              name: string;
-              role: string;
-              employmentType: string;
-              currentSalary: number;
-              hoursPerWeek?: number;
-              salaryIncreasePct?: number;
-              isFromXero?: boolean;
-            }) => ({
-              id: emp.employeeId,
-              name: emp.name,
-              role: emp.role,
-              type: (emp.employmentType as 'full-time' | 'part-time' | 'casual' | 'contractor') || 'full-time',
-              hoursPerWeek: emp.hoursPerWeek || 38,
-              currentSalary: emp.currentSalary,
-              increasePct: emp.salaryIncreasePct || 3,
-              newSalary: 0,
-              superAmount: 0,
-              isFromXero: emp.isFromXero ?? false,
-            }));
+          }
+          const team: TeamMember[] = mergeSavedTeamMembers(xeroTeam, savedExistingTeam);
+          if (xeroTeam.length > 0 && team.length > xeroTeam.length) {
+            console.log('[ForecastWizardV4] Kept', team.length - xeroTeam.length, 'hand-added team member(s) from saved assumptions');
           }
 
           const goals: Goals | undefined = goalsData.goals
@@ -990,6 +1122,10 @@ export function ForecastWizardV4({
             months_count: currentPlData.summary.current_ytd.months_count || 0,
             // Phase 44.3 (FCST-02/04): per-line YTD breakdown for target-aware init.
             revenue_lines: currentPlData.summary.current_ytd.revenue_lines,
+            // fix/step3-cogs-actuals: COGS actuals so Step 3 locks actual
+            // months at their real values instead of $0.
+            cogs_by_month: currentPlData.summary.current_ytd.cogs_by_month,
+            cogs_lines: currentPlData.summary.current_ytd.cogs_lines,
           } : undefined;
 
           console.log('[ForecastWizardV4] Initializing with:', {
@@ -1008,6 +1144,12 @@ export function ForecastWizardV4({
           // If editing an existing forecast, restore saved user data (new hires, departures, etc.)
           if (savedAssumptions) {
             console.log('[ForecastWizardV4] Restoring saved assumptions:', savedAssumptions);
+            // Budget-seed provenance drives the Step 1/4/6/Review banners and
+            // the Step 2 refresh warning. Anything else (hand-built, prior-year
+            // seed) clears it.
+            actionsRef.current.setSeedSource(
+              savedAssumptions.seedSource?.kind === 'xero_budget' ? savedAssumptions.seedSource : null,
+            );
             // P0-3: Suppress autosave until the restore chain finishes. The
             // forEach restorers below run synchronously (planned hires, departures,
             // bonuses, commissions, capex) but the goals/revenue/cogs/opex/
@@ -1065,6 +1207,9 @@ export function ForecastWizardV4({
                   costBehavior?: 'variable' | 'fixed';
                   percentOfRevenue?: number;
                   monthlyAmount?: number;
+                  year1Monthly?: Record<string, number>;
+                  year2Monthly?: Record<string, number>;
+                  year3Monthly?: Record<string, number>;
                 }) => ({
                   id: line.accountId,
                   name: line.accountName,
@@ -1073,6 +1218,14 @@ export function ForecastWizardV4({
                   costBehavior: line.costBehavior || 'variable',
                   percentOfRevenue: line.percentOfRevenue,
                   monthlyAmount: line.monthlyAmount,
+                  // PR-A (M1) round-trip: the saved monthly grid — including
+                  // locked actual months — must come BACK. Dropping it here
+                  // meant the next autosave omitted year1Monthly and the
+                  // converter silently reverted to %-of-revenue, undoing the
+                  // fidelity fix on the first reopen-and-save cycle.
+                  year1Monthly: line.year1Monthly || {},
+                  year2Monthly: line.year2Monthly || {},
+                  year3Monthly: line.year3Monthly || {},
                 }));
 
                 if (restoredCOGSLines.length > 0) {
@@ -1082,14 +1235,24 @@ export function ForecastWizardV4({
               }
 
               // Restore OpEx lines with saved settings (cost behavior, amounts, etc.)
+              // PROC-08: restore the wizard-level default % change before the
+              // lines, so any line without its own rate inherits the operator's
+              // setting rather than snapping back to 3%.
+              if (typeof savedAssumptions.opex?.defaultIncreasePct === 'number') {
+                actionsRef.current.setDefaultOpExIncreasePct(
+                  savedAssumptions.opex.defaultIncreasePct,
+                );
+              }
+
               if (savedAssumptions.opex?.lines?.length > 0) {
                 const restoredOpExLines = savedAssumptions.opex.lines.map((line: {
                   accountId: string;
                   accountName: string;
                   priorYearTotal?: number;
-                  costBehavior?: 'fixed' | 'variable' | 'seasonal' | 'adhoc';
+                  costBehavior?: 'fixed' | 'variable' | 'seasonal' | 'adhoc' | 'budgeted';
                   monthlyAmount?: number;
                   annualIncreasePct?: number;
+                  budgetedMonthly?: Record<string, number>;
                   percentOfRevenue?: number;
                   seasonalGrowthPct?: number;
                   seasonalTargetAmount?: number;
@@ -1097,6 +1260,18 @@ export function ForecastWizardV4({
                   expectedMonths?: string[];
                   isSubscription?: boolean;
                   notes?: string;
+                  // 21 Aug 2026 audit — fields the export now carries.
+                  accountCode?: string;
+                  isTeamCostOverride?: boolean;
+                  y2Override?: number;
+                  y3Override?: number;
+                  y2PercentOverride?: number;
+                  y3PercentOverride?: number;
+                  y2SeasonalTargetAmount?: number;
+                  y3SeasonalTargetAmount?: number;
+                  isOneTime?: boolean;
+                  oneTimeYear?: number;
+                  startYear?: number;
                 }) => ({
                   id: line.accountId,
                   name: line.accountName,
@@ -1105,6 +1280,7 @@ export function ForecastWizardV4({
                   costBehavior: line.costBehavior || 'fixed',
                   monthlyAmount: line.monthlyAmount,
                   annualIncreasePct: line.annualIncreasePct,
+                  budgetedMonthly: line.budgetedMonthly,
                   percentOfRevenue: line.percentOfRevenue,
                   seasonalGrowthPct: line.seasonalGrowthPct,
                   seasonalTargetAmount: line.seasonalTargetAmount,
@@ -1112,11 +1288,29 @@ export function ForecastWizardV4({
                   expectedMonths: line.expectedMonths,
                   isSubscription: line.isSubscription,
                   notes: line.notes,
+                  // PROC-06: the account code re-arms the subscription
+                  // double-count guard; the override preserves the operator's
+                  // explicit include/exclude decision. FML-01: the Y2/Y3
+                  // tuning and lifecycle flags now survive a reopen.
+                  accountCode: line.accountCode,
+                  isTeamCostOverride: line.isTeamCostOverride,
+                  y2Override: line.y2Override,
+                  y3Override: line.y3Override,
+                  y2PercentOverride: line.y2PercentOverride,
+                  y3PercentOverride: line.y3PercentOverride,
+                  y2SeasonalTargetAmount: line.y2SeasonalTargetAmount,
+                  y3SeasonalTargetAmount: line.y3SeasonalTargetAmount,
+                  isOneTime: line.isOneTime,
+                  oneTimeYear: line.oneTimeYear,
+                  startYear: line.startYear,
                 }));
 
                 if (restoredOpExLines.length > 0) {
                   console.log('[ForecastWizardV4] Restoring saved OpEx forecast:', restoredOpExLines.length, 'lines');
-                  actionsRef.current.setOpExLines(restoredOpExLines);
+                  // PROC-06: MERGE over the Xero-seeded list. Replacing it
+                  // dropped every team/subscription-covered account from Step 5
+                  // for the rest of the session.
+                  actionsRef.current.mergeSavedOpExLines(restoredOpExLines);
                 }
               }
 
@@ -1147,6 +1341,7 @@ export function ForecastWizardV4({
                 hourlyRate?: number;
                 weeksPerYear?: number;
                 startMonth: string | number;
+                increasePct?: number;
               }) => {
                 // Convert startMonth to string format if it's a number
                 let startMonthStr = typeof hire.startMonth === 'string'
@@ -1161,6 +1356,9 @@ export function ForecastWizardV4({
                   hourlyRate: hire.hourlyRate,
                   weeksPerYear: hire.weeksPerYear,
                   startMonth: startMonthStr,
+                  // Round-trip the per-hire increase — without it a reopened
+                  // forecast silently reverted every hire to the 3% default.
+                  increasePct: hire.increasePct,
                 });
               });
             }
@@ -1232,6 +1430,7 @@ export function ForecastWizardV4({
                 teamMemberId?: string;
                 revenueLineId: string;
                 percentOfRevenue: number;
+                timing?: 'monthly' | 'quarterly' | 'annual';
               }) => {
                 const memberId = commission.teamMemberId || commission.employeeId;
                 if (!memberId) return;
@@ -1243,7 +1442,13 @@ export function ForecastWizardV4({
                   teamMemberId: memberId,
                   revenueLineId: commission.revenueLineId,
                   percentOfRevenue: commission.percentOfRevenue,
-                  timing: 'monthly',
+                  // PROC-07 (21 Aug 2026 audit): timing was hardcoded here, so
+                  // a saved quarterly or annual commission silently became
+                  // monthly on the first reopen — and the next Generate stored
+                  // the wrong cash rhythm. The converter genuinely branches on
+                  // this (quarterly/annual accrue and pay in the period's last
+                  // month), and buildAssumptions round-trips it, so honour it.
+                  timing: commission.timing ?? 'monthly',
                 });
               });
             }
@@ -1326,6 +1531,7 @@ export function ForecastWizardV4({
       const savedId = await actions.saveDraft(forecastId, forecastName);
       if (savedId) {
         setForecastId(savedId);
+        actions.setForecastIdentity(savedId);
         setLastSaved(new Date());
         setSaveError(false);
       }
@@ -1354,6 +1560,7 @@ export function ForecastWizardV4({
       if (savedId) {
         setForecastName(newName);
         setForecastId(savedId);
+        actions.setForecastIdentity(savedId);
         setLastSaved(new Date());
         toast.success(`Saved as "${newName}"`);
       }
@@ -1397,7 +1604,12 @@ export function ForecastWizardV4({
     state.opexLines,
     state.capexItems,
     state.investments,
-    state.otherExpenses,
+    // H11: Step 7 writes state.plannedSpends (capexItems is the legacy shape
+    // only the saved-assumptions restore populates), and Step 5 writes
+    // subscriptions — neither triggered a server draft save, so closing the
+    // wizard after a Step 5/7 edit lost it server-side.
+    state.plannedSpends,
+    state.subscriptions,
     state.forecastDuration,
     state.revenuePattern,
     state.defaultOpExIncreasePct,
@@ -1406,6 +1618,22 @@ export function ForecastWizardV4({
 
   // Refresh data from Xero (without page reload)
   const handleRefreshFromXero = async () => {
+    // H9: this path calls initializeFromXero, which REBUILDS revenueLines,
+    // cogsLines, opexLines and teamMembers from scratch — every cost-behavior
+    // choice, monthly override and per-line seasonality on Steps 3/5/6 is
+    // destroyed. Step 2's own refresh button warns; this one was labelled
+    // just "Refresh". Confirm before discarding operator work.
+    const hasOperatorWork =
+      state.revenueLines.length > 0 || state.cogsLines.length > 0 || state.opexLines.length > 0;
+    if (hasOperatorWork && typeof window !== 'undefined') {
+      const proceed = window.confirm(
+        'Refresh from Xero rebuilds your revenue, COGS and OpEx lines from scratch and re-imports your team from Xero payroll.\n\n' +
+        'Any cost-behaviour choices, monthly overrides and per-line seasonality you have set will be lost. ' +
+        'People you added by hand (contractors, anyone not on Xero payroll) are kept. ' +
+        'Locked actual months are always kept.\n\nContinue?',
+      );
+      if (!proceed) return;
+    }
     setIsSyncing(true);
     try {
       // Use existing forecastId if available, otherwise create via saveDraft
@@ -1418,6 +1646,7 @@ export function ForecastWizardV4({
           syncForecastId = await actions.saveDraft();
           if (syncForecastId) {
             setForecastId(syncForecastId);
+            actions.setForecastIdentity(syncForecastId);
           } else {
             toast.error('Failed to create draft forecast');
             return;
@@ -1531,6 +1760,8 @@ export function ForecastWizardV4({
                   total: Math.round(cat.total),
                   monthlyAvg: Math.round(cat.monthly_average || (cat.total / 12)),
                   isOneOff: false,
+                  // Carry the Xero code so the subscription guard works.
+                  account_code: cat.account_code,
                 })),
               },
               // Phase 57 hotfix (handleRefreshFromXero — wizard top Refresh button):
@@ -1568,7 +1799,17 @@ export function ForecastWizardV4({
 
               return {
                 ...enriched,
-                id: emp.employee_id || `emp-${Date.now()}-${Math.random()}`,
+                // H9: a random fallback id changed on EVERY refresh, orphaning
+                // the departures / bonuses / commissions that reference it.
+                // Reuse the existing member's id when the name matches, then
+                // fall back to a deterministic name-derived id.
+                id:
+                  emp.employee_id ||
+                  state.teamMembers.find(
+                    m => m.name.trim().toLowerCase() ===
+                      (emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim()).trim().toLowerCase(),
+                  )?.id ||
+                  `emp-${(emp.full_name || `${emp.first_name || ''}-${emp.last_name || ''}`).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
                 name: emp.full_name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown',
                 role: emp.job_title || 'Team Member',
                 type: (emp.employment_type as 'full-time' | 'part-time' | 'casual' | 'contractor') || 'full-time',
@@ -1593,11 +1834,23 @@ export function ForecastWizardV4({
               months_count: plData.summary.current_ytd.months_count || 0,
               // Phase 44.3 (FCST-02/04): per-line YTD breakdown for target-aware init.
               revenue_lines: plData.summary.current_ytd.revenue_lines,
+              // fix/step3-cogs-actuals: COGS actuals so Step 3 locks actual
+              // months at their real values instead of $0.
+              cogs_by_month: plData.summary.current_ytd.cogs_by_month,
+              cogs_lines: plData.summary.current_ytd.cogs_lines,
             } : undefined;
 
             // Update wizard state with refreshed data
             // Phase 44.3: pass goals so manual sync refresh also honors Year 1 target.
-            actionsRef.current.initializeFromXero({ priorYear, team, goals: state.goals, currentYTD });
+            // Xero's people are re-imported; the operator's hand-added members
+            // (contractors, anyone not on payroll) ride along — a refresh to fix
+            // one employee must not delete thirteen contractors.
+            actionsRef.current.initializeFromXero({
+              priorYear,
+              team: keepHandAddedMembers(team, state.teamMembers),
+              goals: state.goals,
+              currentYTD,
+            });
             toast.success('Xero data refreshed successfully!');
           } else {
             toast.success('Sync complete - no new data found');
@@ -1665,14 +1918,36 @@ export function ForecastWizardV4({
       toast.error('This forecast is locked and cannot be edited');
       return;
     }
+    // Phase A (CFO-only clients): never send an empty forecast to generate.
+    // Mirrors the server-side EMPTY_FORECAST 422 — the server gate is the
+    // authority; this check just gives instant, actionable feedback.
+    if (!hasUsablePLLineData(state)) {
+      toast.error(
+        <div>
+          <p className="font-medium">Nothing to generate yet</p>
+          <p className="text-sm mt-1">
+            Revenue, COGS and operating expense lines are all empty. Use
+            “Refresh from Xero” on the Prior Year step, or add lines manually,
+            then generate.
+          </p>
+        </div>,
+        { duration: 10000 },
+      );
+      return;
+    }
     setIsSaving(true);
     try {
       // Pass the current forecastId and name to update the specific forecast
       const savedForecastId = await actions.generateForecast(forecastId, forecastName);
+      // PR-A (H5): the localStorage draft is now stale relative to the
+      // generated forecast — clear it so the next open re-initializes from
+      // the server instead of restoring a pre-generate snapshot forever.
+      clearLocalStorage();
       onComplete(savedForecastId);
     } catch (err) {
       console.error('Failed to generate forecast:', err);
-      setError('Failed to generate forecast. Please try again.');
+      const message = err instanceof Error && err.message ? err.message : 'Failed to generate forecast. Please try again.';
+      setError(message);
     } finally {
       setIsSaving(false);
     }
@@ -1957,10 +2232,17 @@ export function ForecastWizardV4({
                 await subscriptionsStepRef.current.flushPendingSaves();
               }
               // Persist wizard state — saveDraft writes to localStorage +
-              // (when forecastId present) to the server. We intentionally
-              // do not await the server round-trip when offline; saveDraft's
-              // own error path surfaces toasts.
-              await actions.saveDraft(existingForecastId);
+              // the server. PR-A (H1): use the LIVE forecastId state and the
+              // current name, exactly like performAutoSave — the old
+              // `saveDraft(existingForecastId)` used the stale mount-time
+              // PROP, so a Create-New session minted a brand-new forecast
+              // row on EVERY step click (and renamed named forecasts back to
+              // the generic default because forecastName was omitted).
+              const stepSavedId = await actions.saveDraft(forecastId, forecastName);
+              if (stepSavedId && stepSavedId !== forecastId) {
+                setForecastId(stepSavedId);
+                actions.setForecastIdentity(stepSavedId);
+              }
               actions.goToStep(target);
             } catch (err) {
               console.error('[StepBar T13] Flush before goToStep failed:', err);
@@ -2037,7 +2319,20 @@ export function ForecastWizardV4({
       <footer className="flex-shrink-0 bg-white border-t border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <button
-            onClick={actions.prevStep}
+            onClick={async () => {
+              // PR-B (D5): leaving the Subscriptions step via Back used to
+              // drop any edit made within the 1.5s debounce window (the
+              // unmount cleanup cancels the timer without flushing).
+              if (state.currentStep === 5 && subscriptionsStepRef.current) {
+                try {
+                  await subscriptionsStepRef.current.flushPendingSaves();
+                } catch {
+                  toast.error('Could not save subscription changes. Staying on this step.');
+                  return;
+                }
+              }
+              actions.prevStep();
+            }}
             disabled={isFirstStep}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -2058,7 +2353,7 @@ export function ForecastWizardV4({
               </button>
             ) : (
               <button
-                onClick={() => {
+                onClick={async () => {
                   // Audit fix #8 — hard-gate Step 1 forward navigation
                   // until a Y1 revenue goal is set. Without this, the
                   // operator could skim past Goals and arrive at Review
@@ -2067,6 +2362,18 @@ export function ForecastWizardV4({
                   if (state.currentStep === 1 && (!state.goals?.year1?.revenue || state.goals.year1.revenue <= 0)) {
                     toast.error('Set a Y1 revenue goal before continuing');
                     return;
+                  }
+                  // PR-B (D5): flush pending subscription saves before
+                  // leaving Step 5 — Continue previously skipped the flush
+                  // the StepBar already performed, silently dropping edits
+                  // made within the 1.5s debounce window.
+                  if (state.currentStep === 5 && subscriptionsStepRef.current) {
+                    try {
+                      await subscriptionsStepRef.current.flushPendingSaves();
+                    } catch {
+                      toast.error('Could not save subscription changes. Staying on this step.');
+                      return;
+                    }
                   }
                   actions.nextStep();
                 }}

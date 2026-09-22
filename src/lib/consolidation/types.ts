@@ -138,6 +138,12 @@ export interface ConsolidatedLine {
   account_type: string
   account_name: string
   monthly_values: Record<string, number>
+  /**
+   * The expense group the account is mapped to (account_mappings.report_subcategory),
+   * set by the consolidated route on actual lines only — see consolidated-groups.
+   * Absent: no group.
+   */
+  group?: string
 }
 
 // Full consolidated API response shape.
@@ -154,6 +160,23 @@ export interface ConsolidatedReport {
      * raw; coaches factor inter-co out of their budgeting manually.
      */
     budgetLines: ConsolidatedLine[]
+  }
+  /**
+   * Where the budget columns came from, when the report was asked to use the
+   * approved budget (budget_source = 'budget_version'). Absent on the forecast
+   * path, whose output is unchanged. 'none' carries the reason — an
+   * organisation without a version, a missing exchange rate — for the banner.
+   */
+  budget_provenance?: {
+    source: 'budget_version' | 'none'
+    scope: 'business' | 'per_tenant' | null
+    version_id: string | null
+    version_ids: string[]
+    label: string | null
+    no_budget_reason: import('@/lib/budgets/resolve-budget').NoBudgetReason | null
+    no_budget_detail: string | null
+    budget_only_accounts: Array<{ tenant_id: string | null; account_code: string | null; account_name: string }>
+    translated: Array<{ scope: string | null; currency_pair: string }>
   }
   fx_context: {
     rates_used: Record<string, number>

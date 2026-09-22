@@ -107,6 +107,9 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 vi.mock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
+  // Default: nothing superseded. Tests that exercise the retire path override
+  // this per test via vi.mocked(...).mockReturnValueOnce.
+  findRetiredExistingLines: vi.fn(() => []),
   convertAssumptionsToPLLines: vi.fn(() => [
     {
       account_name: 'Revenue',
@@ -131,6 +134,9 @@ function makeRequest(body: Record<string, unknown>): Request {
   })
 }
 
+// PR-A (M5): drafts no longer materialize — the atomic-RPC contract these
+// tests pin now applies to the FINAL generate path (isDraft: false). The
+// draft path's new no-materialize contract has its own test below.
 const VALID_BODY = {
   businessId: 'biz-1',
   fiscalYear: 2026,
@@ -138,7 +144,7 @@ const VALID_BODY = {
   forecastId: 'forecast-1',
   forecastName: 'Test FY26',
   createNew: false,
-  isDraft: true,
+  isDraft: false,
   assumptions: { revenue: { mode: 'simple', value: 100 } },
   summary: { year1: { revenue: 1200, grossProfit: 600, netProfit: 200 } },
 }
@@ -197,6 +203,79 @@ describe('Save and Materialize (atomic RPC)', () => {
     expect(plLineWrites).toHaveLength(0)
   })
 
+  it('PR-A follow-up: a FINAL generate on the update path ACTIVATES the forecast', async () => {
+    supabaseMock = buildSupabaseMock(async (fn: string, args: any) => {
+      if (fn === 'save_assumptions_and_materialize') {
+        return {
+          data: { forecast_id: args.p_forecast_id, computed_at: '2026-08-12T00:00:00.000Z', lines_count: 1 },
+          error: null,
+        }
+      }
+      if (fn === 'activate_forecast_locked') {
+        return { data: { id: args.p_forecast_id, activated: true }, error: null }
+      }
+      return { data: null, error: null }
+    })
+
+    const { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    const res = await POST(makeRequest(VALID_BODY))
+    expect(res.status).toBe(200)
+
+    // Drafts are created inactive (PR-A) — Generate must publish.
+    const activateCalls = supabaseMock.rpc.mock.calls.filter(
+      ([fn]: any[]) => fn === 'activate_forecast_locked',
+    )
+    expect(activateCalls).toHaveLength(1)
+    expect(activateCalls[0][1]).toEqual({ p_forecast_id: 'forecast-1' })
+  })
+
+  it('PR-A (M5): draft saves NEVER materialize and NEVER touch the active forecast', async () => {
+    supabaseMock = buildSupabaseMock(async () => ({ data: null, error: null }))
+
+    const { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    const res = await POST(makeRequest({ ...VALID_BODY, isDraft: true }))
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(json.success).toBe(true)
+    expect(json.plLinesGenerated).toBe(0)
+    expect(json.computed_at).toBeNull()
+
+    // Neither the materialize RPC nor the activate-and-deactivate RPC ran.
+    const rpcNames = supabaseMock.rpc.mock.calls.map(([fn]: any[]) => fn)
+    expect(rpcNames).not.toContain('save_assumptions_and_materialize')
+    expect(rpcNames).not.toContain('create_active_forecast_locked')
+    expect(rpcNames).not.toContain('activate_forecast_locked')
+
+    // The draft's assumptions still persist via the plain UPDATE path.
+    const forecastUpdates = supabaseMock.__mutationCalls.filter(
+      (c) => c.table === 'financial_forecasts' && c.op === 'update',
+    )
+    expect(forecastUpdates).toHaveLength(1)
+  })
+
+  it('PR-A (M5): a draft CREATE inserts an inactive row instead of dethroning the active forecast', async () => {
+    supabaseMock = buildSupabaseMock(async () => ({ data: null, error: null }))
+
+    const { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    const res = await POST(
+      makeRequest({ ...VALID_BODY, forecastId: undefined, isDraft: true }),
+    )
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(json.is_draft).toBe(true)
+
+    const rpcNames = supabaseMock.rpc.mock.calls.map(([fn]: any[]) => fn)
+    expect(rpcNames).not.toContain('create_active_forecast_locked')
+    expect(rpcNames).not.toContain('save_assumptions_and_materialize')
+
+    const forecastInserts = supabaseMock.__mutationCalls.filter(
+      (c) => c.table === 'financial_forecasts' && c.op === 'insert',
+    )
+    expect(forecastInserts).toHaveLength(1)
+  })
+
   it('rollback — RPC returning error causes 5xx and assumption write is NEVER bypassed', async () => {
     supabaseMock = buildSupabaseMock(async (fn: string) => {
       if (fn === 'save_assumptions_and_materialize') {
@@ -243,6 +322,106 @@ describe('Save and Materialize (atomic RPC)', () => {
     expect(json.success).not.toBe(true)
   })
 
+  it('retire — rows the converter superseded are deleted by id after the RPC (7 Sep 2026, Urban Road)', async () => {
+    supabaseMock = buildSupabaseMock(async (fn: string, args: any) => {
+      if (fn === 'save_assumptions_and_materialize') {
+        return {
+          data: { forecast_id: args.p_forecast_id, computed_at: '2026-09-07T00:00:00.000Z', lines_count: 1 },
+          error: null,
+        }
+      }
+      return { data: null, error: null }
+    })
+    // Capture the delete chain's filters for forecast_pl_lines.
+    const inCalls: Array<[string, unknown]> = []
+    const eqCalls: Array<[string, unknown]> = []
+    const origFrom = supabaseMock.from as unknown as (t: string) => any
+    supabaseMock.from = vi.fn((table: string) => {
+      const chain = origFrom(table)
+      if (table === 'forecast_pl_lines') {
+        chain.in = vi.fn((col: string, vals: unknown) => { inCalls.push([col, vals]); return chain })
+        chain.eq = vi.fn((col: string, val: unknown) => { eqCalls.push([col, val]); return chain })
+      }
+      return chain
+    }) as any
+
+    const converter = await import('@/app/finances/forecast/services/assumptions-to-pl-lines')
+    vi.mocked(converter.findRetiredExistingLines).mockReturnValueOnce([
+      { id: 'row-wages', account_code: '62170', account_name: 'Employ - Wages & Salaries', actual_months: {}, forecast_months: {} },
+      { id: 'row-it', account_code: '63700', account_name: 'IT Costs Software', actual_months: {}, forecast_months: {} },
+    ] as any)
+
+    const { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    const res = await POST(makeRequest(VALID_BODY))
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(json.success).toBe(true)
+    expect(json.linesRetired).toBe(2)
+
+    // Exactly one delete, scoped to this forecast's derived rows and the named ids.
+    const plLineDeletes = supabaseMock.__mutationCalls.filter(
+      (c) => c.table === 'forecast_pl_lines' && c.op === 'delete',
+    )
+    expect(plLineDeletes).toHaveLength(1)
+    expect(inCalls).toEqual([['id', ['row-wages', 'row-it']]])
+    expect(eqCalls).toEqual(expect.arrayContaining([['forecast_id', 'forecast-1'], ['is_manual', false]]))
+    // The RPC still ran exactly once — the delete is additive, not a replacement.
+    expect(
+      supabaseMock.rpc.mock.calls.filter(([fn]: any[]) => fn === 'save_assumptions_and_materialize'),
+    ).toHaveLength(1)
+  })
+
+  it('name — an update without forecastName keeps the row\'s existing name; with one, sets it (7 Sep 2026: seeded versions were renamed to the default)', async () => {
+    const rpcOk = async (fn: string, args: any) =>
+      fn === 'save_assumptions_and_materialize'
+        ? { data: { forecast_id: args.p_forecast_id, computed_at: 'x', lines_count: 1 }, error: null }
+        : { data: null, error: null }
+
+    const captureUpdates = () => {
+      const payloads: Record<string, unknown>[] = []
+      const origFrom = supabaseMock.from as unknown as (t: string) => any
+      supabaseMock.from = vi.fn((table: string) => {
+        const chain = origFrom(table)
+        if (table === 'financial_forecasts') {
+          const origUpdate = chain.update
+          chain.update = vi.fn((payload: Record<string, unknown>) => { payloads.push(payload); return origUpdate(payload) })
+        }
+        return chain
+      }) as any
+      return payloads
+    }
+
+    supabaseMock = buildSupabaseMock(rpcOk)
+    let payloads = captureUpdates()
+    let { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    expect((await POST(makeRequest({ ...VALID_BODY, forecastName: undefined }))).status).toBe(200)
+    expect(payloads.length).toBeGreaterThan(0)
+    for (const p of payloads) expect(p).not.toHaveProperty('name')
+
+    vi.resetModules()
+    supabaseMock = buildSupabaseMock(rpcOk)
+    payloads = captureUpdates()
+    ;({ POST } = await import('@/app/api/forecast-wizard-v4/generate/route'))
+    expect((await POST(makeRequest({ ...VALID_BODY, forecastName: 'Best case' }))).status).toBe(200)
+    expect(payloads.some((p) => p.name === 'Best case')).toBe(true)
+  })
+
+  it('retire — nothing superseded means no direct write to forecast_pl_lines at all', async () => {
+    supabaseMock = buildSupabaseMock(async (fn: string, args: any) => {
+      if (fn === 'save_assumptions_and_materialize') {
+        return { data: { forecast_id: args.p_forecast_id, computed_at: 'x', lines_count: 1 }, error: null }
+      }
+      return { data: null, error: null }
+    })
+    const { POST } = await import('@/app/api/forecast-wizard-v4/generate/route')
+    const res = await POST(makeRequest(VALID_BODY))
+    const json = await res.json()
+    expect(res.status).toBe(200)
+    expect(json.linesRetired).toBe(0)
+    expect(supabaseMock.__mutationCalls.filter((c) => c.table === 'forecast_pl_lines')).toHaveLength(0)
+  })
+
 })
 
 describe('Recompute endpoint (recovery hatch)', () => {
@@ -285,6 +464,45 @@ describe('Recompute endpoint (recovery hatch)', () => {
     // Assumptions came from the existing financial_forecasts.assumptions row.
     expect(args.p_assumptions).toEqual({ revenue: { mode: 'simple', value: 100 } })
     expect(Array.isArray(args.p_pl_lines)).toBe(true)
+    expect(json.lines_retired).toBe(0)
+  })
+
+  it('recompute — deletes the rows the converter superseded, by id, after the RPC', async () => {
+    supabaseMock = buildSupabaseMock(async (fn: string, args: any) => {
+      if (fn === 'save_assumptions_and_materialize') {
+        return {
+          data: { forecast_id: args.p_forecast_id, computed_at: '2026-09-07T00:00:00.000Z', lines_count: 1 },
+          error: null,
+        }
+      }
+      return { data: null, error: null }
+    })
+    const inCalls: Array<[string, unknown]> = []
+    const origFrom = supabaseMock.from as unknown as (t: string) => any
+    supabaseMock.from = vi.fn((table: string) => {
+      const chain = origFrom(table)
+      if (table === 'forecast_pl_lines') {
+        chain.in = vi.fn((col: string, vals: unknown) => { inCalls.push([col, vals]); return chain })
+      }
+      return chain
+    }) as any
+
+    const converter = await import('@/app/finances/forecast/services/assumptions-to-pl-lines')
+    vi.mocked(converter.findRetiredExistingLines).mockReturnValueOnce([
+      { id: 'row-contr', account_code: '61400', account_name: 'Contractors excl. Artists', actual_months: {}, forecast_months: {} },
+    ] as any)
+
+    const { POST } = await import('@/app/api/forecast/[id]/recompute/route')
+    const req = new Request('http://localhost/api/forecast/forecast-1/recompute', { method: 'POST' })
+    const res = await POST(req as any, { params: Promise.resolve({ id: 'forecast-1' }) })
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(json.lines_retired).toBe(1)
+    expect(inCalls).toEqual([['id', ['row-contr']]])
+    expect(
+      supabaseMock.__mutationCalls.filter((c) => c.table === 'forecast_pl_lines' && c.op === 'delete'),
+    ).toHaveLength(1)
   })
 
   it('recompute auth — returns 401 when unauthenticated', async () => {
@@ -476,6 +694,7 @@ describe('Loss-vector regression — D-44.1-06', () => {
 
     // Per-test mock: convertAssumptionsToPLLines returns ONLY revenue (no opex)
     vi.doMock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
+      findRetiredExistingLines: () => [],
       convertAssumptionsToPLLines: makeConverterMockMerging(simulatedDB, [
         { account_name: 'Sales', account_code: '4000', category: 'Revenue', inputForecastMonths: { '2026-07': 110000 } },
       ]),
@@ -510,6 +729,7 @@ describe('Loss-vector regression — D-44.1-06', () => {
     // Mock the converter (post-44.1-08): input has NO year1Monthly, so inputForecastMonths={}.
     // The merge yields { ...existing.forecast_months, ...{} } = existing.forecast_months.
     vi.doMock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
+      findRetiredExistingLines: () => [],
       convertAssumptionsToPLLines: makeConverterMockMerging(simulatedDB, [
         { account_name: 'Sales', account_code: '4000', category: 'Revenue', inputForecastMonths: {} },
       ]),
@@ -566,6 +786,7 @@ describe('Loss-vector regression — D-44.1-06', () => {
     // Mock converter (post-44.1-08): forecastDuration is now 1, so input only provides Y1 keys.
     // The merge yields { ...existing(all 12 keys), ...{Y1 overrides} } = all 12 keys with Y1 values updated.
     vi.doMock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
+      findRetiredExistingLines: () => [],
       convertAssumptionsToPLLines: makeConverterMockMerging(simulatedDB, [
         {
           account_name: 'Sales',
@@ -620,6 +841,7 @@ describe('Loss-vector regression — D-44.1-06', () => {
     // (We use a fixed mock here, not the merging helper — the point is to simulate RLS giving
     // existingLines=[], which means the converter has nothing to merge with.)
     vi.doMock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
+      findRetiredExistingLines: () => [],
       convertAssumptionsToPLLines: vi.fn(() => [
         { account_name: 'Sales', account_code: '4000', category: 'Revenue', subcategory: null, sort_order: 0, actual_months: {}, forecast_months: { '2026-07': 110000 }, is_from_xero: false },
       ]),
@@ -657,6 +879,7 @@ describe('Loss-vector regression — D-44.1-06', () => {
     ]
 
     vi.doMock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
+      findRetiredExistingLines: () => [],
       convertAssumptionsToPLLines: vi.fn(() => [
         { account_name: 'Sales', account_code: '4000', category: 'Revenue', subcategory: null, sort_order: 0, actual_months: {}, forecast_months: { '2026-07': 110000 }, is_from_xero: false },
       ]),
@@ -703,6 +926,7 @@ describe('Loss-vector regression — D-44.1-06', () => {
 
     // Mock: converter returns ONLY 1 input row (Sales).
     vi.doMock('@/app/finances/forecast/services/assumptions-to-pl-lines', () => ({
+      findRetiredExistingLines: () => [],
       convertAssumptionsToPLLines: vi.fn(() => [
         { account_name: 'Sales', account_code: '4000', category: 'Revenue', subcategory: null, sort_order: 0, actual_months: {}, forecast_months: { '2026-07': 105000 }, is_from_xero: false },
       ]),

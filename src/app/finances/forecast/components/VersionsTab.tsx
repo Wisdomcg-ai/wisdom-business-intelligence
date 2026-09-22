@@ -1,13 +1,20 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Clock, Lock, Check, ChevronRight, Plus, Save, Trash2, Edit2, Copy } from 'lucide-react'
+import { Clock, Lock, Check, ChevronRight, Plus, Save, Trash2, Edit2, Copy, Star } from 'lucide-react'
 import type { FinancialForecast } from '../types'
 
 interface VersionsTabProps {
   versions: FinancialForecast[]
   currentVersion: FinancialForecast
+  /** View a version on screen (does NOT change which one reports read). */
   onSelectVersion: (version: FinancialForecast) => void
+  /**
+   * Make a version the ACTIVE one — the version the dashboard, monthly report
+   * and every consumer read. Distinct from viewing: the two used to share the
+   * label "Switch to this version" and were mistaken for each other.
+   */
+  onSetActive?: (version: FinancialForecast) => Promise<void>
   onSaveAsNew: (versionName: string) => Promise<void>
   onOverwrite: () => Promise<void>
   className?: string
@@ -17,10 +24,12 @@ export default function VersionsTab({
   versions,
   currentVersion,
   onSelectVersion,
+  onSetActive,
   onSaveAsNew,
   onOverwrite,
   className = ''
 }: VersionsTabProps) {
+  const [activating, setActivating] = useState<string | null>(null)
   const [showNewVersionModal, setShowNewVersionModal] = useState(false)
   const [newVersionName, setNewVersionName] = useState('')
   const [isSaving, setIsSaving] = useState(false)
@@ -73,7 +82,7 @@ export default function VersionsTab({
           <div>
             <h2 className="text-xl font-bold text-gray-900">Forecast Versions</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Manage and switch between different versions of your forecast
+              View any version here. The <strong>Active</strong> version is the one your dashboard and reports use — set it with &ldquo;Set as active&rdquo;.
             </p>
           </div>
           <button
@@ -147,15 +156,30 @@ export default function VersionsTab({
                         )}
                       </div>
 
-                      {!isSelected && (
-                        <button
-                          onClick={() => onSelectVersion(version)}
-                          className="ml-4 flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-orange bg-white border border-brand-orange rounded-lg hover:bg-brand-orange-50 transition-colors"
-                        >
-                          <span>Switch to this version</span>
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      )}
+                      <div className="ml-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        {onSetActive && !version.is_active && !version.is_locked && (
+                          <button
+                            onClick={async () => {
+                              setActivating(version.id as string)
+                              try { await onSetActive(version) } finally { setActivating(null) }
+                            }}
+                            disabled={activating !== null}
+                            className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-navy rounded-lg hover:bg-brand-navy-800 transition-colors disabled:opacity-60"
+                          >
+                            <Star className="w-4 h-4" />
+                            <span>{activating === version.id ? 'Activating…' : 'Set as active'}</span>
+                          </button>
+                        )}
+                        {!isSelected && (
+                          <button
+                            onClick={() => onSelectVersion(version)}
+                            className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-brand-orange bg-white border border-brand-orange rounded-lg hover:bg-brand-orange-50 transition-colors"
+                          >
+                            <span>View this version</span>
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

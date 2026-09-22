@@ -16,6 +16,8 @@ import { createRouteHandlerClient } from '@/lib/supabase/server';
 import { encrypt, decrypt } from '@/lib/utils/encryption';
 import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
 import * as Sentry from '@sentry/nextjs'
+import { withReturnParams } from '@/lib/utils/safe-return-path';
+import { grantedScopesColumns, resolveGrantedScopes } from '@/lib/xero/granted-scopes';
 
 export const dynamic = 'force-dynamic';
 
@@ -138,6 +140,9 @@ async function postHandler(request: Request) {
     // Xero's OAuth grant covers all authorised orgs)
     const accessToken = decrypt(pending.encrypted_access_token);
     const refreshToken = decrypt(pending.encrypted_refresh_token);
+    // The pending row holds no token-response `scope`; the access token's JWT
+    // claim is the same fact. Shared across every selected tenant (one grant).
+    const scopeColumns = grantedScopesColumns(resolveGrantedScopes({ accessToken }));
 
     // Phase 34 pivot: upsert every selected tenant as its own xero_connections
     // row. (business_id, tenant_id) is unique, so reconnecting the same tenant
@@ -165,6 +170,7 @@ async function postHandler(request: Request) {
       refresh_token: encrypt(refreshToken),
       expires_at: pending.token_expires_at,
       is_active: true,
+      ...scopeColumns,
     }));
 
     const { data: inserted, error: insertError } = await supabaseAdmin
@@ -192,18 +198,27 @@ async function postHandler(request: Request) {
       );
     }
 
-    // Trigger initial sync per tenant in the background
-    for (const t of selectedTenants) {
-      triggerInitialSync(pending.business_id, accessToken, t.tenantId).catch((err) =>
-        Sentry.captureException(err, { tags: { route: 'Xero/complete-connection' }, extra: { context: "[Xero Complete] Initial sync failed for ${t.tenantName}" } } as any),
-      );
-    }
-
+    // No sync runs here, and nothing here writes last_synced_at — the data clock
+    // every connection-health surface classifies, which only a real per-tenant
+    // sync success moves (sync-orchestrator.ts). This route used to fire an
+    // "initial sync" per org after responding: a BankSummary URL Xero does not
+    // have, a financial_metrics upsert that errored on a second same-day call,
+    // then last_synced_at = now on EVERY connection of the business, whatever
+    // Xero answered. Connecting one org made its siblings — including one Xero
+    // refuses — read current for 48h, and new orgs skipped pending_first_sync.
+    //
+    // Nor does it start a real one: every org here holds the SAME refresh token,
+    // so their syncs must never refresh in parallel; work left running after the
+    // response is not reliable on Vercel; and a sync here would hold the
+    // business's single-flight lock against the one the landing page runs on
+    // ?syncing=true. That page, a Sync press or the next 6-hourly cron (stalest
+    // connections first) does the first real sync.
     return NextResponse.json({
       success: true,
       tenant_count: selectedTenants.length,
       tenant_names: selectedTenants.map((t) => t.tenantName),
-      redirect_to: `${pending.return_to || '/integrations'}?success=connected&syncing=true`,
+      // S2: the picker navigates to this — only ever a same-site path.
+      redirect_to: withReturnParams(pending.return_to, { success: 'connected', syncing: 'true' }),
     });
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'Xero/complete-connection' }, extra: { context: "[Xero Complete] Error" } } as any);
@@ -212,46 +227,3 @@ async function postHandler(request: Request) {
 }
 
 export const POST = withSchema('Xero/complete-connection', CompleteConnectionPostSchema, postHandler);
-
-/**
- * Trigger an initial sync after connection.
- * Simplified version — syncs bank summary and current month P&L.
- */
-async function triggerInitialSync(businessId: string, accessToken: string, tenantId: string) {
-  try {
-    const bankResponse = await fetch('https://api.xero.com/api.xro/2.0/BankSummary', {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'xero-tenant-id': tenantId,
-        'Accept': 'application/json'
-      }
-    });
-
-    const bankData = bankResponse.ok ? await bankResponse.json() : null;
-    let totalCash = 0;
-    if (bankData?.BankSummary) {
-      bankData.BankSummary.forEach((account: { ClosingBalance?: number }) => {
-        totalCash += account.ClosingBalance || 0;
-      });
-    }
-
-    await supabaseAdmin
-      .from('financial_metrics')
-      .upsert({
-        business_id: businessId,
-        metric_date: new Date().toISOString().split('T')[0],
-        total_cash: totalCash,
-      });
-
-    await supabaseAdmin
-      .from('xero_connections')
-      .update({ last_synced_at: new Date().toISOString() })
-      .eq('business_id', businessId);
-
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[Xero Complete] Initial sync done, cash:', totalCash);
-    }
-  } catch (error) {
-    Sentry.captureException(error, { tags: { route: 'Xero/complete-connection' }, extra: { context: "[Xero Complete] Sync error" } } as any);
-  }
-}

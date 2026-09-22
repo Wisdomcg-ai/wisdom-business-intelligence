@@ -30,6 +30,7 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
+import { MONITORED_CRONS } from '@/lib/cron/watchdog'
 
 interface VercelConfig {
   crons?: Array<{ path: string; schedule: string }>
@@ -111,5 +112,44 @@ describe('vercel.json cron registration parity — phase-69', () => {
     // vercel.json edit.
     const inVercelJson = readVercelCronPaths()
     expect(inVercelJson).toContain('/api/cron/refresh-xero-tokens')
+  })
+
+  // The two tests above lock disk ↔ vercel.json. The third leg — vercel.json ↔
+  // the watchdog registry — was checked by nothing but the "keep in sync by
+  // hand" comment in watchdog.ts, and a hand-kept invariant is one people
+  // forget. It was in fact forgotten: sync-bs-mirror shipped registered in
+  // vercel.json and absent from MONITORED_CRONS, so the cron added to stop the
+  // BS mirror going stale unnoticed would itself have gone dead unnoticed.
+  // A registered-but-unwatched cron is the failure mode the watchdog exists to
+  // end, so CI enforces it now instead of memory.
+  it('every vercel.json cron is registered with the watchdog', () => {
+    // Self-monitoring is moot: a dead watchdog cannot report itself. Sentry
+    // Cron Monitors (external check-ins) are the backstop for this one.
+    const EXEMPT = new Set(['/api/cron/heartbeat-watchdog'])
+
+    const unwatched = readVercelCronPaths()
+      .filter((p) => !EXEMPT.has(p))
+      .filter((p) => !MONITORED_CRONS.some((c) => c.path === p))
+
+    expect(unwatched, [
+      'Cron(s) are scheduled in vercel.json but absent from MONITORED_CRONS.',
+      'They will run unwatched: if they stop firing, nothing alerts — the exact',
+      'silence that hid the two-month CRON_SECRET outage.',
+      'Add an entry per path to src/lib/cron/watchdog.ts:',
+      ...unwatched.map((p) => `  { path: '${p}', label: '<name>', maxStaleHours: <interval × ~2>, activeFrom: '<ISO deploy date>' }`),
+    ].join('\n')).toEqual([])
+  })
+
+  it('every watchdog entry points at a cron that is actually scheduled', () => {
+    // Backward drift: watching a path Vercel never invokes produces a permanent
+    // "missing heartbeat" alert that trains everyone to ignore the watchdog.
+    const inVercelJson = readVercelCronPaths()
+    const orphaned = MONITORED_CRONS.map((c) => c.path).filter((p) => !inVercelJson.includes(p))
+
+    expect(orphaned, [
+      'MONITORED_CRONS watches path(s) with no vercel.json schedule.',
+      'These alert forever as "missing" and desensitise the whole watchdog:',
+      ...orphaned.map((p) => `  ${p}`),
+    ].join('\n')).toEqual([])
   })
 })

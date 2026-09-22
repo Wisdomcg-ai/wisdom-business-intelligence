@@ -20,6 +20,21 @@
  *      fiscal_year exactly matches the requested FY. Mismatched-FY forecasts
  *      contribute zero forecast bars (correct: no plan exists for that FY).
  *
+ * `lastSync` is the charts' "Last synced" line: the Xero data clock from
+ * `businessDataClock` (src/lib/xero/connection-status.ts) over every org behind
+ * the figures — the business's counted orgs and every tenant whose mirror rows
+ * Step 3 drew, including an org disconnected since — each on its own clock,
+ * never later than its drawn rows were last written, and the STALEST one. It
+ * used to be `financial_metrics.updated_at`, a column that table has never had:
+ * the query errored, the error was ignored, and the line never rendered.
+ * financial_metrics was never the charts' source either — they read the
+ * xero_pl_lines mirror. A lookup that fails is `unknown`, which the charts show
+ * as "couldn't check", never as a date.
+ *
+ * A failed forecast or Xero read is a 500, which the charts show as "couldn't
+ * load" — never a 200 that has quietly dropped the plan or passed the forecast's
+ * stored actuals off as Xero's.
+ *
  * Query params:
  *   businessId     (required) UUID of the business (dual-ID resolved)
  *   fiscalYear     (optional) defaults to current fiscal year
@@ -27,9 +42,18 @@
  */
 
 import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import { generateFiscalMonthKeys, getCurrentFiscalYear, getFiscalMonthLabels } from '@/lib/utils/fiscal-year-utils'
-import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { resolveBusinessProfileIds, type ResolvedBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { getLastSyncByTenant } from '@/lib/health-checks'
+import {
+  businessDataClock,
+  type XeroBusinessDataClock,
+  type XeroConnectionStatusRow,
+  type XeroSyncClock,
+  type XeroTenantShown,
+} from '@/lib/xero/connection-status'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
@@ -47,7 +71,10 @@ const GetQuerySchema = z
   .passthrough()
 
 // Categories that map to Revenue in the P&L (forecast_pl_lines.category strings)
-const REVENUE_CATEGORIES = ['Revenue', 'revenue', 'Trading Revenue', 'Other Revenue']
+// 'Other Income' is emitted by the wizard materializer (assumptions-to-pl-lines
+// convertParityBuckets) — it is revenue-like and must NEVER fall through to the
+// OpEx bucket below, which would flip its sign and make net profit wrong by 2×.
+const REVENUE_CATEGORIES = ['Revenue', 'revenue', 'Trading Revenue', 'Other Revenue', 'Other Income', 'other income']
 // Categories that map to COGS (forecast_pl_lines.category strings)
 const COGS_CATEGORIES = ['Cost of Sales', 'COGS', 'cogs', 'Direct Costs', 'Cost of Goods Sold']
 
@@ -84,6 +111,76 @@ function emptyAgg(): MonthAggregate {
     cogsForecast: 0,
     opexActual: 0,
     opexForecast: 0,
+  }
+}
+
+/** Same window as the coach pill and the CFO board, so a cold tenant reads old rather than never. */
+const SYNC_CLOCK_WINDOW_DAYS = 60
+
+const CONNECTION_COLUMNS =
+  'id, business_id, tenant_id, tenant_name, include_in_consolidation, is_active, last_synced_at, updated_at, expires_at, created_at'
+
+/**
+ * The sync clock, read as the service role as the pill and the board read it:
+ * sync_jobs' RLS policy matches its business_profiles.id column against
+ * businesses.id sets, so a user's client sees next to none of it. Only tenants
+ * the caller can already see — this business's connection rows and mirror rows —
+ * are looked up in the answer.
+ */
+function readSyncClock(): Promise<XeroSyncClock> {
+  return getLastSyncByTenant(createServiceRoleClient(), SYNC_CLOCK_WINDOW_DAYS)
+}
+
+/** The connection rows and sync clock behind "Last synced", or the fact that they could not be read. */
+type ClockInputs = { ok: true; rows: XeroConnectionStatusRow[]; syncClock: XeroSyncClock | null } | { ok: false }
+
+/** Read alongside the P&L steps. Never rejects: a failure is `{ ok: false }`, which reads "couldn't check". */
+async function readClockInputs(
+  supabase: Awaited<ReturnType<typeof createRouteHandlerClient>>,
+  ids: ResolvedBusinessProfileIds,
+): Promise<ClockInputs> {
+  try {
+    // Every row under both id forms, dead rows included, through the caller's own
+    // client: RLS admits the same people who may see this business's figures.
+    const { data, error } = await supabase
+      .from('xero_connections')
+      .select(CONNECTION_COLUMNS)
+      .in('business_id', ids.all)
+    if (error) {
+      Sentry.captureException(error, { tags: { route: 'forecast/dashboard-actuals' }, extra: { context: '[dashboard-actuals] xero_connections read failed — Last synced is unknown' } } as any)
+      return { ok: false }
+    }
+    const rows = (data ?? []) as XeroConnectionStatusRow[]
+    // With no rows the clock is needed only if the charts draw Xero figures
+    // anyway, which Step 3 finds out; lastSyncFor reads it then.
+    return { ok: true, rows, syncClock: rows.length > 0 ? await readSyncClock() : null }
+  } catch (err) {
+    Sentry.captureException(err, { tags: { route: 'forecast/dashboard-actuals' }, extra: { context: '[dashboard-actuals] Last synced lookup threw' } } as any)
+    return { ok: false }
+  }
+}
+
+/** The charts' "Last synced" — see the header. */
+async function lastSyncFor(
+  inputs: ClockInputs,
+  ids: ResolvedBusinessProfileIds,
+  tenantsShown: XeroTenantShown[],
+): Promise<XeroBusinessDataClock> {
+  if (!inputs.ok) return { status: 'unknown' }
+  if (inputs.rows.length === 0) {
+    // xero_connections is keyed by businesses.id and the dashboard sends the
+    // business_profiles.id. A resolver that could not map the id echoes it back
+    // alone, so finding nothing under it says nothing about the business.
+    if (ids.all.length < 2) return { status: 'unknown' }
+    if (tenantsShown.length === 0) return { status: 'none' }
+  }
+  try {
+    // Rows but no connection: the org was disconnected and its mirror rows kept.
+    const syncClock = inputs.syncClock ?? (await readSyncClock())
+    return businessDataClock(inputs.rows, syncClock, tenantsShown)
+  } catch (err) {
+    Sentry.captureException(err, { tags: { route: 'forecast/dashboard-actuals' }, extra: { context: '[dashboard-actuals] Last synced lookup threw' } } as any)
+    return { status: 'unknown' }
   }
 }
 
@@ -133,6 +230,9 @@ async function getHandler(request: Request) {
     )
     if (_sectionBlocked) return _sectionBlocked
 
+    // Needs nothing from the P&L steps below, so it runs alongside them.
+    const clockInputsRead = readClockInputs(supabase, ids)
+
     // Generate fiscal month keys in correct fiscal year order
     const monthKeys = generateFiscalMonthKeys(fiscalYear, yearStartMonth)
     const monthKeySet = new Set(monthKeys)
@@ -146,7 +246,7 @@ async function getHandler(request: Request) {
     //
     // This avoids reading FY26 actuals out of an FY27 forecast's sparse historical
     // slice (which produced empty charts for Matt on FY26 today).
-    const { data: matchingForecast } = await supabase
+    const { data: matchingForecast, error: matchingError } = await supabase
       .from('financial_forecasts')
       .select('id, business_id, fiscal_year')
       .in('business_id', ids.all)
@@ -156,11 +256,18 @@ async function getHandler(request: Request) {
       .limit(1)
       .maybeSingle()
 
+    // A failed read is not "no forecast": the charts would drop the plan, or
+    // borrow another year's actuals, and still answer 200.
+    if (matchingError) {
+      Sentry.captureException(matchingError, { tags: { route: 'forecast/dashboard-actuals' }, extra: { context: '[dashboard-actuals] Error fetching the FY forecast' } } as any)
+      return NextResponse.json({ error: 'Failed to fetch forecast' }, { status: 500 })
+    }
+
     // Fallback: latest active forecast (used only as an actuals supplement when
     // no FY-matching forecast exists — its forecast_months are NOT applied to
     // the requested FY since they belong to a different plan year).
-    const { data: latestForecast } = matchingForecast
-      ? { data: matchingForecast }
+    const { data: latestForecast, error: latestError } = matchingForecast
+      ? { data: matchingForecast, error: null }
       : await supabase
           .from('financial_forecasts')
           .select('id, business_id, fiscal_year')
@@ -169,6 +276,11 @@ async function getHandler(request: Request) {
           .order('fiscal_year', { ascending: false })
           .limit(1)
           .maybeSingle()
+
+    if (latestError) {
+      Sentry.captureException(latestError, { tags: { route: 'forecast/dashboard-actuals' }, extra: { context: '[dashboard-actuals] Error fetching the latest forecast' } } as any)
+      return NextResponse.json({ error: 'Failed to fetch forecast' }, { status: 500 })
+    }
 
     const forecastForActuals = matchingForecast ?? latestForecast
     const forecastSource: 'matching-fy' | 'latest-fallback' | 'none' =
@@ -224,12 +336,23 @@ async function getHandler(request: Request) {
     // historical FYs that weren't the forecast's primary year).
     const { data: xeroLines, error: xeroError } = await supabase
       .from('xero_pl_lines_wide_compat')
-      .select('account_name, account_type, monthly_values')
+      .select('tenant_id, account_name, account_type, monthly_values, updated_at')
       .in('business_id', ids.all)
 
     if (xeroError) {
-      Sentry.captureMessage(`[dashboard-actuals] xero_pl_lines_wide_compat read failed (non-fatal): ${xeroError.message}`, 'warning' as any)
-    } else if (xeroLines && xeroLines.length > 0) {
+      // This used to be non-fatal: the charts fell back to the forecast's stored
+      // actuals and showed them as if they were Xero's — under a "Last synced"
+      // date that would describe figures it did not date.
+      Sentry.captureException(xeroError, { tags: { route: 'forecast/dashboard-actuals' }, extra: { context: '[dashboard-actuals] xero_pl_lines_wide_compat read failed' } } as any)
+      return NextResponse.json({ error: 'Failed to fetch Xero actuals' }, { status: 500 })
+    }
+
+    // Every drawn line's org and when that line was last written, for "Last
+    // synced". Disconnecting an org keeps its mirror rows, so this can include
+    // orgs with no connection row.
+    const tenantsShown: XeroTenantShown[] = []
+
+    if (xeroLines && xeroLines.length > 0) {
       // Reset actual buckets — Xero is source of truth for actuals when present.
       for (const k of monthKeys) {
         const agg = aggsByMonth.get(k)!
@@ -244,6 +367,7 @@ async function getHandler(request: Request) {
         const isRev = XERO_REVENUE_TYPES.has(accountType)
         const isCogs = !isRev && XERO_COGS_TYPES.has(accountType)
 
+        let drawn = false
         for (const monthKey of monthKeys) {
           const value = monthlyValues[monthKey]
           if (!value) continue
@@ -252,20 +376,13 @@ async function getHandler(request: Request) {
           if (isRev) agg.revenueActual += value
           else if (isCogs) agg.cogsActual += value
           else agg.opexActual += value
+          drawn = true
         }
+        if (drawn) tenantsShown.push({ tenantId: line.tenant_id ?? null, lastWrittenAt: line.updated_at ?? null })
       }
     }
 
-    // Get last synced timestamp from financial_metrics
-    const { data: metricsRow } = await supabase
-      .from('financial_metrics')
-      .select('updated_at')
-      .in('business_id', ids.all)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    const lastSyncedAt: string | null = metricsRow?.updated_at ?? null
+    const lastSync = await lastSyncFor(await clockInputsRead, ids, tenantsShown)
 
     // ── Step 4: Project aggregates into chart row format ──
     const months = monthKeys.map((monthKey, idx) => {
@@ -309,7 +426,7 @@ async function getHandler(request: Request) {
     return NextResponse.json({
       data: {
         months,
-        lastSyncedAt,
+        lastSync,
       },
       hasData: hasAnyData,
     })

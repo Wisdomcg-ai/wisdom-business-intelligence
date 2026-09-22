@@ -333,6 +333,7 @@ function ClientsListContent() {
           lastSessionDate: lastSessionByBusiness.get(b.id) || b.last_session_date || undefined,
           nextSessionDate: nextSessionByBusiness.get(b.id) || undefined,
           programType: b.program_type || undefined,
+          isCfoClient: b.is_cfo_client === true,
           unreadMessages: unreadByBusiness.get(b.id) || 0,
           pendingActions: loops + issues,
           lastLogin: ownerId ? lastLoginByUser.get(ownerId) || undefined : undefined,

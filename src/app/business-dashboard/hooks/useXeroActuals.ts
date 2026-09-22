@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import type { XeroBusinessDataClock, XeroOrgDataClock } from '@/lib/xero/connection-status'
 
 export interface MonthlyChartPoint {
   month: string
@@ -15,9 +16,52 @@ export interface MonthlyChartPoint {
 
 interface UseXeroActualsResult {
   chartData: MonthlyChartPoint[] | null
-  lastSyncedAt: string | null
+  /** The charts' "Last synced" clock (see businessDataClock); null while there are no charts to label. */
+  lastSync: XeroBusinessDataClock | null
   isLoading: boolean
   hasData: boolean
+  /** The request failed or did not come back as an answer. Not the same as "no data yet". */
+  loadFailed: boolean
+}
+
+const isInstant = (value: unknown): value is string =>
+  typeof value === 'string' && Number.isFinite(Date.parse(value))
+
+function parseOrgClocks(value: unknown): XeroOrgDataClock[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null
+  const orgs: XeroOrgDataClock[] = []
+  for (const org of value) {
+    if (!org || typeof org !== 'object') return null
+    const { tenantName, lastSyncAt } = org as Record<string, unknown>
+    if (tenantName !== null && typeof tenantName !== 'string') return null
+    if (lastSyncAt !== null && !isInstant(lastSyncAt)) return null
+    orgs.push({ tenantName, lastSyncAt })
+  }
+  return orgs
+}
+
+/**
+ * The route's `lastSync`, or `unknown` when it is not one. A missing or garbled
+ * clock is a check that did not come back: never "no Xero", and never a date
+ * fresher than one of the orgs it lists.
+ */
+function parseLastSync(value: unknown): XeroBusinessDataClock {
+  const unknown: XeroBusinessDataClock = { status: 'unknown' }
+  if (!value || typeof value !== 'object') return unknown
+  const clock = value as Record<string, unknown>
+  if (clock.status === 'none') return { status: 'none' }
+
+  const orgs = parseOrgClocks(clock.orgs)
+  if (!orgs) return unknown
+  if (clock.status === 'never_synced') {
+    return orgs.some((o) => o.lastSyncAt === null) ? { status: 'never_synced', orgs } : unknown
+  }
+  if (clock.status === 'synced' && isInstant(clock.lastSyncAt)) {
+    const lastSyncMs = Date.parse(clock.lastSyncAt)
+    const noOrgOlder = orgs.every((o) => o.lastSyncAt !== null && Date.parse(o.lastSyncAt) >= lastSyncMs)
+    return noOrgOlder ? { status: 'synced', lastSyncAt: clock.lastSyncAt, orgs } : unknown
+  }
+  return unknown
 }
 
 /**
@@ -28,55 +72,64 @@ interface UseXeroActualsResult {
  */
 export function useXeroActuals(businessId: string | undefined, refreshTrigger?: number): UseXeroActualsResult {
   const [chartData, setChartData] = useState<MonthlyChartPoint[] | null>(null)
-  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [lastSync, setLastSync] = useState<XeroBusinessDataClock | null>(null)
+  // Seeded as loading when there is a business to load, so the first paint is the
+  // skeleton rather than the "No Xero data yet" empty state.
+  const [isLoading, setIsLoading] = useState(Boolean(businessId))
   const [hasData, setHasData] = useState(false)
+  const [loadFailed, setLoadFailed] = useState(false)
 
   useEffect(() => {
     if (!businessId) {
       setChartData(null)
-      setLastSyncedAt(null)
+      setLastSync(null)
       setHasData(false)
+      setLoadFailed(false)
       setIsLoading(false)
       return
     }
 
     let cancelled = false
 
+    const showFailure = () => {
+      setChartData(null)
+      setLastSync(null)
+      setHasData(false)
+      setLoadFailed(true)
+    }
+
     async function fetchChartData() {
       setIsLoading(true)
+      setLoadFailed(false)
       try {
         const url = `/api/forecast/dashboard-actuals?businessId=${encodeURIComponent(businessId!)}`
         const response = await fetch(url)
 
         if (!response.ok) {
           console.error('[useXeroActuals] API error:', response.status, response.statusText)
-          if (!cancelled) {
-            setChartData(null)
-            setHasData(false)
-          }
+          if (!cancelled) showFailure()
           return
         }
 
         const json = await response.json()
 
         if (!cancelled) {
-          if (json.hasData && json.data?.months) {
+          if (json?.hasData === true && Array.isArray(json.data?.months)) {
             setChartData(json.data.months)
-            setLastSyncedAt(json.data.lastSyncedAt || null)
+            setLastSync(parseLastSync(json.data.lastSync))
             setHasData(true)
-          } else {
+          } else if (json?.hasData === false) {
             setChartData(null)
-            setLastSyncedAt(null)
+            setLastSync(null)
             setHasData(false)
+          } else {
+            console.error('[useXeroActuals] Unreadable response body')
+            showFailure()
           }
         }
       } catch (err) {
         console.error('[useXeroActuals] Fetch error:', err)
-        if (!cancelled) {
-          setChartData(null)
-          setHasData(false)
-        }
+        if (!cancelled) showFailure()
       } finally {
         if (!cancelled) {
           setIsLoading(false)
@@ -91,5 +144,5 @@ export function useXeroActuals(businessId: string | undefined, refreshTrigger?: 
     }
   }, [businessId, refreshTrigger])
 
-  return { chartData, lastSyncedAt, isLoading, hasData }
+  return { chartData, lastSync, isLoading, hasData, loadFailed }
 }

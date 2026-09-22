@@ -1,302 +1,270 @@
 /**
- * CHARACTERIZATION TESTS — Stream 2: app-layer access matrix for
- * verifyBusinessAccess (src/lib/utils/verify-business-access.ts).
+ * CHARACTERIZATION TESTS — app-layer access matrix for verifyBusinessAccess
+ * (src/lib/utils/verify-business-access.ts).
  *
- * These are golden-master / change-detector tests that PIN CURRENT BEHAVIOR
- * ahead of a risky refactor of the app-layer access-check function. They are
- * NOT a spec — where the current code has a latent bug, the test locks the
- * buggy behavior on purpose (and flags it in a comment), so the refactor can be
- * proven behavior-preserving and the bug fixed deliberately.
+ * The helper decides whether a user BELONGS to a business: owner, assigned coach,
+ * an ACTIVE business_users member (any role), or a super_admin. It does not decide
+ * what they may do there — routes that are owner / coach / super_admin only keep
+ * their own role check.
  *
- * Source under test drives these `.from(...)` calls, in order:
- *   1. businesses        .select('owner_id, assigned_coach_id').eq('id', businessId).maybeSingle()
- *        → owner_id === userId || assigned_coach_id === userId  ⇒ true
- *   2. (only if business row was NOT found / null)
- *      business_profiles  .select('id, business_id').eq('id', businessId).maybeSingle()
- *      then businesses    .select(...).eq('id', profile.business_id).maybeSingle()
- *        → owner_id === userId || assigned_coach_id === userId  ⇒ true   (dual-ID)
- *   3. business_users    .select('id').eq('business_id', businessId).eq('user_id', userId).eq('status', 'active').maybeSingle()
- *        → an ACTIVE membership row ⇒ true   (C-34 fix: status filter — see note below)
- *   4. system_roles      .select('role').eq('user_id', userId).maybeSingle()
- *        → role === 'super_admin' ⇒ true, else false
+ * It accepts an id in EITHER id-space: a businesses.id, or a business_profiles.id
+ * that resolves to its parent businesses.id. Every business-scoped fact — owner,
+ * coach, membership — lives on the parent business: business_users.business_id
+ * references businesses(id), so no membership row can be keyed on a profile id.
  *
- * The module-level `supabaseAdmin` client is created via
- * `createClient(...)` from `@supabase/supabase-js` and is NOT injectable, so we
- * vi.mock('@supabase/supabase-js') and drive each query's result. The fake-
- * builder pattern (per-table chained `.select().eq().maybeSingle()`) is copied
- * from src/__tests__/xero/employees-route.test.ts.
+ * The Supabase double honours every filter value (see
+ * src/__tests__/helpers/filter-aware-supabase.ts). The previous fake answered the
+ * business_users read with the same row whatever business_id it was asked for,
+ * so "[team member × business_profiles.id] ⇒ true" passed while production
+ * refused every active team member for a profile id: the helper filtered
+ * business_users on the raw input. Prod on 15 Sep 2026 had 9 active members who
+ * are neither owner nor assigned coach — 3 admin, 3 member, 3 owner-role
+ * co-owners — every one keyed on a businesses.id, as the FK requires.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import {
+  createFilterAwareSupabase,
+  type FilterAwareSupabase,
+  type Row,
+} from '@/__tests__/helpers/filter-aware-supabase'
 
-// ─── Configurable Supabase fake ──────────────────────────────────────────────
-//
-// Tests set `tableResponses` to control what each table returns. For the
-// `businesses` table the response is a function of the `id` filter value (so we
-// can return different rows for a direct businesses.id lookup vs. the dual-ID
-// businesses lookup keyed by profile.business_id). All other tables return a
-// fixed `{ data }`.
-//
-// Shape of `tableResponses`:
-//   businesses:        (idArg: string) => any        // row or null
-//   business_profiles: any                           // row or null
-//   business_users:    any                           // row or null
-//   system_roles:      any                           // row or null
+let db: FilterAwareSupabase
 
-type BusinessesResolver = (idArg: string) => any;
+// The helper builds its service-role client at module load; route every query
+// to the current test's double.
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: () => ({ from: (table: string) => db.from(table) }),
+}))
 
-interface TableResponses {
-  businesses?: BusinessesResolver;
-  business_profiles?: any;
-  business_users?: any;
-  system_roles?: any;
-}
-
-let tableResponses: TableResponses = {};
-
-vi.mock('@supabase/supabase-js', () => {
-  const builder = (table: string): any => {
-    const ctx: any = { _table: table, _eq: {} as Record<string, unknown> };
-    ctx.select = () => ctx;
-    ctx.eq = (col: string, val: unknown) => {
-      ctx._eq[col] = val;
-      return ctx;
-    };
-    ctx.maybeSingle = async () => {
-      if (table === 'businesses') {
-        const resolver = tableResponses.businesses;
-        const idArg = ctx._eq['id'] as string;
-        return { data: resolver ? resolver(idArg) : null, error: null };
-      }
-      if (table === 'business_profiles') {
-        return { data: tableResponses.business_profiles ?? null, error: null };
-      }
-      if (table === 'business_users') {
-        const row = tableResponses.business_users ?? null;
-        // Honor a status filter if the source applied one (C-34 fix): the real
-        // PostgREST query `.eq('status', 'active')` would not return a row whose
-        // status differs, so the fake must drop a non-matching row here.
-        const statusFilter = ctx._eq['status'];
-        if (row && statusFilter !== undefined && row.status !== statusFilter) {
-          return { data: null, error: null };
-        }
-        return { data: row, error: null };
-      }
-      if (table === 'system_roles') {
-        return { data: tableResponses.system_roles ?? null, error: null };
-      }
-      return { data: null, error: null };
-    };
-    return ctx;
-  };
-  return {
-    createClient: () => ({ from: builder }),
-  };
-});
-
-// keys helper is imported by the source for the (mocked-away) client key.
 vi.mock('@/lib/supabase/keys', () => ({
   getSupabaseSecretKey: () => 'test-secret-key',
-}));
+}))
 
-// Import AFTER mocks are registered.
-import { verifyBusinessAccess } from '@/lib/utils/verify-business-access';
+const captureException = vi.fn()
+vi.mock('@sentry/nextjs', () => ({
+  captureException: (...args: unknown[]) => captureException(...args),
+}))
+
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-const USER = 'user-abc';
-const OTHER_USER = 'someone-else';
+const USER = 'user-abc'
+const OTHER_USER = 'someone-else'
 
-// id-space input A: a businesses.id value (direct match on businesses table)
-const BUSINESS_ID = 'biz-direct-1';
-// id-space input B: a business_profiles.id value that resolves (dual-ID) to a
-// different businesses.id via business_profiles.business_id.
-const PROFILE_ID = 'profile-1';
-const RESOLVED_BUSINESS_ID = 'biz-resolved-1';
+// Business A, in both id-spaces.
+const BUSINESS_ID = 'biz-a'
+const PROFILE_ID = 'profile-a'
+// Business B — another tenant.
+const OTHER_BUSINESS_ID = 'biz-b'
+const OTHER_PROFILE_ID = 'profile-b'
+
+const ID_SPACES = [
+  ['businesses.id', BUSINESS_ID],
+  ['business_profiles.id', PROFILE_ID],
+] as const
+
+function seed(tables: { businesses?: Row[]; business_users?: Row[]; system_roles?: Row[]; business_profiles?: Row[] } = {}) {
+  db = createFilterAwareSupabase({
+    businesses: tables.businesses ?? [
+      { id: BUSINESS_ID, owner_id: 'owner-a', assigned_coach_id: 'coach-a' },
+      { id: OTHER_BUSINESS_ID, owner_id: 'owner-b', assigned_coach_id: 'coach-b' },
+    ],
+    business_profiles: tables.business_profiles ?? [
+      { id: PROFILE_ID, business_id: BUSINESS_ID },
+      { id: OTHER_PROFILE_ID, business_id: OTHER_BUSINESS_ID },
+    ],
+    business_users: tables.business_users ?? [],
+    system_roles: tables.system_roles ?? [],
+  })
+}
+
+function member(over: Row = {}): Row {
+  return { id: 'membership-1', business_id: BUSINESS_ID, user_id: USER, role: 'member', status: 'active', ...over }
+}
 
 beforeEach(() => {
-  // Default: nothing matches anywhere → denied. Each test opts in.
-  tableResponses = {
-    businesses: () => null,
-    business_profiles: null,
-    business_users: null,
-    system_roles: null,
-  };
-});
+  captureException.mockClear()
+  seed()
+})
 
-// ─── 4×2 MATRIX ──────────────────────────────────────────────────────────────
-// Rows: 4 access roles. Cols: 2 id-space inputs (businesses.id, business_profiles.id).
+// ─── Access matrix: role × id-space ──────────────────────────────────────────
 
-describe('verifyBusinessAccess — 4×2 access matrix (characterization)', () => {
-  // ── ROLE 1: client/owner via businesses.owner_id ──────────────────────────
+describe('verifyBusinessAccess — who belongs, in either id-space', () => {
+  describe.each(ID_SPACES)('given a %s', (_space, id) => {
+    it('grants the owner', async () => {
+      seed({
+        businesses: [{ id: BUSINESS_ID, owner_id: USER, assigned_coach_id: 'coach-a' }],
+      })
+      await expect(verifyBusinessAccess(USER, id)).resolves.toBe(true)
+    })
 
-  it('[owner × businesses.id] owner direct match on businesses.id ⇒ true', async () => {
-    tableResponses.businesses = (id) =>
-      id === BUSINESS_ID
-        ? { owner_id: USER, assigned_coach_id: 'coach-x' }
-        : null;
+    it('grants the assigned coach', async () => {
+      seed({
+        businesses: [{ id: BUSINESS_ID, owner_id: 'owner-a', assigned_coach_id: USER }],
+      })
+      await expect(verifyBusinessAccess(USER, id)).resolves.toBe(true)
+    })
 
-    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(true);
-  });
+    it.each(['admin', 'member', 'owner', 'viewer'])(
+      'grants an active team member with the %s role',
+      async (role) => {
+        seed({ business_users: [member({ role })] })
+        await expect(verifyBusinessAccess(USER, id)).resolves.toBe(true)
+      },
+    )
 
-  it('[owner × business_profiles.id] owner via dual-ID resolution ⇒ true', async () => {
-    // businesses.id lookup on the PROFILE_ID misses (null) → triggers the
-    // business_profiles branch → resolves to RESOLVED_BUSINESS_ID where the
-    // user is the owner.
-    tableResponses.business_profiles = {
-      id: PROFILE_ID,
-      business_id: RESOLVED_BUSINESS_ID,
-    };
-    tableResponses.businesses = (id) =>
-      id === RESOLVED_BUSINESS_ID
-        ? { owner_id: USER, assigned_coach_id: 'coach-x' }
-        : null; // direct lookup on PROFILE_ID returns null
+    it('grants a super_admin', async () => {
+      seed({ system_roles: [{ user_id: USER, role: 'super_admin' }] })
+      await expect(verifyBusinessAccess(USER, id)).resolves.toBe(true)
+    })
 
-    await expect(verifyBusinessAccess(USER, PROFILE_ID)).resolves.toBe(true);
-  });
+    // C-34: only an ACTIVE membership grants.
+    it.each(['pending', 'inactive'])('refuses a %s team member', async (status) => {
+      seed({ business_users: [member({ status })] })
+      await expect(verifyBusinessAccess(USER, id)).resolves.toBe(false)
+    })
 
-  // ── ROLE 2: coach via businesses.assigned_coach_id ────────────────────────
+    it('refuses an active member of ANOTHER business', async () => {
+      seed({ business_users: [member({ business_id: OTHER_BUSINESS_ID })] })
+      await expect(verifyBusinessAccess(USER, id)).resolves.toBe(false)
+    })
 
-  it('[coach × businesses.id] coach direct match on businesses.id ⇒ true', async () => {
-    tableResponses.businesses = (id) =>
-      id === BUSINESS_ID
-        ? { owner_id: 'owner-y', assigned_coach_id: USER }
-        : null;
+    it("refuses a user when the business's membership belongs to someone else", async () => {
+      seed({ business_users: [member({ user_id: OTHER_USER })] })
+      await expect(verifyBusinessAccess(USER, id)).resolves.toBe(false)
+    })
 
-    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(true);
-  });
+    it('refuses a user who is owner and coach of another business only', async () => {
+      seed({
+        businesses: [
+          { id: BUSINESS_ID, owner_id: 'owner-a', assigned_coach_id: 'coach-a' },
+          { id: OTHER_BUSINESS_ID, owner_id: USER, assigned_coach_id: USER },
+        ],
+      })
+      await expect(verifyBusinessAccess(USER, id)).resolves.toBe(false)
+    })
 
-  it('[coach × business_profiles.id] coach via dual-ID resolution ⇒ true', async () => {
-    tableResponses.business_profiles = {
-      id: PROFILE_ID,
-      business_id: RESOLVED_BUSINESS_ID,
-    };
-    tableResponses.businesses = (id) =>
-      id === RESOLVED_BUSINESS_ID
-        ? { owner_id: 'owner-y', assigned_coach_id: USER }
-        : null;
+    it.each(['coach', 'client'])('refuses a non-super_admin system role (%s)', async (role) => {
+      seed({ system_roles: [{ user_id: USER, role }] })
+      await expect(verifyBusinessAccess(USER, id)).resolves.toBe(false)
+    })
 
-    await expect(verifyBusinessAccess(USER, PROFILE_ID)).resolves.toBe(true);
-  });
+    it("refuses when the super_admin row is someone else's", async () => {
+      seed({ system_roles: [{ user_id: OTHER_USER, role: 'super_admin' }] })
+      await expect(verifyBusinessAccess(USER, id)).resolves.toBe(false)
+    })
+  })
+})
 
-  // ── ROLE 3: team member via business_users membership ─────────────────────
+// ─── The membership read names the parent business ───────────────────────────
 
-  it('[team member × businesses.id] business_users membership ⇒ true', async () => {
-    // No owner/coach match; businesses row exists but user is neither owner nor
-    // coach. Membership row present.
-    tableResponses.businesses = (id) =>
-      id === BUSINESS_ID
-        ? { owner_id: 'owner-y', assigned_coach_id: 'coach-x' }
-        : null;
-    tableResponses.business_users = { id: 'membership-1', status: 'active' };
+describe('verifyBusinessAccess — membership is checked on the businesses.id', () => {
+  it('a business_profiles.id is resolved to its parent before business_users is read', async () => {
+    seed({ business_users: [member()] })
 
-    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(true);
-  });
+    await expect(verifyBusinessAccess(USER, PROFILE_ID)).resolves.toBe(true)
 
-  it('[team member × business_profiles.id] membership checked against the input id ⇒ true', async () => {
-    // CURRENT behavior: the business_users membership check runs against the
-    // ORIGINAL `businessId` argument (the profile id), NOT the dual-ID-resolved
-    // businesses.id. We pin that: a membership keyed to the input id grants.
-    // Here the businesses-direct lookup misses, the business_profiles branch
-    // resolves but the resolved business has no owner/coach match, then the
-    // membership row grants access.
-    tableResponses.business_profiles = {
-      id: PROFILE_ID,
-      business_id: RESOLVED_BUSINESS_ID,
-    };
-    tableResponses.businesses = (id) =>
-      id === RESOLVED_BUSINESS_ID
-        ? { owner_id: 'owner-y', assigned_coach_id: 'coach-x' }
-        : null;
-    tableResponses.business_users = { id: 'membership-2', status: 'active' };
+    const membershipReads = db.reads.filter((r) => r.table === 'business_users')
+    expect(membershipReads).toHaveLength(1)
+    expect(membershipReads[0].filters).toEqual(
+      expect.arrayContaining([
+        { op: 'eq', column: 'business_id', value: BUSINESS_ID },
+        { op: 'eq', column: 'user_id', value: USER },
+        { op: 'eq', column: 'status', value: 'active' },
+      ]),
+    )
+    expect(membershipReads[0].filters).not.toContainEqual({ op: 'eq', column: 'business_id', value: PROFILE_ID })
+  })
 
-    await expect(verifyBusinessAccess(USER, PROFILE_ID)).resolves.toBe(true);
-  });
+  it("a member of business A is refused business B's profile id (no cross-tenant bridge)", async () => {
+    seed({ business_users: [member()] })
+    await expect(verifyBusinessAccess(USER, OTHER_PROFILE_ID)).resolves.toBe(false)
+  })
 
-  // ── ROLE 4: super_admin via system_roles ──────────────────────────────────
+  it('a businesses.id is checked as given', async () => {
+    seed({ business_users: [member()] })
 
-  it('[super_admin × businesses.id] system_roles super_admin grant ⇒ true', async () => {
-    // No business match, no membership; only the system_roles super_admin row.
-    tableResponses.businesses = () => null;
-    tableResponses.system_roles = { role: 'super_admin' };
+    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(true)
 
-    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(true);
-  });
+    const membershipReads = db.reads.filter((r) => r.table === 'business_users')
+    expect(membershipReads[0].filters).toContainEqual({ op: 'eq', column: 'business_id', value: BUSINESS_ID })
+    // A businesses.id never needs the profile lookup.
+    expect(db.reads.some((r) => r.table === 'business_profiles')).toBe(false)
+  })
+})
 
-  it('[super_admin × business_profiles.id] super_admin grant regardless of id space ⇒ true', async () => {
-    // system_roles is keyed only by user_id (no business scoping), so the input
-    // id space is irrelevant. Pin that a super_admin is granted even for a bare
-    // profile id with no resolvable business.
-    tableResponses.business_profiles = null; // profile lookup misses too
-    tableResponses.businesses = () => null;
-    tableResponses.system_roles = { role: 'super_admin' };
+// ─── Ids that resolve to no business ─────────────────────────────────────────
 
-    await expect(verifyBusinessAccess(USER, PROFILE_ID)).resolves.toBe(true);
-  });
-});
+describe('verifyBusinessAccess — unresolvable ids', () => {
+  it('refuses an id in neither table', async () => {
+    seed({ business_users: [member()] })
+    await expect(verifyBusinessAccess(USER, 'orphan-id')).resolves.toBe(false)
+  })
 
-// ─── NEGATIVES & latent-bug pinning ──────────────────────────────────────────
+  it('refuses a profile with no parent business', async () => {
+    seed({
+      business_profiles: [{ id: PROFILE_ID, business_id: null }],
+      business_users: [member()],
+    })
+    await expect(verifyBusinessAccess(USER, PROFILE_ID)).resolves.toBe(false)
+  })
 
-describe('verifyBusinessAccess — negatives & latent-bug characterization', () => {
-  it('[orphan businesses.id] nothing matches anywhere ⇒ false', async () => {
-    // beforeEach already sets everything to null/no-match.
-    await expect(verifyBusinessAccess(USER, 'orphan-id')).resolves.toBe(false);
-  });
+  it('still grants a super_admin for an id in neither table', async () => {
+    seed({ system_roles: [{ user_id: USER, role: 'super_admin' }] })
+    await expect(verifyBusinessAccess(USER, 'orphan-id')).resolves.toBe(true)
+  })
+})
 
-  it('[orphan business_profiles.id] profile lookup also misses ⇒ false', async () => {
-    tableResponses.business_profiles = null;
-    await expect(verifyBusinessAccess(USER, 'orphan-profile-id')).resolves.toBe(false);
-  });
+// ─── A failed lookup refuses, and says so ────────────────────────────────────
 
-  it('non-matching user with valid business (owner/coach are other users, no membership, not super_admin) ⇒ false', async () => {
-    tableResponses.businesses = (id) =>
-      id === BUSINESS_ID
-        ? { owner_id: OTHER_USER, assigned_coach_id: 'coach-x' }
-        : null;
-    tableResponses.business_users = null;
-    tableResponses.system_roles = { role: 'member' }; // not super_admin
+describe('verifyBusinessAccess — lookup failures fail closed and are surfaced', () => {
+  let consoleError: ReturnType<typeof vi.spyOn>
+  beforeEach(() => {
+    consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+  afterEach(() => consoleError.mockRestore())
 
-    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(false);
-  });
+  function expectSurfaced(table: string) {
+    expect(captureException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: `${table} is unavailable` }),
+      expect.objectContaining({ tags: expect.objectContaining({ dual_id_surface: expect.stringContaining(table) }) }),
+    )
+  }
 
-  it('non-super_admin system role ⇒ false (only the literal "super_admin" grants)', async () => {
-    tableResponses.businesses = () => null;
-    tableResponses.system_roles = { role: 'admin' }; // close but not super_admin
+  it('a failed businesses read refuses the owner (could not check) and is surfaced', async () => {
+    seed({ businesses: [{ id: BUSINESS_ID, owner_id: USER, assigned_coach_id: 'coach-a' }] })
+    db.failTable('businesses')
+    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(false)
+    expectSurfaced('businesses')
+  })
 
-    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(false);
-  });
+  it('a failed businesses read does not refuse a member the profile still resolves', async () => {
+    seed({ business_users: [member()] })
+    db.failTable('businesses')
+    await expect(verifyBusinessAccess(USER, PROFILE_ID)).resolves.toBe(true)
+    expectSurfaced('businesses')
+  })
 
-  // C-34 FIX (R16): these two assertions used to pin the latent bug (a
-  // deactivated or pending member was still granted because the membership
-  // query had no status filter). The source now applies `.eq('status', 'active')`
-  // in verify-business-access.ts, so only an ACTIVE membership grants. These were
-  // deliberately flipped from `.toBe(true)` to `.toBe(false)` as part of the fix.
-  it('C-34: deactivated team member is DENIED (status filter) ⇒ false', async () => {
-    tableResponses.businesses = (id) =>
-      id === BUSINESS_ID
-        ? { owner_id: 'owner-y', assigned_coach_id: 'coach-x' }
-        : null;
-    // A membership row exists but is deactivated. The source's `.eq('status',
-    // 'active')` filter excludes it, so access is denied.
-    tableResponses.business_users = {
-      id: 'membership-deactivated',
-      status: 'deactivated',
-      deactivated_at: '2025-01-01T00:00:00Z',
-    };
+  it('a failed business_profiles read refuses a member holding a profile id and is surfaced', async () => {
+    seed({ business_users: [member()] })
+    db.failTable('business_profiles')
+    await expect(verifyBusinessAccess(USER, PROFILE_ID)).resolves.toBe(false)
+    expectSurfaced('business_profiles')
+  })
 
-    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(false);
-  });
+  it('a failed business_users read refuses the member and is surfaced', async () => {
+    seed({ business_users: [member()] })
+    db.failTable('business_users')
+    await expect(verifyBusinessAccess(USER, PROFILE_ID)).resolves.toBe(false)
+    expectSurfaced('business_users')
+  })
 
-  it('C-34: pending team member is DENIED (status filter) ⇒ false', async () => {
-    tableResponses.businesses = (id) =>
-      id === BUSINESS_ID
-        ? { owner_id: 'owner-y', assigned_coach_id: 'coach-x' }
-        : null;
-    tableResponses.business_users = {
-      id: 'membership-pending',
-      status: 'pending',
-    };
-
-    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(false);
-  });
-});
+  it('a failed system_roles read refuses a super_admin and is surfaced', async () => {
+    seed({ system_roles: [{ user_id: USER, role: 'super_admin' }] })
+    db.failTable('system_roles')
+    await expect(verifyBusinessAccess(USER, BUSINESS_ID)).resolves.toBe(false)
+    expectSurfaced('system_roles')
+  })
+})

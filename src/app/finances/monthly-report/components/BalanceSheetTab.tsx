@@ -2,26 +2,28 @@
 
 import { useEffect } from 'react'
 import { Loader2, AlertCircle, RefreshCw } from 'lucide-react'
+import {
+  equationImbalanceSentence,
+  NET_ASSETS_EQUITY_SENTENCE,
+  BS_EQUATION_TOLERANCE,
+  balanceSheetClassTotals,
+} from '../utils/balance-sheet-pdf'
 import type { BalanceSheetData, BalanceSheetRow, BalanceSheetCompare } from '../types'
+import { bsAmountText, bsPercentText, bsWhole } from '@/lib/monthly-report/balance-sheet-rows'
 
 // ─── Formatting helpers ──────────────────────────────────────────────────────
 
-function formatAmount(value: number | null): string {
-  if (value === null) return '—'
-  const abs = Math.abs(value)
-  const formatted = abs.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
-  return value < 0 ? `(${formatted})` : formatted
-}
+// The pack's own formatters (lib/monthly-report/balance-sheet-rows), so the tab
+// and the PDF page print the same text for the same figure. The tab's copy
+// tested the sign before rounding and showed a red "(0)" for Urban Road's 7c
+// Rounding movement — the same defect the pack had.
+const formatAmount = bsAmountText
+const formatPct = bsPercentText
 
-function formatPct(value: number | null): string {
-  if (value === null) return 'N/A'
-  const abs = Math.abs(value)
-  const formatted = `${Math.round(abs)}%`
-  return value < 0 ? `(${formatted})` : formatted
-}
-
+// Red exactly when the formatter brackets — the same half-away-from-zero
+// rounding, so a (55,020) is never black.
 function isNegative(value: number | null): boolean {
-  return value !== null && value < 0
+  return value !== null && bsWhole(value) < 0
 }
 
 // ─── Cell components ─────────────────────────────────────────────────────────
@@ -179,38 +181,40 @@ export default function BalanceSheetTab({
   // Derive Assets / Liabilities / Equity from the existing subtotal rows
   // (label-matched per Calxa convention). If any total is missing or null,
   // skip the banner — the legacy `balanceSheet.balances` amber badge still covers it.
-  const findSubtotal = (predicate: (label: string) => boolean): number | null => {
-    const row = balanceSheet.rows.find(
-      (r) => r.type === 'subtotal' && predicate(r.label.toLowerCase()),
-    )
-    return row?.current ?? null
-  }
-  const totalAssets = findSubtotal((l) => l.startsWith('total asset') || l.includes('asset'))
-  const totalLiabilities = findSubtotal((l) => l.startsWith('total liabilit') || l.includes('liabilit'))
-  const totalEquity = findSubtotal((l) => l.startsWith('total equity') || l.includes('equity'))
+  // The identical rule the pack uses — see balanceSheetClassTotals. The tab and
+  // the PDF telling a coach different things about the same month is the defect.
+  const { assets: totalAssets, liabilities: totalLiabilities, equity: totalEquity } =
+    balanceSheetClassTotals(balanceSheet.rows)
 
   const canComputeResidual =
     totalAssets !== null && totalLiabilities !== null && totalEquity !== null
   const residual = canComputeResidual
     ? (totalAssets as number) - ((totalLiabilities as number) + (totalEquity as number))
     : 0
-  const isImbalanced = canComputeResidual && Math.abs(residual) > 1
+  // The same tolerance the pack uses — BS_EQUATION_TOLERANCE — because the two
+  // must not disagree about whether a sheet balances either.
+  const isImbalanced = canComputeResidual && Math.abs(residual) > BS_EQUATION_TOLERANCE
 
-  const fmtAbsCurrency = (v: number): string =>
-    `$${Math.abs(v).toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+  // A group's sheet carries what was done to its figures: which organisations
+  // were added, a loan eliminated or left in full, how a foreign organisation
+  // was translated. One organisation's sheet carries none of it and these are
+  // empty. The pack prints exactly these two arrays; so does this tab.
+  const consolidationNotes = balanceSheet.consolidation?.notes ?? []
+  const consolidationWarnings = balanceSheet.consolidation?.warnings ?? []
 
   return (
     <div className="space-y-4">
-      {/* S5: Equation residual banner — louder than the amber `balances` badge below */}
+      {/* S5: Equation residual banner — louder than the amber `balances` badge
+          below. The sentence comes from balance-sheet-pdf so the pack prints
+          the same one about the same residual: the two used to be worded
+          differently while a comment claimed they could not be. */}
       {isImbalanced && (
         <div
           role="alert"
           className="mb-2 rounded-md border border-red-300 bg-red-50 px-4 py-3"
         >
           <p className="text-sm font-semibold text-red-800">
-            Balance Sheet does not balance — residual of {fmtAbsCurrency(residual)}
-            {' '}
-            (Assets {residual > 0 ? 'exceed' : 'are short of'} Liabilities + Equity).
+            {equationImbalanceSentence(residual)}
           </p>
           <p className="mt-1 text-xs text-red-700">
             <a
@@ -259,9 +263,24 @@ export default function BalanceSheetTab({
       {!balanceSheet.balances && (
         <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
           <AlertCircle className="w-4 h-4 shrink-0" />
-          Balance sheet does not balance — Net Assets and Total Equity differ. This may indicate unreconciled transactions in Xero.
+          {NET_ASSETS_EQUITY_SENTENCE}
         </div>
       )}
+
+      {/* A group's sheet: what was NOT done to its figures. The pack prints
+          these in its own warning card (assessBalanceSheetForPdf pushes
+          consolidation.warnings into it), so the tab prints them too — a coach
+          reviewing IICT on screen was shown both sides of an unreconciled
+          intercompany loan and told nothing. */}
+      {consolidationWarnings.map((warning, i) => (
+        <div
+          key={i}
+          className="flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700"
+        >
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{warning}</span>
+        </div>
+      ))}
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -305,6 +324,20 @@ export default function BalanceSheetTab({
           </tbody>
         </table>
       </div>
+
+      {/* Under the table, where the pack draws them (addBalanceSheetPage). Not
+          conventions but what was done to the figures: the organisations
+          added, a loan eliminated (decision 5), how a foreign organisation was
+          translated (decision 7, IAS 21). */}
+      {consolidationNotes.length > 0 && (
+        <div className="space-y-1.5">
+          {consolidationNotes.map((note, i) => (
+            <p key={i} className="text-xs text-gray-500 leading-relaxed">
+              {note}
+            </p>
+          ))}
+        </div>
+      )}
 
       <p className="text-xs text-gray-400">
         Data sourced from Xero · Negatives shown as (brackets) in red · % Variance shows N/A when prior period is zero

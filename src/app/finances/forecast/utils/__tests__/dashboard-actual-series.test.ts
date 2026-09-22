@@ -1,0 +1,182 @@
+/**
+ * The dashboard's actual series — Urban Road, 8 Sep 2026.
+ *
+ * Xero held $1,144,098 of FY27 actuals (Jul $495,275, Aug $537,512, Sep
+ * $111,311 part-month) while the KPI strip showed YTD $0 and called July "this
+ * month", because forecast_pl_lines.actual_months has been empty for every
+ * forecast generated since Phase 44.
+ */
+import { describe, it, expect } from 'vitest'
+import {
+  buildTrajectoryRows,
+  deriveActualSeries,
+  type DashboardActualMonth,
+} from '../dashboard-actual-series'
+
+const PLAN = {
+  //                     Jul      Aug      Sep      Oct      Nov
+  revenue: [495_170, 533_062, 450_018, 450_000, 800_000],
+  grossProfit: [177_559, 302_753, 170_321, 170_000, 320_000],
+  netProfit: [9_052, 150_132, 10_639, 10_000, 140_000],
+  dataLastActualIndex: -1, // nothing in actual_months — the state since Phase 44
+}
+
+const month = (m: string, rev: number | null, gp: number | null, np: number | null): DashboardActualMonth =>
+  ({ month: m, revenueActual: rev, gpActual: gp, npActual: np })
+
+const XERO: DashboardActualMonth[] = [
+  month('2026-07', 495_275, 177_663, 14_067),
+  month('2026-08', 537_512, 307_086, 145_494),
+  month('2026-09', 111_311, 100_628, 69_950),
+  month('2026-10', null, null, null),
+  month('2026-11', null, null, null),
+]
+
+describe('deriveActualSeries', () => {
+  it('uses Xero actuals for the months it has, and the plan beyond them', () => {
+    const s = deriveActualSeries(PLAN, XERO)
+    expect(s.fromXero).toBe(true)
+    expect(s.dataLastActualIndex).toBe(2) // September is the latest actual
+    expect(s.revenue.slice(0, 3)).toEqual([495_275, 537_512, 111_311])
+    expect(s.revenue.slice(3)).toEqual([450_000, 800_000]) // untouched plan
+    expect(s.netProfit[1]).toBe(145_494)
+  })
+
+  it('gives the strip a real YTD instead of $0', () => {
+    const s = deriveActualSeries(PLAN, XERO)
+    const ytd = s.revenue.slice(0, s.dataLastActualIndex + 1).reduce((a, b) => a + b, 0)
+    expect(ytd).toBe(1_144_098) // matches xero_pl_lines for Urban Road FY27
+    // "this month" is the latest actual, not the first month of the year.
+    expect(s.revenue[s.dataLastActualIndex]).toBe(111_311)
+  })
+
+  it('year-end = actuals so far + plan for the rest', () => {
+    const s = deriveActualSeries(PLAN, XERO)
+    expect(s.revenue.reduce((a, b) => a + b, 0)).toBe(1_144_098 + 450_000 + 800_000)
+  })
+
+  it('falls back to the stored totals when the fetch failed or returned nothing', () => {
+    for (const empty of [null, undefined, [] as DashboardActualMonth[]]) {
+      const s = deriveActualSeries(PLAN, empty)
+      expect(s.fromXero).toBe(false)
+      expect(s.revenue).toBe(PLAN.revenue) // same reference — untouched
+      expect(s.dataLastActualIndex).toBe(-1)
+    }
+  })
+
+  it('falls back when Xero has the months but no actuals in any of them', () => {
+    const s = deriveActualSeries(PLAN, XERO.map((m) => month(m.month, null, null, null)))
+    expect(s.fromXero).toBe(false)
+    expect(s.dataLastActualIndex).toBe(-1)
+  })
+
+  it('keeps a forecast that already had its own actuals working', () => {
+    // Envisage-style: actual_months populated, so totals already carry actuals.
+    const withStored = { ...PLAN, dataLastActualIndex: 1 }
+    const s = deriveActualSeries(withStored, null)
+    expect(s.dataLastActualIndex).toBe(1)
+    expect(s.fromXero).toBe(false)
+  })
+
+  it('a genuine $0 inside the actual window is zero, not the plan', () => {
+    // August: revenue booked, but GP/NP net to nothing.
+    const zeros = [XERO[0], month('2026-08', 400_000, null, null), ...XERO.slice(2)]
+    const s = deriveActualSeries(PLAN, zeros)
+    expect(s.revenue[1]).toBe(400_000)
+    expect(s.grossProfit[1]).toBe(0)
+    expect(s.netProfit[1]).toBe(0)
+  })
+
+  it('a gap before the last actual keeps the plan for that month', () => {
+    // Xero missing August entirely (not yet synced) but September present.
+    const gap = [XERO[0], month('2026-08', null, null, null), XERO[2], XERO[3], XERO[4]]
+    const s = deriveActualSeries(PLAN, gap)
+    expect(s.dataLastActualIndex).toBe(2)
+    expect(s.revenue[1]).toBe(533_062) // August falls back to plan
+    expect(s.revenue[2]).toBe(111_311)
+  })
+
+  it('ignores the month in progress — only closed months are actuals', () => {
+    // 8 Sep 2026: August (index 1) is the last closed month. September is eight
+    // days old, so its $111k must not stand against a whole $450k month.
+    const s = deriveActualSeries(PLAN, XERO, 1)
+    expect(s.dataLastActualIndex).toBe(1)
+    expect(s.revenue.slice(0, 2)).toEqual([495_275, 537_512])
+    expect(s.revenue[2]).toBe(450_018) // September back to plan
+    const ytd = s.revenue.slice(0, s.dataLastActualIndex + 1).reduce((a, b) => a + b, 0)
+    expect(ytd).toBe(1_032_787)
+    // Year-end no longer loses the rest of September.
+    expect(s.revenue.reduce((a, b) => a + b, 0)).toBe(1_032_787 + 450_018 + 450_000 + 800_000)
+  })
+
+  it('applies no cap when the caller omits one', () => {
+    expect(deriveActualSeries(PLAN, XERO).dataLastActualIndex).toBe(2)
+  })
+
+  it('a closed FY admits every month it has', () => {
+    // Viewing a finished year: the cap sits past the end of the series.
+    const s = deriveActualSeries(PLAN, XERO, 11)
+    expect(s.dataLastActualIndex).toBe(2)
+  })
+
+  it('a future FY admits nothing', () => {
+    const s = deriveActualSeries(PLAN, XERO, -1)
+    expect(s.fromXero).toBe(false)
+    expect(s.revenue).toBe(PLAN.revenue)
+  })
+
+  it('tolerates a shorter Xero array than the plan', () => {
+    const s = deriveActualSeries(PLAN, XERO.slice(0, 2))
+    expect(s.dataLastActualIndex).toBe(1)
+    expect(s.revenue).toHaveLength(PLAN.revenue.length)
+    expect(s.revenue[4]).toBe(800_000)
+  })
+})
+
+describe('buildTrajectoryRows', () => {
+  const LABELS = ['Jul 26', 'Aug 26', 'Sep 26', 'Oct 26', 'Nov 26']
+  // Same months, now carrying the plan the API returns alongside the actuals.
+  const WITH_PLAN: DashboardActualMonth[] = XERO.map((m, i) => ({
+    ...m,
+    revenueForecast: PLAN.revenue[i],
+    gpForecast: PLAN.grossProfit[i],
+    npForecast: PLAN.netProfit[i],
+  }))
+
+  it('draws the month in progress as plan, not as a stubby actual bar', () => {
+    const rows = buildTrajectoryRows(LABELS, WITH_PLAN, 'revenue', 1)
+    expect(rows.map((r) => r.isForecast)).toEqual([false, false, true, true, true])
+    expect(rows[2]).toEqual({ month: 'Sep 26', value: 450_018, isForecast: true })
+  })
+
+  it("its year-end agrees with the KPI strip's", () => {
+    const rows = buildTrajectoryRows(LABELS, WITH_PLAN, 'revenue', 1)
+    const chartYearEnd = rows.reduce((a, r) => a + r.value, 0)
+    const stripYearEnd = deriveActualSeries(PLAN, XERO, 1).revenue.reduce((a, b) => a + b, 0)
+    expect(chartYearEnd).toBe(stripYearEnd)
+  })
+
+  it('uncapped, the two still agree with each other', () => {
+    const rows = buildTrajectoryRows(LABELS, WITH_PLAN, 'revenue')
+    expect(rows.reduce((a, r) => a + r.value, 0)).toBe(
+      deriveActualSeries(PLAN, XERO).revenue.reduce((a, b) => a + b, 0),
+    )
+    expect(rows[2].isForecast).toBe(false)
+  })
+
+  it('reads the requested metric', () => {
+    expect(buildTrajectoryRows(LABELS, WITH_PLAN, 'gp', 1)[1].value).toBe(307_086)
+    expect(buildTrajectoryRows(LABELS, WITH_PLAN, 'np', 1)[1].value).toBe(145_494)
+  })
+
+  it('a month with neither actual nor plan is an empty bar, not a forecast one', () => {
+    const rows = buildTrajectoryRows(LABELS, XERO, 'revenue', 1) // no *Forecast fields
+    expect(rows[2]).toEqual({ month: 'Sep 26', value: 0, isForecast: false })
+  })
+
+  it('renders a label row even with no data at all', () => {
+    const rows = buildTrajectoryRows(LABELS, null, 'revenue', 1)
+    expect(rows).toHaveLength(5)
+    expect(rows.every((r) => r.value === 0 && !r.isForecast)).toBe(true)
+  })
+})

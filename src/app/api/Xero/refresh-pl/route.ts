@@ -1,7 +1,8 @@
 /**
  * Phase 44 Plan 44-05 — thin shim around syncBusinessXeroPL.
  *
- * Per-business manual refresh from XeroSyncButton (and similar coach UI).
+ * Per-business manual refresh for coach UI. (The KPI dashboard's Sync Xero
+ * button calls /api/Xero/sync, a shim over the same orchestrator.)
  * All sync logic — multi-window canonical fetch, parser, reconciler, ON
  * CONFLICT upsert, sync_jobs audit, Sentry instrumentation — lives in
  * src/lib/xero/sync-orchestrator.ts.

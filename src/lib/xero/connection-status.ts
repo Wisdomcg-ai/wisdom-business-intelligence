@@ -41,13 +41,31 @@
  * Worst truth wins, and "we could not check" is a state, never a green tick.
  * That is what `unknown` is for. A classifier that degrades to `connected` when
  * its inputs fail is worse than no classifier, because it is confidently wrong.
+ *
+ * ── A business is as healthy as its worst org (2026-09-15) ──────────────────
+ * Dragon Roofing has two Xero orgs and IICT Group three. Both business-level
+ * routes used to reduce a business's rows to ONE representative — the most
+ * recently written active row — and classify only that. Every token refresh and
+ * every sync bumps updated_at, so the representative was simply whichever org
+ * was written last. From 10 Sep 2026 IICT Group Pty Ltd returned 403 on every
+ * sync while its siblings synced fine, and IICT's pill read data_stale only
+ * until a sibling's next write, then connected again: a dead org hidden by write
+ * order. Business-level surfaces call `classifyBusinessConnections`, which
+ * classifies every org against its own data clock and reports the worst.
+ *
+ * The same was true of /api/Xero/status — the monthly-report banner, the forecast
+ * and cashflow pages, the integrations page and the token keepalive — which
+ * reported the lowest-id active row: "Connected to Xero: IICT Group Limited" while
+ * IICT Group Pty Ltd sat five days stale. It now classifies every org here too,
+ * and /api/Xero/reactivate uses `groupConnectionsByOrg` / `isRetiredOrg` to
+ * revive every org that has no live row.
  */
 
 /**
  * Connection state. Wire format — renaming requires updating both API routes and
  * the pill components that switch on it.
  *
- * Precedence, worst first: dead > unknown > auth_stale > data_stale /
+ * Precedence, worst first: dead > unknown > auth_stale > data_stale >
  * pending_first_sync > connected. Never round up.
  */
 export type XeroConnectionStatus =
@@ -84,6 +102,13 @@ export const TOKEN_VERIFIED_WINDOW_MS = 12 * 60 * 60 * 1000;
 export const DATA_STALE_MS = 48 * 60 * 60 * 1000;
 
 /**
+ * The owner's own surfaces tolerate one extra missed day before warning, so an
+ * owner is not alarmed by something their coach has not seen yet. Only the DATA
+ * threshold differs by audience; every other tier is identical.
+ */
+export const OWNER_DATA_STALE_MS = 72 * 60 * 60 * 1000;
+
+/**
  * Grace for a brand-new connection that has never synced: slightly more than one
  * nightly cycle, so "connected this afternoon, first sync on the next 6-hourly run" is not
  * an alarm, but "connected three days ago and never synced" is.
@@ -99,6 +124,13 @@ export interface XeroConnectionStatusRow {
   id: string;
   business_id: string;
   tenant_id: string | null;
+  /** Display only: names the org behind a business-level status. */
+  tenant_name?: string | null;
+  /**
+   * Admin consolidation setting. Together with is_active=false it marks an org
+   * retired on purpose; absent or null never does.
+   */
+  include_in_consolidation?: boolean | null;
   is_active: boolean | null;
   last_synced_at: string | null;
   updated_at: string | null;
@@ -119,6 +151,37 @@ export interface XeroDataClock {
   lastSyncMs: number | null;
   /** False when the sync_jobs lookup itself failed. */
   lookupOk: boolean;
+}
+
+/**
+ * The sync_jobs lookup exactly as `getLastSyncByTenant` returns it: the last
+ * successful sync per Xero tenant, and whether the lookup itself worked.
+ */
+export interface XeroSyncClock {
+  ok: boolean;
+  byTenant: ReadonlyMap<string, number>;
+}
+
+/**
+ * One row's data clock: the fresher of the row's own `last_synced_at` and the
+ * sync_jobs clock for ITS tenant. The join is on tenant_id rather than
+ * business_id on purpose — xero_connections.business_id is in the businesses.id
+ * space while sync_jobs.business_id is business_profiles.id, so a business_id
+ * join silently returns zero rows for every connection.
+ */
+export function dataClockFor(
+  row: Pick<XeroConnectionStatusRow, 'tenant_id' | 'last_synced_at'>,
+  syncClock: XeroSyncClock,
+): XeroDataClock {
+  const fromColumn = parseMs(row.last_synced_at) ?? 0;
+  // Exact key first (sync_jobs carries the row's own tenant_id), then trimmed —
+  // the same normalisation the business grouping uses.
+  const jobsMs = row.tenant_id
+    ? syncClock.byTenant.get(row.tenant_id) ?? syncClock.byTenant.get(row.tenant_id.trim())
+    : undefined;
+  const fromJobs = jobsMs !== undefined && Number.isFinite(jobsMs) ? jobsMs : 0;
+  const freshest = Math.max(fromColumn, fromJobs);
+  return { lastSyncMs: freshest > 0 ? freshest : null, lookupOk: syncClock.ok };
 }
 
 export interface XeroConnectionClassification {
@@ -206,20 +269,321 @@ export function needsAttention(status: XeroConnectionStatus): boolean {
   return status === 'dead' || status === 'auth_stale' || status === 'data_stale' || status === 'unknown';
 }
 
+/** One Xero org's classification, named so a business-level status can say which org it is about. */
+export interface XeroOrgClassification extends XeroConnectionClassification {
+  tenantId: string | null;
+  tenantName: string | null;
+}
+
 /**
- * Which of two rows for the SAME business wins.
- *
- * Callers fetch ordered by `updated_at DESC`, so the first row seen for a
- * business is already the most recently touched. The one override: an ACTIVE row
- * beats a dead row even when the dead row was touched more recently — a business
- * that reconnected must not keep reading as disconnected because the old row got
- * stamped on its way out.
+ * A business classified from all of its orgs. The headline fields are the worst
+ * org's — for display, `statusScope` says whether naming that org is meaningful.
  */
-export function preferConnection<T extends { is_active: boolean | null }>(
-  existing: T | null | undefined,
-  candidate: T,
-): T {
-  if (!existing) return candidate;
-  if (!existing.is_active && candidate.is_active) return candidate;
-  return existing;
+export interface XeroBusinessConnectionClassification extends XeroOrgClassification {
+  /** Every org that counted, worst first. A dead row superseded by a live row for the same org is not here. */
+  orgs: XeroOrgClassification[];
+  /** Orgs retired on purpose (switched off and excluded from consolidation), worst first. They set nothing. */
+  retiredOrgs: XeroOrgClassification[];
+  /** How many of `orgs` share the headline status. */
+  worstOrgCount: number;
+  /**
+   * Which part of the business the headline status is about, for a UI prefix:
+   * the org's name when one org of several set it ("IICT Group Pty Ltd"),
+   * "2 of 3 orgs" when several but not all share it, and null when the status is
+   * business-wide — naming one org then would suggest the others are fine.
+   */
+  statusScope: string | null;
+  /**
+   * Orgs that ALSO need attention, in a lesser state than the headline — the
+   * "(+1 more)". Without it a disconnected org would hide a sibling whose token
+   * stopped refreshing until the first was fixed.
+   */
+  moreOrgsNeedingAttention: number;
+}
+
+/**
+ * Worst first. data_stale outranks pending_first_sync because only one of them
+ * needs a human: one org's old numbers must not hide behind a sibling's "first
+ * sync pending". `none` means no rows at all, so it never competes with an org.
+ */
+const STATUS_SEVERITY: Record<XeroConnectionStatus, number> = {
+  dead: 0,
+  unknown: 1,
+  auth_stale: 2,
+  data_stale: 3,
+  pending_first_sync: 4,
+  connected: 5,
+  none: 6,
+};
+
+/** ISO instants in time order; null (never synced, never granted) is oldest. */
+function compareInstants(a: string | null, b: string | null): number {
+  if (a === b) return 0;
+  if (a === null) return -1;
+  if (b === null) return 1;
+  return Date.parse(a) - Date.parse(b) || (a < b ? -1 : 1);
+}
+
+/** Code-unit order, not localeCompare, so the pick cannot vary with the server's locale. Null last. */
+function compareText(a: string | null, b: string | null): number {
+  if (a === b) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return a < b ? -1 : 1;
+}
+
+/**
+ * A total order, worst first, so a business's result can never depend on the
+ * order its rows arrived in. Within one status the most out-of-date org leads —
+ * its clock is the one that explains the status (the token clock for
+ * auth_stale, the data clock otherwise) — and name, tenant and row id settle
+ * whatever is left.
+ */
+function worstFirst(a: XeroOrgClassification, b: XeroOrgClassification): number {
+  const bySeverity = STATUS_SEVERITY[a.status] - STATUS_SEVERITY[b.status];
+  if (bySeverity !== 0) return bySeverity;
+  const bySync = compareInstants(a.lastSyncAt, b.lastSyncAt);
+  const byGrant = compareInstants(a.lastTokenRefreshAt, b.lastTokenRefreshAt);
+  return (
+    (a.status === 'auth_stale' ? byGrant || bySync : bySync || byGrant) ||
+    compareText(a.tenantName, b.tenantName) ||
+    compareText(a.tenantId, b.tenantId) ||
+    compareText(a.connectionId, b.connectionId)
+  );
+}
+
+/**
+ * A business's connection rows grouped by Xero org (tenant_id, trimmed), in the
+ * order each org first appears. A blank tenant_id matches nothing, so that row
+ * stands alone as its own org. Both id forms of one org land in one group.
+ */
+export function groupConnectionsByOrg<R extends Pick<XeroConnectionStatusRow, 'id' | 'tenant_id'>>(
+  rows: readonly R[],
+): R[][] {
+  const rowsByOrg = new Map<string, R[]>();
+  for (const row of rows) {
+    const tenant = row.tenant_id?.trim();
+    const key = tenant ? `tenant:${tenant}` : `row:${row.id}`;
+    const group = rowsByOrg.get(key);
+    if (group) group.push(row);
+    else rowsByOrg.set(key, [row]);
+  }
+  return [...rowsByOrg.values()];
+}
+
+/**
+ * An org RETIRED on purpose: every row switched off AND excluded from
+ * consolidation — a pair only a person sets. `is_active=false` alone records no
+ * reason (the token manager writes it when Xero refuses), so it never retires an
+ * org by itself. See `classifyBusinessConnections`.
+ */
+export function isRetiredOrg(
+  orgRows: readonly Pick<XeroConnectionStatusRow, 'is_active' | 'include_in_consolidation'>[],
+): boolean {
+  return orgRows.length > 0 && orgRows.every((r) => r.is_active !== true && r.include_in_consolidation === false);
+}
+
+function classifyOrgRow(
+  row: XeroConnectionStatusRow,
+  syncClock: XeroSyncClock,
+  nowMs: number,
+  dataStaleMs: number,
+): XeroOrgClassification {
+  return {
+    ...classifyXeroConnection(row, dataClockFor(row, syncClock), nowMs, dataStaleMs),
+    tenantId: row.tenant_id?.trim() || null,
+    tenantName: row.tenant_name?.trim() || null,
+  };
+}
+
+/**
+ * Classify a BUSINESS from every one of its connection rows, both id forms,
+ * dead rows included: each org against its own data clock, worst truth wins.
+ *
+ * Rows group by Xero org (tenant_id). A dead row speaks for its org only when no
+ * live row does, so a reconnect that landed under the other business-id form
+ * does not keep reading as disconnected. A dead org with NO live row counts, and
+ * makes the business dead: that org has stopped syncing, so the business's
+ * numbers are a fraction of it.
+ *
+ * The one exception is an org RETIRED on purpose: every row switched off AND
+ * excluded from consolidation, which only a person can set (the admin
+ * consolidation page's two per-org boxes). `is_active=false` alone records no
+ * reason — the token manager writes it when Xero refuses — and nothing in the
+ * app can delete one org of several, so without this a wound-up entity would
+ * hold its business red for good. The token manager never touches
+ * include_in_consolidation, so a refused org still reads dead; and if every org
+ * is retired they count after all, rather than a business going quiet.
+ * (Decided 15 Sep 2026 and raised with Matt.)
+ *
+ * The result does not depend on row order, which is the property the
+ * single-representative reduction lacked.
+ */
+export function classifyBusinessConnections(
+  rows: readonly XeroConnectionStatusRow[],
+  syncClock: XeroSyncClock,
+  nowMs: number = Date.now(),
+  dataStaleMs: number = DATA_STALE_MS,
+): XeroBusinessConnectionClassification {
+  const counted: XeroOrgClassification[] = [];
+  const retired: XeroOrgClassification[] = [];
+  for (const orgRows of groupConnectionsByOrg(rows)) {
+    const live = orgRows.filter((r) => r.is_active === true);
+    const classified = (live.length > 0 ? live : orgRows).map((r) =>
+      classifyOrgRow(r, syncClock, nowMs, dataStaleMs),
+    );
+    // Two live rows for one org (one per id form) are two live claims about it.
+    classified.sort(worstFirst);
+    (isRetiredOrg(orgRows) ? retired : counted).push(classified[0]);
+  }
+  const orgs = counted.length > 0 ? counted : retired;
+  const retiredOrgs = counted.length > 0 ? retired : [];
+  orgs.sort(worstFirst);
+  retiredOrgs.sort(worstFirst);
+
+  const worst = orgs[0];
+  if (!worst) {
+    return {
+      ...classifyXeroConnection(null, { lastSyncMs: null, lookupOk: syncClock.ok }, nowMs, dataStaleMs),
+      tenantId: null,
+      tenantName: null,
+      orgs: [],
+      retiredOrgs: [],
+      worstOrgCount: 0,
+      statusScope: null,
+      moreOrgsNeedingAttention: 0,
+    };
+  }
+
+  const worstOrgCount = orgs.filter((o) => o.status === worst.status).length;
+  let statusScope: string | null = null;
+  if (worstOrgCount < orgs.length) {
+    statusScope =
+      worstOrgCount === 1 && worst.tenantName ? worst.tenantName : `${worstOrgCount} of ${orgs.length} orgs`;
+  }
+  const moreOrgsNeedingAttention = orgs.filter((o) => o.status !== worst.status && needsAttention(o.status)).length;
+  return { ...worst, orgs, retiredOrgs, worstOrgCount, statusScope, moreOrgsNeedingAttention };
+}
+
+/** One counted org's data clock, as a business-level "Last synced" shows it. */
+export interface XeroOrgDataClock {
+  tenantName: string | null;
+  /** Last successful data sync on this org's own tenant clock; null = never synced. */
+  lastSyncAt: string | null;
+}
+
+/** A tenant whose mirror rows a page drew, and when the newest of those rows was written. */
+export interface XeroTenantShown {
+  tenantId: string | null;
+  /** The drawn rows' newest updated_at. The sync orchestrator stamps it on every row it writes. */
+  lastWrittenAt: string | null;
+}
+
+/**
+ * How current the Xero figures on a page are — the KPI dashboard charts'
+ * "Last synced" — as one clock: the STALEST clock of every org behind them.
+ *
+ * Never the headline org's clock. A total is only as current as the org that
+ * synced longest ago, and the headline org is picked by status: an auth_stale or
+ * dead org that synced an hour ago would otherwise speak for a sibling three
+ * weeks behind.
+ *
+ * The orgs behind the figures are two sets, and the clock needs both:
+ *   - the orgs `classifyBusinessConnections` counts — a connected org whose
+ *     figures are not in yet is exactly what "not yet" means;
+ *   - every tenant whose mirror rows the page drew (`shown`). Disconnecting
+ *     deletes the connection rows but keeps the mirror rows, and a retired org's
+ *     rows stay too, so a page can draw figures from an org that no longer
+ *     counts. On 16 Sep 2026 IICT Group's charts still summed 540 rows of IICT
+ *     Group Pty Ltd, last written 10 Sep, with no connection row for it.
+ *
+ * Each org's clock is its evidence of a sync — `dataClockFor` for a counted org
+ * (the one definition); for an org that no longer counts, the same over any
+ * connection row left for its tenant — and, when the page drew its figures,
+ * NEVER LATER than those figures were last written. The evidence alone can run
+ * ahead of the figures: sync_jobs is keyed by tenant, not business, so a sync of
+ * the same Xero org under another business record counts, and `last_synced_at`
+ * has had writers that stamp without writing a row. Figures on the page with no
+ * evidence (outside the sync lookup's window, or a reconnect not yet synced) are
+ * dated by their last write alone: figures exist, so the org has synced.
+ *
+ *   none          no org counts and no figures were drawn: nothing to date
+ *   unknown       the clock could not be established — the sync_jobs lookup
+ *                 failed; an org or a drawn row has no tenant_id (the data-axis
+ *                 reasons `classifyXeroConnection` answers unknown); or drawn
+ *                 figures carry no write time. Never a date.
+ *   never_synced  a counted org with no figures on the page has never synced
+ *   synced        every org has a clock; `lastSyncAt` is the oldest of them
+ *
+ * `orgs` is every org's clock, stalest first, so a surface can say whose clock
+ * it is when the orgs disagree.
+ */
+export type XeroBusinessDataClock =
+  | { status: 'none' }
+  | { status: 'unknown' }
+  | { status: 'never_synced'; orgs: XeroOrgDataClock[] }
+  | { status: 'synced'; lastSyncAt: string; orgs: XeroOrgDataClock[] };
+
+export function businessDataClock(
+  rows: readonly XeroConnectionStatusRow[],
+  syncClock: XeroSyncClock,
+  shown: readonly XeroTenantShown[],
+): XeroBusinessDataClock {
+  const { orgs } = classifyBusinessConnections(rows, syncClock);
+
+  // Each drawn tenant's newest write; null when none of its drawn rows has one.
+  const drawn = new Map<string, number | null>();
+  let blankShown = false;
+  for (const s of shown) {
+    const tenant = s.tenantId?.trim();
+    if (!tenant) {
+      blankShown = true;
+      continue;
+    }
+    const written = parseMs(s.lastWrittenAt);
+    const known = drawn.get(tenant) ?? null;
+    drawn.set(tenant, written === null ? known : Math.max(known ?? written, written));
+  }
+  const countedTenants = new Set(orgs.map((o) => o.tenantId));
+  const uncounted = [...drawn.keys()].filter((tenant) => !countedTenants.has(tenant));
+
+  if (orgs.length === 0 && drawn.size === 0 && !blankShown) return { status: 'none' };
+  if (!syncClock.ok || blankShown || orgs.some((o) => o.tenantId === null)) return { status: 'unknown' };
+
+  const clocks: XeroOrgDataClock[] = [];
+  const add = (tenant: string, tenantName: string | null, evidenceMs: number | null): boolean => {
+    let lastSyncMs = evidenceMs;
+    if (drawn.has(tenant)) {
+      const written = drawn.get(tenant) ?? null;
+      if (written === null) return false;
+      lastSyncMs = evidenceMs === null ? written : Math.min(evidenceMs, written);
+    }
+    clocks.push({ tenantName, lastSyncAt: lastSyncMs === null ? null : new Date(lastSyncMs).toISOString() });
+    return true;
+  };
+
+  for (const o of orgs) {
+    if (!add(o.tenantId as string, o.tenantName, parseMs(o.lastSyncAt))) return { status: 'unknown' };
+  }
+  for (const tenant of uncounted) {
+    const orgRows = rows.filter((r) => r.tenant_id?.trim() === tenant);
+    const evidenceMs = Math.max(
+      0,
+      ...orgRows.map((r) => dataClockFor(r, syncClock).lastSyncMs ?? 0),
+      dataClockFor({ tenant_id: tenant, last_synced_at: null }, syncClock).lastSyncMs ?? 0,
+    );
+    // A leftover row's name, from the newest row that has one, so a renamed org reads the same on every load.
+    const named = orgRows
+      .filter((r) => r.tenant_name?.trim())
+      .sort((a, b) => compareInstants(b.created_at, a.created_at) || compareText(a.id, b.id));
+    if (!add(tenant, named[0]?.tenant_name?.trim() ?? null, evidenceMs > 0 ? evidenceMs : null)) {
+      return { status: 'unknown' };
+    }
+  }
+
+  clocks.sort((a, b) => compareInstants(a.lastSyncAt, b.lastSyncAt) || compareText(a.tenantName, b.tenantName));
+  const stalest = clocks[0].lastSyncAt;
+  return stalest === null
+    ? { status: 'never_synced', orgs: clocks }
+    : { status: 'synced', lastSyncAt: stalest, orgs: clocks };
 }

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "vercel-wisdombi": {
+      "type": "http",
+      "url": "https://mcp.vercel.com/wisdom-business-intelligence/wisdom-business-intelligence"
+    }
+  }
+}

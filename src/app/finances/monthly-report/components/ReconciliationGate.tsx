@@ -2,6 +2,7 @@
 
 import { CheckCircle, AlertTriangle, ExternalLink } from 'lucide-react'
 import type { ReconciliationStatus } from '../types'
+import { packMonthLong } from '../services/pack-style'
 
 interface ReconciliationGateProps {
   reconciliation: ReconciliationStatus | null
@@ -26,19 +27,58 @@ export default function ReconciliationGate({
 
   if (!reconciliation) return null
 
-  const monthLabel = new Date(selectedMonth + '-01').toLocaleDateString('en-AU', {
-    month: 'long',
-    year: 'numeric',
-  })
+  const monthLabel = packMonthLong(selectedMonth)
+
+  // FLEET-04: the check did not complete — never show a green tick for an
+  // answer we do not have. This is what let Dragon and IICT (multi-org) finalise
+  // reports on an unconditional "All transactions reconciled".
+  if (reconciliation.check_failed) {
+    return (
+      <div className="mb-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-amber-900">
+              Could not verify reconciliation for {monthLabel}
+            </p>
+            <p className="mt-1 text-sm text-amber-800">
+              {reconciliation.failure_reason ??
+                'One or more connected Xero organisations could not be checked.'}{' '}
+              {typeof reconciliation.orgs_checked === 'number' &&
+                typeof reconciliation.orgs_total === 'number' &&
+                `Checked ${reconciliation.orgs_checked} of ${reconciliation.orgs_total}. `}
+              Any count shown is incomplete — reconnect Xero and re-check before finalising.
+            </p>
+            <button
+              onClick={onProceedDraft}
+              className="mt-3 inline-flex items-center text-sm font-medium text-amber-900 underline hover:text-amber-950"
+            >
+              Continue as draft anyway →
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // Green: All reconciled
   if (reconciliation.is_clean) {
     return (
       <div className="mb-6 p-4 bg-green-50 rounded-lg border border-green-200 flex items-center gap-3">
         <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-        <span className="text-sm text-green-800 font-medium">
-          All transactions reconciled for {monthLabel}
-        </span>
+        <div>
+          <span className="text-sm text-green-800 font-medium">
+            All recorded transactions reconciled for {monthLabel}
+          </span>
+          {/* Uncoded-lines honesty: this check counts recorded transactions.
+              Bank-feed statement lines nobody has coded yet (what Xero's
+              "Reconcile N items" badge counts) are invisible to it — a green
+              state here must not read as "books complete". */}
+          <p className="text-xs text-green-700 opacity-80 mt-0.5">
+            Bank-feed lines not yet coded into Xero aren&apos;t visible to this check —
+            uncoded activity would be missing from this P&amp;L.
+          </p>
+        </div>
       </div>
     )
   }
@@ -63,10 +103,18 @@ export default function ReconciliationGate({
         <AlertTriangle className={`w-5 h-5 ${iconColor} flex-shrink-0 mt-0.5`} />
         <div className="flex-1">
           <p className={`text-sm font-medium ${textColor}`}>
-            {reconciliation.has_more ? '100+' : count} unreconciled transaction{count !== 1 ? 's' : ''} ({formattedTotal})
+            {reconciliation.has_more ? '500+' : count} unreconciled transaction{count !== 1 ? 's' : ''} ({formattedTotal})
           </p>
+          {(reconciliation.bank_accounts?.length ?? 0) > 0 && (
+            <p className={`text-xs mt-1 ${textColor} opacity-90`}>
+              {reconciliation.bank_accounts
+                .map(a => `${a.name}: ${a.count}`)
+                .join(' · ')}
+            </p>
+          )}
           <p className={`text-xs mt-1 ${textColor} opacity-80`}>
-            Report will be marked as DRAFT until all transactions are reconciled in Xero.
+            Report will be marked as DRAFT until all recorded transactions are reconciled in
+            Xero. Bank-feed lines not yet coded aren&apos;t visible to this check.
           </p>
           <div className="flex items-center gap-3 mt-3">
             <a

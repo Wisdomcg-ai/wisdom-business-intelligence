@@ -129,6 +129,35 @@ export const VENDOR_MAPPINGS: Record<string, string> = {
   'CARSALES': 'Carsales',
 }
 
+/**
+ * The company behind a mapped PRODUCT name, for a surface that is not talking
+ * about the subscription.
+ *
+ * VENDOR_MAPPINGS was written for the subscription wizard, where "Google" on a
+ * software account is the Workspace seat and naming the product is the point.
+ * The commentary runs the same mapping over every account, so Urban Road's
+ * August Marketing Digital Ad Spend — a $16,553 bill from the Xero contact
+ * "Google" — was quoted as "Google Workspace ($16,553)". That is Google Ads
+ * spend, and Calxa's pack says "Google".
+ *
+ * Display only. The mapped name is still what extractVendorName returns and
+ * what createVendorKey hashes, so Step 6 vendor keys, subscription_budgets and
+ * subscription_vendor_actuals are untouched. Only mappings whose target is a
+ * product rather than the company that bills it are listed; "Slack", "Xero" or
+ * "Anthropic" already name the company.
+ */
+export const VENDOR_COMPANY_NAMES: Record<string, string> = {
+  'Google Workspace': 'Google',
+  'Microsoft 365': 'Microsoft',
+  'Microsoft Azure': 'Microsoft',
+  'ChatGPT': 'OpenAI',
+}
+
+/** The company name for a mapped product name; any other name comes back as it is. */
+export function vendorCompanyName(vendorName: string): string {
+  return VENDOR_COMPANY_NAMES[vendorName] ?? vendorName
+}
+
 // ── Payment Intermediaries ───────────────────────────────────────
 
 const PAYMENT_INTERMEDIARIES = [

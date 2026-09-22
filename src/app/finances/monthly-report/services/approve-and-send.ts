@@ -7,36 +7,31 @@
 //   - arrayBufferToBase64 uses browser-native btoa + Uint8Array
 //   - fetch() talks to the Next.js route which handles auth, role gate, Resend
 //
-// Re-uses the existing MonthlyReportPDFService — no new PDF engine (D-07).
-import { MonthlyReportPDFService } from './monthly-report-pdf-service'
-import type {
-  GeneratedReport,
-  VarianceCommentary,
-  FullYearReport,
-  SubscriptionDetailData,
-  WagesDetailData,
-  ReportSections,
-} from '../types'
-import type { CashflowForecastData } from '@/app/finances/forecast/types'
-import type { PDFLayout } from '../types/pdf-layout'
+// Re-uses the existing MonthlyReportPDFService — no new PDF engine (D-07) —
+// through buildPackPdf, the one builder Export PDF and the preview harness
+// also call, so the attachment is the file Export saves, uploaded pages and all.
+import { buildPackPdf, type PackPdfOptions, type PreparedPackInserts } from './pack-pdf'
+import { packTooLargeToEmailReason, type PackInsertSources } from '@/lib/monthly-report/pack-inserts'
+import type { GeneratedReport } from '../types'
+import { printedBalanceSheets } from '@/lib/monthly-report/balance-sheet-freeze'
+import { packPdfFilename } from '@/lib/monthly-report/pack-filename'
 
 export interface PdfInput {
   report: GeneratedReport
-  options: {
-    commentary?: VarianceCommentary
-    fullYearReport?: FullYearReport
-    subscriptionDetail?: SubscriptionDetailData
-    wagesDetail?: WagesDetailData
-    cashflowForecast?: CashflowForecastData
-    sections?: ReportSections
-    pdfLayout?: PDFLayout | null
-  }
+  /** Everything the pack prints from — the service's own options (see pack-pdf). */
+  options: PackPdfOptions
+  /**
+   * The layout's uploaded pages for the month (services/pack-pdf) — opened
+   * already, or the files to open. Absent: a placed uploaded page prints that
+   * the uploads were not loaded.
+   */
+  inserts?: PreparedPackInserts | PackInsertSources | null
 }
 
 // Browser-safe ArrayBuffer → base64. Chunked to avoid stack overflow on large PDFs
 // (String.fromCharCode.apply has argument-count limits on some engines).
-function arrayBufferToBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf)
+function arrayBufferToBase64(buf: ArrayBuffer | Uint8Array): string {
+  const bytes = ArrayBuffer.isView(buf) ? buf : new Uint8Array(buf)
   let binary = ''
   const CHUNK = 0x8000
   for (let i = 0; i < bytes.length; i += CHUNK) {
@@ -48,24 +43,33 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
   return btoa(binary)
 }
 
-function sluggify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-}
-
-function buildPdfFilename(business_name: string, period_month: string): string {
-  const yyyymm = period_month.slice(0, 7)
-  const slug = sluggify(business_name || 'report') || 'report'
-  return `${slug}-${yyyymm}-report.pdf`
-}
-
-async function generatePdfBase64(pdf_input: PdfInput): Promise<string> {
-  const pdfService = new MonthlyReportPDFService(pdf_input.report, pdf_input.options)
-  const doc = pdfService.generate()
-  const arrayBuffer = doc.output('arraybuffer') as ArrayBuffer
-  return arrayBufferToBase64(arrayBuffer)
+/**
+ * The send posts the pack base64 through a Vercel function, whose request body
+ * is capped at 4.5 MB — over it the platform answers with a page the status bar
+ * cannot read (SENDABLE_PACK_BYTES is the pack that still fits). Only a pack
+ * with an uploaded page gets near it, so only that pack is checked, and the
+ * coach is told the cut to make — in the words the export's pre-flight used
+ * for the same file.
+ */
+async function generatePdfBase64(pdf_input: PdfInput): Promise<{ pdf_base64: string; refusal: ReportStatusApiResult | null }> {
+  const pack = await buildPackPdf(pdf_input.report, pdf_input.options, pdf_input.inserts)
+  const tooLarge = pack.merged ? packTooLargeToEmailReason(pack.bytes.length, pack.inserts) : null
+  if (tooLarge) {
+    const several = pack.inserts.filter((i) => i.state.status === 'ready').length > 1
+    return {
+      pdf_base64: '',
+      refusal: {
+        ok: false,
+        httpStatus: 413,
+        body: {
+          success: false,
+          errorCode: 'pdf_too_large',
+          error: `${tooLarge}. Upload ${several ? 'smaller PDFs' : 'a smaller PDF'} on the External Data tab and send again.`,
+        },
+      },
+    }
+  }
+  return { pdf_base64: arrayBufferToBase64(pack.bytes), refusal: null }
 }
 
 export interface ApproveAndSendParams {
@@ -131,13 +135,19 @@ export async function revertToDraft(
 export async function approveAndSend(
   params: ApproveAndSendParams,
 ): Promise<ReportStatusApiResult> {
-  const pdf_base64 = await generatePdfBase64(params.pdf_input)
-  const pdf_filename = buildPdfFilename(params.business_name, params.period_month)
+  const { pdf_base64, refusal } = await generatePdfBase64(params.pdf_input)
+  if (refusal) return refusal
+  const pdf_filename = packPdfFilename(params.business_name, params.period_month)
   return postAction({
     action: 'approve_and_send',
     business_id: params.business_id,
     period_month: params.period_month,
     snapshot_data: params.snapshot_data,
+    // Package B: the balance sheets the PDF above was built from — the same
+    // pdf_input, not a second fetch — kept by the route as the month's sent
+    // copy. Absent (undefined, dropped by JSON) when the pack has no balance
+    // sheet page. A resend posts none: it prints that copy and never rewrites it.
+    balance_sheets: printedBalanceSheets(params.pdf_input.options.balanceSheets),
     pdf_base64,
     pdf_filename,
     coach_name: params.coach_name,
@@ -153,8 +163,9 @@ export async function approveAndSend(
 export async function resendReport(
   params: ResendReportParams,
 ): Promise<ReportStatusApiResult> {
-  const pdf_base64 = await generatePdfBase64(params.pdf_input)
-  const pdf_filename = buildPdfFilename(params.business_name, params.period_month)
+  const { pdf_base64, refusal } = await generatePdfBase64(params.pdf_input)
+  if (refusal) return refusal
+  const pdf_filename = packPdfFilename(params.business_name, params.period_month)
   return postAction({
     action: 'resend',
     business_id: params.business_id,

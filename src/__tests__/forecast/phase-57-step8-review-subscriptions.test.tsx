@@ -33,7 +33,6 @@ function buildWaterfallItems(data: YearlySummary) {
     ...(subscriptions > 0 ? [{ name: 'Subscriptions', value: -subscriptions }] : []),
     { name: 'OpEx', value: -data.opex },
     ...((data.investments || 0) > 0 ? [{ name: 'Invest', value: -(data.investments || 0) }] : []),
-    { name: 'Other', value: -data.otherExpenses },
     { name: 'Net Profit', value: data.netProfit, isTotal: true },
   ];
 }
@@ -49,7 +48,6 @@ function makeSummary(overrides: Partial<YearlySummary> = {}): YearlySummary {
     opex: 150_000,
     depreciation: 0,
     investments: 0,
-    otherExpenses: 0,
     otherIncome: 0,
     xeroOtherExpense: 0,
     netProfit: 200_000,
@@ -80,8 +78,10 @@ describe('Phase 57 T08 — waterfall items', () => {
     const names = items.map(i => i.name);
 
     expect(names).not.toContain('Subscriptions');
-    // Legacy P&L shape: Revenue, COGS, GP, Team, OpEx, Other, NP = 7 items.
-    expect(items).toHaveLength(7);
+    // Legacy P&L shape: Revenue, COGS, GP, Team, OpEx, NP = 6 items. The
+    // 'Other' bar went with the phantom user other-expenses bucket, which had
+    // no editor and could only ever be zero.
+    expect(items).toHaveLength(6);
   });
 
   it('omits the Subscriptions bar when subscriptions is undefined (defensive ?? 0)', () => {
@@ -104,7 +104,6 @@ type WhatIfDelta = {
   cogsAdj: number;
   teamAdj: number;
   opexAdj: number;
-  otherAdj: number;
 };
 
 function applyScenario(yearData: YearlySummary, deltas: WhatIfDelta[]): YearlySummary {
@@ -113,14 +112,12 @@ function applyScenario(yearData: YearlySummary, deltas: WhatIfDelta[]): YearlySu
   const totalCogsAdj = deltas.reduce((s, t) => s + t.cogsAdj, 0);
   const totalTeamAdj = deltas.reduce((s, t) => s + t.teamAdj, 0);
   const totalOpexAdj = deltas.reduce((s, t) => s + t.opexAdj, 0);
-  const totalOtherAdj = deltas.reduce((s, t) => s + t.otherAdj, 0);
 
   const revenue = yearData.revenue + totalRevAdj;
   const cogs = yearData.cogs - totalCogsAdj;
   const grossProfit = revenue - cogs;
   const teamCosts = yearData.teamCosts + totalTeamAdj;
   const opex = yearData.opex + totalOpexAdj;
-  const otherExpenses = yearData.otherExpenses + totalOtherAdj;
   const otherIncome = yearData.otherIncome ?? 0;
   const xeroOtherExpense = yearData.xeroOtherExpense ?? 0;
   const subscriptions = yearData.subscriptions ?? 0;
@@ -132,7 +129,6 @@ function applyScenario(yearData: YearlySummary, deltas: WhatIfDelta[]): YearlySu
     - subscriptions
     - opex
     - depreciation
-    - otherExpenses
     - investments
     + otherIncome
     - xeroOtherExpense;
@@ -147,7 +143,6 @@ function applyScenario(yearData: YearlySummary, deltas: WhatIfDelta[]): YearlySu
     opex,
     depreciation,
     investments,
-    otherExpenses,
     otherIncome,
     xeroOtherExpense,
     netProfit,
@@ -166,7 +161,6 @@ describe('Phase 57 T08 — scenario subscription pass-through', () => {
       cogsAdj: 0,
       teamAdj: 0,
       opexAdj: -10_000,
-      otherAdj: 0,
     };
 
     const adjNoSubs = applyScenario(baseNoSubs, [scenario]);
@@ -189,9 +183,9 @@ describe('Phase 57 T08 — scenario subscription pass-through', () => {
     const base = makeSummary({ subscriptions: 12_000, netProfit: 188_000 });
     // Multiple toggles: opex cut + team cut + revenue drop.
     const adjusted = applyScenario(base, [
-      { revenueAdj: -100_000, cogsAdj: 40_000, teamAdj: 0,        opexAdj: 0,       otherAdj: 0 },
-      { revenueAdj: 0,        cogsAdj: 0,      teamAdj: -50_000,  opexAdj: 0,       otherAdj: 0 },
-      { revenueAdj: 0,        cogsAdj: 0,      teamAdj: 0,        opexAdj: -20_000, otherAdj: 0 },
+      { revenueAdj: -100_000, cogsAdj: 40_000, teamAdj: 0,        opexAdj: 0 },
+      { revenueAdj: 0,        cogsAdj: 0,      teamAdj: -50_000,  opexAdj: 0 },
+      { revenueAdj: 0,        cogsAdj: 0,      teamAdj: 0,        opexAdj: -20_000 },
     ]);
 
     expect(adjusted.subscriptions).toBe(12_000);
@@ -203,7 +197,7 @@ describe('Phase 57 T08 — scenario subscription pass-through', () => {
     // treat missing subs as 0.
     const stale = { ...makeSummary(), subscriptions: undefined as unknown as number };
     const adjusted = applyScenario(stale, [
-      { revenueAdj: 0, cogsAdj: 0, teamAdj: 0, opexAdj: -10_000, otherAdj: 0 },
+      { revenueAdj: 0, cogsAdj: 0, teamAdj: 0, opexAdj: -10_000 },
     ]);
     expect(adjusted.subscriptions).toBe(0);
     // NP delta == scenario impact (10k savings), unchanged by the defensive default.

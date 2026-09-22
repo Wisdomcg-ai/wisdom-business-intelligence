@@ -14,7 +14,18 @@
  *     --tenant-id=<uuid> \
  *     --balance-date=YYYY-MM-DD \
  *     --label=<slug> \
+ *     [--accounts-label=<slug>] \
  *     [--include-inactive]
+ *
+ * --accounts-label also captures /api.xro/2.0/Accounts with the SAME token
+ * (no second refresh) into fixtures/<accounts-label>.json. The FX account split
+ * identifies Xero's three FX accounts by Account.SystemAccount
+ * (BANKCURRENCYGAIN / UNREALISEDCURRENCYGAIN / REALISEDCURRENCYGAIN), and no
+ * committed capture proved the live /Accounts response carries it — if it did
+ * not, every month would keep its merged row ('no_system_accounts'): safe, but
+ * no split. Gate 0 for a business turning sections.fx_account_split on:
+ *   --label=<slug>-trialbalance-YYYY-MM-DD --accounts-label=<slug>-accounts
+ * then src/__tests__/xero/fx-split-gate0-captures.test.ts runs on them.
  */
 import { config } from 'dotenv'
 import path from 'path'
@@ -29,6 +40,7 @@ interface CliArgs {
   tenantId: string
   balanceDate: string
   label: string
+  accountsLabel?: string
   includeInactive?: boolean
 }
 
@@ -40,7 +52,16 @@ function parseArgs(argv: string[]): CliArgs | { help: true } {
     else if (a.startsWith('--tenant-id=')) out.tenantId = a.slice('--tenant-id='.length)
     else if (a.startsWith('--balance-date=')) out.balanceDate = a.slice('--balance-date='.length)
     else if (a.startsWith('--label=')) out.label = a.slice('--label='.length)
+    else if (a.startsWith('--accounts-label=')) out.accountsLabel = a.slice('--accounts-label='.length)
     else if (a === '--include-inactive') out.includeInactive = true
+    else {
+      // Reject, never ignore: a mistyped flag (e.g. --with-accounts for
+      // --accounts-label=) would otherwise refresh the token and write a
+      // capture without the /Accounts file, and the gate-0 test that needs it
+      // would stay skipped — gate 0 looking passed when it never ran.
+      console.error(`[capture-trialbalance-fixture] unknown argument: ${a}`)
+      process.exit(1)
+    }
   }
   if (!out.businessId || !out.tenantId || !out.balanceDate || !out.label) {
     return { help: true }
@@ -59,10 +80,11 @@ function printHelp() {
     --tenant-id=<uuid> \\
     --balance-date=YYYY-MM-DD \\
     --label=<slug> \\
+    [--accounts-label=<slug>] \\
     [--include-inactive]
 
 Required: --business-id, --tenant-id, --balance-date, --label
-Optional: --include-inactive
+Optional: --accounts-label (also capture /Accounts), --include-inactive
 
 Output:
   src/__tests__/xero/fixtures/{label}.json
@@ -95,7 +117,7 @@ async function main() {
     printHelp()
     process.exit(parsed.help && process.argv.length <= 2 ? 0 : 1)
   }
-  const { businessId, tenantId, balanceDate, label, includeInactive } = parsed
+  const { businessId, tenantId, balanceDate, label, accountsLabel, includeInactive } = parsed
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY
@@ -199,6 +221,46 @@ async function main() {
   }
   writeFileSync(fixturePath, JSON.stringify(fixture, null, 2))
   console.log(`[capture-trialbalance-fixture] Wrote ${fixturePath}`)
+
+  // 4b. Optional /Accounts capture (gate 0 for the FX account split).
+  if (accountsLabel) {
+    const accRes = await fetch('https://api.xero.com/api.xro/2.0/Accounts', {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'xero-tenant-id': tenantId,
+        Accept: 'application/json',
+      },
+    })
+    if (!accRes.ok) {
+      const errText = await accRes.text()
+      console.error(`[capture-trialbalance-fixture] Xero Accounts fetch failed: ${accRes.status} ${errText.substring(0, 500)}`)
+      process.exit(1)
+    }
+    const accJson: any = await accRes.json()
+    const accPath = path.join(fixtureDir, `${accountsLabel}.json`)
+    writeFileSync(
+      accPath,
+      JSON.stringify(
+        {
+          _meta: {
+            tenant_name: connection.tenant_name,
+            tenant_id: tenantId,
+            business_id: businessId,
+            captured_at: new Date().toISOString(),
+          },
+          response: accJson,
+        },
+        null,
+        2,
+      ),
+    )
+    const fx = ((accJson?.Accounts ?? []) as any[]).filter((a) =>
+      ['BANKCURRENCYGAIN', 'UNREALISEDCURRENCYGAIN', 'REALISEDCURRENCYGAIN'].includes(a?.SystemAccount),
+    )
+    console.log(`[capture-trialbalance-fixture] Wrote ${accPath}`)
+    console.log(`FX system accounts (SystemAccount): ${fx.length === 0 ? 'NONE — the split would keep every merged row' : ''}`)
+    for (const a of fx) console.log(`  ${a.Code} ${a.Name} ${a.SystemAccount} ${a.AccountID}`)
+  }
 
   // 5. Summary — sanity check Σ debit == Σ credit at capture time.
   // Trial Balance row shape (Xero standard): Cells = [Account Name, Debit (YTD),

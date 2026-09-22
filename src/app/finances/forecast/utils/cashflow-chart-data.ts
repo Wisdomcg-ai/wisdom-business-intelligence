@@ -52,9 +52,14 @@ export function transformCashflowToChartData(data: CashflowForecastData): Cashfl
     source: m.source,
     income: m.cash_inflows,
     otherIncome: m.other_inflows,
-    costOfSales: -Math.abs(sumCogsLines(m)),
-    expenses: -Math.abs(sumExpenseGroups(m)),
-    liabilities: -Math.abs(m.movement_in_liabilities),
+    // Signed, as the engine computes Net Movement from them. The forecast's own
+    // cashflow makes every payment positive, so nothing changes there; the
+    // monthly report's carries a credit as a negative payment, and a month that
+    // nets to a credit is cash in. A liability movement is already cash-signed:
+    // a drawdown or a refund is money in and belongs above the axis.
+    costOfSales: -sumCogsLines(m),
+    expenses: -sumExpenseGroups(m),
+    liabilities: m.movement_in_liabilities,
     bankAtEnd: m.bank_at_end,
   }))
 }

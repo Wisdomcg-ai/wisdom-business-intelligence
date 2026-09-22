@@ -7,6 +7,7 @@ import { formatDollar, parseDollarInput } from '@/app/goals/utils/formatting';
 import { calculateQuarters } from '@/app/goals/utils/quarters';
 import { getInitials, getColorForName, parseTeamFromProfile, type TeamMember } from '@/app/goals/utils/team';
 import { getCategoryStyle, getCardClasses } from '@/app/goals/utils/design-tokens';
+import { snapshotActual } from '../../utils/snapshot-actuals';
 import type {
   QuarterlyReview,
   InitiativeDecision,
@@ -19,6 +20,8 @@ import {
   getDefaultQuarterlyTargets,
   getDefaultInitiativesChanges,
   type YearType,
+  remainingQuartersFor,
+  runRateForRemaining,
 } from '../../types';
 import {
   Plus,
@@ -165,7 +168,23 @@ export function QuarterlyPlanStep({
   const decisions = review.initiative_decisions || [];
   const targets = { ...getDefaultQuarterlyTargets(), ...(review.quarterly_targets || {}) };
   const changes = { ...getDefaultInitiativesChanges(), ...(review.initiatives_changes || {}) };
-  const snapshot = review.annual_plan_snapshot;
+  // `annual_plan_snapshot` defaults to `{}` in Postgres, and `{}` is truthy — a
+  // bare `!snapshot` guard lets it through and `snapshot.annualTargets.revenue`
+  // then throws. 6 of 13 live reviews carry `{}`, so the Quarterly Plan step
+  // crashed for every one of them. Normalise to null unless the object actually
+  // carries the fields the callers dereference (same guard the summary page
+  // already applies).
+  const rawSnapshot = review.annual_plan_snapshot;
+  const snapshot =
+    rawSnapshot && rawSnapshot.annualTargets && rawSnapshot.ytdActuals ? rawSnapshot : null;
+
+  // Quarters remaining is DERIVED from the quarter being planned, never read
+  // from the snapshot. A persisted count written by a pre-#406 build understates
+  // the remainder by one, and it is the multiplier/divisor for every target on
+  // this screen — so trusting the stored copy silently rescales client numbers.
+  // Deriving here also means the 7 stale prod rows render correctly without a
+  // backfill. See remainingQuartersFor() for the invariant.
+  const remainingQuarters = remainingQuartersFor(review.quarter);
   const realignment = review.realignment_decision;
 
   // ─── Quarter Calculation ────────────────────────────────────
@@ -307,10 +326,10 @@ export function QuarterlyPlanStep({
     const totalPlannedRevenue = quarterColumns.reduce((sum, q) => sum + (quarterFinancials[q.id]?.revenue || 0), 0);
     const projected = totalPlannedRevenue > 0
       ? totalPlannedRevenue
-      : (snapshot.ytdActuals.revenue || 0) + targets.revenue * (snapshot.remainingQuarters || 1);
+      : (snapshot.ytdActuals.revenue || 0) + targets.revenue * remainingQuarters;
 
     return { onTrack: projected >= annualTarget, projected, annual: annualTarget };
-  }, [snapshot, realignment, quarterFinancials, quarterColumns, targets.revenue]);
+  }, [snapshot, realignment, quarterFinancials, quarterColumns, targets.revenue, remainingQuarters]);
 
   // ═══════════════════════════════════════════════════════════════
   // Data Fetching
@@ -373,7 +392,7 @@ export function QuarterlyPlanStep({
       }
 
       // Load KPIs — business_kpis is keyed by business_profiles.id (NOT businesses.id),
-      // same as ScorecardReviewStep/QuarterlyTargetsStep. Using review.business_id here
+      // same as ScorecardReviewStep. Using review.business_id here
       // returned zero KPIs for every client (the list rendered empty in the workshop).
       const { data: kpiData } = await supabase
         .from('business_kpis')
@@ -573,12 +592,18 @@ export function QuarterlyPlanStep({
 
       if (snapshots && snapshots.length > 0) {
         snapshots.forEach((snap: any) => {
-          const qId = `q${snap.snapshot_quarter}`;
+          // snapshot_quarter is TEXT holding 'Q1'/'Q3'/'Q4' (not 1/3/4), so the
+          // template built 'qQ1', which never matched the 'q1'..'q4' ids from
+          // calculateQuarters. loadedFinancials was therefore ALWAYS empty and
+          // the prefill below overwrote real recorded actuals on every load.
+          const qId = `q${String(snap.snapshot_quarter).replace(/^Q/i, '')}`;
           const fin = snap.financial_snapshot as any;
           if (fin) {
-            const revenue = fin.revenue || fin.revenue_actual || 0;
-            const grossProfit = fin.grossProfit || fin.gross_profit_actual || 0;
-            const netProfit = fin.netProfit || fin.net_profit_actual || 0;
+            // financial_snapshot stores each line as { target, actual, variance };
+            // reading it as a bare number took the whole object. See snapshotActual.
+            const revenue = snapshotActual(fin.revenue, fin.revenue_actual);
+            const grossProfit = snapshotActual(fin.grossProfit, fin.gross_profit_actual);
+            const netProfit = snapshotActual(fin.netProfit, fin.net_profit_actual);
             loadedFinancials[qId] = {
               revenue,
               grossProfit,
@@ -599,10 +624,13 @@ export function QuarterlyPlanStep({
             sugR = Math.round(realignment.adjustedTargets.revenue / 4);
             sugGP = Math.round(realignment.adjustedTargets.grossProfit / 4);
             sugNP = Math.round(realignment.adjustedTargets.netProfit / 4);
-          } else if (snapshot && snapshot.remainingQuarters > 0) {
-            sugR = snapshot.runRateNeeded.revenue;
-            sugGP = snapshot.runRateNeeded.grossProfit;
-            sugNP = snapshot.runRateNeeded.netProfit;
+          } else if (snapshot && snapshot.remaining) {
+            // Recompute from the stored GAP rather than reusing the stored
+            // run rate: the gap is a fact (target - actual), the run rate is a
+            // quotient by a count that may be stale.
+            sugR = runRateForRemaining(snapshot.remaining.revenue, review.quarter);
+            sugGP = runRateForRemaining(snapshot.remaining.grossProfit, review.quarter);
+            sugNP = runRateForRemaining(snapshot.remaining.netProfit, review.quarter);
           } else if (goalsData) {
             sugR = Math.round((goalsData.revenue_year1 || 0) / 4);
             sugGP = Math.round((goalsData.gross_profit_year1 || 0) / 4);

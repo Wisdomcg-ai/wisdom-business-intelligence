@@ -11,10 +11,18 @@
  *   3. Optional Xero YTD summary card so first-load isn't completely blank
  *      when historical data is already available
  *   4. Connect-Xero prompt when no historical data exists
+ *   5. (Sep 2026, budget-seed PR 4) "Start from Xero budget" — an OPT-IN
+ *      third start when the org has a Budget Manager budget for this FY.
+ *      Never assumed: the operator chooses it, and it is one-shot. The
+ *      button, status line and picker are the shared XeroBudgetStart pieces
+ *      (also used by the Forecast Builder selector, which is where a
+ *      current-FY business with Xero actuals lands — this empty state only
+ *      renders when there is nothing at all to show).
  *
  * Data fetched here:
  *   - GET /api/Xero/pl-summary?business_id=&fiscal_year= → HistoricalPLSummary
  *     { has_xero_data, current_ytd: { total_revenue, gross_profit, net_profit, … } }
+ *   - GET /api/Xero/budgets (via useBudgetAvailability) for the TARGET FY.
  *
  * Errors / no-Xero state are silently absorbed — the empty state always
  * renders the headline + CTA, and only adds the YTD card when data is
@@ -23,9 +31,12 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { ArrowRight, Plug, Sparkles, TrendingUp } from 'lucide-react'
 import type { HistoricalPLSummary } from '../types'
 import { DEFAULT_YEAR_START_MONTH, getCurrentFiscalYear } from '@/lib/utils/fiscal-year-utils'
+import { useBudgetAvailability } from './xero-budget/useBudgetAvailability'
+import { XeroBudgetStart, integrationsHrefFor, type XeroBudgetSeedChoice } from './xero-budget/XeroBudgetStart'
 
 export interface ForecastEmptyStateProps {
   businessId: string
@@ -40,6 +51,14 @@ export interface ForecastEmptyStateProps {
   onSeedForecast?: () => void
   /** True while POST /api/forecast/seed-from-prior is in flight. Disables the seed button. */
   isSeedingForecast?: boolean
+  /**
+   * Budget-seed entry point. When provided, the empty state checks Xero for a
+   * Budget Manager budget covering this FY and offers "Start from Xero budget".
+   * Called with the operator's explicit (org, budget) choice.
+   */
+  onSeedFromXeroBudget?: (choice: XeroBudgetSeedChoice) => void
+  /** True while POST /api/forecast/seed-from-xero-budget is in flight. */
+  isSeedingFromBudget?: boolean
   /**
    * Prior FY for which a saved forecast exists. When set, the empty state
    * surfaces a discrete "View/edit FYxx" affordance so a user landed on a
@@ -77,12 +96,23 @@ export default function ForecastEmptyState({
   onCreateForecast,
   onSeedForecast,
   isSeedingForecast = false,
+  onSeedFromXeroBudget,
+  isSeedingFromBudget = false,
   priorFiscalYearWithForecast,
   onSwitchFiscalYear,
   yearStartMonth = DEFAULT_YEAR_START_MONTH,
 }: ForecastEmptyStateProps) {
   const [summary, setSummary] = useState<HistoricalPLSummary | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+
+  // Coach view lives under /coach/clients/<id>/view/…; the reconnect link must
+  // stay inside that client's context. Same rule the wizard shell applies.
+  const integrationsHref = integrationsHrefFor(usePathname())
+
+  // Budget availability — only when the page can act on it. The TARGET FY is
+  // what matters here (the budget is for the year being planned), unlike the
+  // actuals card below.
+  const budget = useBudgetAvailability(businessId, fiscalYear, !!onSeedFromXeroBudget)
 
   // When the wizard target FY is the upcoming year (planning-season default),
   // pulling Xero "YTD" data for that future FY returns nothing. Clamp the
@@ -120,6 +150,9 @@ export default function ForecastEmptyState({
   const ytd = summary?.current_ytd
   const hasXeroData = !!summary?.has_xero_data && !!ytd && ytd.months_count > 0
 
+  const hasPriorSeed = !!(priorFiscalYearWithForecast && onSeedForecast)
+  const hasAlternatives = hasPriorSeed || budget.ctaVisible
+
   return (
     <div className="min-h-[60vh] flex items-start justify-center pt-8 sm:pt-16 px-4">
       <div className="max-w-2xl w-full text-center">
@@ -137,38 +170,68 @@ export default function ForecastEmptyState({
 
         {/* Primary CTA */}
         <div className="mt-7">
-          {priorFiscalYearWithForecast && onSeedForecast ? (
-            /* Two-CTA layout: seed (primary) + blank (secondary) */
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <button
-                type="button"
-                onClick={onSeedForecast}
-                disabled={isSeedingForecast}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-5 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <Sparkles className="h-5 w-5" aria-hidden="true" />
-                {isSeedingForecast ? 'Seeding…' : `Seed from FY${priorFiscalYearWithForecast}`}
-              </button>
+          {hasAlternatives ? (
+            /* Multi-CTA layout: seeds (primary) + blank (secondary) */
+            <div className="flex flex-col sm:flex-row flex-wrap gap-3 justify-center">
+              {hasPriorSeed && (
+                <button
+                  type="button"
+                  onClick={onSeedForecast}
+                  disabled={isSeedingForecast || isSeedingFromBudget}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-5 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <Sparkles className="h-5 w-5" aria-hidden="true" />
+                  {isSeedingForecast ? 'Seeding…' : `Seed from FY${priorFiscalYearWithForecast}`}
+                </button>
+              )}
+              {onSeedFromXeroBudget && (
+                <XeroBudgetStart
+                  availability={budget}
+                  fiscalYear={fiscalYear}
+                  onSeed={onSeedFromXeroBudget}
+                  busy={isSeedingFromBudget}
+                  otherBusy={isSeedingForecast}
+                  integrationsHref={integrationsHref}
+                  size="lg"
+                  className="basis-full order-last mt-0"
+                />
+              )}
               <button
                 type="button"
                 onClick={onCreateForecast}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-5 py-3 text-base font-semibold text-gray-900 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+                disabled={isSeedingForecast || isSeedingFromBudget}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-5 py-3 text-base font-semibold text-gray-900 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-60"
               >
                 Start FY{fiscalYear} blank
                 <ArrowRight className="h-5 w-5" aria-hidden="true" />
               </button>
             </div>
           ) : (
-            /* Single-CTA layout: preserved exactly for the no-prior-FY case */
-            <button
-              type="button"
-              onClick={onCreateForecast}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-brand-orange text-white text-base font-semibold rounded-lg shadow-sm hover:bg-brand-orange-600 transition-colors"
-            >
-              <Sparkles className="w-5 h-5" strokeWidth={2.25} />
-              Start FY{fiscalYear} Forecast
-            </button>
+            /* Single-CTA layout: preserved exactly for the no-alternatives case */
+            <>
+              <button
+                type="button"
+                onClick={onCreateForecast}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-brand-orange text-white text-base font-semibold rounded-lg shadow-sm hover:bg-brand-orange-600 transition-colors"
+              >
+                <Sparkles className="w-5 h-5" strokeWidth={2.25} />
+                Start FY{fiscalYear} Forecast
+              </button>
+              {/* none / error / failed: the status line still speaks, with no button. */}
+              {onSeedFromXeroBudget && (
+                <XeroBudgetStart
+                  availability={budget}
+                  fiscalYear={fiscalYear}
+                  onSeed={onSeedFromXeroBudget}
+                  busy={isSeedingFromBudget}
+                  integrationsHref={integrationsHref}
+                  lineOnly
+                  className="mt-3"
+                />
+              )}
+            </>
           )}
+
           <p className="mt-3 text-xs text-gray-500">
             Takes about 5 minutes · We&apos;ll guide you through every step
           </p>

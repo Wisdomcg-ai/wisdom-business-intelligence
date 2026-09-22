@@ -7,13 +7,148 @@
 // continuity. See WIZARD_STEPS in ../types.ts for the canonical step
 // numbering and ForecastWizardV4.tsx renderStep() for the switch.
 
-import React, { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, forwardRef, useImperativeHandle, memo } from 'react';
 import {
   Search, CreditCard, AlertCircle, CheckCircle, Loader2, RefreshCw,
   ChevronDown, ChevronRight, Save, DollarSign, Calendar, TrendingUp,
   Plus, Trash2, PenLine, AlertTriangle
 } from 'lucide-react';
 import { ForecastWizardState, WizardActions, formatCurrency } from '../types';
+import { CommitNumberInput } from '../components/CommitNumberInput';
+import {
+  FREQUENCY_OPTIONS as SHARED_FREQUENCY_OPTIONS,
+  monthlyFromPeriod, periodFromMonthly, periodSuffix, isLumpy,
+  type VendorFrequency,
+} from '@/lib/subscriptions/frequency';
+import { lastChargedMonthTotal } from '@/lib/subscriptions/recent-month';
+
+/**
+ * Budget cell for the vendor table — the same local-draft pattern proven by
+ * Step4Team's CurrencyInput/NumberInput: controlled on a LOCAL string while
+ * focused, re-synced from the prop only when NOT focused, committed on blur.
+ *
+ * Replaces the remount-as-sync hack (an uncontrolled input whose React key
+ * embedded the value, so every commit destroyed the DOM node and remounted a
+ * fresh one). That hack had real costs:
+ *  - Enter blurred to <body> and the node the operator was in was destroyed —
+ *    focus vanished and the next Tab restarted from the top of the page. On a
+ *    40-vendor list, a mouse reach after every confirmed value.
+ *  - Clearing a field committed a hard $0 (parseFloat('') || 0) — a silent
+ *    zeroing path on a CFO-accuracy product, with a stale comment claiming it
+ *    was fixed. An empty commit now reverts to the prior value instead;
+ *    typing 0 explicitly still zeroes.
+ *  - type="number" spinners: a scroll or stray arrow key silently changed a
+ *    budget. text + inputMode="decimal" keeps the numeric keyboard on touch
+ *    without either hazard.
+ * memo: a commit re-renders all ~40 vendor rows; unchanged cells now skip.
+ */
+/** Month label for a 'YYYY-MM' key, e.g. '2026-03' → 'Mar'. */
+function shortMonth(ym: string): string {
+  const m = parseInt(ym.slice(5, 7), 10);
+  return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1] ?? ym;
+}
+
+/**
+ * Lifecycle badge — the dossier's answer to "is this still running?".
+ * Lapsed names the stop month so "stopped Mar" is a fact the coach can take to
+ * the client, not a judgement they have to reconstruct from the transactions.
+ */
+const VendorStatusBadge = memo(function VendorStatusBadge({ vendor }: { vendor: VendorBudget }) {
+  if (!vendor.status || vendor.status === 'active') return null;
+  const styles: Record<string, string> = {
+    'lapsed': 'bg-amber-50 text-amber-700 border-amber-200',
+    'new': 'bg-blue-50 text-blue-700 border-blue-200',
+    'one-off': 'bg-gray-100 text-gray-600 border-gray-200',
+  };
+  const label =
+    vendor.status === 'lapsed'
+      ? `Stopped${vendor.stoppedMonth ? ` ${shortMonth(vendor.stoppedMonth)}` : ''}`
+      : vendor.status === 'new'
+        ? 'New this year'
+        : 'One-off';
+  const title =
+    vendor.status === 'lapsed'
+      ? `No payments since ${vendor.stoppedMonth ?? 'earlier in the year'} — excluded from the budget by default. Toggle Include if it should carry forward.`
+      : vendor.status === 'new'
+        ? 'First payment falls in the current financial year.'
+        : 'A single payment with no matching payment ~12 months earlier — likely a purchase, not a subscription. Excluded by default.';
+  return (
+    <span
+      className={`px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide rounded border ${styles[vendor.status]}`}
+      title={title}
+    >
+      {label}
+    </span>
+  );
+});
+
+/**
+ * Price-creep evidence: when the FY average and the current price point differ
+ * by ≥ 5%, show both. The budget suggestion already uses the current price —
+ * this line explains WHY it doesn't match the average the operator can compute
+ * from the transaction list, and quietly reports the year's price movement.
+ */
+const VendorPriceEvidence = memo(function VendorPriceEvidence({ vendor }: { vendor: VendorBudget }) {
+  const avg = vendor.fyAverageMonthly ?? 0;
+  const current = vendor.suggestedMonthlyBudget;
+  if (avg <= 0 || current <= 0) return null;
+  if (Math.abs(current - avg) / avg < 0.05) return null;
+  const rose = current > avg;
+  return (
+    <span
+      className={`ml-2 ${rose ? 'text-amber-600' : 'text-green-600'}`}
+      title={`FY average ${formatCurrency(avg)}/mo vs the current price point ${formatCurrency(current)}/mo. The suggestion uses the current price — averaging a year that contains a price change budgets the old price.`}
+    >
+      {rose ? 'Price rose' : 'Price fell'}: avg {formatCurrency(avg)} → now {formatCurrency(current)}
+    </span>
+  );
+});
+
+const VendorBudgetInput = memo(function VendorBudgetInput({
+  value,
+  disabled,
+  onCommit,
+  prefix,
+  suffix,
+  title,
+}: {
+  /** Canonical value from state, already in this field's display unit. */
+  value: number;
+  disabled: boolean;
+  /** Called with the parsed value on blur/Enter. NOT called for empty input. */
+  onCommit: (parsed: number) => void;
+  prefix?: string;
+  suffix?: string;
+  title?: string;
+}) {
+  // Thin chrome ($ prefix, /mo suffix) around the wizard's single
+  // commit-on-blur primitive — the parse/revert/Enter-keeps-focus semantics
+  // live in ONE place, not per step.
+  return (
+    <div className={prefix || suffix ? 'relative flex-1 min-w-[130px] max-w-[170px]' : undefined}>
+      {prefix && (
+        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{prefix}</span>
+      )}
+      <CommitNumberInput
+        value={value}
+        zeroAsEmpty={false}
+        displayWhole={false}
+        disabled={disabled}
+        title={title}
+        onCommit={onCommit}
+        // 110px of box with 16px of padding each side left about seven
+        // characters for the number — "$168,882" did not fit, and an annual
+        // figure is exactly where the big numbers are. Wider box, tighter
+        // padding, and the suffix sits closer in.
+        className="w-full pl-6 pr-8 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100 tabular-nums"
+      />
+      {suffix && (
+        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">{suffix}</span>
+      )}
+    </div>
+  );
+});
+
 
 interface Step6SubscriptionsProps {
   state: ForecastWizardState;
@@ -66,10 +201,13 @@ interface RecentTransaction {
 }
 
 interface VendorBudget {
+  /** Set when the operator commits a budget by hand — frequency changes then
+   *  stop re-deriving the amount from analyzer figures. UI-only. */
+  budgetTouched?: boolean;
   vendorName: string;
   vendorKey: string;
-  suggestedFrequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc';
-  frequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc';
+  suggestedFrequency: VendorFrequency;
+  frequency: VendorFrequency;
   confidence: 'high' | 'medium' | 'low';
   totalAmount: number;
   avgAmount: number;
@@ -105,6 +243,15 @@ interface VendorBudget {
   // attributed to each. {} or undefined for legacy rows → sidebar falls back
   // to even-split of accountCodes.
   accountSplits?: Record<string, number>;
+  // Dossier (18 Aug 2026) — evidence from the analyze API. Optional: vendors
+  // restored from saved budgets predate these and simply show no badge.
+  status?: 'active' | 'lapsed' | 'new' | 'one-off';
+  stoppedMonth?: string | null;
+  lastPaymentAmount?: number;
+  priorYearTwin?: boolean;
+  /** FY-average monthly basis; when it differs from the suggestion the gap is
+   *  the price movement during the year. */
+  fyAverageMonthly?: number;
 }
 
 interface ReconciliationPeriod {
@@ -130,6 +277,15 @@ interface AnalysisSummary {
     currentFY: { from: string; to: string };
   };
   accountsAnalyzed: string[];
+  // Which Xero orgs the crawl actually read. A business can have several (Dragon
+  // Roofing = Dragon Roofing Pty Ltd + Easy Hail Claim), and a list drawn from a
+  // subset must never look like the whole business.
+  orgsAnalyzed?: string[];
+  orgsTotal?: number;
+  orgFailures?: { org: string; reason: string }[];
+  // A selected account code that names a DIFFERENT account in another org — its
+  // spend is deliberately left out rather than merged on the code alone.
+  accountNameConflicts?: { code: string; org: string; name: string; expected: string }[];
   reconciliation?: {
     priorFY: ReconciliationPeriod;
     currentFY: ReconciliationPeriod;
@@ -138,16 +294,13 @@ interface AnalysisSummary {
 
 type Phase = 'select-accounts' | 'analyzing' | 'review';
 
-const FREQUENCY_OPTIONS = [
-  { value: 'monthly', label: 'Monthly' },
-  { value: 'quarterly', label: 'Quarterly' },
-  { value: 'annual', label: 'Annual' },
-  { value: 'ad-hoc', label: 'Ad-hoc' },
-];
+/** One list, shared with everything else that speaks about billing rhythm. */
+const FREQUENCY_OPTIONS = SHARED_FREQUENCY_OPTIONS;
 
 const FREQUENCY_COLORS: Record<string, string> = {
   monthly: 'bg-green-100 text-green-700 border-green-200',
   quarterly: 'bg-purple-100 text-purple-700 border-purple-200',
+  'bi-annual': 'bg-indigo-100 text-indigo-700 border-indigo-200',
   annual: 'bg-blue-100 text-blue-700 border-blue-200',
   'ad-hoc': 'bg-gray-100 text-gray-600 border-gray-200',
 };
@@ -209,11 +362,28 @@ function createManualVendor(input: ManualVendorInput): VendorBudget {
  */
 export function mergeByVendorKey(prev: VendorBudget[], incoming: VendorBudget[]): VendorBudget[] {
   const prevByKey = new Map(prev.map(v => [v.vendorKey, v]));
-  return incoming.map(newV => {
+  const incomingKeys = new Set(incoming.map(v => v.vendorKey));
+  const merged = incoming.map(newV => {
     const existing = prevByKey.get(newV.vendorKey);
     if (!existing) return newV;
-    return { ...newV, isActive: existing.isActive, monthlyBudget: existing.monthlyBudget };
+    return {
+      ...newV,
+      isActive: existing.isActive,
+      monthlyBudget: existing.monthlyBudget,
+      budgetTouched: existing.budgetTouched,
+      // A frequency the operator chose (and its renewal month) is a decision,
+      // not an observation — a re-analyze must not replace it with a guess.
+      frequency: existing.frequency,
+      renewalMonth: existing.renewalMonth ?? newV.renewalMonth,
+    };
   });
+  // Vendors the operator added by hand have no analyzer counterpart. Dropping
+  // them deleted real work — and because the save path is upsert-only, the DB
+  // row survived and the vendor reappeared on the next load as a ghost.
+  const manualSurvivors = prev.filter(
+    v => !incomingKeys.has(v.vendorKey) && v.transactionCount === 0,
+  );
+  return [...merged, ...manualSurvivors];
 }
 
 /**
@@ -320,6 +490,10 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isManualMode, setIsManualMode] = useState(false);
+  // PR-B (D2): why we fell into manual mode. The old fallback was SILENT —
+  // a broken Xero call was indistinguishable from "never connected", with
+  // no message and no way back short of a full reload.
+  const [xeroUnavailableReason, setXeroUnavailableReason] = useState<string | null>(null);
   const [showAddVendor, setShowAddVendor] = useState(false);
 
   // Hotfix: per-vendor lazy-load state for restored vendors that have
@@ -341,6 +515,10 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
     // Phase 63: single amount field interpreted in the chosen frequency's
     // unit. UI converts → monthlyBudget on submit.
     amount: 0,
+    // Raw text mirror of `amount` while the operator types. `amount` stays the
+    // parsed number so the submit guard and Add-button disabled logic are
+    // unchanged; the input binds to the string so decimals survive typing.
+    amountText: '',
     monthlyBudget: 0,
     startMonth: defaultStartMonth,
     category: MANUAL_CATEGORY_OPTIONS[0] as string,
@@ -414,6 +592,9 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         if (response.status === 404) {
           // No Xero connection — switch to manual entry mode
           setIsManualMode(true);
+          setXeroUnavailableReason(
+            'Xero reported no active connection for this business. If Xero IS connected, this may be a temporary error — retry below.',
+          );
           setPhase('review');
           // Try loading any existing manual budgets from DB
           await loadExistingBudgets();
@@ -460,7 +641,7 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
 
       // Check for previously saved subscription budgets — if they exist, restore them
       try {
-        const budgetRes = await fetch(`/api/subscription-budgets?business_id=${businessId}`);
+        const budgetRes = await fetch(`/api/subscription-budgets?business_id=${businessId}&active_only=false`);
         if (budgetRes.ok) {
           const budgetData = await budgetRes.json();
           if (budgetData.budgets && budgetData.budgets.length > 0) {
@@ -514,6 +695,9 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
       console.error('Error loading accounts:', err);
       // Network error — also fall back to manual mode
       setIsManualMode(true);
+      setXeroUnavailableReason(
+        'Could not reach Xero (network error). You can keep working manually — or retry below.',
+      );
       setPhase('review');
       await loadExistingBudgets();
     } finally {
@@ -521,9 +705,19 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
     }
   };
 
+  // PR-B (D2): escape hatch from the silent manual-mode fallback — reset and
+  // re-run the Xero account load.
+  const retryXeroConnection = () => {
+    setIsManualMode(false);
+    setXeroUnavailableReason(null);
+    setPhase('select-accounts');
+    setError(null);
+    loadAccounts();
+  };
+
   const loadExistingBudgets = async () => {
     try {
-      const response = await fetch(`/api/subscription-budgets?business_id=${businessId}`);
+      const response = await fetch(`/api/subscription-budgets?business_id=${businessId}&active_only=false`);
       if (response.ok) {
         const data = await response.json();
         if (data.budgets && data.budgets.length > 0) {
@@ -624,21 +818,48 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         lastTransaction: v.lastTransaction,
         monthsSpan: v.monthsSpan,
         suggestedMonthlyBudget: v.suggestedMonthlyBudget,
-        monthlyBudget: v.suggestedMonthlyBudget,
+        // What it charged LAST month, not the year's average.
+        //
+        // A vendor whose seat count doubled in March is budgeted at the mean
+        // of the old price and the new one, and is wrong in every remaining
+        // month. The latest month it actually billed carries the price rise
+        // the average dilutes. Only for vendors that bill every month —
+        // treating one annual lump as a monthly figure would multiply their
+        // budget by twelve. Falls back to the analyzer's own suggestion when
+        // there are no dated transactions to read.
+        monthlyBudget:
+          (v.suggestedFrequency === 'monthly' || v.suggestedFrequency === 'ad-hoc')
+            ? (lastChargedMonthTotal(v.transactions) ?? v.suggestedMonthlyBudget)
+            : v.suggestedMonthlyBudget,
         transactions: v.transactions || [],
         isExpanded: false,
-        isActive: true,
+        // Silent inclusion is how budgets rot: a monthly that STOPPED mid-year
+        // or a single payment with no prior-year twin (a purchase, not a sub)
+        // starts EXCLUDED, with the badge saying why. One click re-includes it
+        // — and mergeByVendorKey preserves the operator's choice thereafter,
+        // so this default only ever applies to newly-discovered vendors.
+        isActive: v.status !== 'lapsed' && v.status !== 'one-off',
         accountCodes: v.accountCodes ?? analyzedAccountCodes,
         // Phase 63: pulled from analyze API for annual subs.
         renewalMonth: v.renewalMonth ?? null,
         // Phase 64: per-account prior-FY $ amounts from the analyze step.
         accountSplits: v.accountSplits ?? {},
+        // Dossier evidence for the badge + evidence line.
+        status: v.status,
+        stoppedMonth: v.stoppedMonth ?? null,
+        lastPaymentAmount: v.lastPaymentAmount ?? 0,
+        priorYearTwin: v.priorYearTwin ?? false,
+        fyAverageMonthly: v.fyAverageMonthly ?? 0,
       }));
 
       // Phase 51 (UX-S6-02): merge with existing vendor list so operator's
       // isActive toggles + monthlyBudget edits are preserved across
       // re-analyze. New vendors take their incoming defaults.
-      setVendors(prev => mergeByVendorKey(prev, vendorBudgets));
+      // PR-B (D7): compute the merged list FIRST and save THAT — the old
+      // code saved the raw pre-merge analyze output, so the DB briefly held
+      // analyzer values while the UI showed the operator's edits.
+      const mergedVendors = mergeByVendorKey(vendors, vendorBudgets);
+      setVendors(mergedVendors);
       setSummary(data.summary);
       setPhase('review');
       // Phase 60: a fresh analyze run produces vendors with correct accountCodes
@@ -649,9 +870,9 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
       setHasBrokenAccountCodes(false);
       setSubscriptionsConfirmed(false);
 
-      // Auto-save budgets immediately after analysis
-      if (vendorBudgets.length > 0) {
-        saveSubscriptionBudgets(vendorBudgets);
+      // Auto-save budgets immediately after analysis (merged list — D7)
+      if (mergedVendors.length > 0) {
+        saveSubscriptionBudgets(mergedVendors);
       }
 
       if (vendorBudgets.length === 0) {
@@ -815,39 +1036,41 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
     setVendors(prev => prev.filter(v => v.vendorKey !== vendorKey));
   };
 
-  const handleFrequencyChange = (vendorKey: string, newFrequency: VendorBudget['frequency']) => {
+  const handleFrequencyChange = (vendorKey: string, frequency: VendorBudget['frequency']) => {
+    // Only re-derive the budget from analyzer figures when the operator has
+    // NOT set one themselves. The old version recomputed unconditionally, so
+    // changing a dropdown silently replaced a hand-typed number (and could
+    // zero a restored vendor whose avgAmount came back 0).
     setVendors(prev => prev.map(v => {
       if (v.vendorKey !== vendorKey) return v;
-
-      // Recalculate monthly budget based on new frequency
-      let newMonthlyBudget = v.monthlyBudget;
-      if (newFrequency === 'annual') {
-        newMonthlyBudget = v.totalAmount / 12;
-      } else if (newFrequency === 'monthly') {
-        newMonthlyBudget = v.avgAmount;
-      } else if (newFrequency === 'quarterly') {
-        newMonthlyBudget = v.avgAmount / 3;
-      }
-
-      return { ...v, frequency: newFrequency, monthlyBudget: Math.round(newMonthlyBudget * 100) / 100 };
+      if (v.budgetTouched) return { ...v, frequency };
+      // One conversion, from one place — see lib/subscriptions/frequency.
+      // A lumpy rhythm is derived from the whole period's spend; a recurring
+      // one from a single period's charge.
+      let monthlyBudget = v.monthlyBudget;
+      if (isLumpy(frequency)) monthlyBudget = monthlyFromPeriod(v.totalAmount || 0, frequency);
+      else if (frequency === 'monthly') monthlyBudget = v.avgAmount || v.monthlyBudget;
+      else if (frequency === 'quarterly') monthlyBudget = monthlyFromPeriod(v.avgAmount || 0, frequency);
+      return { ...v, frequency, monthlyBudget: monthlyBudget || v.monthlyBudget };
     }));
   };
 
   const handleMonthlyBudgetChange = (vendorKey: string, value: string) => {
     const numValue = parseFloat(value) || 0;
-    updateVendor(vendorKey, { monthlyBudget: numValue });
+    updateVendor(vendorKey, { monthlyBudget: numValue, budgetTouched: true });
   };
 
-  // Phase 63: when a vendor is annual, the per-row input shows the annual
-  // amount. Internally we still persist `monthlyBudget` (smoothed annual / 12)
-  // so downstream math (rollups, sidebar attribution) stays the same — but
-  // the operator sees and edits the number in its native rhythm.
-  const handleAnnualBudgetChange = (vendorKey: string, value: string) => {
+  /** The operator typed what the invoice says; store the monthly equivalent. */
+  const handlePeriodBudgetChange = (vendorKey: string, value: string, frequency: VendorFrequency) => {
     const numValue = parseFloat(value) || 0;
-    updateVendor(vendorKey, { monthlyBudget: numValue / 12 });
+    updateVendor(vendorKey, { monthlyBudget: monthlyFromPeriod(numValue, frequency), budgetTouched: true });
   };
 
   const handleRenewalMonthChange = (vendorKey: string, monthString: string) => {
+    if (monthString === '') {
+      updateVendor(vendorKey, { renewalMonth: null });
+      return;
+    }
     const month = parseInt(monthString, 10);
     if (Number.isInteger(month) && month >= 1 && month <= 12) {
       updateVendor(vendorKey, { renewalMonth: month });
@@ -889,6 +1112,7 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
       name: '',
       frequency: 'monthly',
       amount: 0,
+      amountText: '',
       monthlyBudget: 0,
       startMonth: defaultStartMonth,
       category: MANUAL_CATEGORY_OPTIONS[0],
@@ -900,8 +1124,11 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
 
   const saveSubscriptionBudgets = useCallback(async (vendorsToSave?: VendorBudget[]) => {
     const vendorList = vendorsToSave || vendors;
-    const activeVendors = vendorList.filter(v => v.isActive);
-    if (activeVendors.length === 0) return;
+    // PR-B (D4): persist EVERY vendor with its real isActive flag. The old
+    // code filtered to active vendors and hard-coded isActive: true, so
+    // excluding a vendor never persisted — it came back active on reload —
+    // and "exclude everything" was silently impossible.
+    if (vendorList.length === 0) return;
 
     setIsSaving(true);
     setSaveSuccess(false);
@@ -912,7 +1139,7 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           business_id: businessId,
-          budgets: activeVendors.map(v => ({
+          budgets: vendorList.map(v => ({
             vendorName: v.vendorName,
             vendorKey: v.vendorKey,
             frequency: v.frequency,
@@ -936,7 +1163,7 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             renewalMonth: v.renewalMonth ?? null,
             // Phase 64: persist per-account spend split.
             accountSplits: v.accountSplits ?? {},
-            isActive: true,
+            isActive: v.isActive,
           })),
         }),
       });
@@ -944,7 +1171,11 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
       if (!response.ok) throw new Error('Failed to save budgets');
 
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      // Clear any prior 3s timer before re-arming. With the debounced autosave,
+      // back-to-back saves used to stack timeouts: an old timer fired mid-way
+      // through the next save's window and the pill strobed between states.
+      if (saveSuccessTimerRef.current) clearTimeout(saveSuccessTimerRef.current);
+      saveSuccessTimerRef.current = setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       console.error('Error saving budgets:', err);
       setError('Failed to save subscription budgets. Please try again.');
@@ -962,13 +1193,48 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
   // instead of the one-time mount-fetch snapshot from useForecastWizard.
   // Without this, edits/analysis here never reach the OpEx ceiling math,
   // which silently overstates "Available OpEx" by the unsaved delta.
+  // Mirror local vendors → wizard state, but STRIP the per-vendor transaction
+  // arrays first. The analyze route returns every transaction for every vendor
+  // (thousands of rows on a large tenant); mirroring them pushed the lot into
+  // wizard state, which the 500ms localStorage autosave then JSON.stringify'd
+  // on every keystroke — multi-megabyte writes that can hit the storage quota
+  // and silently stop the whole wizard draft from saving. The rollup only ever
+  // reads monthlyBudget / isActive / accountCodes.
+  //
+  // `actions` deliberately omitted from the deps: it is rebuilt whenever wizard
+  // state changes (saveDraft/generateForecast close over state), so including
+  // it re-fires this effect on every render. actionsRef keeps the latest.
+  const actionsRef = useRef(actions);
+  // Assigned in an effect, not during render: mutating a ref mid-render is
+  // unsafe under StrictMode/concurrent re-renders (the render may be discarded
+  // but the mutation survives).
+  useEffect(() => {
+    actionsRef.current = actions;
+  });
+  const mirrorSignature = useMemo(
+    // accountCodes is part of the signature: a re-analyze that changes only a
+    // vendor's mapped account codes must still reach state.subscriptions, or
+    // the OpEx-ceiling math downstream keeps reading the stale codes.
+    () => vendors.map(v => `${v.vendorKey}:${v.monthlyBudget}:${v.isActive ? 1 : 0}:${v.frequency}:${(v.accountCodes ?? []).join(',')}`).join('|'),
+    [vendors],
+  );
   useEffect(() => {
     if (phase !== 'review') return;
-    actions.setSubscriptions(vendors);
-  }, [vendors, phase, actions]);
+    actionsRef.current.setSubscriptions(
+      vendors.map(v => ({ ...v, transactions: [] })),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mirrorSignature, phase]);
 
   // Auto-save: debounce vendor changes while in review phase
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Save-success pill timer. A ref so overlapping saves clear the previous
+  // timer instead of stacking, and so unmount cancels it — a timeout firing
+  // setSaveSuccess on an unmounted step is a React warning and a state leak.
+  const saveSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (saveSuccessTimerRef.current) clearTimeout(saveSuccessTimerRef.current);
+  }, []);
   const hasAutoSavedInitial = useRef(false);
 
   useEffect(() => {
@@ -1013,10 +1279,9 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         clearTimeout(debounceTimer.current);
         debounceTimer.current = null;
       }
-      // No vendors to save (initial render, or all excluded) → no-op.
+      // Nothing at all to save (initial render) → no-op. All-excluded lists
+      // DO save now (PR-B D4) — that's how "clear my subscriptions" persists.
       if (vendors.length === 0) return;
-      const activeCount = vendors.filter(v => v.isActive).length;
-      if (activeCount === 0) return;
       // Re-throw on failure so the caller can block navigation.
       await saveSubscriptionBudgets();
     },
@@ -1104,6 +1369,23 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         </div>
       )}
 
+      {/* PR-B (D2): visible reason + retry when Xero mode degraded */}
+      {isManualMode && xeroUnavailableReason && (
+        <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <span>{xeroUnavailableReason}</span>
+          </div>
+          <button
+            type="button"
+            onClick={retryXeroConnection}
+            className="flex-shrink-0 px-3 py-1 text-sm font-medium rounded-md border border-amber-300 hover:bg-amber-100"
+          >
+            Retry Xero
+          </button>
+        </div>
+      )}
+
       {/* Manual Mode Header */}
       {isManualMode && (
         <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl p-5 shadow-lg">
@@ -1128,12 +1410,11 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
         </div>
       )}
 
-      {saveSuccess && (
-        <div className="px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm flex items-center gap-2">
-          <CheckCircle className="w-5 h-5" />
-          <span>Subscription budgets saved successfully!</span>
-        </div>
-      )}
+      {/* No standalone save-success banner here. The step auto-saves 1.5s after
+          every edit, and a full-width banner appearing above the table for 3s
+          shoved the whole table down and back up on each save — the on-screen
+          "glitching" reported 18 Aug 2026. The header pill (fixed-width, no
+          reflow) is the save-state indicator. */}
 
       {/* Phase 1: Account Selection — Xero mode only */}
       {phase === 'select-accounts' && !isManualMode && (
@@ -1400,6 +1681,35 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
             </div>
           )}
 
+          {/* Which Xero orgs this list covers. Dragon Roofing's forecast once
+              carried only Easy Hail Claim's vendors while Dragon Roofing Pty Ltd's
+              ~$77k/yr of subscriptions were missing, and nothing on screen said so.
+              With more than one org the coverage is now always stated, and any org
+              that could not be read is named with the reason. */}
+          {!isManualMode && summary?.orgsAnalyzed && (summary.orgsTotal ?? 1) > 1 && (
+            <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-700">
+              Covering <strong>{summary.orgsAnalyzed.length}</strong> of{' '}
+              <strong>{summary.orgsTotal}</strong> Xero organisations:{' '}
+              {summary.orgsAnalyzed.join(', ')}.
+              {summary.orgFailures && summary.orgFailures.length > 0 && (
+                <span className="block mt-1 text-amber-800">
+                  Not included:{' '}
+                  {summary.orgFailures.map(f => `${f.org} (${f.reason.replace(/_/g, ' ')})`).join('; ')}.
+                  These vendors are missing from the totals below.
+                </span>
+              )}
+              {summary.accountNameConflicts && summary.accountNameConflicts.length > 0 && (
+                <span className="block mt-1 text-amber-800">
+                  {summary.accountNameConflicts.map(c => (
+                    `Account ${c.code} is "${c.expected}" here but "${c.name}" in ${c.org}`
+                  )).join('; ')}
+                  {' '}— treated as different accounts, so that spend is excluded. Check the
+                  account codes if these should be the same.
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Phase 62: replace the old P&L Reconciliation panel with a single
               honest sentence. The old panel surfaced a "Transactions Analyzed
               vs Xero P&L Actual" variance the operator could never reconcile
@@ -1458,18 +1768,20 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                     Change selected accounts
                   </button>
                 )}
+                {/* min-w keeps the three states the same width so the header
+                    row never reflows as the pill cycles Saving → Saved → Auto. */}
                 {isSaving ? (
-                  <span className="flex items-center gap-2 text-sm text-gray-500">
+                  <span className="flex items-center justify-end gap-2 text-sm text-gray-500 min-w-[7rem]">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Saving...
                   </span>
                 ) : saveSuccess ? (
-                  <span className="flex items-center gap-2 text-sm text-green-600">
+                  <span className="flex items-center justify-end gap-2 text-sm text-green-600 min-w-[7rem]">
                     <CheckCircle className="w-4 h-4" />
                     Saved
                   </span>
                 ) : vendors.length > 0 ? (
-                  <span className="flex items-center gap-2 text-sm text-gray-400">
+                  <span className="flex items-center justify-end gap-2 text-sm text-gray-400 min-w-[7rem]">
                     <Save className="w-4 h-4" />
                     Auto-saved
                   </span>
@@ -1510,13 +1822,16 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                       frequency. The operator enters "$1,200/yr" for an
                       annual sub directly — no monthly/annual mental math. */}
                   <label className="col-span-2 flex flex-col gap-1 text-xs font-medium text-gray-700">
-                    Amount {newVendor.frequency === 'annual' ? '($/yr)' : newVendor.frequency === 'quarterly' ? '($/qtr)' : '($/mo)'}
+                    Amount ({periodSuffix(newVendor.frequency)})
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                       <input
                         type="number"
-                        value={newVendor.amount || ''}
-                        onChange={(e) => setNewVendor({ ...newVendor, amount: parseFloat(e.target.value) || 0 })}
+                        // Raw string while typing — parseFloat-per-keystroke made
+                        // decimals untypeable ("12." collapsed to 12) and a
+                        // leading 0 blanked the field via `|| ''`.
+                        value={newVendor.amountText}
+                        onChange={(e) => setNewVendor({ ...newVendor, amountText: e.target.value, amount: parseFloat(e.target.value) || 0 })}
                         placeholder={newVendor.frequency === 'annual' ? 'Annual' : newVendor.frequency === 'quarterly' ? 'Quarterly' : 'Monthly'}
                         className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand-navy font-normal"
                         onKeyDown={(e) => e.key === 'Enter' && addManualVendor()}
@@ -1571,6 +1886,7 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                           name: '',
                           frequency: 'monthly',
                           amount: 0,
+      amountText: '',
                           monthlyBudget: 0,
                           startMonth: defaultStartMonth,
                           category: MANUAL_CATEGORY_OPTIONS[0],
@@ -1640,13 +1956,17 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                           </td>
                         )}
                         <td className="px-4 py-3">
-                          <div className="font-medium text-gray-900">{vendor.vendorName}</div>
+                          <div className="font-medium text-gray-900 flex items-center gap-2">
+                            {vendor.vendorName}
+                            <VendorStatusBadge vendor={vendor} />
+                          </div>
                           {!isManualMode && (
                             <div className="text-xs text-gray-500">
                               {vendor.transactionCount} payment{vendor.transactionCount !== 1 ? 's' : ''}
                               {vendor.confidence === 'high' && (
                                 <span className="ml-2 text-green-600">High confidence</span>
                               )}
+                              <VendorPriceEvidence vendor={vendor} />
                             </div>
                           )}
                         </td>
@@ -1682,22 +2002,16 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                           {/* Phase 63: render in native rhythm. Annual subs
                               show as "$X/yr" with a renewal-month dropdown
                               alongside; all others stay as "$X/mo". */}
-                          {vendor.frequency === 'annual' ? (
+                          {isLumpy(vendor.frequency) ? (
                             <div className="flex items-center justify-end gap-1.5">
-                              <div className="relative flex-1 max-w-[110px]">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                                <input
-                                  type="number"
-                                  value={(vendor.monthlyBudget * 12).toFixed(2)}
-                                  onChange={(e) => handleAnnualBudgetChange(vendor.vendorKey, e.target.value)}
-                                  disabled={!vendor.isActive}
-                                  className="w-full pl-7 pr-9 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100 tabular-nums"
-                                  step="0.01"
-                                  min="0"
-                                  title="Annual cost — smoothed to monthly for forecasting"
-                                />
-                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">/yr</span>
-                              </div>
+                              <VendorBudgetInput
+                                value={periodFromMonthly(vendor.monthlyBudget, vendor.frequency)}
+                                disabled={!vendor.isActive}
+                                onCommit={(period) => handlePeriodBudgetChange(vendor.vendorKey, String(period), vendor.frequency)}
+                                prefix="$"
+                                suffix={periodSuffix(vendor.frequency)}
+                                title="Cost per billing period — smoothed to monthly for forecasting"
+                              />
                               <select
                                 value={vendor.renewalMonth ?? ''}
                                 onChange={(e) => handleRenewalMonthChange(vendor.vendorKey, e.target.value)}
@@ -1705,26 +2019,20 @@ function Step6Subscriptions({ state, actions, fiscalYear, businessId }, ref) {
                                 className="text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100"
                                 title="Renewal month"
                               >
-                                {!vendor.renewalMonth && <option value="">—</option>}
+                                <option value="">—</option>
                                 {MONTH_ABBREVS_LOCAL.map((m, i) => (
                                   <option key={m} value={i + 1}>{m}</option>
                                 ))}
                               </select>
                             </div>
                           ) : (
-                            <div className="relative">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                              <input
-                                type="number"
-                                value={vendor.monthlyBudget}
-                                onChange={(e) => handleMonthlyBudgetChange(vendor.vendorKey, e.target.value)}
-                                disabled={!vendor.isActive}
-                                className="w-full pl-7 pr-9 py-1.5 text-sm text-right border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy disabled:bg-gray-100 tabular-nums"
-                                step="0.01"
-                                min="0"
-                              />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">/mo</span>
-                            </div>
+                            <VendorBudgetInput
+                              value={vendor.monthlyBudget}
+                              disabled={!vendor.isActive}
+                              onCommit={(monthly) => handleMonthlyBudgetChange(vendor.vendorKey, String(monthly))}
+                              prefix="$"
+                              suffix="/mo"
+                            />
                           )}
                         </td>
                         <td className="px-4 py-3 text-right font-medium text-gray-900 tabular-nums">

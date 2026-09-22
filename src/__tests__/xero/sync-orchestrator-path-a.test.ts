@@ -110,6 +110,8 @@ function makeSupabaseStub(opts: {
   rpcReturns?: Record<string, RpcReturn>
   upsertError?: any | null
   tenantJobIdSequence?: string[]
+  /** WD.7 — monthly_report_settings row returned to the orchestrator's cash-basis flag read. */
+  monthlyReportSettings?: any
 }) {
   const callLog: CallLogEntry[] = []
   const connections = opts.connections ?? []
@@ -165,6 +167,9 @@ function makeSupabaseStub(opts: {
           },
           error: null,
         }
+      }
+      if (table === 'monthly_report_settings') {
+        return { data: opts.monthlyReportSettings ?? null, error: null }
       }
       return { data: null, error: null }
     }
@@ -800,5 +805,110 @@ describe('Path A sync orchestrator', () => {
       expect(u).not.toMatch(/[?&]periods=/)
       expect(u).not.toMatch(/[?&]timeframe=/)
     }
+  })
+})
+
+// ─── WD.7 — opt-in cash-basis mirror ────────────────────────────────────────
+//
+// When monthly_report_settings.sections.cash_basis is true, every per-month
+// P&L fetch gets a paymentsOnly=true twin stamped basis='cash'. Cash rows
+// stay OUT of the reconciler (accruals-only oracle) and rejoin at the upsert,
+// whose conflict target now includes basis. Default off: zero extra requests.
+
+describe('WD.7 — cash-basis mirror', () => {
+  const ACC_ID = 'aaaa1111-1111-1111-1111-aaaaaaaaaaaa'
+  const CONNS = [
+    { id: 'conn-1', tenant_id: 'tenant-A-uuid', tenant_name: 'JDS', business_id: 'profile-id-1' },
+  ]
+
+  const router = (u: string): Response => {
+    if (isOrgUrl(u)) return makeJsonResponse(organisationResponse('AUSEASTERNSTANDARDTIME', 'AU'))
+    if (isAccountsUrl(u)) return makeJsonResponse(accountsResponse([{ id: ACC_ID, code: '200', name: 'Sales - Hardware', type: 'REVENUE' }]))
+    if (u.includes('paymentsOnly=true') && u.includes('ProfitAndLoss')) {
+      const period = periodMonthFromUrl(u)!
+      // Cash lags accruals: $80 received vs $100 invoiced.
+      return makeJsonResponse(
+        singlePeriodReport(period, [
+          { name: 'Sales - Hardware', id: ACC_ID, amount: '80.00', section: 'Income' },
+        ]),
+      )
+    }
+    if (isFYTotalUrl(u)) {
+      const months = monthsInUrlRange(u)
+      return makeJsonResponse(
+        singlePeriodReport('FY Total', [
+          { name: 'Sales - Hardware', id: ACC_ID, amount: (100 * months).toFixed(2), section: 'Income' },
+        ]),
+      )
+    }
+    if (isPerMonthUrl(u)) {
+      const period = periodMonthFromUrl(u)!
+      return makeJsonResponse(
+        singlePeriodReport(period, [
+          { name: 'Sales - Hardware', id: ACC_ID, amount: '100.00', section: 'Income' },
+        ]),
+      )
+    }
+    if (isBSUrl(u)) {
+      const m = u.match(/date=(\d{4}-\d{2}-\d{2})/)
+      return makeJsonResponse(emptyBalancedBSResponse(m ? m[1]! : '2026-06-30'))
+    }
+    return makeJsonResponse({ error: `unhandled url ${u}` }, 500)
+  }
+
+  it('flag ON: paymentsOnly=true twin fetched; cash rows land beside accruals on the 5-col key', async () => {
+    const { upsertCallsByTable, callLog } = makeSupabaseStub({
+      connections: CONNS,
+      monthlyReportSettings: { sections: { cash_basis: true } },
+    })
+    const fetchSpy = mockFetchRouted(router)
+
+    const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
+    const result = await syncBusinessXeroPL('biz-id-1')
+    expect(result.status).toBe('success')
+
+    const cashUrls = fetchSpy.mock.calls
+      .map((c) => String(c[0]))
+      .filter((u) => u.includes('paymentsOnly=true') && u.includes('ProfitAndLoss'))
+    expect(cashUrls.length).toBeGreaterThan(0)
+    // Every cash URL is single-period (no periods=/timeframe=)
+    for (const u of cashUrls) {
+      expect(u).not.toMatch(/[?&]periods=/)
+      expect(u).not.toMatch(/[?&]timeframe=/)
+    }
+
+    const plRows = upsertCallsByTable['xero_pl_lines'] ?? []
+    const cashRows = plRows.filter((r: any) => r.basis === 'cash')
+    const accrualRows = plRows.filter((r: any) => r.basis === 'accruals')
+    expect(cashRows.length).toBeGreaterThan(0)
+    expect(accrualRows.length).toBeGreaterThan(0)
+    expect(cashRows[0].amount).toBe(80)
+    expect(accrualRows[0].amount).toBe(100)
+
+    // The conflict target includes basis — without it a cash row would
+    // overwrite its accruals twin (the write-side basis trap).
+    const plUpserts = callLog.filter((c) => c.kind === 'from:xero_pl_lines:upsert')
+    expect(plUpserts.length).toBeGreaterThan(0)
+    for (const c of plUpserts) {
+      expect(c.arg.opts.onConflict).toBe('business_id,tenant_id,account_id,period_month,basis')
+    }
+  })
+
+  it('flag OFF (default): zero paymentsOnly=true fetches, accruals only', async () => {
+    const { upsertCallsByTable } = makeSupabaseStub({ connections: CONNS })
+    const fetchSpy = mockFetchRouted(router)
+
+    const { syncBusinessXeroPL } = await import('@/lib/xero/sync-orchestrator')
+    const result = await syncBusinessXeroPL('biz-id-1')
+    expect(result.status).toBe('success')
+
+    const cashUrls = fetchSpy.mock.calls
+      .map((c) => String(c[0]))
+      .filter((u) => u.includes('paymentsOnly=true') && u.includes('ProfitAndLoss'))
+    expect(cashUrls).toHaveLength(0)
+
+    const plRows = upsertCallsByTable['xero_pl_lines'] ?? []
+    expect(plRows.length).toBeGreaterThan(0)
+    expect(plRows.every((r: any) => r.basis === 'accruals')).toBe(true)
   })
 })

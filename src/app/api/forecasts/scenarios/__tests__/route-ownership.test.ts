@@ -37,6 +37,13 @@ vi.mock('next/headers', () => ({
   cookies: () => ({}),
 }))
 
+// The route now asks the canonical helper (owner / assigned coach /
+// business_users member / super_admin) instead of an inline owner-or-coach
+// query. `bizAccessRow` keeps its meaning: non-null = the caller has access.
+vi.mock('@/lib/utils/verify-business-access', () => ({
+  verifyBusinessAccess: vi.fn(async () => state.bizAccessRow !== null),
+}))
+
 // resolveBusinessProfileIds → echo the id into the id-set (mirrors prod shape)
 vi.mock('@/lib/business/resolveBusinessProfileIds', () => ({
   resolveBusinessProfileIds: vi.fn(async (_supabase: any, id: string) => ({

@@ -1,0 +1,266 @@
+import { describe, it, expect } from 'vitest'
+import { buildDraftNote, draftNoteToText } from '../commentary-draft'
+import { buildRatioClause } from '../commentary-clause'
+
+describe('buildDraftNote — the July pack lines', () => {
+  it('reproduces the Antons Canvas line end to end', () => {
+    const clause = buildRatioClause({
+      accountActual: 201177, accountBudget: 162900,
+      denominatorActual: 497243, denominatorBudget: 450000,
+      priorAccountActual: null, priorDenominatorActual: null,
+      denominatorLabel: 'income', priorMonthLabel: null,
+    })
+    const note = buildDraftNote({
+      accountName: 'Antons Canvas',
+      vendors: [
+        { vendor: 'Antons Mouldings Pty Ltd', amount: 201026 },
+        { vendor: 'POD order journals', amount: 151 },
+      ],
+      accountActual: 201177,
+      clause,
+    })
+    expect(draftNoteToText(note)).toBe(
+      'Antons Canvas | Antons Mouldings Pty Ltd ($201,026), POD order journals ($151) - 40.5% of income against a 36.2% driver',
+    )
+    expect(note.warnings).toEqual([])
+  })
+
+  it('stores the supplier list and the clause apart, so a pack can print the list alone', () => {
+    // Calxa's August pack keeps the clause on Antons Canvas and Freight to
+    // Customer and drops it from Rugs — the same draft has to serve both.
+    const clause = buildRatioClause({
+      accountActual: 326.48, accountBudget: 336,
+      denominatorActual: 527561.8, denominatorBudget: 450000,
+      priorAccountActual: null, priorDenominatorActual: null,
+      denominatorLabel: 'income', priorMonthLabel: null,
+    })
+    const note = buildDraftNote({
+      accountName: 'Rugs',
+      vendors: [{ vendor: 'Unitex International', amount: 326.48 }],
+      accountActual: 326.48,
+      clause,
+    })
+    expect(note.facts).toBe('Unitex International ($326)')
+    expect(note.clause).toBe('0.1% of income against a 0.1% driver')
+    expect(note.body).toBe(`${note.facts} - ${note.clause}`)
+  })
+
+  it('a clause with no suppliers under it is not stored either', () => {
+    const clause = buildRatioClause({
+      accountActual: 5042.36, accountBudget: 0,
+      denominatorActual: 527561.8, denominatorBudget: 450000,
+      priorAccountActual: null, priorDenominatorActual: null,
+      denominatorLabel: 'income', priorMonthLabel: null,
+    })
+    const note = buildDraftNote({ accountName: 'Art Import', vendors: [], accountActual: 5042.36, clause })
+    expect(note).toMatchObject({ body: '', facts: '', clause: null })
+  })
+
+  it('renders a credit as "less X credit", not as a charge', () => {
+    // Telephone & Internet, July: Aircall $4,536, On the Net $299, less a
+    // Hardware Concepts credit of $1,571.
+    const note = buildDraftNote({
+      accountName: 'Telephone & Internet',
+      vendors: [
+        { vendor: 'Aircall', amount: 4536 },
+        { vendor: 'On the Net', amount: 299 },
+        { vendor: 'Hardware Concepts', amount: -1571 },
+      ],
+      accountActual: 3264,
+      clause: null,
+    })
+    expect(note.body).toBe('Aircall ($4,536), On the Net ($299), less Hardware Concepts credit ($1,571)')
+    expect(note.warnings).toEqual([])
+  })
+
+  it('does not name a supplier called "Others" when the remainder nets to a credit', () => {
+    // Now that refunds are signed, the sub-materiality remainder can net
+    // negative. "less Others credit" would name a supplier that does not exist.
+    const note = buildDraftNote({
+      accountName: 'Telephone & Internet',
+      vendors: [
+        { vendor: 'Aircall', amount: 4536 },
+        { vendor: 'Others', amount: -50 },
+      ],
+      accountActual: 4486,
+      clause: null,
+    })
+    expect(note.body).toBe('Aircall ($4,536), less other credits ($50)')
+    expect(note.body).not.toContain('Others credit')
+  })
+})
+
+describe('buildDraftNote — the cap', () => {
+  const many = Array.from({ length: 16 }, (_, i) => ({
+    vendor: `Contractor ${i + 1}`,
+    amount: 2000 - i * 100,
+  }))
+
+  it('names three and rolls the rest up', () => {
+    const note = buildDraftNote({
+      accountName: 'Contractors excl. Artists',
+      vendors: many,
+      accountActual: many.reduce((s, v) => s + v.amount, 0),
+      clause: null,
+    })
+    expect(note.body).toContain('Contractor 1 ($2,000), Contractor 2 ($1,900), Contractor 3 ($1,800)')
+    expect(note.body).toContain('+13 others ($14,300)')
+    expect(note.body).not.toContain('Contractor 4 (')
+  })
+
+  it('names a remainder of one rather than counting it', () => {
+    // "+1 other ($1)" takes the room the name would and says less.
+    const note = buildDraftNote({
+      accountName: 'X',
+      vendors: [{ vendor: 'A', amount: 4 }, { vendor: 'B', amount: 3 },
+                { vendor: 'C', amount: 2 }, { vendor: 'D', amount: 1 }],
+      accountActual: 10,
+      clause: null,
+    })
+    expect(note.body).toBe('A ($4), B ($3), C ($2), D ($1)')
+    expect(note.body).not.toContain('other')
+  })
+
+  it('never rolls a credit into the remainder', () => {
+    // A credit hidden inside "+N others" explains nothing — and its sign would
+    // silently reduce a total the reader thinks is all charges.
+    const note = buildDraftNote({
+      accountName: 'X',
+      vendors: [
+        { vendor: 'A', amount: 5000 }, { vendor: 'B', amount: 4000 },
+        { vendor: 'C', amount: 3000 }, { vendor: 'D', amount: 2000 },
+        { vendor: 'Refund Co', amount: -900 },
+      ],
+      accountActual: 13100,
+      clause: null,
+    })
+    expect(note.body).toContain('D ($2,000)')
+    expect(note.body).toContain('less Refund Co credit ($900)')
+  })
+
+  it('caps credits the same way it caps charges', () => {
+    // Urban Road's customer side raises about thirty ACCRECCREDITs a month,
+    // many to individual retail customers. Uncapped, one revenue line printed a
+    // "less X credit" clause per customer into the client pack.
+    const note = buildDraftNote({
+      accountName: 'Framed Prints',
+      vendors: [
+        { vendor: 'Big A', amount: 20000 }, { vendor: 'Big B', amount: 10000 },
+        { vendor: 'Big C', amount: 5000 }, { vendor: 'Big D', amount: 3000 },
+        { vendor: 'Customer 1', amount: -900 },
+        { vendor: 'Customer 2', amount: -800 },
+        { vendor: 'Customer 3', amount: -700 },
+        { vendor: 'Customer 4', amount: -600 },
+        { vendor: 'Customer 5', amount: -500 },
+      ],
+      accountActual: 34500,
+      clause: null,
+    })
+    expect(note.body).toBe(
+      'Big A ($20,000), Big B ($10,000), Big C ($5,000), Big D ($3,000), '
+      + 'less Customer 1 credit ($900), less Customer 2 credit ($800), less Customer 3 credit ($700), '
+      + 'less 2 other credits ($1,100)',
+    )
+    expect(note.body).not.toContain('Customer 4')
+  })
+
+  it('names a credit remainder of one', () => {
+    const note = buildDraftNote({
+      accountName: 'X',
+      vendors: [
+        { vendor: 'A', amount: 5000 },
+        { vendor: 'C1', amount: -400 }, { vendor: 'C2', amount: -300 },
+        { vendor: 'C3', amount: -200 }, { vendor: 'C4', amount: -100 },
+      ],
+      accountActual: 4000,
+      clause: null,
+    })
+    expect(note.body).toBe(
+      'A ($5,000), less C1 credit ($400), less C2 credit ($300), less C3 credit ($200), less C4 credit ($100)',
+    )
+  })
+
+  it('folds the "Others" remainder into the credit rollup rather than naming it', () => {
+    // "Others" is already several small suppliers; it is never a named credit,
+    // and once there is a credit remainder it joins it instead of standing
+    // beside it as a second "other credits" clause.
+    const note = buildDraftNote({
+      accountName: 'X',
+      vendors: [
+        { vendor: 'A', amount: 5000 },
+        { vendor: 'Others', amount: -1000 },
+        { vendor: 'C1', amount: -400 }, { vendor: 'C2', amount: -300 },
+        { vendor: 'C3', amount: -200 }, { vendor: 'C4', amount: -100 },
+      ],
+      accountActual: 3000,
+      clause: null,
+    })
+    expect(note.body).toBe(
+      'A ($5,000), less C1 credit ($400), less C2 credit ($300), less C3 credit ($200), less other credits ($1,100)',
+    )
+  })
+})
+
+describe('buildDraftNote — what it refuses to send', () => {
+  it('flags a vendor list that sums past its own account', () => {
+    // The July Contractors case: sixteen vendors totalling $120,045 under an
+    // account that moved $31,029.30.
+    const note = buildDraftNote({
+      accountName: 'Contractors excl. Artists',
+      vendors: [{ vendor: 'Ailene Alfonso', amount: 91000 }, { vendor: 'Akshay', amount: 29045 }],
+      accountActual: 31029.3,
+      clause: null,
+    })
+    expect(note.warnings.some(w => w.includes('do not send this line'))).toBe(true)
+  })
+
+  it('is silent when the list is short of the account, which is normal', () => {
+    const note = buildDraftNote({
+      accountName: 'Contractors excl. Artists',
+      vendors: [{ vendor: 'Ailene Alfonso', amount: 531 }, { vendor: 'Akshay', amount: 4721 }],
+      accountActual: 31029.3,
+      clause: null,
+    })
+    expect(note.warnings).toEqual([])
+  })
+
+  it('names an unconvertible document instead of quoting a foreign number', () => {
+    const note = buildDraftNote({
+      accountName: 'Contractors excl. Artists',
+      vendors: [
+        { vendor: 'Ailene Alfonso', amount: 22750, converted: false, sourceCurrency: 'PHP' },
+        { vendor: 'Akshay', amount: 4721 },
+      ],
+      accountActual: 31029.3,
+      clause: null,
+    })
+    expect(note.warnings[0]).toContain('PHP')
+    expect(note.warnings[0]).toContain('not included')
+    // And it is excluded from the total that the exceeds-account check uses,
+    // so an unconvertible line cannot itself trigger the "list is wrong" alarm.
+    expect(note.warnings.some(w => w.includes('do not send this line'))).toBe(false)
+  })
+
+  it('produces just the account name when there is nothing to say', () => {
+    const note = buildDraftNote({ accountName: 'Bank Fees', vendors: [], accountActual: 11, clause: null })
+    expect(note.body).toBe('')
+    expect(draftNoteToText(note)).toBe('Bank Fees')
+  })
+
+  it('says NOTHING when there are no vendors, whatever the clause says', () => {
+    const clause = buildRatioClause({
+      accountActual: 50304, accountBudget: null,
+      denominatorActual: 497243, denominatorBudget: null,
+      priorAccountActual: 50308, priorDenominatorActual: 567254,
+      denominatorLabel: 'income', priorMonthLabel: 'June',
+    })
+    const note = buildDraftNote({
+      accountName: 'Freight to Customer', vendors: [], accountActual: 50304, clause,
+    })
+    // A ratio with no suppliers under it is not commentary. Urban Road's
+    // August pack printed four lines like "Accounting Fees | 0.0% of income
+    // against a 0.2% driver" — true, and worth nothing to the reader. The
+    // clause qualifies a supplier list; it does not stand in for one.
+    expect(note.body).toBe('')
+  })
+})

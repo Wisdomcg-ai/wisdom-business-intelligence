@@ -8,9 +8,67 @@ export type WidgetType =
   | 'ytd_summary'
   | 'full_year_projection'
   | 'subscription_detail'
+  // The Contractor Analysis page (Calxa 14): every contractor down the side
+  // with last month, this month and their budget, then the same rows rolled up
+  // by department. Replaces a hand-rolled Google Sheet tab.
+  | 'contractor_detail'
+  // The two-month payroll grid (Calxa 15): every employee against every pay
+  // run, with the month's wages budget and the difference beneath.
+  | 'payroll_grid'
+  // Ratio Analysis — one account (or several, or a statement total) as a % of
+  // another, the report month and the months before it, newest on the left,
+  // with trailing averages. The generalisable half of Urban Road's hand-built
+  // "COGS Tables" page. ONE type placed as many times as a client needs:
+  // widget.config carries the ratios, so "Freight % Income" and "Posters COGS
+  // % of Posters income" are two placements, not two types.
+  | 'ratio_analysis'
   | 'wages_detail'
   | 'cashflow_forecast_table'
+  // WE.1b — the external-metrics insert pages (Lumary clinic income, Hubstaff
+  // hours, HubSpot memberships…). ONE type: by default it renders every active
+  // series that has values for the month (one page each, like the Calxa
+  // packs); config.series_key narrows a placement to a single series.
+  | 'external_metric'
+  // WC.5 — pack cover: entity, month, basis, prepared-on, and the report's
+  // draft/final status. The provisional state finally reaches the PDF.
+  | 'cover_page'
+  // WD.8 — the month's written memo (snapshot coach_notes), a first-class
+  // page. IICT's July insurance memo is why the client pays.
+  | 'memo'
+  // WD.4 — Where Did Our Money Go: the month's funds flow from two BS dates.
+  // Self-proving (sources − uses ≡ Δbank) or it says "couldn't check".
+  | 'money_flow'
+  // WD.6 — consolidated per-entity columns (Dragon 2 entities, IICT 3 w/ FX):
+  // Entity Actual[/Budget/Var] | Eliminations | Group. Renders only for
+  // consolidation parents with a loaded consolidated report.
+  | 'consolidated_pl'
+  // WG.1 — the balance sheet, Calxa pages 19-22. ONE type placed TWICE:
+  // config.compare picks 'mom' (vs prior month) or 'yoy' (vs same month last
+  // year). Two placements rather than two types because the only difference is
+  // which comparison column Xero fills — the grouping, subtotals and sign
+  // conventions are identical, and WC.1 config exists precisely for this.
+  | 'balance_sheet'
+  // Bank Balances & Movement, Calxa page 17: the chosen bank, cash-on-hand and
+  // credit-card accounts at the end of the month and the month before, per Xero
+  // organisation, foreign ones translated at each date's closing rate. Takes no
+  // config — the accounts are the business's saved list, not a placement's, so
+  // two placements could not disagree about what the bank is.
+  | 'bank_balances'
+  // An uploaded page: the month's PDF, uploaded by the coach against this
+  // placement and merged into the pack at its position (see
+  // lib/monthly-report/pack-inserts). The route for the pages audit §5 says
+  // not to build — DD's Lumary income analysis, Dragon's Cash vs Accruals,
+  // IICT's Employment Hero payroll. titleOverride names it; placed as many
+  // times as a client has inserts.
+  | 'uploaded_insert'
   // P&L Charts
+  // WD.1 — one renderer serves all three; the type carries the section, and
+  // widget.config.section may override it (WC.1). Three types rather than one
+  // parameterised type because the default-layout/sync machinery is keyed by
+  // type-sets — this follows that grain.
+  | 'analysis_chart_income'
+  | 'analysis_chart_cogs'
+  | 'analysis_chart_expense'
   | 'chart_revenue_breakdown'
   | 'chart_break_even'
   | 'chart_revenue_vs_expenses'
@@ -49,6 +107,16 @@ export interface LayoutWidget {
   row: number      // 0-based row
   colSpan: number  // 1-3
   rowSpan: number  // 1-3
+  /**
+   * WC.1 — per-placement configuration. This is what lets ONE widget type be
+   * placed several times with different meanings (an analysis table
+   * parameterised by section, an external-metric page by series, a payroll
+   * page by grouping) instead of minting near-identical widget types. Renderers
+   * receive it as their second argument; existing renderers ignore it.
+   */
+  config?: Record<string, unknown>
+  /** Optional page-title override, e.g. "COGS Analysis" on a shared renderer. */
+  titleOverride?: string
 }
 
 // Widget definition metadata for the registry
@@ -59,13 +127,30 @@ export interface WidgetDefinition {
   label: string
   category: WidgetCategory
   icon: string           // Lucide icon name
+  /**
+   * WC.2 — tables and charts render through renderWithSkipPage, which honours
+   * only box.x/y as a MARGIN (all twelve autoTable calls pass
+   * margin:{left:box.x,right:box.x}) — box.w is used by nothing but the KPI
+   * cards. A table dropped in column 2 of a portrait page therefore gets a
+   * 107mm margin on BOTH sides of a 210mm page. Until renderers honour real
+   * bounding boxes, full-row widgets are pinned to col 0 × full grid width;
+   * the placement helpers clamp and the PDF normalises defensively so layouts
+   * saved before this rule still render correctly.
+   */
+  fullRow?: boolean
+  /**
+   * The palette greys a type out once it is placed. A type whose placements
+   * are told apart by their own name or file — an uploaded page — can be
+   * dragged on again.
+   */
+  repeatable?: boolean
   defaultColSpan: number
   defaultRowSpan: number
   minColSpan: number
   maxColSpan: number
   minRowSpan: number
   maxRowSpan: number
-  dataDependency?: 'fullYear' | 'cashflow' | 'subscriptions' | 'wages' | 'report'
+  dataDependency?: 'fullYear' | 'cashflow' | 'subscriptions' | 'contractors' | 'wages' | 'report'
 }
 
 // Bounding box for PDF rendering (mm)
@@ -132,6 +217,10 @@ export type EditorAction =
   | { type: 'RESIZE_WIDGET'; pageId: string; widgetId: string; colSpan: number; rowSpan: number }
   | { type: 'DELETE_WIDGET'; pageId: string; widgetId: string }
   | { type: 'MOVE_WIDGET_TO_PAGE'; fromPageId: string; toPageId: string; widgetId: string }
+  // A settings panel's Apply: the placement's whole config and title, in ONE
+  // history entry. `titleOverride: undefined` removes the key rather than
+  // storing '' — the renderer's fallback heading is what a blank title means.
+  | { type: 'UPDATE_WIDGET'; pageId: string; widgetId: string; config: Record<string, unknown>; titleOverride: string | undefined }
   | { type: 'UNDO' }
   | { type: 'REDO' }
   | { type: 'MARK_SAVED' }

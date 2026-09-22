@@ -3,12 +3,16 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import { forecastBelongsToBusiness } from '@/lib/budgets/owned-forecast'
+import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { revertReportIfApproved } from '@/lib/reports/revert-report'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
 import { enforceSectionPermission } from '@/lib/permissions/sectionPermissionConfig'
 import { z } from 'zod'
 import { withSchema, withQuerySchema } from '@/lib/api/with-schema'
+import { DEFAULT_REPORT_SECTIONS, DEFAULT_REPORT_SETTINGS, loadReportSettings } from '@/lib/monthly-report/report-settings-load'
+import { parsePackLogoSetting } from '@/lib/monthly-report/pack-logo-setting'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,9 +30,12 @@ const SettingsPostSchema = z.object({
   show_budget_next_month: z.boolean().optional(),
   show_budget_annual_total: z.boolean().optional(),
   budget_forecast_id: z.string().nullable().optional(),
+  budget_source: z.enum(['forecast', 'budget_version']).optional(),
   subscription_account_codes: z.array(z.string()).optional(),
   wages_account_names: z.array(z.string()).optional(),
   pdf_layout: z.any().optional(),
+  standing_commentary: z.any().optional(),
+  pack_logo: z.any().optional(),
   report_month: z.string().optional(),
 })
 
@@ -37,39 +44,10 @@ const supabase = createClient(
   getSupabaseSecretKey()
 )
 
-const DEFAULT_SECTIONS = {
-  revenue_detail: true,
-  cogs_detail: true,
-  opex_detail: true,
-  payroll_detail: false,
-  subscription_detail: false,
-  balance_sheet: false,
-  cashflow: false,
-  trend_charts: true,
-  chart_revenue_vs_expenses: true,
-  chart_revenue_breakdown: true,
-  chart_variance_heatmap: true,
-  chart_budget_burn_rate: true,
-  chart_break_even: true,
-  chart_cash_runway: false,
-  chart_cumulative_net_cash: false,
-  chart_working_capital_gap: false,
-  chart_team_cost_pct: false,
-  chart_cost_per_employee: false,
-  chart_subscription_creep: false,
-}
-
-const DEFAULT_SETTINGS = {
-  sections: DEFAULT_SECTIONS,
-  show_prior_year: true,
-  show_ytd: true,
-  show_unspent_budget: true,
-  show_budget_next_month: true,
-  show_budget_annual_total: true,
-  budget_forecast_id: null,
-  subscription_account_codes: [],
-  wages_account_names: [],
-}
+// The defaults, and the GET's read-and-merge, are shared with
+// scripts/preview-pack.ts — see lib/monthly-report/report-settings-load.
+const DEFAULT_SECTIONS = DEFAULT_REPORT_SECTIONS
+const DEFAULT_SETTINGS = DEFAULT_REPORT_SETTINGS
 
 /**
  * GET /api/monthly-report/settings?business_id=xxx
@@ -117,38 +95,15 @@ async function getHandler(request: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { data: settings, error } = await supabase
-      .from('monthly_report_settings')
-      .select('*')
-      .eq('business_id', businessId)
-      .maybeSingle()
-
-    if (error) {
+    let loaded
+    try {
+      loaded = await loadReportSettings(supabase, businessId)
+    } catch (error) {
       Sentry.captureException(error, { tags: { route: 'monthly-report/settings' }, extra: { context: "[Monthly Report Settings] Error fetching settings" } } as any)
       return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 })
     }
 
-    // If no row exists, return defaults without creating a row
-    if (!settings) {
-      return NextResponse.json({
-        settings: {
-          business_id: businessId,
-          ...DEFAULT_SETTINGS,
-        },
-        is_default: true,
-      })
-    }
-
-    // Merge stored sections with defaults so keys added after initial save are always present
-    const mergedSettings = {
-      ...settings,
-      sections: { ...DEFAULT_SECTIONS, ...(settings.sections ?? {}) },
-    }
-
-    return NextResponse.json({
-      settings: mergedSettings,
-      is_default: false,
-    })
+    return NextResponse.json(loaded)
 
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'monthly-report/settings' }, extra: { context: "Error in GET /api/monthly-report/settings" } } as any)
@@ -179,9 +134,12 @@ async function postHandler(request: Request) {
       show_budget_next_month,
       show_budget_annual_total,
       budget_forecast_id,
+      budget_source,
       subscription_account_codes,
       wages_account_names,
       pdf_layout,
+      standing_commentary,
+      pack_logo,
       // Optional: month being edited (YYYY-MM). When provided, an approved/sent report
       // for that month silently reverts to draft per Phase 35 D-16. Settings are business-
       // level so without a month we cannot scope the revert; callers that have a current
@@ -218,6 +176,54 @@ async function postHandler(request: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // A pinned budget forecast is a capability: everything that later reads it
+    // (generate, full-year, subscription-detail) does so on the service-role
+    // client, which bypasses RLS. Writing an unvalidated id here would persist
+    // a cross-tenant read — this route's own business_id gate does not cover
+    // the forecast. Rejected rather than silently dropped: a coach who picked
+    // the wrong thing should be told, not quietly ignored.
+    if (budget_forecast_id) {
+      const ids = await resolveBusinessProfileIds(supabase, business_id)
+      const owned = await forecastBelongsToBusiness(supabase, budget_forecast_id, ids.all)
+      if (!owned) {
+        Sentry.captureMessage('[Monthly Report Settings] rejected a budget_forecast_id from another business', {
+          level: 'warning' as any,
+          tags: { invariant: 'forecast-id-not-owned', route: 'monthly-report/settings' },
+          extra: { business_id, user_id: user.id, requestedForecastId: budget_forecast_id },
+        } as any)
+        return NextResponse.json(
+          { error: 'That forecast does not belong to this business', code: 'FORECAST_NOT_OWNED' },
+          { status: 403 },
+        )
+      }
+    }
+
+    // Switching a client ONTO the budget store is the moment their baseline
+    // changes, so it is guarded rather than merely recorded.
+    if (budget_source === 'budget_version') {
+      const { data: anyVersion } = await supabase
+        .from('budget_versions')
+        .select('id')
+        .eq('business_id', business_id)
+        .not('locked_at', 'is', null)
+        .limit(1)
+      if (!anyVersion || anyVersion.length === 0) {
+        return NextResponse.json(
+          { error: 'Import a budget (from Xero or a spreadsheet) before switching this client to the budget store', code: 'NO_BUDGET_VERSION' },
+          { status: 400 },
+        )
+      }
+
+      // A business with more than one Xero organisation used to be refused
+      // here (MULTI_ORG_BUDGET_UNSUPPORTED): nothing could combine their
+      // budgets, and summing HKD into AUD is not something to arrive at by
+      // accident. lib/budgets/consolidated-budget now combines them — aligned
+      // per organisation, in one currency — and refuses PER REPORT, with the
+      // reason on the page, whatever it cannot answer (an organisation without
+      // a version in force, a month with no exchange rate). Refusing the switch
+      // as well would only stop Dragon and IICT reaching that answer (DRG-03).
+    }
+
     // Merge provided sections with defaults (so partial updates work)
     const mergedSections = sections
       ? { ...DEFAULT_SECTIONS, ...sections }
@@ -241,6 +247,30 @@ async function postHandler(request: Request) {
     if (pdf_layout !== undefined) {
       baseData.pdf_layout = pdf_layout
     }
+    // WD.3 — same omit-unless-provided semantics: a settings save that doesn't
+    // carry standing_commentary must not clear it.
+    if (standing_commentary !== undefined) {
+      baseData.standing_commentary = standing_commentary
+    }
+    // Same omit-unless-provided semantics, and for a sharper reason: every key
+    // in baseData above is rewritten with a default when absent, and both UI
+    // writers post fixed key sets. Putting budget_source there would mean a
+    // coach dragging a page in the PDF layout editor silently reverted the
+    // client to the forecast.
+    if (budget_source !== undefined) {
+      baseData.budget_source = budget_source
+    }
+    // The pack's mark: omit-unless-provided like the two above (the UI's
+    // writers post fixed key sets, and a page toggle must not reset a logo),
+    // and validated here because withSchema only observes — an image the PDF
+    // cannot draw is refused now rather than discovered on a client's cover.
+    if (pack_logo !== undefined) {
+      const parsed = parsePackLogoSetting(pack_logo)
+      if (!parsed.ok) {
+        return NextResponse.json({ error: parsed.error, code: 'INVALID_PACK_LOGO' }, { status: 400 })
+      }
+      baseData.pack_logo = parsed.value
+    }
 
     let { data: settings, error } = await supabase
       .from('monthly_report_settings')
@@ -251,20 +281,35 @@ async function postHandler(request: Request) {
       .select()
       .single()
 
-    // If the error is about pdf_layout column not existing, retry without it
-    if (error && pdf_layout !== undefined && error.message?.includes('pdf_layout')) {
-      Sentry.captureMessage('[Monthly Report Settings] pdf_layout column not found, retrying without it', 'warning' as any)
-      delete baseData.pdf_layout
-      const retry = await supabase
-        .from('monthly_report_settings')
-        .upsert(baseData, {
-          onConflict: 'business_id',
-          ignoreDuplicates: false,
-        })
-        .select()
-        .single()
-      settings = retry.data
-      error = retry.error
+    // Code deploys before migrations are applied by hand here, so a column the
+    // schema does not have yet must not fail the whole save. Keyed on the
+    // Postgres/PostgREST codes rather than a substring of one column's name —
+    // the old test only matched 'pdf_layout', and only when pdf_layout was sent.
+    const droppedColumns: string[] = []
+    if (error && (error.code === '42703' || error.code === 'PGRST204')) {
+      for (const col of ['budget_source', 'pdf_layout', 'pack_logo']) {
+        if (col in baseData && error.message?.includes(col)) {
+          delete baseData[col]
+          droppedColumns.push(col)
+        }
+      }
+      if (droppedColumns.length > 0) {
+        Sentry.captureMessage('[Monthly Report Settings] retrying without columns the schema does not have yet', {
+          level: 'warning' as any,
+          tags: { invariant: 'settings-missing-column' },
+          extra: { business_id, dropped: droppedColumns, message: error.message },
+        } as any)
+        const retry = await supabase
+          .from('monthly_report_settings')
+          .upsert(baseData, {
+            onConflict: 'business_id',
+            ignoreDuplicates: false,
+          })
+          .select()
+          .single()
+        settings = retry.data
+        error = retry.error
+      }
     }
 
     if (error) {
@@ -290,7 +335,14 @@ async function postHandler(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, settings })
+    // Never report a bare success when budget_source was dropped: that would
+    // tell the coach the client is on the budget store while the database still
+    // says 'forecast'. Three states, not two — value / empty / could-not-save.
+    return NextResponse.json({
+      success: true,
+      settings,
+      ...(droppedColumns.includes('budget_source') ? { budget_source_not_persisted: true } : {}),
+    })
 
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'monthly-report/settings' }, extra: { context: "Error in POST /api/monthly-report/settings" } } as any)

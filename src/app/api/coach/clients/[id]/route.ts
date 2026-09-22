@@ -140,7 +140,14 @@ async function putHandler(
     // Update business (RLS will ensure coach can only update assigned clients)
     const updateData: any = {}
     if (status) updateData.status = status
-    if (program_type) updateData.program_type = program_type
+    if (program_type) {
+      updateData.program_type = program_type
+      // Phase D (CFO-only clients): keep the /cfo dashboard flag coherent with
+      // the declared engagement — changing program type to/from a CFO program
+      // updates is_cfo_client. The client-page ⋯ menu toggle remains a manual
+      // override afterwards (it writes the flag without touching program_type).
+      updateData.is_cfo_client = program_type.includes('CFO')
+    }
     if (session_frequency) updateData.session_frequency = session_frequency
     if (enabled_modules) updateData.enabled_modules = enabled_modules
 

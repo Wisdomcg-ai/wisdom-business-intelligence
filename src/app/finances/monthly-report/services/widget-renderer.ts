@@ -23,9 +23,33 @@ export const WIDGET_METHOD_MAP: Record<WidgetType, string | null> = {
   ytd_summary: 'renderYTDSummary',
   full_year_projection: 'renderFullYearProjection',
   subscription_detail: 'renderSubscriptionDetail',
+  contractor_detail: 'renderContractorDetail',
+  payroll_grid: 'renderPayrollGrid',
+  // One autoTable per configured ratio; the ratios live in widget.config
+  ratio_analysis: 'renderRatioAnalysis',
   wages_detail: 'renderWagesDetail',
   cashflow_forecast_table: 'renderCashflowForecastTable',
-  // P&L Charts
+  // WE.1b — renders every series with month values (config.series_key narrows)
+  external_metric: 'renderExternalMetric',
+  // WC.5 — pack cover with draft/final status
+  cover_page: 'renderCoverPage',
+  // WD.8 — the month's written memo
+  memo: 'renderMemo',
+  // WD.4 — funds flow between two BS dates
+  money_flow: 'renderMoneyFlow',
+  // WD.6 — per-entity consolidated P&L
+  consolidated_pl: 'renderConsolidatedPL',
+  // WG.1 — balance sheet; config.compare selects the comparison column
+  balance_sheet: 'renderBalanceSheet',
+  // Bank Balances & Movement — the chosen bank and card accounts, per org
+  bank_balances: 'renderBankBalances',
+  // An uploaded PDF: reserves its pages, which services/pack-pdf fills
+  uploaded_insert: 'renderUploadedInsert',
+  // P&L Charts — the three analysis types share one renderer; it reads the
+  // section from the widget type, with config.section as a WC.1 override.
+  analysis_chart_income: 'renderAnalysisChart',
+  analysis_chart_cogs: 'renderAnalysisChart',
+  analysis_chart_expense: 'renderAnalysisChart',
   chart_revenue_breakdown: 'renderRevenueBreakdownChart',
   chart_break_even: 'renderBreakEvenChart',
   chart_revenue_vs_expenses: 'renderRevenueVsExpensesChart',

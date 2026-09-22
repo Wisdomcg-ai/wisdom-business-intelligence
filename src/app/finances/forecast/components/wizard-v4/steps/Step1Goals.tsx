@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { TrendingUp, Target, DollarSign, Calendar, Check, Building2, AlertTriangle, ExternalLink } from 'lucide-react';
+import { XeroBudgetSeedBanner } from '../XeroBudgetSeedBanner';
 import { ForecastWizardState, WizardActions, ForecastDuration, formatCurrency, YearlyGoals } from '../types';
 import Link from 'next/link';
 
@@ -183,6 +184,11 @@ export function Step1Goals({ state, actions, fiscalYear }: Step1GoalsProps) {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      <XeroBudgetSeedBanner seedSource={state.seedSource}>
+        Goals pre-filled from Xero budget <strong>“{state.seedSource?.budgetName}”</strong>
+        {state.seedSource?.orgName ? <> ({state.seedSource.orgName})</> : null}. Adjust them if the plan has moved on — nothing is re-pulled from Xero.
+      </XeroBudgetSeedBanner>
+
       {/* Business Profile Industry Card */}
       <div className={`rounded-xl border p-4 ${
         businessProfile?.industry

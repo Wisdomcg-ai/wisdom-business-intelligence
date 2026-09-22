@@ -62,7 +62,7 @@ const CRON_PATH = '/api/cron/refresh-xero-tokens'
  * Auth: Vercel sets `Authorization: Bearer ${CRON_SECRET}` automatically.
  * Fail-closed (returns 401 if CRON_SECRET is unset OR header mismatch) —
  * SEC-02 standard, mirrors the pattern in
- * src/app/api/Xero/sync-all/route.ts:46-50. DO NOT use the looser
+ * src/app/api/cron/sync-all-xero/route.ts. DO NOT use the looser
  * `auth !== \`Bearer ${process.env.CRON_SECRET}\`` form: when CRON_SECRET
  * is undefined that comparison passes when the header is also undefined.
  *
@@ -98,7 +98,11 @@ const CRON_PATH = '/api/cron/refresh-xero-tokens'
  * invariant — and lets 53-05 expand them.
  */
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300 // 5 minutes; matches sync-all-xero/route.ts
+export const maxDuration = 800 // Fluid-compute ceiling. At ~33s per connection
+// (lock-waits + Xero retries + rotation-safe saves) 300s capped the fleet at
+// ~9 — crossed on 11 Aug 2026, silently killing every run. 800s covers ~21
+// connections in one pass; the stalest-first budget below keeps the overflow
+// honest beyond that.
 
 interface PerConnectionResult {
   connection_id: string
@@ -121,25 +125,45 @@ function safeSentryCapture(err: unknown, tags: Record<string, string | undefined
 }
 
 async function getHandler(req: NextRequest) {
-  // Fail-closed auth gate (SEC-02). Mirrors src/app/api/Xero/sync-all/route.ts:46-50.
+  // Fail-closed auth gate (SEC-02). Mirrors src/app/api/cron/sync-all-xero/route.ts.
   // The looser form `auth !== \`Bearer ${process.env.CRON_SECRET}\`` passes
-  // when both sides are undefined — see SEC-02 regression test
-  // src/__tests__/api/xero-sync-all-cron-auth.test.ts.
+  // when both sides are undefined — see the SEC-02 regression tests
+  // src/__tests__/api/cron-refresh-xero-tokens.test.ts (this route) and
+  // src/__tests__/api/cron-sync-all.test.ts (the fleet cron).
   const cronSecret = process.env.CRON_SECRET
   const authHeader = req.headers.get('authorization')
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const startedAtMs = Date.now()
+
+  // Stamp BEFORE the work. This route's completion heartbeat sits after the
+  // loop, so when the fleet outgrew the time ceiling every run died silently
+  // and 8 days of kills read as "cron not scheduled" — the same misdirection
+  // that hid the two-month CRON_SECRET outage. The completion path overwrites
+  // this with the real outcome.
+  await recordHeartbeat({
+    cronPath: CRON_PATH,
+    status: 'partial',
+    errorMessage: 'run started — not yet completed',
+  }).catch(() => { /* best-effort marker; never block the run */ })
+
   try {
     const supabase = createServiceRoleClient()
 
-    // Snapshot active connections. We capture the row IDs ONCE here; the loop
-    // below tolerates per-row deactivation that happens during iteration.
+    // Snapshot active connections, STALEST TOKEN FIRST. Ordering is the fix
+    // for starvation: with no order clause the same tail rows (JDS, IICT
+    // Limited, Digital Bond as of Aug 2026) sat past the kill ceiling on
+    // every run and never got a cron refresh at all. Stalest-first means a
+    // budget cut-off skips the freshest tokens, so no connection can be
+    // skipped two runs in a row — the whole fleet refreshes at least every
+    // ~2 cycles regardless of size.
     const { data, error } = await supabase
       .from('xero_connections')
       .select('id, business_id, tenant_id, tenant_name, expires_at')
       .eq('is_active', true)
+      .order('expires_at', { ascending: true })
 
     if (error) {
       throw new Error(error.message ?? 'Failed to fetch xero_connections')
@@ -179,9 +203,26 @@ async function getHandler(req: NextRequest) {
     let deactivated = 0
     const results: PerConnectionResult[] = []
 
+    // Stop STARTING new refreshes past this point — headroom for the
+    // in-flight refresh to finish and the completion heartbeat to write
+    // instead of dying at the wall. At ~33s per connection this covers ~21
+    // connections per pass; beyond that the stalest-first order guarantees
+    // rotation rather than starvation.
+    const TIME_BUDGET_MS = 720_000
+    const skipped: { connection_id: string; tenant_name: string | null }[] = []
+
     // Sequential per-connection loop. Each iteration is wrapped in its own
     // try/catch so one bad connection cannot abort the rest of the run.
     for (const row of rows) {
+      if (Date.now() - startedAtMs > TIME_BUDGET_MS) {
+        // No silent caps: name what was left undone. Stalest-first above
+        // means these are the FRESHEST tokens — first in line next run.
+        skipped.push(...rows.slice(rows.indexOf(row)).map(r => ({
+          connection_id: r.id,
+          tenant_name: r.tenant_name ?? null,
+        })))
+        break
+      }
       const baseResult: Pick<PerConnectionResult, 'connection_id' | 'tenant_name' | 'business_id'> = {
         connection_id: row.id,
         tenant_name: row.tenant_name ?? null,
@@ -329,14 +370,18 @@ async function getHandler(req: NextRequest) {
       }
     }
 
-    // Phase 69-04: heartbeat. Status='partial' if any rows failed; otherwise
-    // 'success'. Aggregate failure path captures this differently below.
+    // Phase 69-04: heartbeat. Status='partial' if any rows failed, were
+    // deactivated, or were skipped on the time budget; otherwise 'success'.
     const heartbeatStatus: 'success' | 'partial' =
-      failed > 0 || deactivated > 0 ? 'partial' : 'success'
+      failed > 0 || deactivated > 0 || skipped.length > 0 ? 'partial' : 'success'
     await recordHeartbeat({
       cronPath: CRON_PATH,
       status: heartbeatStatus,
-      metadata: { total, refreshed, still_valid, failed, deactivated },
+      metadata: {
+        total, refreshed, still_valid, failed, deactivated,
+        skipped: skipped.length,
+        duration_ms: Date.now() - startedAtMs,
+      },
     })
 
     return NextResponse.json({
@@ -346,6 +391,7 @@ async function getHandler(req: NextRequest) {
       still_valid,
       failed,
       deactivated,
+      skipped: skipped.length > 0 ? skipped : undefined,
       results,
     })
   } catch (err: any) {

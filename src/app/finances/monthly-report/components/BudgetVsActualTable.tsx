@@ -2,12 +2,18 @@
 
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, FileText, Landmark } from 'lucide-react'
-import type { GeneratedReport, ReportLine, ReportSection, MonthlyReportSettings, VarianceCommentary, VendorSummary, VendorTransaction, ReportTab } from '../types'
+import type { GeneratedReport, ReportLine, ReportSection, MonthlyReportSettings, VarianceCommentary, VendorSummary, VendorTransaction, ReportTab, CommentaryTriggerReason } from '../types'
+import { statementYardstick, noBudgetNote } from '../utils/budget-yardstick'
+import { commentaryBadge } from '@/lib/monthly-report/commentary-badge'
+import { groupExpenseLines } from '@/lib/monthly-report/expense-groups'
 
 interface BudgetVsActualTableProps {
   report: GeneratedReport
   commentary?: VarianceCommentary
   commentaryLoading?: boolean
+  /** The last commentary check could not run — the rows below are the previous
+   *  answer, not a current one. */
+  commentaryUnverified?: boolean
   onCommentaryChange?: (accountName: string, text: string) => void
   onCommitBlur?: (accountName: string) => void
   onTabChange?: (tab: ReportTab) => void
@@ -50,12 +56,26 @@ function LineRow({
   line,
   isRevenue,
   settings,
+  hasBudget,
 }: {
   line: ReportLine
   isRevenue: boolean
   settings: MonthlyReportSettings
+  hasBudget: boolean
 }) {
   const isBudgetOnly = line.is_budget_only
+
+  // WA.3 — three states: value / empty / could-not-compare. With no budget at
+  // all, every budget-derived cell used to render $0 and a variance equal to
+  // the full actual with "0.0%" — Envisage Mar-26 was stored showing revenue
+  // "+$62,035, 0.0%" against a budget that didn't exist. Those cells are now
+  // "—". Within a budgeted report, a single $0-budget line keeps its dollar
+  // variance (an unbudgeted expense IS a real variance — the Calxa packs show
+  // it) but drops the meaningless divide-by-zero "0.0%".
+  const dash = <span className="text-gray-400">—</span>
+  const budgetCell = (v: number) => (hasBudget ? fmt(v) : dash)
+  const pctCell = (v: number, base: number) => (hasBudget && base !== 0 ? fmtPct(v) : dash)
+  const varCell = (v: number) => (hasBudget ? fmt(v) : dash)
 
   return (
     <tr className={`border-b border-gray-100 hover:bg-gray-50 ${isBudgetOnly ? 'opacity-60 italic' : ''}`}>
@@ -64,36 +84,36 @@ function LineRow({
         {isBudgetOnly && <span className="ml-1 text-xs text-gray-400">(budget only)</span>}
       </td>
       {/* Month group */}
-      <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap border-l-2 border-gray-200">{fmt(line.budget)}</td>
+      <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap border-l-2 border-gray-200">{budgetCell(line.budget)}</td>
       <td className="px-3 py-2 text-sm text-right font-medium text-gray-900 whitespace-nowrap">{fmt(line.actual)}</td>
-      <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${varianceColor(line.variance_amount, isRevenue)}`}>
-        {fmt(line.variance_amount)}
+      <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${hasBudget ? varianceColor(line.variance_amount, isRevenue) : ''}`}>
+        {varCell(line.variance_amount)}
       </td>
-      <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${varianceColor(line.variance_amount, isRevenue)}`}>
-        {fmtPct(line.variance_percent)}
+      <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${hasBudget ? varianceColor(line.variance_amount, isRevenue) : ''}`}>
+        {pctCell(line.variance_percent, line.budget)}
       </td>
       {/* YTD group */}
       {settings.show_ytd && (
         <>
-          <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap border-l-2 border-gray-200">{fmt(line.ytd_budget)}</td>
+          <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap border-l-2 border-gray-200">{budgetCell(line.ytd_budget)}</td>
           <td className="px-3 py-2 text-sm text-right font-medium text-gray-900 whitespace-nowrap">{fmt(line.ytd_actual)}</td>
-          <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${varianceColor(line.ytd_variance_amount, isRevenue)}`}>
-            {fmt(line.ytd_variance_amount)}
+          <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${hasBudget ? varianceColor(line.ytd_variance_amount, isRevenue) : ''}`}>
+            {varCell(line.ytd_variance_amount)}
           </td>
-          <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${varianceColor(line.ytd_variance_amount, isRevenue)}`}>
-            {fmtPct(line.ytd_variance_percent)}
+          <td className={`px-3 py-2 text-sm text-right whitespace-nowrap ${hasBudget ? varianceColor(line.ytd_variance_amount, isRevenue) : ''}`}>
+            {pctCell(line.ytd_variance_percent, line.ytd_budget)}
           </td>
         </>
       )}
       {/* Extras group */}
       {settings.show_unspent_budget && (
-        <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap border-l-2 border-gray-200">{fmt(line.unspent_budget)}</td>
+        <td className="px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap border-l-2 border-gray-200">{budgetCell(line.unspent_budget)}</td>
       )}
       {settings.show_budget_next_month && (
-        <td className={`px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap ${!settings.show_unspent_budget ? 'border-l-2 border-gray-200' : ''}`}>{fmt(line.budget_next_month)}</td>
+        <td className={`px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap ${!settings.show_unspent_budget ? 'border-l-2 border-gray-200' : ''}`}>{budgetCell(line.budget_next_month)}</td>
       )}
       {settings.show_budget_annual_total && (
-        <td className={`px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap ${!settings.show_unspent_budget && !settings.show_budget_next_month ? 'border-l-2 border-gray-200' : ''}`}>{fmt(line.budget_annual_total)}</td>
+        <td className={`px-3 py-2 text-sm text-right text-gray-600 whitespace-nowrap ${!settings.show_unspent_budget && !settings.show_budget_next_month ? 'border-l-2 border-gray-200' : ''}`}>{budgetCell(line.budget_annual_total)}</td>
       )}
       {settings.show_prior_year && (
         <td className={`px-3 py-2 text-sm text-right text-gray-500 whitespace-nowrap ${!settings.show_unspent_budget && !settings.show_budget_next_month && !settings.show_budget_annual_total ? 'border-l-2 border-gray-200' : ''}`}>{fmt(line.prior_year, true)}</td>
@@ -109,6 +129,7 @@ function SubtotalRow({
   textClass,
   settings,
   isRevenue,
+  hasBudget,
 }: {
   line: ReportLine
   label: string
@@ -116,36 +137,44 @@ function SubtotalRow({
   textClass: string
   settings: MonthlyReportSettings
   isRevenue: boolean
+  hasBudget: boolean
 }) {
   const isDark = bgClass.includes('brand-navy') || bgClass.includes('gray-800')
   const borderColor = isDark ? 'border-white/20' : 'border-gray-300'
+  void isRevenue
+
+  // WA.3 — same three-state rule as LineRow: no budget → budget-derived cells
+  // are "—", and a $0 base never renders a divide-by-zero "0.0%".
+  const dash = <span className={isDark ? 'text-white/50' : 'text-gray-400'}>—</span>
+  const budgetCell = (v: number) => (hasBudget ? fmt(v) : dash)
+  const pctCell = (v: number, base: number) => (hasBudget && base !== 0 ? fmtPct(v) : dash)
 
   return (
     <tr className={`${bgClass} font-semibold`}>
       <td className={`px-3 py-2 text-sm ${textClass}`}>{label}</td>
       {/* Month group */}
-      <td className={`px-3 py-2 text-sm text-right ${textClass} border-l-2 ${borderColor}`}>{fmt(line.budget)}</td>
+      <td className={`px-3 py-2 text-sm text-right ${textClass} border-l-2 ${borderColor}`}>{budgetCell(line.budget)}</td>
       <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{fmt(line.actual)}</td>
-      <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{fmt(line.variance_amount)}</td>
-      <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{fmtPct(line.variance_percent)}</td>
+      <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{budgetCell(line.variance_amount)}</td>
+      <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{pctCell(line.variance_percent, line.budget)}</td>
       {/* YTD group */}
       {settings.show_ytd && (
         <>
-          <td className={`px-3 py-2 text-sm text-right ${textClass} border-l-2 ${borderColor}`}>{fmt(line.ytd_budget)}</td>
+          <td className={`px-3 py-2 text-sm text-right ${textClass} border-l-2 ${borderColor}`}>{budgetCell(line.ytd_budget)}</td>
           <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{fmt(line.ytd_actual)}</td>
-          <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{fmt(line.ytd_variance_amount)}</td>
-          <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{fmtPct(line.ytd_variance_percent)}</td>
+          <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{budgetCell(line.ytd_variance_amount)}</td>
+          <td className={`px-3 py-2 text-sm text-right ${textClass}`}>{pctCell(line.ytd_variance_percent, line.ytd_budget)}</td>
         </>
       )}
       {/* Extras group */}
       {settings.show_unspent_budget && (
-        <td className={`px-3 py-2 text-sm text-right ${textClass} border-l-2 ${borderColor}`}>{fmt(line.unspent_budget)}</td>
+        <td className={`px-3 py-2 text-sm text-right ${textClass} border-l-2 ${borderColor}`}>{budgetCell(line.unspent_budget)}</td>
       )}
       {settings.show_budget_next_month && (
-        <td className={`px-3 py-2 text-sm text-right ${textClass} ${!settings.show_unspent_budget ? `border-l-2 ${borderColor}` : ''}`}>{fmt(line.budget_next_month)}</td>
+        <td className={`px-3 py-2 text-sm text-right ${textClass} ${!settings.show_unspent_budget ? `border-l-2 ${borderColor}` : ''}`}>{budgetCell(line.budget_next_month)}</td>
       )}
       {settings.show_budget_annual_total && (
-        <td className={`px-3 py-2 text-sm text-right ${textClass} ${!settings.show_unspent_budget && !settings.show_budget_next_month ? `border-l-2 ${borderColor}` : ''}`}>{fmt(line.budget_annual_total)}</td>
+        <td className={`px-3 py-2 text-sm text-right ${textClass} ${!settings.show_unspent_budget && !settings.show_budget_next_month ? `border-l-2 ${borderColor}` : ''}`}>{budgetCell(line.budget_annual_total)}</td>
       )}
       {settings.show_prior_year && (
         <td className={`px-3 py-2 text-sm text-right ${textClass} ${!settings.show_unspent_budget && !settings.show_budget_next_month && !settings.show_budget_annual_total ? `border-l-2 ${borderColor}` : ''}`}>{fmt(line.prior_year, true)}</td>
@@ -154,10 +183,13 @@ function SubtotalRow({
   )
 }
 
+// Signed. Vendor amounts are signed the way the ledger moved the account, and
+// this used to print Math.abs — so a customer credit note or a supplier refund
+// read "$500", indistinguishable from a $500 charge beside it. A rounded zero
+// stays unsigned rather than reading "-$0".
 function formatVendorAmount(amount: number): string {
-  const abs = Math.abs(amount)
-  const formatted = abs.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
-  return `$${formatted}`
+  const formatted = Math.abs(amount).toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  return amount < 0 && formatted !== '0' ? `-$${formatted}` : `$${formatted}`
 }
 
 function formatDate(dateStr: string): string {
@@ -224,8 +256,8 @@ function TransactionDrillDown({ vendors }: { vendors: VendorSummary[] }) {
                         <div className="text-gray-500 truncate max-w-[300px]" title={txn.context}>{txn.context}</div>
                       )}
                     </td>
-                    <td className="px-3 py-1.5 text-gray-400" title={txn.type === 'invoice' ? 'Invoice' : 'Bank Transaction'}>
-                      {txn.type === 'invoice' ? (
+                    <td className="px-3 py-1.5 text-gray-400" title={txn.type === 'invoice' ? 'Invoice' : txn.type === 'credit_note' ? 'Credit Note' : 'Bank Transaction'}>
+                      {txn.type === 'invoice' || txn.type === 'credit_note' ? (
                         <FileText className="w-3 h-3" />
                       ) : (
                         <Landmark className="w-3 h-3" />
@@ -243,11 +275,19 @@ function TransactionDrillDown({ vendors }: { vendors: VendorSummary[] }) {
   )
 }
 
+const BADGE_TONE: Record<'bad' | 'good' | 'neutral', string> = {
+  bad: 'text-red-600 bg-red-50',
+  good: 'text-emerald-700 bg-emerald-50',
+  neutral: 'text-gray-600 bg-gray-100',
+}
+
 function CommentaryLine({
   accountName,
   variance,
+  triggerReason,
   vendors,
   coachNote,
+  draftNote,
   detailTabRef,
   onNoteChange,
   onCommitBlur,
@@ -256,8 +296,16 @@ function CommentaryLine({
 }: {
   accountName: string
   variance: number
+  triggerReason?: CommentaryTriggerReason
   vendors: VendorSummary[]
   coachNote: string
+  /**
+   * The generated draft, whole. Shown so a coach writing a note can see what
+   * the generator wrote. It is NOT necessarily the text the pack prints: a
+   * placement can print it without its ratio clause, or print the note in its
+   * place, and this panel does not know which placement an account sits on.
+   */
+  draftNote?: string
   detailTabRef?: 'subscriptions' | 'wages' | null
   onNoteChange?: (accountName: string, note: string) => void
   onCommitBlur?: (accountName: string) => void
@@ -267,6 +315,7 @@ function CommentaryLine({
   readOnly?: boolean
 }) {
   const tabLabel = detailTabRef === 'subscriptions' ? 'Subscriptions' : detailTabRef === 'wages' ? 'Wages' : null
+  const badge = commentaryBadge(variance, triggerReason)
 
   return (
     <div className="py-3 px-4 rounded-lg border border-gray-200 bg-white">
@@ -275,9 +324,11 @@ function CommentaryLine({
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-gray-900">{accountName}</span>
-            <span className="text-xs font-medium text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
-              {formatVendorAmount(Math.abs(variance))} over budget
-            </span>
+            {badge && (
+              <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${BADGE_TONE[badge.tone]}`}>
+                {badge.text}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -294,6 +345,16 @@ function CommentaryLine({
 
       {/* Vendor drill-down */}
       <TransactionDrillDown vendors={vendors} />
+
+      {draftNote && draftNote.trim() !== '' && (
+        <p
+          className="mt-2 text-xs text-gray-500"
+          data-testid={`commentary-draft-${accountName}`}
+          title="The pack may print this without its ratio clause, or your note in its place — see the layout's commentary settings."
+        >
+          <span className="font-medium text-gray-600">Generated draft:</span> {draftNote}
+        </p>
+      )}
 
       {/* Coach note section — Phase 42 D-04, D-14: always-editable inline textarea.
           Parent controls value via coachNote (D-14 optimistic UI); every keystroke
@@ -326,8 +387,15 @@ function CommentaryLine({
 // the function to make the test-only rationale explicit.
 export { CommentaryLine }
 
-export default function BudgetVsActualTable({ report, commentary, commentaryLoading, onCommentaryChange, onCommitBlur, onTabChange, readOnly }: BudgetVsActualTableProps) {
+export default function BudgetVsActualTable({ report, commentary, commentaryLoading, commentaryUnverified, onCommentaryChange, onCommitBlur, onTabChange, readOnly }: BudgetVsActualTableProps) {
   const settings = report.settings
+
+  // What "Budget" means here. For a client on the budget store it is the
+  // APPROVED budget, and the Full Year tab beside this one shows that under
+  // "Approved Budget" with "Forecast" on a different column. Same module as
+  // the exported pack's pages 4/6/10, so the tab and the pack cannot name one
+  // number two ways.
+  const yardstick = statementYardstick(report)
 
   const colCount =
     5 + // Account + Budget + Actual + Var$ + Var%
@@ -347,18 +415,37 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
 
   return (
     <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      {/* WA.3 — the no-budget explanation leads the table instead of trailing
+          ~50 rows below it. Without a budget every Budget/Variance cell is "—",
+          and the reader should know why before they scan the columns. The
+          sentence itself comes from the shared helper: the PDF page prints the
+          same one, off the same `no_budget_reason`, so the coach's screen and
+          the client's pack say the same thing about the same month. */}
+      {noBudgetNote(report) && (
+        <div className="p-4 bg-amber-50 border-b border-amber-200">
+          <p className="text-sm text-amber-800">{noBudgetNote(report)}</p>
+        </div>
+      )}
+      {/* Names the yardstick for the columns too narrow to rename — Unspent
+          Budget, Next Month, Annual Total. Absent for a client with only one
+          yardstick, whose "Budget" is unambiguous. */}
+      {yardstick.note && (
+        <div className="px-4 py-2 bg-slate-50 border-b border-slate-200">
+          <p className="text-xs text-gray-600">{yardstick.note}</p>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[900px]">
           <thead>
             <tr className="bg-brand-navy text-white text-xs">
               <th className="px-3 py-3 text-left font-semibold">Account</th>
-              <th className="px-3 py-3 text-right font-semibold border-l-2 border-white/20">Budget</th>
+              <th className="px-3 py-3 text-right font-semibold border-l-2 border-white/20">{yardstick.columnLabel}</th>
               <th className="px-3 py-3 text-right font-semibold">Actual</th>
               <th className="px-3 py-3 text-right font-semibold">Var ($)</th>
               <th className="px-3 py-3 text-right font-semibold">Var (%)</th>
               {settings.show_ytd && (
                 <>
-                  <th className="px-3 py-3 text-right font-semibold border-l-2 border-white/20">YTD Budget</th>
+                  <th className="px-3 py-3 text-right font-semibold border-l-2 border-white/20">{yardstick.ytdColumnLabel}</th>
                   <th className="px-3 py-3 text-right font-semibold">YTD Actual</th>
                   <th className="px-3 py-3 text-right font-semibold">YTD Var ($)</th>
                   <th className="px-3 py-3 text-right font-semibold">YTD Var (%)</th>
@@ -395,14 +482,41 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                       {section.category}
                     </td>
                   </tr>
-                  {/* Lines — only rows with non-zero data */}
-                  {visibleLines.map((line, idx) => (
-                    <LineRow
-                      key={`${section.category}-${idx}`}
-                      line={line}
-                      isRevenue={isRevenue}
-                      settings={settings}
-                    />
+                  {/* Lines, under their expense group headings where the coach
+                      has set them. The same groupExpenseLines the pack uses —
+                      a tab that disagrees with the PDF beneath it is the
+                      defect, not a cosmetic difference. Ungrouped clients take
+                      the flat branch and render exactly as before. */}
+                  {groupExpenseLines(visibleLines, settings.expense_group_order, section.category).map((g, gi) => (
+                    <React.Fragment key={`${section.category}-g${gi}`}>
+                      {g.name && (
+                        <tr className="bg-gray-50">
+                          <td colSpan={colCount} className="px-3 py-1.5 text-xs font-semibold text-gray-600">
+                            {g.name}
+                          </td>
+                        </tr>
+                      )}
+                      {g.lines.map((line, idx) => (
+                        <LineRow
+                          key={`${section.category}-${gi}-${idx}`}
+                          line={line}
+                          isRevenue={isRevenue}
+                          settings={settings}
+                          hasBudget={report.has_budget}
+                        />
+                      ))}
+                      {g.subtotal && (
+                        <SubtotalRow
+                          line={g.subtotal}
+                          label={`Total ${g.name}`}
+                          bgClass="bg-gray-50"
+                          textClass="text-gray-800 font-semibold"
+                          settings={settings}
+                          isRevenue={isRevenue}
+                          hasBudget={report.has_budget}
+                        />
+                      )}
+                    </React.Fragment>
                   ))}
                   {/* Subtotal */}
                   <SubtotalRow
@@ -412,6 +526,7 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                     textClass={style.subtotalText}
                     settings={settings}
                     isRevenue={isRevenue}
+                    hasBudget={report.has_budget}
                   />
 
                   {/* Gross Profit row after Cost of Sales */}
@@ -423,6 +538,22 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                       textClass="text-blue-900"
                       settings={settings}
                       isRevenue={true}
+                      hasBudget={report.has_budget}
+                    />
+                  )}
+
+                  {/* WA.1 — Operating Profit (GP − OpEx) after Operating
+                      Expenses, before Other Income/Expenses. Guarded: snapshots
+                      saved before the restructure don't carry the row. */}
+                  {section.category === 'Operating Expenses' && report.operating_profit_row && (
+                    <SubtotalRow
+                      line={report.operating_profit_row}
+                      label="Operating Profit"
+                      bgClass="bg-sky-50"
+                      textClass="text-sky-900"
+                      settings={settings}
+                      isRevenue={true}
+                      hasBudget={report.has_budget}
                     />
                   )}
                 </React.Fragment>
@@ -437,18 +568,11 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
               textClass="text-white"
               settings={settings}
               isRevenue={true}
+              hasBudget={report.has_budget}
             />
           </tbody>
         </table>
       </div>
-
-      {!report.has_budget && (
-        <div className="p-4 bg-amber-50 border-t border-amber-200">
-          <p className="text-sm text-amber-800">
-            No budget forecast found. Set up a financial forecast to enable budget comparison.
-          </p>
-        </div>
-      )}
 
       {/* Commentary section — expenses over budget, vendor breakdown */}
       {commentaryLoading && (
@@ -463,9 +587,14 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
             <div className="w-1 h-5 bg-red-500 rounded-full" />
             <h3 className="text-base font-bold text-gray-900">Expense Commentary</h3>
             <span className="text-xs text-gray-500">
-              {Object.keys(commentary).length} account{Object.keys(commentary).length !== 1 ? 's' : ''} over budget
+              {Object.keys(commentary).length} account{Object.keys(commentary).length !== 1 ? 's' : ''} flagged
             </span>
           </div>
+          {commentaryUnverified && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-4">
+              Couldn&apos;t refresh commentary from Xero — showing the last saved version, which may be out of date.
+            </p>
+          )}
           <div className="space-y-4">
             {report.sections
               .filter(s => ['Cost of Sales', 'Operating Expenses', 'Other Expenses'].includes(s.category))
@@ -483,8 +612,10 @@ export default function BudgetVsActualTable({ report, commentary, commentaryLoad
                             key={`commentary-${l.account_name}`}
                             accountName={l.account_name}
                             variance={l.variance_amount}
+                            triggerReason={entry.trigger_reason}
                             vendors={entry.vendor_summary || []}
                             coachNote={entry.coach_note || ''}
+                            draftNote={entry.draft_note}
                             detailTabRef={entry.detail_tab_ref}
                             onNoteChange={onCommentaryChange}
                             onCommitBlur={onCommitBlur}

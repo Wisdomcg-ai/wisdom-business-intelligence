@@ -17,6 +17,7 @@ import {
   createVendorKey,
   extractVendorName,
   extractVendorInfo,
+  vendorCompanyName,
 } from '@/lib/utils/vendor-normalization';
 
 describe('B2 — vendor-normalization single source of truth', () => {
@@ -49,6 +50,7 @@ describe('B2 — vendor-normalization single source of truth', () => {
     const routes = [
       'src/app/api/monthly-report/subscription-detail/route.ts',
       'src/app/api/monthly-report/commentary/route.ts',
+      'src/lib/monthly-report/commentary-documents.ts',
     ];
     const inlineDefRegex = /^\s*(function|const)\s+createVendorKey\b/gm;
 
@@ -75,19 +77,47 @@ describe('B2 — vendor-normalization single source of truth', () => {
   it('commentary route uses createVendorKey for map keying (not raw vendor name)', () => {
     // The actual B2 bug: commentary's addToVendor() keyed `vendorData` by the
     // raw `info.vendor` string. subscription-detail keys by `createVendorKey(...)`.
-    // Asserts the import is present AND addToVendor uses createVendorKey on the key.
-    const src = readFileSync(
+    //
+    // The grouping moved out of the route into commentary-documents.ts
+    // (summariseVendors) when the supplier lists were restricted to posted
+    // documents, so the keying is asserted where it now lives — and the route
+    // is asserted to delegate to it rather than grow its own map again.
+    const route = readFileSync(
       resolve(process.cwd(), 'src/app/api/monthly-report/commentary/route.ts'),
+      'utf8',
+    );
+    expect(route).toMatch(/\bsummariseVendors\s*\(/);
+    expect(route).not.toMatch(/new Map<string,\s*\{\s*display_name/);
+
+    const src = readFileSync(
+      resolve(process.cwd(), 'src/lib/monthly-report/commentary-documents.ts'),
       'utf8',
     );
 
     // Import line must include createVendorKey
     expect(src).toMatch(/import\s*\{[^}]*\bcreateVendorKey\b[^}]*\}\s*from\s*['"]@\/lib\/utils\/vendor-normalization['"]/);
 
-    // The addToVendor body (or its callers) must wrap the vendor name with createVendorKey
-    // before using it as the map key. Match `createVendorKey(` appearing at least twice
-    // (import + use) — and at least once in a context that touches `vendor`/`info.vendor`.
-    const useCount = (src.match(/\bcreateVendorKey\s*\(/g) || []).length;
-    expect(useCount, 'createVendorKey must be used at least once for map keying inside commentary route').toBeGreaterThanOrEqual(1);
+    // The grouping must wrap the vendor name with createVendorKey before using
+    // it as the map key.
+    expect(src).toMatch(/\bcreateVendorKey\s*\(\s*txn\.vendor\s*\)/);
+  });
+});
+
+describe('the company name is display only', () => {
+  // The commentary quotes "Google" on an ad-spend account (vendorCompanyName),
+  // but Step 6, subscription_budgets and subscription_vendor_actuals key the
+  // vendor by the mapped product name. Those keys must not move.
+  it('extractVendorName and createVendorKey are unchanged for the mapped product names', () => {
+    expect(extractVendorName('Google', '')).toBe('Google Workspace');
+    expect(createVendorKey(extractVendorName('Google', ''))).toBe('googleworkspace');
+    expect(extractVendorName('Microsoft', '')).toBe('Microsoft 365');
+    expect(createVendorKey(extractVendorName('Microsoft', ''))).toBe('microsoft365');
+  });
+
+  it('maps only product names to the company that bills them', () => {
+    expect(vendorCompanyName('Google Workspace')).toBe('Google');
+    expect(vendorCompanyName('Microsoft 365')).toBe('Microsoft');
+    expect(vendorCompanyName('Slack')).toBe('Slack');
+    expect(vendorCompanyName('Allied Express Transport Pty Ltd')).toBe('Allied Express Transport Pty Ltd');
   });
 });

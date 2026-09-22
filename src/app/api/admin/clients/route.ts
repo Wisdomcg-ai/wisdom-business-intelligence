@@ -254,7 +254,7 @@ async function postHandler(request: Request) {
     }
 
     // STEP 2b: Create business_profile record (required for coach dashboard to show data)
-    const { error: profileError } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('business_profiles')
       .insert({
         business_id: business.id,
@@ -263,6 +263,8 @@ async function postHandler(request: Request) {
         company_name: businessName,
         profile_completed: false
       })
+      .select('id')
+      .single()
 
     if (profileError) {
       Sentry.captureException(profileError, { tags: { route: 'admin/clients' }, extra: { context: 'Business profile creation error' } } as any)
@@ -270,14 +272,27 @@ async function postHandler(request: Request) {
     }
 
     // STEP 3: Assign user role (owner)
-    const { error: userRoleError } = await supabase
-      .from('user_roles')
-      .insert({
-        user_id: newUserId,
-        business_id: business.id,
-        role: 'owner',
-        created_by: user.id
-      })
+    //
+    // user_roles.business_id is PROFILE-space — its FK targets
+    // business_profiles(id), NOT businesses(id) (dual-ID incident class #1).
+    // This insert failed for EVERY onboarded client, twice over: it wrote
+    // created_by (the column is granted_by) and, once that was fixed, the
+    // businesses-space id would have violated the FK. Both failures were
+    // Sentry-logged and swallowed, so clients arrived with no owner role row
+    // (WISDOM-BI-18; Scan2Archive/Attaquer/Urban Road repaired by hand
+    // 20 Aug 2026). Skip cleanly if the profile insert above failed — a
+    // missing profile makes the FK unsatisfiable, and one more logged error
+    // beats a guaranteed one.
+    const userRoleError = profile?.id
+      ? (await supabase
+          .from('user_roles')
+          .insert({
+            user_id: newUserId,
+            business_id: profile.id,
+            role: 'owner',
+            granted_by: user.id
+          })).error
+      : new Error('business_profiles insert failed — user_roles FK unsatisfiable')
 
     if (userRoleError) {
       Sentry.captureException(userRoleError, { tags: { route: 'admin/clients' }, extra: { context: 'Role assignment error' } } as any)

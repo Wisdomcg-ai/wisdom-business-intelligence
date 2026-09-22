@@ -77,7 +77,9 @@ vi.mock('@/lib/business/resolveXeroBusinessId', () => ({
   resolveXeroBusinessId: (...args: unknown[]) => resolveXeroBusinessIdMock(...args),
 }))
 
-// getHistoricalSummary should not be called on the no-connection path.
+// Phase A (CFO-only clients): getHistoricalSummary IS now called on the
+// no-connection path — the route serves the synced DB mirror for
+// disconnected tenants instead of hard-returning has_xero_data:false.
 const getHistoricalSummaryMock = vi.fn()
 vi.mock('@/lib/services/historical-pl-summary', () => ({
   getHistoricalSummary: (...args: unknown[]) => getHistoricalSummaryMock(...args),
@@ -109,6 +111,7 @@ describe('Issue B — pl-summary surfaces lookup_error on dual-id desync', () =>
       connectionBusinessId: 'profile-uuid-not-equal-to-biz-1',
       connection: null,
     })
+    getHistoricalSummaryMock.mockResolvedValue({ has_xero_data: false })
 
     const res = await GET(makeRequest('biz-1'))
     expect(res.status).toBe(200)
@@ -119,9 +122,7 @@ describe('Issue B — pl-summary surfaces lookup_error on dual-id desync', () =>
     expect(body.summary.lookup_error).toBeTruthy()
     expect(typeof body.summary.lookup_error).toBe('string')
     expect(body.summary.lookup_error).toContain('xero_connection_lookup_failed')
-    // getHistoricalSummary must NOT be called — we short-circuited on
-    // the no-connection branch.
-    expect(getHistoricalSummaryMock).not.toHaveBeenCalled()
+    expect(body.summary.xero_disconnected).toBe(true)
   })
 
   it('returns lookup_error: null when resolver returns null connection AND queried id matches (genuine no-connection)', async () => {
@@ -133,6 +134,7 @@ describe('Issue B — pl-summary surfaces lookup_error on dual-id desync', () =>
       connectionBusinessId: 'biz-1',
       connection: null,
     })
+    getHistoricalSummaryMock.mockResolvedValue({ has_xero_data: false })
 
     const res = await GET(makeRequest('biz-1'))
     expect(res.status).toBe(200)
@@ -140,7 +142,34 @@ describe('Issue B — pl-summary surfaces lookup_error on dual-id desync', () =>
 
     expect(body.summary.has_xero_data).toBe(false)
     expect(body.summary.lookup_error).toBeNull()
-    expect(getHistoricalSummaryMock).not.toHaveBeenCalled()
+    expect(body.summary.xero_disconnected).toBe(true)
+  })
+
+  it('Phase A: serves the synced DB mirror when the connection is inactive/expired (disconnected tenant with data)', async () => {
+    // Efficient Living shape: token expired (no ACTIVE connection row) but
+    // months of xero_pl_lines exist in the mirror. The wizard must still get
+    // a seedable prior_fy — with xero_disconnected + data_quality carrying
+    // the staleness signal — instead of a hard has_xero_data:false.
+    resolveXeroBusinessIdMock.mockResolvedValue({
+      connectionBusinessId: 'biz-1',
+      connection: null,
+    })
+    getHistoricalSummaryMock.mockResolvedValue({
+      has_xero_data: true,
+      prior_fy: { total_revenue: 2_158_371 },
+      data_quality: 'no_sync',
+    })
+
+    const res = await GET(makeRequest('biz-1'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+
+    expect(body.summary.has_xero_data).toBe(true)
+    expect(body.summary.prior_fy.total_revenue).toBe(2_158_371)
+    expect(body.summary.xero_disconnected).toBe(true)
+    expect(body.summary.data_quality).toBe('no_sync')
+    expect(body.summary.lookup_error).toBeNull()
+    expect(getHistoricalSummaryMock).toHaveBeenCalledTimes(1)
   })
 
   it('does NOT set lookup_error when connection is found (happy path delegates to getHistoricalSummary)', async () => {

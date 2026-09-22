@@ -3,9 +3,10 @@
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, Legend,
 } from 'recharts'
-import type { FullYearReport } from '../../types'
+import type { FullYearReport, FullYearMonthData } from '../../types'
 import { CHART_COLORS } from './chart-colors'
 import { fmtCurrency, fmtAxisTick, getMonthLabel, ChartCard } from './chart-utils'
+import { forwardSeriesBasis, forwardSeriesBudget, forwardSeriesBasisNote, forwardSeriesLabel } from '../../utils/full-year-basis'
 
 export interface BreakEvenDataPoint {
   monthLabel: string
@@ -27,13 +28,26 @@ export interface BreakEvenSummary {
   totalMonths: number
 }
 
-export function transformBreakEvenData(report: FullYearReport): { data: BreakEvenDataPoint[]; summary: BreakEvenSummary } {
+export function transformBreakEvenData(
+  report: FullYearReport,
+): { data: BreakEvenDataPoint[]; summary: BreakEvenSummary; forwardAbsentNote: string | null } {
   const revSection = report.sections.find(s => s.category === 'Revenue')
   const cogsSection = report.sections.find(s => s.category === 'Cost of Sales')
   const opexSection = report.sections.find(s => s.category === 'Operating Expenses')
   const otherExpSection = report.sections.find(s => s.category === 'Other Expenses')
 
-  if (!revSection) return { data: [], summary: { currentMonthRevenue: 0, currentMonthBreakEven: 0, marginOfSafety: 0, marginOfSafetyPct: 0, averageBreakEven: 0, monthsAboveBreakEven: 0, totalMonths: 0 } }
+  if (!revSection) {
+    return {
+      data: [],
+      summary: { currentMonthRevenue: 0, currentMonthBreakEven: 0, marginOfSafety: 0, marginOfSafetyPct: 0, averageBreakEven: 0, monthsAboveBreakEven: 0, totalMonths: 0 },
+      forwardAbsentNote: null,
+    }
+  }
+
+  // The yardstick the open months are filled with — the approved budget when
+  // the report carries one covering them, else the forecast, else none.
+  const basis = forwardSeriesBasis(report)
+  const budgetOf = (md: FullYearMonthData | undefined) => forwardSeriesBudget(md, basis)
 
   // Step 1: Calculate a blended variable cost ratio from actual months only.
   // Using per-month ratios causes the break-even line to jump around — a blended
@@ -49,8 +63,8 @@ export function transformBreakEvenData(report: FullYearReport): { data: BreakEve
   // Fallback: if no actuals yet, use budget totals for the ratio
   if (totalActualRevenue === 0) {
     for (let i = 0; i < report.gross_profit.months.length; i++) {
-      totalActualRevenue += revSection.subtotal.months[i]?.budget || 0
-      totalActualCogs += cogsSection?.subtotal.months[i]?.budget || 0
+      totalActualRevenue += budgetOf(revSection.subtotal.months[i])
+      totalActualCogs += budgetOf(cogsSection?.subtotal.months[i])
     }
   }
 
@@ -58,18 +72,18 @@ export function transformBreakEvenData(report: FullYearReport): { data: BreakEve
   const blendedContributionMarginRatio = 1 - blendedVariableCostRatio
 
   // Step 2: Build per-month data using the blended ratio
-  const data: BreakEvenDataPoint[] = report.gross_profit.months.map((gpMonth, i) => {
+  const allMonths: BreakEvenDataPoint[] = report.gross_profit.months.map((gpMonth, i) => {
     const isActual = gpMonth.source === 'actual'
 
     // Revenue = operating revenue only (exclude Other Income — it doesn't have COGS)
     const revenue = isActual
       ? (revSection.subtotal.months[i]?.actual || 0)
-      : (revSection.subtotal.months[i]?.budget || 0)
+      : budgetOf(revSection.subtotal.months[i])
 
     // Fixed costs = OpEx + Other Expenses (don't scale with revenue)
     const fixedCosts = isActual
       ? (opexSection?.subtotal.months[i]?.actual || 0) + (otherExpSection?.subtotal.months[i]?.actual || 0)
-      : (opexSection?.subtotal.months[i]?.budget || 0) + (otherExpSection?.subtotal.months[i]?.budget || 0)
+      : budgetOf(opexSection?.subtotal.months[i]) + budgetOf(otherExpSection?.subtotal.months[i])
 
     // Break-even = Fixed Costs / Contribution Margin Ratio (blended)
     const breakEvenRevenue = blendedContributionMarginRatio > 0
@@ -86,6 +100,13 @@ export function transformBreakEvenData(report: FullYearReport): { data: BreakEve
       source: gpMonth.source,
     }
   })
+
+  // With neither an approved budget nor a forecast for the year, every open
+  // month above is 0 — not a plan to earn nothing, an absence. Plotting it drew
+  // revenue collapsing to zero from the first open month and a break-even line
+  // derived from the same zeros. The series stops at the last closed month
+  // instead, and the page says so.
+  const data = basis !== null ? allMonths : allMonths.filter(d => d.source === 'actual')
 
   // Find the last actual month for the summary KPI
   const actualData = data.filter(d => d.source === 'actual')
@@ -108,10 +129,11 @@ export function transformBreakEvenData(report: FullYearReport): { data: BreakEve
       monthsAboveBreakEven,
       totalMonths: data.length,
     },
+    forwardAbsentNote: forwardSeriesBasisNote(report),
   }
 }
 
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label, forwardLabel }: any) {
   if (!active || !payload?.length) return null
   const point = payload[0]?.payload as BreakEvenDataPoint | undefined
   if (!point) return null
@@ -120,7 +142,7 @@ function CustomTooltip({ active, payload, label }: any) {
     <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-3 text-xs">
       <p className="font-semibold text-gray-900 mb-1">
         {label}
-        {point.source === 'forecast' && <span className="ml-1.5 text-gray-400 font-normal">(Forecast)</span>}
+        {point.source === 'forecast' && <span className="ml-1.5 text-gray-400 font-normal">({forwardLabel})</span>}
       </p>
       {payload.map((entry: any) => (
         <div key={entry.dataKey} className="flex items-center justify-between gap-4 py-0.5">
@@ -154,7 +176,8 @@ interface Props {
 }
 
 export default function BreakEvenChart({ fullYearReport }: Props) {
-  const { data, summary } = transformBreakEvenData(fullYearReport)
+  const { data, summary, forwardAbsentNote } = transformBreakEvenData(fullYearReport)
+  const forwardLabel = forwardSeriesLabel(fullYearReport)
   if (data.length === 0) return null
 
   const lastActualIdx = data.reduce((acc, d, i) => d.source === 'actual' ? i : acc, -1)
@@ -165,6 +188,12 @@ export default function BreakEvenChart({ fullYearReport }: Props) {
 
   return (
     <ChartCard title="Break-Even Analysis" subtitle="Revenue needed to cover all costs each month" tooltip="Shows the minimum revenue you need each month just to cover your costs (the break-even line). When your actual revenue is above the line, you're profitable. The gap between them is your margin of safety — the bigger the better.">
+      {forwardAbsentNote && (
+        <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {forwardAbsentNote}
+        </p>
+      )}
+
       {/* KPI summary cards */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-gray-50 rounded-lg p-3 text-center">
@@ -200,9 +229,9 @@ export default function BreakEvenChart({ fullYearReport }: Props) {
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} />
           <YAxis tickFormatter={fmtAxisTick} tick={{ fontSize: 11 }} />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip forwardLabel={forwardLabel} />} />
           {firstForecastLabel && lastForecastLabel && (
-            <ReferenceArea x1={firstForecastLabel} x2={lastForecastLabel} fill="#f8fafc" fillOpacity={0.8} label={{ value: 'Forecast', position: 'insideTopRight', fontSize: 10, fill: '#94a3b8' }} />
+            <ReferenceArea x1={firstForecastLabel} x2={lastForecastLabel} fill="#f8fafc" fillOpacity={0.8} label={{ value: forwardLabel, position: 'insideTopRight', fontSize: 10, fill: '#94a3b8' }} />
           )}
           {firstForecastLabel && (
             <ReferenceLine x={firstForecastLabel} stroke="#94a3b8" strokeDasharray="4 4" strokeWidth={1} />

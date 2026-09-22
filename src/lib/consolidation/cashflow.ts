@@ -502,17 +502,51 @@ export async function buildConsolidatedCashflow(
     }),
   )
 
-  // 4. Pure combine — sums openings + monthly movements, threads closing.
-  //   Feeding `months` with net_movement only (opening/closing are re-threaded
-  //   inside `combineMemberForecasts`).
+  // 4. Combine.
+  //
+  // NFM-01 (26 Aug 2026) — THE MULTIPLICATION BUG. `loadBusinessBaseline`
+  // returns ONE business-wide forecast (there is a single umbrella forecast per
+  // business; forecast_pl_lines has no tenant_id). Step 3 runs that same
+  // baseline once PER TENANT, varying only `opening_bank_balance`, so every
+  // tenant's cash_in/cash_out/net_movement series is bit-identical. Summing
+  // those series across tenants therefore multiplied every cash movement by the
+  // tenant count: Dragon Roofing (2 orgs) showed ~$19.9M of consolidated
+  // receipts against a ~$9.9M baseline — exactly 2x — plus a closing balance
+  // inflated by a whole extra year of net movement. A coach reading that would
+  // give a client a cash-runway number that is double reality.
+  //
+  // Opening balances ARE genuinely per-tenant (real bank balances from the BS
+  // mirror), so they still sum. The MOVEMENTS come from the single business-wide
+  // baseline and must be counted ONCE. Feeding one synthetic member — the summed
+  // opening plus one copy of the movement series — gives the correct total and
+  // reuses the same threading logic.
+  const businessWideMonths: ConsolidatedCashflowMonth[] =
+    byTenant.length > 0
+      ? byTenant[0].months
+      : opts.fyMonths.map((mk) => ({
+          month: mk,
+          cash_in: 0,
+          cash_out: 0,
+          net_movement: 0,
+          opening_balance: 0,
+          closing_balance: 0,
+        }))
+
+  const summedOpening = byTenant.reduce((sum, t) => sum + t.opening_balance, 0)
+
   const combined = combineMemberForecasts(
-    byTenant.map((t) => ({
-      opening_balance: t.opening_balance,
-      closing_balance: t.closing_balance,
-      months: t.months,
-    })),
+    [{ opening_balance: summedOpening, months: businessWideMonths }],
     opts.fyMonths,
   )
+
+  if (baseline && tenants.length > 1) {
+    notes.push(
+      `Cash movements are counted ONCE from the business-wide forecast, not summed ` +
+        `across the ${tenants.length} connected organisations — the forecast is not ` +
+        `tenant-scoped, so each organisation's row below repeats the same movement ` +
+        `series. Only the opening balances differ per organisation.`,
+    )
+  }
 
   // FX context — consolidated cashflow FX translation is deferred (V1 only
   // handles AUD-AUD consolidations at the cashflow level; HKD opening-balance

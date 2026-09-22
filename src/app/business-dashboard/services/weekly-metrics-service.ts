@@ -281,13 +281,21 @@ export class WeeklyMetricsService {
 
       if (error) {
         console.error('[Weekly Metrics] Error loading snapshots:', error)
-        return []
+        throw new Error(error.message || 'Failed to load weekly snapshots')
       }
 
       return (data || []).map(this.mapFromDatabase)
     } catch (err) {
       console.error('[Weekly Metrics] Error loading snapshots:', err)
-      return []
+      // PRES-05 — this used to `return []`, which is indistinguishable from a
+      // business that has genuinely recorded no weeks. Empty snapshots make every
+      // QTD actual 0; measured against a REAL target that renders a confident red
+      // "Behind" on every metric. Same defect as the targets load, opposite
+      // symptom: a failure presented as a verdict.
+      //
+      // Only one caller (useBusinessDashboard), which surfaces this as the
+      // page-level error state rather than charting zeros.
+      throw err instanceof Error ? err : new Error('Failed to load weekly snapshots')
     }
   }
 

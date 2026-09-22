@@ -1,16 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { Loader2, Banknote } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
 import ForecastService from '@/app/finances/forecast/services/forecast-service'
-import type { FinancialForecast, PLLine, XeroConnection } from '@/app/finances/forecast/types'
+import type { FinancialForecast, PLLine } from '@/app/finances/forecast/types'
+import { fetchXeroBusinessStatus, type XeroStatusConnection } from '@/lib/xero/business-status-view'
 import CashflowForecastTab from '@/app/finances/forecast/components/CashflowForecastTab'
 import { getForecastFiscalYear } from '@/app/finances/forecast/utils/fiscal-year'
-import { useXeroKeepalive } from '@/hooks/useXeroKeepalive'
+import { useXeroKeepalive, type XeroConnectionStatus as XeroKeepaliveStatus } from '@/hooks/useXeroKeepalive'
 import { DataIntegrityBanner } from '@/components/data-integrity/DataIntegrityBanner'
 import type { DataQuality, PerTenantQuality } from '@/lib/services/forecast-read-service'
 
@@ -23,14 +24,25 @@ export default function CashflowForecastPage() {
   const [businessId, setBusinessId] = useState('')
   const [forecast, setForecast] = useState<FinancialForecast | null>(null)
   const [plLines, setPlLines] = useState<PLLine[]>([])
-  const [xeroConnection, setXeroConnection] = useState<XeroConnection | null>(null)
+  const [xeroConnection, setXeroConnection] = useState<XeroStatusConnection | null>(null)
+  const [xeroCheckFailed, setXeroCheckFailed] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // D-44.2-03 read-path quality gate from /api/forecast/cashflow/xero-actuals.
   const [dataQuality, setDataQuality] = useState<DataQuality>('verified')
+  // PRES-08 — `dataQuality` above is seeded optimistically to 'verified', and the
+  // banner renders nothing for 'verified'. So every failure of the quality check
+  // produced a page pixel-identical to one where every tenant had just reconciled
+  // cleanly. Start as "not checked yet" and only clear it on a successful read.
+  const [qualityCheckFailed, setQualityCheckFailed] = useState(true)
   const [perTenantQuality, setPerTenantQuality] = useState<PerTenantQuality[]>([])
 
-  // Keep Xero tokens fresh
-  useXeroKeepalive(businessId || null, !!xeroConnection)
+  // Keep Xero tokens fresh, and keep Sync Balances in step with what each check finds.
+  const handleKeepaliveCheck = useCallback((check: XeroKeepaliveStatus) => {
+    if (!check.response) return
+    setXeroCheckFailed(false)
+    setXeroConnection(check.response.connected ? check.response.connection : null)
+  }, [])
+  useXeroKeepalive(businessId || null, !!xeroConnection, { onStatusChange: handleKeepaliveCheck })
 
   useEffect(() => {
     setMounted(true)
@@ -78,18 +90,12 @@ export default function CashflowForecastPage() {
       const lines = await ForecastService.loadPLLines(loadedForecast.id!)
       setPlLines(lines)
 
-      // Load Xero connection
-      try {
-        const statusRes = await fetch(`/api/Xero/status?business_id=${bizId}`)
-        const statusData = await statusRes.json()
-        if (statusData.connected && statusData.connection) {
-          setXeroConnection(statusData.connection)
-        }
-      } catch (err) {
-        console.error('[Cashflow] Error loading Xero connection:', err)
-        const xeroConn = await ForecastService.getXeroConnection(bizId)
-        setXeroConnection(xeroConn)
-      }
+      // Load Xero connection. Only whether the business has a live org matters
+      // here (Sync Balances, the keepalive). A failed check is not "no Xero" —
+      // it must not tell the user to connect a Xero they already have.
+      const xeroCheck = await fetchXeroBusinessStatus(bizId)
+      setXeroCheckFailed(!xeroCheck.ok)
+      setXeroConnection(xeroCheck.ok && xeroCheck.data.connected ? xeroCheck.data.connection : null)
 
       // D-44.2-03 — read-path quality from cashflow xero-actuals endpoint.
       try {
@@ -98,11 +104,19 @@ export default function CashflowForecastPage() {
         const qualityRes = await fetch(`/api/forecast/cashflow/xero-actuals?${params.toString()}`)
         if (qualityRes.ok) {
           const qualityData = await qualityRes.json()
-          if (qualityData.data_quality) setDataQuality(qualityData.data_quality)
-          if (Array.isArray(qualityData.per_tenant_quality)) setPerTenantQuality(qualityData.per_tenant_quality)
+          if (qualityData.data_quality) {
+            setDataQuality(qualityData.data_quality)
+            setPerTenantQuality(Array.isArray(qualityData.per_tenant_quality) ? qualityData.per_tenant_quality : [])
+            // The ONLY path that earns a clean bill of health: a 2xx that
+            // actually carried a verdict.
+            setQualityCheckFailed(false)
+          }
+          // A 200 with no data_quality field means the route answered without
+          // reaching a verdict — still unverified, so leave the flag set.
         }
+        // Non-2xx likewise leaves it set. Failing closed is the point.
       } catch {
-        // Non-blocking — banner stays as 'verified' (silent) on fetch failure.
+        // Network/parse failure — the check did not run. Stays unverified.
       }
 
       setIsLoading(false)
@@ -179,6 +193,7 @@ export default function CashflowForecastPage() {
           quality={dataQuality}
           perTenantQuality={perTenantQuality}
           lastSyncAt={perTenantQuality[0]?.last_sync_at ?? null}
+          checkFailed={qualityCheckFailed}
         />
       </div>
 
@@ -189,6 +204,7 @@ export default function CashflowForecastPage() {
             plLines={plLines}
             businessId={businessId}
             hasXeroConnection={!!xeroConnection}
+            xeroCheckFailed={xeroCheckFailed}
           />
         )}
       </div>
