@@ -467,7 +467,21 @@ export function generateCashflowForecast(
   const opexFallbackRate = (line: PLLine) =>
     isGSTExemptExpense(line.account_name) ? 0 : gstRate * assumptions.gst_applicable_expense_pct
   const gstAccrualByMonth: Record<string, number> = {}
-  const spill = options.firstMonthSpill !== false
+  // F3 (22 Sep 2026 diagnostic): the month-0 spill and the opening balances are
+  // the SAME money, not additive as the comments below used to claim. Opening
+  // debtors IS the receivable for sales invoiced before the forecast; the spill
+  // adds month 0's own sales back into month 0 to stand in for exactly those
+  // collections. With both, $100k/month revenue on 30 debtor days and $110k
+  // opening debtors collected $220k in July instead of $110k — a whole month of
+  // sales too much, carried through the October BAS and the year-end bank.
+  // So the spill is a fallback for when the balance is not known, per side.
+  const spillRequested = options.firstMonthSpill !== false
+  const hasOpeningDebtors =
+    (options.openingReceivables?.amount ?? assumptions.opening_trade_debtors ?? 0) > 0
+  const hasOpeningCreditors =
+    (options.openingPayables?.amount ?? assumptions.opening_trade_creditors ?? 0) > 0
+  const spillReceipts = spillRequested && !hasOpeningDebtors
+  const spillPayments = spillRequested && !hasOpeningCreditors
   // Matched trimmed and case-insensitively, as the pack's actual months and
   // its account check match them: an exact match here let a code typed in
   // another case tie July and August and then pay the budget's wages gross.
@@ -559,10 +573,10 @@ export function generateCashflowForecast(
       }
 
       // First-month spillover: in steady state, month 0 receives DSO-delayed
-      // collections from pre-forecast sales. Opening debtors is the BS receivable
-      // balance; this spillover represents the normal flow of prior-month revenue
-      // landing in month 0 (they are additive, not duplicates).
-      if (i === 0 && spill) {
+      // collections from pre-forecast sales. Used ONLY when the opening debtors
+      // balance is unknown — when it is known it already IS those collections
+      // (see spillReceipts above).
+      if (i === 0 && spillReceipts) {
         for (const split of dsoSplit) {
           if (split.offset > 0) {
             cashReceipts[allMonths[0]].push({
@@ -622,8 +636,9 @@ export function generateCashflowForecast(
         }
       }
 
-      // First-month spillover for COGS (same logic as revenue)
-      if (i === 0 && spill) {
+      // First-month spillover for COGS (same logic as revenue): only when the
+      // opening creditors balance is unknown (see spillPayments above).
+      if (i === 0 && spillPayments) {
         for (const split of dpoSplit) {
           if (split.offset > 0) {
             cashCOGSPayments[allMonths[0]].push({
