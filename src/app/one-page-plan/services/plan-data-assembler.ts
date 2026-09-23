@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import * as Sentry from '@sentry/nextjs'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
+import { activeKpis, kpisForPlan } from './kpi-rows'
 import type { OnePagePlanData } from '../types'
 import type { YearType } from '@/app/goals/types'
 import { calculateQuarters, determinePlanYear } from '@/app/goals/utils/quarters'
@@ -441,21 +443,41 @@ export async function assemblePlanData(params: AssemblePlanDataParams): Promise<
 
   // Load KPIs — business_kpis.business_id references businesses.id
   // Try businessesId first, fallback to businessId
+  //
+  // A KPI the coach removes is deactivated, not deleted, and the same KPI can
+  // exist twice — both rules live in ./kpi-rows.
   let kpisData: any[] | null = null
-  const { data: kpisResult } = await supabase
+  const { data: kpisResult, error: kpisError } = await supabase
     .from('business_kpis')
     .select('*')
     .eq('business_id', businessesId)
-  if (kpisResult && kpisResult.length > 0) {
-    kpisData = kpisResult
-    devLog('[PlanAssembler] KPIs loaded with businessesId:', businessesId, kpisResult.length)
+
+  // A failed read is not "no KPIs". It still falls through to the other
+  // id-space below, but it is never mistaken for an empty plan in silence.
+  if (kpisError) {
+    Sentry.captureException(kpisError, {
+      tags: { route: 'one-page-plan/assembler', invariant: 'one_page_plan_kpi_read_failed' },
+      extra: { context: '[PlanAssembler] KPI read failed; the plan may print without KPIs', businessesId },
+    } as any)
+  }
+
+  const primary = activeKpis(kpisResult)
+  if (primary.length > 0) {
+    kpisData = kpisForPlan(kpisResult)
+    devLog('[PlanAssembler] KPIs loaded with businessesId:', businessesId, kpisData.length)
   } else if (businessesId !== businessId) {
-    const { data: kpiFallback } = await supabase
+    const { data: kpiFallback, error: fallbackError } = await supabase
       .from('business_kpis')
       .select('*')
       .eq('business_id', businessId)
-    kpisData = kpiFallback
-    devLog('[PlanAssembler] KPIs loaded with businessId fallback:', businessId, kpiFallback?.length || 0)
+    if (fallbackError) {
+      Sentry.captureException(fallbackError, {
+        tags: { route: 'one-page-plan/assembler', invariant: 'one_page_plan_kpi_read_failed' },
+        extra: { context: '[PlanAssembler] KPI fallback read failed', businessId },
+      } as any)
+    }
+    kpisData = kpisForPlan(kpiFallback)
+    devLog('[PlanAssembler] KPIs loaded with businessId fallback:', businessId, kpisData.length)
   }
 
   // Load Quarterly Targets — per-quarter from financial_goals, with review override for planning quarter

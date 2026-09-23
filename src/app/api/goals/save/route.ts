@@ -5,6 +5,7 @@ import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { INITIATIVE_BUCKETS } from '@/app/goals/initiative-buckets'
 
 export const dynamic = 'force-dynamic'
 
@@ -287,16 +288,11 @@ async function postHandler(request: Request) {
     // SAVE INITIATIVES (all step types)
     // ========================
     if (data.initiatives) {
-      const stepTypes = [
-        { key: 'strategicIdeas', type: 'strategic_ideas' },
-        { key: 'roadmapSuggestions', type: 'roadmap' },
-        { key: 'twelveMonthInitiatives', type: 'twelve_month' },
-        { key: 'q1', type: 'q1' },
-        { key: 'q2', type: 'q2' },
-        { key: 'q3', type: 'q3' },
-        { key: 'q4', type: 'q4' },
-        { key: 'sprintFocus', type: 'sprint' }
-      ]
+      // Shared with the client, so a bucket cannot exist on one side only —
+      // the loop below skips a bucket this list omits without a word, which is
+      // how `current_remainder` came to be dropped while the save reported
+      // success. See src/app/goals/initiative-buckets.ts.
+      const stepTypes = INITIATIVE_BUCKETS.map(b => ({ key: b.key, type: b.stepType }))
 
       for (const { key, type } of stepTypes) {
         const initiatives = data.initiatives[key]
@@ -400,12 +396,22 @@ async function postHandler(request: Request) {
           const currentIds = initiatives.filter((i: any) => i.id && isValidUUID(i.id)).map((i: any) => i.id)
           const toRemove = Array.from(existingIds).filter(id => !currentIds.includes(id))
           if (toRemove.length > 0) {
-            await admin
+            const { error: deleteError } = await admin
               .from('strategic_initiatives')
               .delete()
               .eq('business_id', saveProfileId)
               .eq('step_type', type)
               .in('id', toRemove as string[])
+
+            // A delete that fails leaves the removed initiative on the client's
+            // plan while the save reports success — never silent.
+            if (deleteError) {
+              Sentry.captureException(deleteError, {
+                tags: { route: 'goals/save', invariant: 'goals_initiative_delete_failed' },
+                extra: { context: '[API /goals/save] Removed initiatives were not deleted', stepType: type, ids: toRemove },
+              } as any)
+              errors.push(`${type} delete: ${deleteError.message}`)
+            }
           }
 
           successes.push(type)
