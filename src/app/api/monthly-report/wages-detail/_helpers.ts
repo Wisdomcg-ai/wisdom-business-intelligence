@@ -306,6 +306,14 @@ export function buildWagesBudgetResolver(
 ): (accountName: string, month: string) => number {
   const budgetLookup = buildFuzzyLookup(budgetLines, (item) => item.account_name)
 
+  // F5 (22 Sep 2026 diagnostic): the last-resort tier below handed the LARGEST
+  // payroll budget line to every configured account that had found nothing —
+  // the same $50,000 counted once per account, so a grand budget of $150,000
+  // against a $50,000 plan. A payroll line may now be claimed by ONE account
+  // per month; the rest fall through at zero, as a budget-store client already
+  // does. Claims live for the life of this resolver, which is one page load.
+  const claimedByMonth = new Map<string, Set<WagesBudgetLine>>()
+
   return (accountName: string, month: string): number => {
     let best = 0
 
@@ -332,9 +340,19 @@ export function buildWagesBudgetResolver(
       // Forecast-only by construction: no budget_versions line carries the
       // flag, so a budget-store client falls out of this tier at zero rather
       // than borrowing a number from an account nobody asked about.
-      for (const pl of budgetLines.filter((bl) => bl.is_from_payroll)) {
+      const claimed = claimedByMonth.get(month) ?? new Set<WagesBudgetLine>()
+      let pick: WagesBudgetLine | null = null
+      for (const pl of budgetLines) {
+        if (!pl.is_from_payroll || claimed.has(pl)) continue
         const val = Math.abs(pl.forecast_months?.[month] || 0)
-        if (val > best) best = val
+        if (val > best) {
+          best = val
+          pick = pl
+        }
+      }
+      if (pick) {
+        claimed.add(pick)
+        claimedByMonth.set(month, claimed)
       }
     }
 

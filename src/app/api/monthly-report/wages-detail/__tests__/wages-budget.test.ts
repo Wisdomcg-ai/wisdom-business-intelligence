@@ -170,3 +170,59 @@ describe('the per-employee column from the Payroll Report roster', () => {
     )
   })
 })
+
+/**
+ * F5 (22 Sep 2026 system diagnostic) — the last-resort payroll tier multiplied
+ * the budget. Every configured wages account that matched nothing took the
+ * LARGEST payroll-flagged budget line, so one $50,000 plan line was counted
+ * once per account: a grand budget of $150,000 against a $50,000 plan, and a
+ * favourable variance the client never had.
+ */
+describe('a payroll budget line is spent once', () => {
+  const PAYROLL_ONLY: WagesBudgetLine[] = [
+    { account_name: 'Production Wages', forecast_months: { '2026-08': 50_000 }, is_from_payroll: true },
+  ]
+  // Three accounts the coach configured, none of which this budget names.
+  const UNMATCHED = ['Warehouse Wages', 'Admin Wages', 'Site Wages']
+
+  it('the first account takes it and the others fall through at zero', () => {
+    const resolve = buildWagesBudgetResolver(PAYROLL_ONLY, new Map())
+    const budgets = UNMATCHED.map((name) => resolve(name, '2026-08'))
+    expect(budgets).toEqual([50_000, 0, 0])
+    expect(budgets.reduce((a, b) => a + b, 0)).toBe(50_000)
+  })
+
+  it('two payroll lines cover two accounts, largest first, and never a third', () => {
+    const twoLines: WagesBudgetLine[] = [
+      ...PAYROLL_ONLY,
+      { account_name: 'Casual Wages', forecast_months: { '2026-08': 12_000 }, is_from_payroll: true },
+    ]
+    const resolve = buildWagesBudgetResolver(twoLines, new Map())
+    expect(UNMATCHED.map((name) => resolve(name, '2026-08'))).toEqual([50_000, 12_000, 0])
+  })
+
+  it('each month is counted on its own', () => {
+    const resolve = buildWagesBudgetResolver(
+      [{ account_name: 'Production Wages', forecast_months: { '2026-07': 48_000, '2026-08': 50_000 }, is_from_payroll: true }],
+      new Map(),
+    )
+    expect(resolve('Warehouse Wages', '2026-07')).toBe(48_000)
+    expect(resolve('Admin Wages', '2026-07')).toBe(0)
+    // August has its own claim to spend.
+    expect(resolve('Warehouse Wages', '2026-08')).toBe(50_000)
+    expect(resolve('Admin Wages', '2026-08')).toBe(0)
+  })
+
+  it('an account that matches the budget by name is unaffected — it never reaches this tier', () => {
+    const resolve = buildWagesBudgetResolver(
+      [
+        { account_name: 'Employ - Wages & Salaries', forecast_months: { '2026-08': 52_519 } },
+        { account_name: 'Production Wages', forecast_months: { '2026-08': 50_000 }, is_from_payroll: true },
+      ],
+      new Map(),
+    )
+    expect(resolve('Employ - Wages & Salaries', '2026-08')).toBe(52_519)
+    // The payroll line is still unclaimed for an account that found nothing.
+    expect(resolve('Warehouse Wages', '2026-08')).toBe(50_000)
+  })
+})

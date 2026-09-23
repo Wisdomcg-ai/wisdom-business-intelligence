@@ -189,6 +189,63 @@ describe('wages-detail-load', () => {
     expect(res.data.budget_provenance).toMatchObject({ source: 'budget_version', label: APPROVED.label })
   })
 
+  /**
+   * F5 (22 Sep 2026 system diagnostic) — a multi-org business showed ONE org's
+   * wages as the total. The mirror holds a row per org per account and the
+   * lookup returned a single line, so Dragon Roofing's $40,000 and $25,000 read
+   * as $40,000. Rows for the same account are summed; an org in another
+   * currency is left out rather than added one-for-one (the F1 bug elsewhere).
+   */
+  describe('multi-org actuals', () => {
+    const SECOND_TENANT = 'b2222222-2222-4222-8222-000000000002'
+    const wagesRow = (tenant_id: string, value: number) => ({
+      business_id: PROFILE, tenant_id, account_name: 'Employ - Wages & Salaries',
+      monthly_values: { '2026-08': value },
+    })
+
+    it('sums the same account across both orgs', async () => {
+      const db = fakeSupabase({
+        monthly_report_settings: [{ business_id: BUSINESS, budget_source: 'budget_version' }],
+        xero_pl_lines_wide_compat: [wagesRow(TENANT, -40_000), wagesRow(SECOND_TENANT, -25_000)],
+        account_mappings: [],
+        xero_payslip_lines: [],
+        xero_connections: [
+          { business_id: BUSINESS, tenant_id: TENANT, is_active: true, functional_currency: 'AUD' },
+          { business_id: BUSINESS, tenant_id: SECOND_TENANT, is_active: true, functional_currency: 'AUD' },
+        ],
+      })
+      const res = await loadWagesDetail(db, input, { fetchLivePayroll: vi.fn() })
+      expect(res.data.accounts[0]).toMatchObject({ account_name: 'Employ - Wages & Salaries', actual: 65_000 })
+    })
+
+    it('leaves an org in another currency out instead of adding HKD to AUD', async () => {
+      const db = fakeSupabase({
+        monthly_report_settings: [{ business_id: BUSINESS, budget_source: 'budget_version' }],
+        xero_pl_lines_wide_compat: [wagesRow(TENANT, -40_000), wagesRow(SECOND_TENANT, -1_000_000)],
+        account_mappings: [],
+        xero_payslip_lines: [],
+        xero_connections: [
+          { business_id: BUSINESS, tenant_id: TENANT, is_active: true, functional_currency: 'AUD' },
+          { business_id: BUSINESS, tenant_id: SECOND_TENANT, is_active: true, functional_currency: 'HKD' },
+        ],
+      })
+      const res = await loadWagesDetail(db, input, { fetchLivePayroll: vi.fn() })
+      expect(res.data.accounts[0]).toMatchObject({ actual: 40_000 })
+    })
+
+    it('a single-org business is unchanged', async () => {
+      const db = fakeSupabase({
+        monthly_report_settings: [{ business_id: BUSINESS, budget_source: 'budget_version' }],
+        xero_pl_lines_wide_compat: [wagesRow(TENANT, -52_519)],
+        account_mappings: [],
+        xero_payslip_lines: [],
+        xero_connections: [{ business_id: BUSINESS, tenant_id: TENANT, is_active: true, functional_currency: 'AUD' }],
+      })
+      const res = await loadWagesDetail(db, input, { fetchLivePayroll: vi.fn() })
+      expect(res.data.accounts[0]).toMatchObject({ actual: 52_519, budget: 52_519, variance: 0 })
+    })
+  })
+
   const neverSynced = () => fakeSupabase({
     monthly_report_settings: [],
     xero_pl_lines_wide_compat: [],
