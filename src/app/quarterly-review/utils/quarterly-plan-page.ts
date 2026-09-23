@@ -94,6 +94,40 @@ export function quarterPeriodLabel(quarter: number, year: number, yearType: Year
     : `${first} ${startYear} to ${last} ${endYear}`;
 }
 
+/** The last calendar month a quarter covers, as months since year 0 — for comparing against a plan year-end. */
+function quarterEndMonths(quarter: number, year: number, yearType: YearType): number {
+  const q = Math.min(Math.max(quarter, 1), 4);
+  const start = yearType === 'FY' ? 6 + (q - 1) * 3 : (q - 1) * 3;
+  const baseYear = yearType === 'FY' ? year - 1 : year;
+  return baseYear * 12 + start + 2;
+}
+
+/**
+ * Whether this year's plan is the plan for THIS quarter's year.
+ *
+ * A plan rolls forward. Precision Electrical Group's Q2 FY2026 review (October
+ * to December 2025) printed "The year to 30 June 2027" with today's targets on
+ * it — figures from a year that quarter knew nothing about. The quarter has to
+ * fall inside the plan's own year, or the year block is left off entirely: the
+ * plan for that quarter's year is no longer recorded anywhere, and nothing is
+ * better than another year's numbers.
+ *
+ * A plan with no year-end cannot be placed either way, so it is shown — almost
+ * every plan is the current one.
+ */
+export function planYearCoversQuarter(
+  yearEnd: string | null | undefined,
+  quarter: number,
+  year: number,
+  yearType: YearType
+): boolean {
+  const m = /^(\d{4})-(\d{2})/.exec(yearEnd ?? '');
+  if (!m) return true;
+  const planEnd = Number(m[1]) * 12 + (Number(m[2]) - 1);
+  const quarterEnd = quarterEndMonths(quarter, year, yearType);
+  return quarterEnd <= planEnd && quarterEnd > planEnd - 12;
+}
+
 /** "Q2 FY2027" / "Q2 2027" — the way the workshop header names it. */
 export function quarterTitle(quarter: number, year: number, yearType: YearType): string {
   const q = Math.min(Math.max(quarter, 1), 4);
@@ -136,6 +170,13 @@ export function kpiTargetLabel(kpi: PlanKpi): string | null {
   if (kpi.unit === '%') return `${t}%`;
   return `${t.toLocaleString('en-AU')}${kpi.unit ? ` ${kpi.unit}` : ''}`;
 }
+
+/**
+ * How many KPIs the page prints before it starts costing the client their one
+ * page. Precision Electrical Group carries ten active KPIs; listing all ten
+ * pushes the plan onto a second sheet.
+ */
+export const MAX_KPIS_ON_PAGE = 6;
 
 const NEXT_STEPS = [
   'Update your One Page Business Plan',
@@ -198,8 +239,9 @@ export function buildPlanPage(input: PlanPageInput): PlanPage {
     blocks.push({ kind: 'figures', title: 'My targets this quarter', items: moneyItems(quarter as PlanMoneyLines) });
   }
 
-  // The year is context for those, so it takes one line rather than three tiles.
-  if (anyFilled(annual)) {
+  // The year is context for those, so it takes one line rather than three tiles —
+  // and only when the plan on file is the plan for THIS quarter's year.
+  if (anyFilled(annual) && planYearCoversQuarter(annual?.yearEnd, review.quarter, review.year, yearType)) {
     const yearEnd = formatPlainDate(annual?.yearEnd);
     blocks.push({
       kind: 'inline',
@@ -208,16 +250,28 @@ export function buildPlanPage(input: PlanPageInput): PlanPage {
     });
   }
 
-  const watchable = kpis.filter(k => k.name?.trim());
+  // The KPIs THIS QUARTER committed to, not whatever the business tracks today.
+  // A review from a year ago targeted three; the business now has ten, and
+  // printing today's ten puts numbers on an old plan that nobody agreed to.
+  const targetedKpis: PlanKpi[] = (reviewTargets?.kpis ?? []).map(k => ({
+    name: k.name,
+    target: k.target,
+    unit: k.unit ?? null,
+  }));
+  const watchable = (targetedKpis.length > 0 ? targetedKpis : kpis).filter(k => k?.name?.trim());
   if (watchable.length > 0) {
-    blocks.push({
-      kind: 'bullets',
-      title: 'Numbers I’m watching',
-      items: watchable.map(k => {
-        const target = kpiTargetLabel(k);
-        return { text: k.name.trim(), detail: target ? `Target ${target}` : undefined };
-      }),
+    const shown = watchable.slice(0, MAX_KPIS_ON_PAGE);
+    const items = shown.map(k => {
+      const target = kpiTargetLabel(k);
+      return { text: k.name.trim(), detail: target ? `Target ${target}` : undefined };
     });
+    // Never drop the rest silently — a shortened list that says nothing reads
+    // as the whole list.
+    const hidden = watchable.length - shown.length;
+    if (hidden > 0) {
+      items.push({ text: `and ${hidden} more on your KPI dashboard`, detail: undefined });
+    }
+    blocks.push({ kind: 'bullets', title: 'Numbers I’m watching', items });
   }
 
   const rocks = (review.quarterly_rocks as Rock[] | null) ?? [];
