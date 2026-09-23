@@ -106,16 +106,14 @@ const issues = vi.hoisted(() => ({ list: [] as any[], create: vi.fn(), listErr: 
 vi.mock('@/hooks/useBusinessContext', () => ({ useBusinessContext: () => ctx }));
 vi.mock('@/app/quarterly-review/utils/capture-write-failure', () => ({ captureReviewWriteFailure: vi.fn() }));
 vi.mock('@/lib/services/openLoopsService', () => ({
-  getOpenLoops: async (...args: unknown[]) => {
-    loops.listArgs = args;
+  getOpenLoops: async () => {
     if (loops.listErr) throw loops.listErr;
     return loops.list;
   },
   createOpenLoop: (...args: unknown[]) => loops.create(...args),
 }));
 vi.mock('@/lib/services/issuesService', () => ({
-  getActiveIssues: async (...args: unknown[]) => {
-    issues.listArgs = args;
+  getActiveIssues: async () => {
     if (issues.listErr) throw issues.listErr;
     return issues.list;
   },
