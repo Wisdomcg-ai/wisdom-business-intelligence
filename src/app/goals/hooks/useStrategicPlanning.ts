@@ -359,7 +359,13 @@ export function useStrategicPlanning(
               strategicIdeas,
               roadmapSuggestions,
               twelveMonthInitiatives,
-              current_remainder: annualPlanByQuarter.current_remainder || [],
+              // Only when the remainder column is actually in play. The route
+              // deletes whatever a sent bucket omits, so `|| []` on a plan that
+              // has no remainder period would delete that business's stored
+              // remainder rows. The loader sets this key whenever rows exist.
+              ...(annualPlanByQuarter.current_remainder
+                ? { current_remainder: annualPlanByQuarter.current_remainder }
+                : {}),
               q1: annualPlanByQuarter.q1 || [],
               q2: annualPlanByQuarter.q2 || [],
               q3: annualPlanByQuarter.q3 || [],
