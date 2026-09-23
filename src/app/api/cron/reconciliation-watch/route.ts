@@ -110,11 +110,16 @@ async function getHandler(req: NextRequest) {
       }
     }
 
-    // Phase 69-04 — invocation heartbeat. Drift count is metadata so cadence
-    // queries can also observe whether the watcher is finding anything.
+    // Phase 69-04 — invocation heartbeat. A clean RUN is 'success' even when it
+    // FINDS drift: drift is this watcher's normal, designed output, surfaced via
+    // the per-event 'continuous_reconciliation_drift' Sentry warning above and
+    // the drift_count metadata below. Recording 'partial' on found-drift made the
+    // heartbeat watchdog mislabel every healthy drift-finding run as "degraded"
+    // (~daily). 'partial'/'failed' are reserved for an actual cron malfunction
+    // (the catch block records 'failed').
     await recordHeartbeat({
       cronPath: CRON_PATH,
-      status: drift.length > 0 ? 'partial' : 'success',
+      status: 'success',
       metadata: {
         sync_jobs_scanned: rows?.length ?? 0,
         drift_count: drift.length,
