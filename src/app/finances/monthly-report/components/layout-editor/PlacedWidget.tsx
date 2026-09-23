@@ -3,8 +3,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, X, ArrowRightFromLine } from 'lucide-react'
+import { GripVertical, X, ArrowRightFromLine, Settings2 } from 'lucide-react'
 import type { LayoutWidget, LayoutPage } from '../../types/pdf-layout'
+import { ratioCount } from '@/lib/monthly-report/ratio-config-form'
+import { hasPlacementOptions, placementOptionsSummary } from '@/lib/monthly-report/placement-options'
+import { payrollPlacementSummary } from '@/lib/monthly-report/payroll-grid-form'
+import { externalPlacementSummary } from '@/lib/monthly-report/external-metric-form'
 import WidgetPreview, { getWidgetBgClass } from './WidgetPreview'
 import ResizeHandle from './ResizeHandle'
 
@@ -20,6 +24,8 @@ interface PlacedWidgetProps {
   onDelete: () => void
   onResize: (deltaCol: number, deltaRow: number) => void
   onMoveToPage: (toPageId: string) => void
+  /** Present only for widget types with a settings panel (Ratio Analysis, Uploaded Page, and the pages with presentation options). */
+  onOpenSettings?: () => void
 }
 
 export default function PlacedWidget({
@@ -34,6 +40,7 @@ export default function PlacedWidget({
   onDelete,
   onResize,
   onMoveToPage,
+  onOpenSettings,
 }: PlacedWidgetProps) {
   const [showMoveMenu, setShowMoveMenu] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -66,6 +73,10 @@ export default function PlacedWidget({
   }, [showMoveMenu])
 
   const bgClass = getWidgetBgClass(widget.type)
+  const ratios = ratioCount(widget.config)
+  // Two uploaded pages look identical on the canvas but for their names.
+  const isInsert = widget.type === 'uploaded_insert'
+  const insertName = widget.titleOverride?.trim()
 
   const style: React.CSSProperties = {
     gridColumn: `${widget.col + 1} / span ${widget.colSpan}`,
@@ -161,8 +172,73 @@ export default function PlacedWidget({
       </div>
 
       {/* Widget preview content */}
-      <div className="w-full h-full flex items-center justify-center overflow-hidden">
+      <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden">
         <WidgetPreview type={widget.type} />
+        {onOpenSettings && (widget.type === 'ratio_analysis' || isInsert) && (
+          // The preview is only an icon and a label, so two ratio pages — or a
+          // set-up one and an empty one, or two uploaded pages — looked
+          // identical on the canvas. The line above the button says which this is.
+          <div className="flex flex-col items-center gap-1 mt-1 px-2 max-w-full">
+            <span className="text-[10px] text-gray-500 truncate max-w-full">
+              {isInsert
+                ? insertName || 'Not named yet'
+                : ratios > 0
+                  ? `${widget.titleOverride?.trim() || 'Ratio Analysis'} · ${ratios} ratio${ratios === 1 ? '' : 's'}`
+                  : 'Not set up yet'}
+            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenSettings()
+              }}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md bg-white border border-gray-300 text-gray-700 hover:border-brand-orange hover:text-brand-orange transition-colors"
+            >
+              <Settings2 className="w-3 h-3" />
+              {isInsert ? (insertName ? 'Rename' : 'Name this page') : ratios > 0 ? 'Edit ratios' : 'Set up ratios'}
+            </button>
+          </div>
+        )}
+        {onOpenSettings && (widget.type === 'payroll_grid' || widget.type === 'external_metric') && (
+          // Which roster, which basis, which series — two payroll pages over
+          // different windows look identical on the canvas otherwise.
+          <div className="flex flex-col items-center gap-1 mt-1 px-2 max-w-full">
+            <span className="text-[10px] text-gray-500 truncate max-w-full">
+              {widget.type === 'payroll_grid' ? payrollPlacementSummary(widget.config) : externalPlacementSummary(widget.config)}
+            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenSettings()
+              }}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md bg-white border border-gray-300 text-gray-700 hover:border-brand-orange hover:text-brand-orange transition-colors"
+            >
+              <Settings2 className="w-3 h-3" />
+              Page settings
+            </button>
+          </div>
+        )}
+        {onOpenSettings && hasPlacementOptions(widget.type) && (
+          // What is set, so a cover printing the badge sentence and one that
+          // does not are told apart on the canvas.
+          <div className="flex flex-col items-center gap-1 mt-1 px-2 max-w-full">
+            <span className="text-[10px] text-gray-500 truncate max-w-full">
+              {placementOptionsSummary(widget.type, widget.config)}
+            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenSettings()
+              }}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md bg-white border border-gray-300 text-gray-700 hover:border-brand-orange hover:text-brand-orange transition-colors"
+            >
+              <Settings2 className="w-3 h-3" />
+              Page options
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Resize handle */}

@@ -3,9 +3,12 @@ import { createClient } from '@supabase/supabase-js'
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { buildFuzzyLookup } from '@/lib/utils/account-matching'
+import { resolveBudget, budgetLineKey } from '@/lib/budgets/resolve-budget'
 import { checkRateLimit, createRateLimitKey, RATE_LIMIT_CONFIGS } from '@/lib/utils/rate-limiter'
 import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
+import { loadActiveTenants, multiOrgFallbackRefusal } from '@/lib/monthly-report/multi-org-fallback'
 import { createForecastReadService } from '@/lib/services/forecast-read-service'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -17,8 +20,11 @@ import {
   getMonthRange,
   getNextMonth,
   getPriorYearMonth,
+  deriveProfitRows,
   type ReportLine,
 } from '@/lib/monthly-report/shared'
+import { compareStatementLines, looksLikeWizardCode, realStatementCodes, statementAccountCode } from '@/lib/monthly-report/statement-order'
+import { mappingGroup } from '@/lib/monthly-report/expense-groups'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 
@@ -72,14 +78,14 @@ async function postHandler(request: Request) {
       )
     }
 
-    // Verify user owns or coaches this business
-    const { data: bizAccess } = await authSupabase
-      .from('businesses')
-      .select('id')
-      .eq('id', business_id)
-      .or(`owner_id.eq.${user.id},assigned_coach_id.eq.${user.id}`)
-      .maybeSingle()
-    if (!bizAccess) {
+    // Verify the user may see this business. Use the canonical helper: the
+    // inline owner/assigned-coach check this replaces admitted neither
+    // super_admins nor business_users members, so generating a client's
+    // monthly report 403'd for anyone but that client's own coach (found on
+    // Urban Road, 8 Sep 2026 — the platform owner could not run the report).
+    // The helper also handles the dual-ID space.
+    const hasAccess = await verifyBusinessAccess(user.id, business_id)
+    if (!hasAccess) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
@@ -119,6 +125,7 @@ async function postHandler(request: Request) {
       show_budget_next_month: true,
       show_budget_annual_total: true,
       budget_forecast_id: null,
+      budget_source: 'forecast',
     }
 
     // 2. Load account mappings
@@ -139,14 +146,16 @@ async function postHandler(request: Request) {
       )
     }
 
-    // 3. Determine budget forecast
-    // financial_forecasts.business_id references business_profiles.id, not businesses.id
-    // So we need to resolve the profile ID first
-    let budgetForecast: any = null
-    let budgetPLLines: any[] = []
-    let budgetForecastName: string | undefined
+    // 3. Determine the budget.
+    //
+    // The source lives behind resolveBudget() so it can become a real budget
+    // object (budget_versions/budget_lines) without this route noticing. Today
+    // it still resolves a forecast, by exactly the cascade that used to be
+    // inline here — see src/lib/budgets/resolve-budget.ts and
+    // .planning/BUDGET-STORE-PLAN.md.
 
-    // Always fetch fiscal_year_start for parameterized FY range calculation
+    // Fetched here, not in the resolver: this same row supplies yearStartMonth
+    // below, and two reads could disagree.
     const { data: profile } = await supabase
       .from('business_profiles')
       .select('id, fiscal_year_start')
@@ -154,47 +163,29 @@ async function postHandler(request: Request) {
       .maybeSingle()
 
     const yearStartMonth: number = profile?.fiscal_year_start ?? DEFAULT_YEAR_START_MONTH
+    // Hoisted above resolveBudget: the report reads four windows out of the
+    // budget (the month, YTD, the annual total, next month), so the resolver
+    // needs every month it will be asked about — not just the anchor.
+    const allFYMonths = generateFiscalMonthKeys(fiscal_year, yearStartMonth)
 
-    if (settings.budget_forecast_id) {
-      const { data: fc } = await supabase
-        .from('financial_forecasts')
-        .select('id, name')
-        .eq('id', settings.budget_forecast_id)
-        .single()
-      budgetForecast = fc
-    } else {
-      // Try both profile ID and direct business_id to handle both FK patterns.
-      // Also filter by fiscal_year — businesses can have multiple is_active=true
-      // forecasts spanning different FYs; without this filter, the latest-created
-      // wins regardless of which FY the report is for.
-      const idsToTry = profile?.id ? [profile.id, business_id] : [business_id]
+    const resolvedBudget = await resolveBudget(supabase, {
+      businessId: business_id,
+      profileId: profile?.id ?? null,
+      fiscalYear: fiscal_year,
+      reportMonth: report_month,
+      months: allFYMonths,
+      // Read positively. Most businesses have no settings row at all, so this
+      // arrives undefined rather than 'forecast'; a `!== 'forecast'` test would
+      // switch every one of them onto the budget store.
+      budgetSource: settings.budget_source === 'budget_version' ? 'budget_version' : 'forecast',
+      pin: { budgetForecastId: settings.budget_forecast_id },
+    })
 
-      for (const id of idsToTry) {
-        const { data: fc } = await supabase
-          .from('financial_forecasts')
-          .select('id, name')
-          .eq('business_id', id)
-          .eq('is_active', true)
-          .eq('fiscal_year', fiscal_year)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        if (fc) {
-          budgetForecast = fc
-          break
-        }
-      }
-    }
-
-    const hasBudget = !!budgetForecast
-    if (budgetForecast) {
-      budgetForecastName = budgetForecast.name
-      const { data: bLines } = await supabase
-        .from('forecast_pl_lines')
-        .select('id, account_name, category, forecast_months')
-        .eq('forecast_id', budgetForecast.id)
-      budgetPLLines = bLines || []
-    }
+    const budgetPLLines: any[] = resolvedBudget.lines
+    // 'none' is the only no-budget state, and it already covers "resolved a
+    // forecast that had zero lines" — the honest no-budget banner depends on it.
+    const hasBudget = resolvedBudget.source !== 'none'
+    const budgetForecastName: string | undefined = resolvedBudget.label ?? undefined
 
     // 4. Load xero_pl_lines (actuals).
     //    Phase 44 D-13 — route through ForecastReadService when an active forecast
@@ -203,7 +194,7 @@ async function postHandler(request: Request) {
     //    Fall back to a direct xero_pl_lines_wide_compat read only when no active
     //    forecast exists (e.g. very new business).
     const ids = await resolveBusinessProfileIds(supabase, business_id)
-    let xeroLines: { account_name: string; account_type: string; section: string; monthly_values: Record<string, number> }[] = []
+    let xeroLines: { account_code: string | null; account_name: string; account_type: string; section: string; monthly_values: Record<string, number> }[] = []
 
     // The active forecast for actuals routing is independent of `budgetForecast`
     // (which may be a custom non-active forecast via settings.budget_forecast_id).
@@ -228,6 +219,11 @@ async function postHandler(request: Request) {
       // D-13 path. D-18 invariant violations propagate to the outer catch.
       const composite = await createForecastReadService(supabase).getMonthlyComposite(actualsForecast.id)
       xeroLines = composite.rows.map(r => ({
+        // Null on the multi-currency branch — the consolidation engine groups
+        // on its own alignment key and drops the code. That is a MISSING key,
+        // not a coded account whose code is blank, and the match cascade below
+        // falls through to the name tiers exactly as it always did.
+        account_code: r.account_code ?? null,
         account_name: r.account_name,
         account_type: r.account_type,
         section: '',
@@ -238,10 +234,25 @@ async function postHandler(request: Request) {
         per_tenant_quality: composite.per_tenant_quality,
       }
     } else {
-      // Fallback: no active forecast → read raw Xero rows.
+      // Fallback: no active forecast → read raw Xero rows. Refused for more
+      // than one organisation — this read overwrites the accounts they share
+      // and has no exchange rates (IICT-18; see multi-org-fallback). A
+      // consolidation parent generates through /api/monthly-report/consolidated;
+      // this catches one whose organisations are not all included in it.
+      let refusal: string | null
+      try {
+        refusal = multiOrgFallbackRefusal(await loadActiveTenants(supabase, ids.all), fiscal_year)
+      } catch (tenantErr) {
+        Sentry.captureException(tenantErr, { tags: { route: 'monthly-report/generate' }, extra: { context: '[Report Generate] Error loading active Xero connections' } } as any)
+        return NextResponse.json({ error: 'Failed to load Xero connections' }, { status: 500 })
+      }
+      if (refusal) {
+        return NextResponse.json({ error: refusal, code: 'MULTI_ORG_NO_ACTIVE_FORECAST' }, { status: 422 })
+      }
+
       const { data: rawXeroLines, error: xeroErr } = await supabase
         .from('xero_pl_lines_wide_compat')
-        .select('account_name, account_type, section, monthly_values')
+        .select('account_code, account_name, account_type, section, monthly_values')
         .in('business_id', ids.all)
 
       if (xeroErr) {
@@ -250,13 +261,19 @@ async function postHandler(request: Request) {
       }
 
       // Deduplicate (legacy paths only — service path is already pre-deduplicated).
-      const xeroDedup = new Map<string, { account_name: string; account_type: string; section: string; monthly_values: Record<string, number> }>()
+      const xeroDedup = new Map<string, { account_code: string | null; account_name: string; account_type: string; section: string; monthly_values: Record<string, number> }>()
       for (const row of (rawXeroLines || [])) {
         const existing = xeroDedup.get(row.account_name)
         if (existing) {
           existing.monthly_values = { ...existing.monthly_values, ...row.monthly_values }
+          // This legacy path collapses on the NAME, so a merged row can be two
+          // different Xero accounts. Whichever code arrived first would then
+          // claim the merged row's whole budget. Drop the code instead: an
+          // account we cannot identify falls through to the name tiers, which
+          // is what this path did before codes existed. Do not "pick one".
+          if ((existing.account_code ?? null) !== (row.account_code ?? null)) existing.account_code = null
         } else {
-          xeroDedup.set(row.account_name, { ...row })
+          xeroDedup.set(row.account_name, { ...row, account_code: row.account_code ?? null })
         }
       }
       xeroLines = Array.from(xeroDedup.values())
@@ -278,6 +295,26 @@ async function postHandler(request: Request) {
       mappingByXeroName.set(m.xero_account_name, m)
     }
 
+    // The Xero codes this business actually uses, for statement ORDER. Only a
+    // code the actuals or the Xero-sourced mappings vouch for is put on a line:
+    // a budget line's own code can be a forecast wizard's ('opex-28' is on
+    // Urban Road's Foreign Currency Gains and Losses), and sorting by that
+    // would print the row somewhere meaningless. See statement-order.ts.
+    //
+    // The budget lines' codes count too — but ONLY when they came from the
+    // budget store. budget_lines is imported from Xero's Budgets API, so those
+    // are Xero codes, and a budgeted-but-never-posted account with no mapping
+    // has no other source for one. On the forecast path the lines carry no code
+    // today (resolve-budget does not select it) and, if they ever do, it can be
+    // a wizard's, so the forecast path adds nothing.
+    const realCodes = realStatementCodes([
+      ...(xeroLines || []).map(x => x.account_code),
+      ...mappings.map((m: any) => m.xero_account_code),
+      ...(resolvedBudget.source === 'budget_version'
+        ? budgetPLLines.map((bl: any) => bl.account_code).filter((c: string | null) => !looksLikeWizardCode(c))
+        : []),
+    ])
+
     // Budget lines lookup by various keys
     const budgetById = new Map<string, any>()
     for (const bl of budgetPLLines) {
@@ -286,8 +323,21 @@ async function postHandler(request: Request) {
     // Fuzzy lookup handles "Wages & Salaries" vs "Salaries & Wages" etc.
     const findBudgetByName = buildFuzzyLookup(budgetPLLines, (bl) => bl.account_name)
 
-    // FY range — parameterized by business fiscal_year_start
-    const allFYMonths = generateFiscalMonthKeys(fiscal_year, yearStartMonth)
+    // Budget lines by Xero account code — the only key that is literally the
+    // same string on both sides of the comparison. Empty for every client on
+    // the forecast path, because forecast_pl_lines has no code column; that is
+    // what makes the code tier below inert there rather than merely unlikely.
+    // First writer wins, mirroring buildFuzzyLookup, so a duplicated code
+    // cannot flip which line is matched depending on read order.
+    const budgetByCode = new Map<string, any>()
+    for (const bl of budgetPLLines) {
+      const code = String(bl.account_code ?? '').trim().toLowerCase()
+      if (!code) continue
+      if (!budgetByCode.has(code)) budgetByCode.set(code, bl)
+    }
+
+    // FY range — parameterized by business fiscal_year_start (computed above,
+    // because resolveBudget needs the same list).
     const fyStart = allFYMonths[0]
     const fyEnd = allFYMonths[allFYMonths.length - 1]
     const ytdMonths = getMonthRange(fyStart, report_month)
@@ -312,14 +362,26 @@ async function postHandler(request: Request) {
 
     // Track which budget lines were matched (for budget-only section later)
     const matchedBudgetLineIds = new Set<string>()
-    // Also track matched budget line names (lowercase) — handles duplicate forecast lines
-    // with the same name but different IDs
-    const matchedBudgetLineNames = new Set<string>()
+    // Also track the IDENTITY of each matched budget line — its code, or its
+    // name when it has none (budgetLineKey). Handles duplicate forecast lines
+    // that share a name but have different IDs, without which the budget-only
+    // pass re-emits the same account a second time. It must be the SAME key the
+    // resolver grouped on: keyed on the name here while the resolver groups on
+    // the code, a genuine second account that shares a name is suppressed and
+    // its whole annual budget vanishes from the subtotal.
+    const matchedBudgetLineKeys = new Set<string>()
     // Track which budget lines have already had their budget values assigned to a Xero line.
     // This prevents the same forecast line's budget from being counted multiple times when
     // multiple Xero accounts fuzzy-match to the same forecast line.
     const claimedBudgetLineIds = new Set<string>()
-    const matchLog: { xero: string; budget: string | null; method: string; budgetClaimed: boolean }[] = []
+    const matchLog: {
+      xero: string
+      budget: string | null
+      method: string
+      budgetClaimed: boolean
+      /** Present only when a pin and the account code named different lines. */
+      codeWouldHaveMatched?: string
+    }[] = []
 
     // 6. Process each Xero actual line
     const categoryLines: Record<string, ReportLine[]> = {
@@ -340,13 +402,69 @@ async function postHandler(request: Request) {
       const lowerName = xero.account_name.toLowerCase()
       const excludeFromBudget = lowerName.includes('depreciation') || lowerName.includes('amortisation') || lowerName.includes('amortization')
 
-      // Find matching budget line (tries: direct ID → mapping name → fuzzy name match)
+      // Find matching budget line.
+      // Tiers: the coach's pin → the account code → the mapping name → the
+      // fuzzy name match. Two identities and then two guesses.
       let budgetLine: any = null
       let matchMethod = 'none'
+      /**
+       * The budget line the CODE would have chosen, when a pin chose a
+       * different one. Null whenever they agree or only one of them answered.
+       * Recorded rather than resolved: the pin wins, and a reader needs to be
+       * able to find out that the two disagreed — otherwise the only symptom
+       * is a budget figure that looks perfectly ordinary against the wrong
+       * account.
+       */
+      let codeDisagreedWithPin: string | null = null
       if (!excludeFromBudget) {
+        // The actuals row's own code, the mapping's second. The row's code is
+        // the FACT — what Xero posted — while account_mappings carries a copy,
+        // so where the two can disagree the fact wins. The mapping is consulted
+        // only when the row has no code at all, which is the real state of
+        // Xero's synthetic report-only lines: they arrive with a blank code and
+        // can be given one nowhere else.
+        const xeroCode = String(xero.account_code ?? mapping?.xero_account_code ?? '').trim().toLowerCase()
+        const byCode = xeroCode ? budgetByCode.get(xeroCode) : undefined
+
+        // -- Tier 0: the coach's pin ---------------------------------------
+        // A pin is a human being saying which budget line this account IS.
+        // The code is an identity the two sides happen to share, which is a
+        // very good inference and still an inference. When a person has stated
+        // the answer, an inference does not get to overrule them — it gets to
+        // be recorded as disagreeing with them.
         if (mapping?.forecast_pl_line_id) {
           budgetLine = budgetById.get(mapping.forecast_pl_line_id)
-          if (budgetLine) matchMethod = 'forecast_pl_line_id'
+          if (budgetLine) {
+            matchMethod = 'forecast_pl_line_id'
+            if (byCode && byCode.id !== budgetLine.id) {
+              codeDisagreedWithPin = byCode.account_name ?? null
+            }
+          }
+        }
+
+        // -- Tier 1: the account code --------------------------------------
+        // Above the name tiers because it is an identity rather than a guess.
+        // Names diverge across the two sides for ordinary bookkeeping reasons
+        // (Urban Road's P&L "Foreign Currency Gains and Losses" against its
+        // budget's "Foreign Currency Loss/Gain") and the fuzzy lookup then
+        // fails silently, printing the account twice: once with the actual and
+        // a $0 budget, once budget-only with a $0 actual.
+        //
+        // That P&L row is Xero's MERGED FX row (three system accounts under
+        // one FXGROUPID). With the FX account split on, a split month carries
+        // 497/498/499 as coded rows instead, and the merged row survives only
+        // in a month whose Trial Balance did not tie — the fallback state.
+        // Borrowing 62700 from the mapping bound that merged 919.25 to 62700's
+        // $2 budget ("2 / 919 / (917)"); the fix for a fallback month is data
+        // (null the mapping's code), not this tier.
+        //
+        // Inert wherever the budget lines carry no codes — the resolver does
+        // not select forecast_pl_lines.account_code, so budgetByCode is empty
+        // on the forecast path and every client not on the budget store falls
+        // straight through to the tiers below and behaves exactly as before.
+        if (!budgetLine && byCode) {
+          budgetLine = byCode
+          matchMethod = 'account_code'
         }
         if (!budgetLine && mapping?.forecast_pl_line_name) {
           budgetLine = findBudgetByName(mapping.forecast_pl_line_name)
@@ -358,9 +476,17 @@ async function postHandler(request: Request) {
         }
       }
 
+      // Every tier lands here, the code tier included. The double-claim guard
+      // below and the budget-only pass are both driven off these two sets, so a
+      // tier that matched without registering here would have its line re-emitted
+      // as a duplicate budget-only row: the account printed twice, once with the
+      // actual and a $0 budget and once with the budget and a $0 actual, each
+      // carrying a per-row variance that is a fact about nothing. The section
+      // subtotal survives that (it sums both halves back together) — what does
+      // not survive is a reader trying to tie the account list to Xero.
       if (budgetLine) {
         matchedBudgetLineIds.add(budgetLine.id)
-        matchedBudgetLineNames.add(budgetLine.account_name.toLowerCase())
+        matchedBudgetLineKeys.add(budgetLineKey(budgetLine))
       }
 
       // Prevent double-counting: if this budget line's values were already assigned
@@ -375,6 +501,7 @@ async function postHandler(request: Request) {
         budget: budgetLine?.account_name || null,
         method: matchMethod,
         budgetClaimed: !budgetAlreadyClaimed,
+        ...(codeDisagreedWithPin ? { codeWouldHaveMatched: codeDisagreedWithPin } : {}),
       })
 
       if (budgetAlreadyClaimed) {
@@ -409,6 +536,15 @@ async function postHandler(request: Request) {
       const line: ReportLine = {
         account_name: xero.account_name,
         xero_account_name: xero.account_name,
+        group: mappingGroup(mapping),
+        // The row's own code first — the fact — then the mapping's. Close to the
+        // match cascade above but not identical: the cascade uses
+        // `xero.account_code ?? mapping.xero_account_code`, so a blank-string row
+        // code never reaches the mapping there, while statementAccountCode trims
+        // '' to nothing and falls through to it. For ORDER that is the better
+        // answer. Carried as Xero spells it (not the lower-cased match key)
+        // because it is what the section sorts on.
+        account_code: statementAccountCode([xero.account_code, mapping?.xero_account_code], realCodes),
         is_budget_only: false,
         actual,
         budget,
@@ -431,20 +567,24 @@ async function postHandler(request: Request) {
       }
     }
 
-    // 7. Add budget-only lines (forecast lines with no matching Xero actual)
-    // Also track by name to prevent duplicate forecast lines (same name, different ID)
-    // from adding budget values twice.
-    const addedBudgetOnlyNames = new Set<string>()
+    // 7. Add budget-only lines (budget accounts with no matching Xero actual).
+    // Tracked by IDENTITY — the account code, or the name when there is none —
+    // so two rows for one account cannot both add their budget.
+    const addedBudgetOnlyKeys = new Set<string>()
     if (hasBudget) {
       for (const bl of budgetPLLines) {
         if (matchedBudgetLineIds.has(bl.id)) continue
 
-        // Skip if a forecast line with this same name was already matched to a Xero account
-        // or already added as budget-only (handles duplicate forecast_pl_lines rows)
-        const blNameLower = bl.account_name.toLowerCase()
-        if (matchedBudgetLineNames.has(blNameLower)) continue
-        if (addedBudgetOnlyNames.has(blNameLower)) continue
-        addedBudgetOnlyNames.add(blNameLower)
+        // Skip if a budget line with this same IDENTITY was already matched to a
+        // Xero account or already added as budget-only (handles duplicate
+        // forecast_pl_lines rows). Identity, not name: two accounts that share a
+        // name but carry different codes are two accounts, and suppressing the
+        // second would delete a real budget from the subtotal rather than
+        // deduplicate a phantom.
+        const blKey = budgetLineKey(bl)
+        if (matchedBudgetLineKeys.has(blKey)) continue
+        if (addedBudgetOnlyKeys.has(blKey)) continue
+        addedBudgetOnlyKeys.add(blKey)
 
         const budgetMonths: Record<string, number> = bl.forecast_months || {}
         const category = bl.category || 'Operating Expenses'
@@ -464,6 +604,19 @@ async function postHandler(request: Request) {
         const line: ReportLine = {
           account_name: bl.account_name,
           xero_account_name: null,
+          // A budget-only line has no Xero account behind it, so its group has
+          // to come from the name the budget uses. Matched the same way the
+          // rest of the row is: by the mapping the name resolves to, if any.
+          // mappingGroup is shared with the Full Year route, so both pages of
+          // one pack put this account under the same heading.
+          group: mappingGroup(mappingByXeroName.get(bl.account_name)),
+          // The line's own code only if it is a real Xero code — on the forecast
+          // path it can be a wizard code — else the code of the mapping its
+          // name resolves to, else none.
+          account_code: statementAccountCode(
+            [bl.account_code, mappingByXeroName.get(bl.account_name)?.xero_account_code],
+            realCodes,
+          ),
           is_budget_only: true,
           actual: 0,
           budget,
@@ -492,7 +645,10 @@ async function postHandler(request: Request) {
     const sections = sectionOrder
       .filter(cat => categoryLines[cat] && categoryLines[cat].length > 0)
       .map(cat => {
-        const lines = categoryLines[cat].sort((a, b) => a.account_name.localeCompare(b.account_name))
+        // Xero account-code order, compared as text, codeless lines A-Z after —
+        // the order the reference pack prints. See statement-order.ts for why
+        // text and not numeric. The Full Year route uses the same comparator.
+        const lines = categoryLines[cat].sort(compareStatementLines)
         const isRev = cat === 'Revenue' || cat === 'Other Income'
         const subtotal = buildSubtotal(lines, `Total ${cat}`)
         // Calculate subtotal variance percent
@@ -504,127 +660,41 @@ async function postHandler(request: Request) {
         return { category: cat, lines, subtotal }
       })
 
-    // 9. Compute Gross Profit and Net Profit rows
+    // 9/10. Profit rows + summary — WA.1: single canonical derivation.
+    // Gross Profit = Revenue − COGS (trading only); Operating Profit = GP −
+    // OpEx; Other Income and Other Expenses enter once, at Net Profit. The old
+    // inline math folded Other Income into revenue and Other Expenses into
+    // opex, inflating GP/GP% on every report whose chart had those sections.
+    // See deriveProfitRows in @/lib/monthly-report/shared for the full account.
     const revSection = sections.find(s => s.category === 'Revenue')
     const cogsSection = sections.find(s => s.category === 'Cost of Sales')
     const opexSection = sections.find(s => s.category === 'Operating Expenses')
     const otherIncSection = sections.find(s => s.category === 'Other Income')
     const otherExpSection = sections.find(s => s.category === 'Other Expenses')
 
-    const revActual = (revSection?.subtotal.actual || 0) + (otherIncSection?.subtotal.actual || 0)
-    const revBudget = (revSection?.subtotal.budget || 0) + (otherIncSection?.subtotal.budget || 0)
-    const cogsActual = cogsSection?.subtotal.actual || 0
-    const cogsBudget = cogsSection?.subtotal.budget || 0
-    const opexActual = (opexSection?.subtotal.actual || 0) + (otherExpSection?.subtotal.actual || 0)
-    const opexBudget = (opexSection?.subtotal.budget || 0) + (otherExpSection?.subtotal.budget || 0)
-
-    const gpActual = revActual - cogsActual
-    const gpBudget = revBudget - cogsBudget
-    const npActual = gpActual - opexActual
-    const npBudget = gpBudget - opexBudget
-
-    // YTD versions
-    const revYtdActual = (revSection?.subtotal.ytd_actual || 0) + (otherIncSection?.subtotal.ytd_actual || 0)
-    const revYtdBudget = (revSection?.subtotal.ytd_budget || 0) + (otherIncSection?.subtotal.ytd_budget || 0)
-    const cogsYtdActual = cogsSection?.subtotal.ytd_actual || 0
-    const cogsYtdBudget = cogsSection?.subtotal.ytd_budget || 0
-    const opexYtdActual = (opexSection?.subtotal.ytd_actual || 0) + (otherExpSection?.subtotal.ytd_actual || 0)
-    const opexYtdBudget = (opexSection?.subtotal.ytd_budget || 0) + (otherExpSection?.subtotal.ytd_budget || 0)
-
-    const gpYtdActual = revYtdActual - cogsYtdActual
-    const gpYtdBudget = revYtdBudget - cogsYtdBudget
-    const npYtdActual = gpYtdActual - opexYtdActual
-    const npYtdBudget = gpYtdBudget - opexYtdBudget
-
-    // Annual totals
-    const revAnnual = (revSection?.subtotal.budget_annual_total || 0) + (otherIncSection?.subtotal.budget_annual_total || 0)
-    const cogsAnnual = cogsSection?.subtotal.budget_annual_total || 0
-    const opexAnnual = (opexSection?.subtotal.budget_annual_total || 0) + (otherExpSection?.subtotal.budget_annual_total || 0)
-
-    // Prior year for profit rows
-    const revPriorYear = (revSection?.subtotal.prior_year ?? 0) + (otherIncSection?.subtotal.prior_year ?? 0)
-    const cogsPriorYear = cogsSection?.subtotal.prior_year ?? 0
-    const opexPriorYear = (opexSection?.subtotal.prior_year ?? 0) + (otherExpSection?.subtotal.prior_year ?? 0)
-    const hasPriorYearData = [revSection, cogsSection, opexSection, otherIncSection, otherExpSection]
-      .some(s => s?.subtotal.prior_year !== null && s?.subtotal.prior_year !== undefined)
-    const gpPriorYear = hasPriorYearData ? revPriorYear - cogsPriorYear : null
-    const npPriorYear = hasPriorYearData ? revPriorYear - cogsPriorYear - opexPriorYear : null
-
-    const gpRow: ReportLine = {
-      account_name: 'Gross Profit',
-      is_budget_only: false,
-      actual: gpActual,
-      budget: gpBudget,
-      variance_amount: gpActual - gpBudget,
-      variance_percent: gpBudget !== 0 ? ((gpActual - gpBudget) / Math.abs(gpBudget)) * 100 : 0,
-      ytd_actual: gpYtdActual,
-      ytd_budget: gpYtdBudget,
-      ytd_variance_amount: gpYtdActual - gpYtdBudget,
-      ytd_variance_percent: gpYtdBudget !== 0 ? ((gpYtdActual - gpYtdBudget) / Math.abs(gpYtdBudget)) * 100 : 0,
-      unspent_budget: (revAnnual - cogsAnnual) - gpYtdActual,
-      budget_next_month: (revSection?.subtotal.budget_next_month || 0) - (cogsSection?.subtotal.budget_next_month || 0),
-      budget_annual_total: revAnnual - cogsAnnual,
-      prior_year: gpPriorYear,
-    }
-
-    const npRow: ReportLine = {
-      account_name: 'Net Profit',
-      is_budget_only: false,
-      actual: npActual,
-      budget: npBudget,
-      variance_amount: npActual - npBudget,
-      variance_percent: npBudget !== 0 ? ((npActual - npBudget) / Math.abs(npBudget)) * 100 : 0,
-      ytd_actual: npYtdActual,
-      ytd_budget: npYtdBudget,
-      ytd_variance_amount: npYtdActual - npYtdBudget,
-      ytd_variance_percent: npYtdBudget !== 0 ? ((npYtdActual - npYtdBudget) / Math.abs(npYtdBudget)) * 100 : 0,
-      unspent_budget: (revAnnual - cogsAnnual - opexAnnual) - npYtdActual,
-      budget_next_month: (revSection?.subtotal.budget_next_month || 0) - (cogsSection?.subtotal.budget_next_month || 0) - (opexSection?.subtotal.budget_next_month || 0),
-      budget_annual_total: revAnnual - cogsAnnual - opexAnnual,
-      prior_year: npPriorYear,
-    }
-
-    // 10. Build summary
-    const summary = {
-      revenue: {
-        actual: revActual,
-        budget: revBudget,
-        variance: revActual - revBudget,
-        variance_percent: revBudget !== 0 ? ((revActual - revBudget) / Math.abs(revBudget)) * 100 : 0,
-      },
-      cogs: {
-        actual: cogsActual,
-        budget: cogsBudget,
-        variance: cogsBudget - cogsActual,
-        variance_percent: cogsBudget !== 0 ? ((cogsBudget - cogsActual) / Math.abs(cogsBudget)) * 100 : 0,
-      },
-      gross_profit: {
-        actual: gpActual,
-        budget: gpBudget,
-        variance: gpActual - gpBudget,
-        gp_percent: revActual !== 0 ? (gpActual / revActual) * 100 : 0,
-      },
-      opex: {
-        actual: opexActual,
-        budget: opexBudget,
-        variance: opexBudget - opexActual,
-        variance_percent: opexBudget !== 0 ? ((opexBudget - opexActual) / Math.abs(opexBudget)) * 100 : 0,
-      },
-      net_profit: {
-        actual: npActual,
-        budget: npBudget,
-        variance: npActual - npBudget,
-        np_percent: revActual !== 0 ? (npActual / revActual) * 100 : 0,
-      },
-    }
+    const derived = deriveProfitRows({
+      revenue: revSection?.subtotal,
+      cogs: cogsSection?.subtotal,
+      opex: opexSection?.subtotal,
+      otherIncome: otherIncSection?.subtotal,
+      otherExpenses: otherExpSection?.subtotal,
+      hasBudget,
+    })
+    const { summary } = derived
+    const gpRow = derived.gross_profit_row
+    const opRow = derived.operating_profit_row
+    const npRow = derived.net_profit_row
 
     // Debug: log match results
     const matched = matchLog.filter(m => m.method !== 'none')
     const unmatched = matchLog.filter(m => m.method === 'none')
     const duplicateBudgetMatches = matchLog.filter(m => m.method !== 'none' && !m.budgetClaimed)
+    // A pin and an account code naming different budget lines is not an error —
+    // the pin is honoured — but it means one of the two is stale, and nothing
+    // else on the page will ever say so.
+    const pinCodeDisagreements = matchLog.filter(m => m.codeWouldHaveMatched)
     const unmatchedBudgetLines = budgetPLLines.filter(bl => !matchedBudgetLineIds.has(bl.id))
-    const skippedByName = unmatchedBudgetLines.filter(bl => matchedBudgetLineNames.has(bl.account_name.toLowerCase()))
-    const skippedByDupName = unmatchedBudgetLines.filter(bl => !matchedBudgetLineNames.has(bl.account_name.toLowerCase()) && addedBudgetOnlyNames.has(bl.account_name.toLowerCase()) === false)
+    const skippedByIdentity = unmatchedBudgetLines.filter(bl => matchedBudgetLineKeys.has(budgetLineKey(bl)))
 
     if (process.env.NODE_ENV !== 'production') {
       console.log('[Report Generate] Matching results:', {
@@ -633,16 +703,18 @@ async function postHandler(request: Request) {
         unmatchedXero: unmatched.length,
         unmatchedBudgetLines: unmatchedBudgetLines.length,
         budgetDuplicatesBlocked: duplicateBudgetMatches.length,
-        budgetOnlySkippedByName: skippedByName.length,
-        budgetOnlyAdded: addedBudgetOnlyNames.size,
+        pinCodeDisagreements: pinCodeDisagreements.length,
+        budgetOnlySkippedByIdentity: skippedByIdentity.length,
+        budgetOnlyAdded: addedBudgetOnlyKeys.size,
         matchMethods: {
+          account_code: matched.filter(m => m.method === 'account_code').length,
           forecast_pl_line_id: matched.filter(m => m.method === 'forecast_pl_line_id').length,
           forecast_pl_line_name: matched.filter(m => m.method === 'forecast_pl_line_name').length,
           name_fallback: matched.filter(m => m.method === 'name_fallback').length,
         },
-        budgetOnlySkippedNames: skippedByName.map(bl => bl.account_name),
+        budgetOnlySkippedNames: skippedByIdentity.map(bl => bl.account_name),
         unmatchedXeroSample: unmatched.slice(0, 10).map(m => m.xero),
-        unmatchedBudgetSample: unmatchedBudgetLines.filter(bl => !matchedBudgetLineNames.has(bl.account_name.toLowerCase())).slice(0, 10).map((bl: any) => bl.account_name),
+        unmatchedBudgetSample: unmatchedBudgetLines.filter(bl => !matchedBudgetLineKeys.has(budgetLineKey(bl))).slice(0, 10).map((bl: any) => bl.account_name),
       })
     }
 
@@ -654,11 +726,19 @@ async function postHandler(request: Request) {
       sections,
       summary,
       gross_profit_row: gpRow,
+      operating_profit_row: opRow,
       net_profit_row: npRow,
       is_draft: force_draft || false,
       unreconciled_count: 0,
       has_budget: hasBudget,
       budget_forecast_name: budgetForecastName,
+      budget_forecast_id: resolvedBudget.forecastId,
+      // Provenance: which budget version produced these variances, and — when
+      // there are none — why, so the banner can say it instead of leaving a
+      // blank column that reads as $0.
+      budget_version_id: resolvedBudget.versionId,
+      budget_source: resolvedBudget.source,
+      no_budget_reason: resolvedBudget.noBudgetReason,
     }
 
     return NextResponse.json({
@@ -670,6 +750,11 @@ async function postHandler(request: Request) {
         xero_accounts: matchLog.length,
         budget_lines: budgetPLLines.length,
         matched: matched.length,
+        pin_code_disagreements: pinCodeDisagreements.map(m => ({
+          xero: m.xero,
+          pinned: m.budget,
+          code_would_have_matched: m.codeWouldHaveMatched,
+        })),
         unmatched_xero: unmatched.map(m => m.xero),
         unmatched_budget: unmatchedBudgetLines.map((bl: any) => bl.account_name),
         match_detail: matchLog,

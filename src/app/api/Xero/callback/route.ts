@@ -5,12 +5,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { encrypt, verifySignedOAuthState } from '@/lib/utils/encryption';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { safeReturnPath, withReturnParams } from '@/lib/utils/safe-return-path';
 import { resolveXeroBusinessId } from '@/lib/business/resolveXeroBusinessId';
 import { getXeroOrgTimezone } from '@/lib/xero/organisation';
 import { getAppBaseUrl } from '@/lib/config/brand'
 import { withQuerySchema } from '@/lib/api/with-schema'
 import { z } from 'zod'
 import * as Sentry from '@sentry/nextjs'
+import { grantedScopesColumns, resolveGrantedScopes } from '@/lib/xero/granted-scopes';
 
 export const dynamic = 'force-dynamic'
 
@@ -48,9 +51,11 @@ async function saveXeroConnection(
     tenant: { tenantId: string; tenantName: string };
     tokens: { access_token: string; refresh_token: string };
     expiresAt: Date;
+    /** Scopes this token carries (granted-scopes.ts). Null = unknown, leave column as is. */
+    grantedScopes: string[] | null;
   }
 ): Promise<{ success: boolean; error?: string; connectionId?: string }> {
-  const { businessId, userId, tenant, tokens, expiresAt } = params;
+  const { businessId, userId, tenant, tokens, expiresAt, grantedScopes } = params;
 
   // Phase 34 pivot: upsert by (business_id, tenant_id) so reconnecting the same
   // Xero org refreshes its tokens in place, and connecting a DIFFERENT Xero org
@@ -83,6 +88,7 @@ async function saveXeroConnection(
         refresh_token: encrypt(tokens.refresh_token),
         expires_at: expiresAt.toISOString(),
         is_active: true,
+        ...grantedScopesColumns(grantedScopes),
       },
       { onConflict: 'business_id,tenant_id' },
     )
@@ -141,135 +147,6 @@ async function saveXeroConnection(
   return { success: true, connectionId: id };
 }
 
-/**
- * Trigger an initial sync after successful OAuth connection.
- * Syncs bank summary and current month P&L to financial_metrics.
- */
-async function triggerInitialSync(businessId: string, accessToken: string, tenantId: string) {
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('[Xero Callback] Starting initial sync for business:', businessId);
-  }
-
-  try {
-    // Get bank accounts
-    const bankResponse = await fetch('https://api.xero.com/api.xro/2.0/BankSummary', {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'xero-tenant-id': tenantId,
-        'Accept': 'application/json'
-      }
-    });
-
-    const bankData = bankResponse.ok ? await bankResponse.json() : null;
-
-    // Calculate total cash
-    let totalCash = 0;
-    if (bankData?.BankSummary) {
-      bankData.BankSummary.forEach((account: { ClosingBalance?: number }) => {
-        totalCash += account.ClosingBalance || 0;
-      });
-    }
-
-    // Get P&L for current month
-    const currentDate = new Date();
-    const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-    const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-
-    const plResponse = await fetch(
-      `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${startOfMonth.toISOString().split('T')[0]}&toDate=${endOfMonth.toISOString().split('T')[0]}&standardLayout=true&paymentsOnly=false`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'xero-tenant-id': tenantId,
-          'Accept': 'application/json'
-        }
-      }
-    );
-
-    let monthlyMetrics = {
-      revenue_month: 0,
-      cogs_month: 0,
-      expenses_month: 0,
-      net_profit_month: 0
-    };
-
-    if (plResponse.ok) {
-      const plData = await plResponse.json();
-      if (plData?.Reports?.[0]?.Rows) {
-        plData.Reports[0].Rows.forEach((row: { RowType?: string; Title?: string; Rows?: { Cells?: { Value?: string }[] }[] }) => {
-          if (row.RowType === 'Section') {
-            const title = (row.Title || '').toUpperCase();
-            // Check COGS first — "LESS COST OF SALES" contains "SALES"
-            if (title.includes('COST OF SALES') || title.includes('DIRECT COSTS') || title.includes('COST OF GOODS')) {
-              row.Rows?.forEach((subRow) => {
-                if (subRow.Cells?.[1]?.Value) {
-                  monthlyMetrics.cogs_month += parseFloat(subRow.Cells[1].Value) || 0;
-                }
-              });
-            } else if (title.includes('INCOME') || title.includes('REVENUE') || title.includes('SALES') || title.includes('TRADING INCOME')) {
-              // Excludes "OTHER INCOME" for main revenue (could add separate tracking)
-              row.Rows?.forEach((subRow) => {
-                if (subRow.Cells?.[1]?.Value) {
-                  monthlyMetrics.revenue_month += parseFloat(subRow.Cells[1].Value) || 0;
-                }
-              });
-            } else if (title.includes('EXPENSE') || title.includes('OPERATING')) {
-              row.Rows?.forEach((subRow) => {
-                if (subRow.Cells?.[1]?.Value) {
-                  monthlyMetrics.expenses_month += parseFloat(subRow.Cells[1].Value) || 0;
-                }
-              });
-            }
-          }
-        });
-      }
-    }
-
-    // DEPRECATED (Tier 3 cleanup, 2026-04-30): see /api/Xero/sync/route.ts for
-    // the same dead-write rationale. 3-bucket formula omits Xero
-    // other_income/other_expense buckets. No current consumer reads
-    // `financial_metrics.net_profit_month`; remove in a future migration.
-    monthlyMetrics.net_profit_month = monthlyMetrics.revenue_month - monthlyMetrics.cogs_month - monthlyMetrics.expenses_month;
-
-    // Save to financial_metrics table
-    await supabase
-      .from('financial_metrics')
-      .upsert({
-        business_id: businessId,
-        metric_date: new Date().toISOString().split('T')[0],
-        total_cash: totalCash,
-        revenue_month: monthlyMetrics.revenue_month,
-        cogs_month: monthlyMetrics.cogs_month,
-        expenses_month: monthlyMetrics.expenses_month,
-        net_profit_month: monthlyMetrics.net_profit_month,
-        gross_profit_month: monthlyMetrics.revenue_month - monthlyMetrics.cogs_month,
-        gross_margin_percent: monthlyMetrics.revenue_month > 0
-          ? ((monthlyMetrics.revenue_month - monthlyMetrics.cogs_month) / monthlyMetrics.revenue_month) * 100
-          : 0,
-        net_margin_percent: monthlyMetrics.revenue_month > 0
-          ? (monthlyMetrics.net_profit_month / monthlyMetrics.revenue_month) * 100
-          : 0
-      });
-
-    // Update last sync time
-    await supabase
-      .from('xero_connections')
-      .update({ last_synced_at: new Date().toISOString() })
-      .eq('business_id', businessId);
-
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[Xero Callback] Initial sync completed successfully:', {
-        totalCash,
-        ...monthlyMetrics
-      });
-    }
-
-  } catch (error) {
-    Sentry.captureException(error, { tags: { route: 'Xero/callback' }, extra: { context: "[Xero Callback] Initial sync error" } } as any);
-    throw error;
-  }
-}
-
 async function getHandler(request: NextRequest) {
   try {
     // Get code and state from query params
@@ -297,7 +174,7 @@ async function getHandler(request: NextRequest) {
     let businessId: string;
     let returnTo: string = '/integrations';
 
-    const signedStateData = verifySignedOAuthState<{ business_id: string; return_to?: string; timestamp: number }>(state);
+    const signedStateData = verifySignedOAuthState<{ business_id: string; user_id?: string; return_to?: string; timestamp: number }>(state);
 
     if (!signedStateData) {
       Sentry.captureMessage('Invalid OAuth state - signature verification failed', 'error' as any);
@@ -314,8 +191,29 @@ async function getHandler(request: NextRequest) {
         new URL('/integrations?error=state_expired', request.url)
       );
     }
+
+    // S4 (22 Sep 2026): only the person who started this connect may finish it.
+    // The state is signed, but it used to name only the business — a client
+    // could send someone their Xero login link and that person's orgs were
+    // saved onto the client's business (Matt's full multi-org list pre-ticked).
+    // The callback is a top-level redirect back from Xero, so the session
+    // cookie is present; a state minted before this check (no user_id) is refused.
+    const sessionClient = await createRouteHandlerClient();
+    const { data: { user: sessionUser } } = await sessionClient.auth.getUser();
+    if (!signedStateData.user_id || !sessionUser || sessionUser.id !== signedStateData.user_id) {
+      Sentry.captureMessage('Xero callback: session is not the user who started the connect', {
+        level: 'warning',
+        tags: { route: 'Xero/callback', invariant: 'xero_oauth_state_user_mismatch' },
+        extra: { hasStateUser: !!signedStateData.user_id, hasSession: !!sessionUser },
+      } as any);
+      return NextResponse.redirect(
+        new URL('/integrations?error=session_mismatch', request.url)
+      );
+    }
+
     businessId = signedStateData.business_id;
-    returnTo = signedStateData.return_to || '/integrations';
+    // S2: re-checked here as well as when the state was minted.
+    returnTo = safeReturnPath(signedStateData.return_to);
 
     // Step 1: Exchange code for tokens
     if (process.env.NODE_ENV !== 'production') {
@@ -467,6 +365,7 @@ async function getHandler(request: NextRequest) {
       tenant,
       tokens,
       expiresAt,
+      grantedScopes: resolveGrantedScopes({ scope: tokens.scope, accessToken: tokens.access_token }),
     });
 
     if (!saveResult.success) {
@@ -475,14 +374,20 @@ async function getHandler(request: NextRequest) {
       );
     }
 
-    // Trigger an initial sync in the background
-    triggerInitialSync(businessId, tokens.access_token, tenant.tenantId).catch(err => {
-      Sentry.captureException(err, { tags: { route: 'Xero/callback' }, extra: { context: "[Xero Callback] Initial sync failed" } } as any);
-    });
-
-    // Redirect back with success
+    // No sync runs here, and nothing here writes last_synced_at. That column is
+    // the data clock the connection pill, /cfo and /api/Xero/status classify,
+    // and only a real per-tenant sync success moves it (sync-orchestrator.ts).
+    // This route used to run an "initial sync" — a BankSummary URL Xero does
+    // not have, a financial_metrics row of zeros when the P&L was refused — then
+    // stamp EVERY connection of the business fresh whatever Xero answered, so
+    // reconnecting one org made a sibling Xero refuses read current for 48h and
+    // a new org skipped pending_first_sync. The first real sync is the landing
+    // page's (forecast and monthly report run one on return), a Sync press, or
+    // the next 6-hourly cron, which takes the stalest connections first.
+    //
+    // ?syncing=true is the forecast page's cue to run that sync.
     return NextResponse.redirect(
-      new URL(`${returnTo}?success=connected&syncing=true`, request.url)
+      new URL(withReturnParams(returnTo, { success: 'connected', syncing: 'true' }), request.url)
     );
 
   } catch (error) {

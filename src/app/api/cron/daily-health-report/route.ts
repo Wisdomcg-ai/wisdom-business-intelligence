@@ -11,6 +11,7 @@ import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/resend";
 import * as Sentry from '@sentry/nextjs'
 import { recordHeartbeat } from '@/lib/cron/heartbeat'
+import { MONITORED_CRONS, evaluateCronHealth, loadLatestHeartbeats } from '@/lib/cron/watchdog'
 import { APP_NAME } from '@/lib/config/brand'
 import { z } from 'zod'
 import { withQuerySchema } from '@/lib/api/with-schema'
@@ -278,6 +279,35 @@ async function getHandler(request: NextRequest) {
           })
           .join("");
 
+    // ── Cron Health (19 Aug 2026) ──
+    // The 2-hourly watchdog fired ~380 Sentry alerts across 8 days about a
+    // dead token-refresh cron and nobody saw one — detection worked, delivery
+    // failed. This section puts the SAME evaluation in the one channel that is
+    // actually read every day. Same lib, same thresholds: this email and the
+    // watchdog can never disagree about what "stale" means.
+    const cronLatest = await loadLatestHeartbeats(supabase)
+    const cronAlerts = evaluateCronHealth(MONITORED_CRONS, cronLatest, Date.now())
+    const cronAlertByPath = new Map(cronAlerts.map(a => [a.path, a]))
+    const cronSection = MONITORED_CRONS.map((m) => {
+      const alert = cronAlertByPath.get(m.path)
+      const snap = cronLatest[m.path]
+      const age = snap?.ranAtMs != null
+        ? `${((Date.now() - snap.ranAtMs) / 3_600_000).toFixed(1)}h ago`
+        : 'never'
+      if (!alert) {
+        return `<tr><td style="padding:4px 12px;color:#22c55e;">&#9679;</td><td style="padding:4px 12px;">${m.label}</td><td style="padding:4px 12px;color:#6b7280;font-size:12px;">ok — last completed ${age}</td></tr>`
+      }
+      const tone = alert.reason === 'degraded' ? '#f59e0b' : '#ef4444'
+      const detail = alert.reason === 'degraded'
+        ? `last run completed with partial results (${age})`
+        : alert.reason === 'failed'
+          ? `last run FAILED (${age})`
+          : alert.reason === 'missing'
+            ? 'has never completed a run'
+            : `STALE — no completed run for ${alert.ageHours?.toFixed(0)}h (limit ${m.maxStaleHours}h)`
+      return `<tr><td style="padding:4px 12px;color:${tone};">&#9679;</td><td style="padding:4px 12px;font-weight:600;">${m.label}</td><td style="padding:4px 12px;color:${tone};font-size:12px;">${detail}</td></tr>`
+    }).join('')
+
     const html = `
 <!DOCTYPE html>
 <html>
@@ -296,6 +326,13 @@ async function getHandler(request: NextRequest) {
       ${checkRow("Auth", health.checks.auth)}
       ${checkRow("Error Rate", health.checks.errorRate)}
       ${checkRow("Xero", health.checks.xero)}
+    </table>
+  </div>
+
+  <div style="background:white;border-radius:8px;padding:20px;margin-bottom:16px;border:1px solid #e5e7eb;">
+    <h3 style="margin-top:0;color:${BRAND_NAVY};">Cron Health <span style="font-weight:400;font-size:13px;color:#6b7280;">(same thresholds as the 2-hourly watchdog)</span></h3>
+    <table style="width:100%;font-size:14px;">
+      ${cronSection}
     </table>
   </div>
 

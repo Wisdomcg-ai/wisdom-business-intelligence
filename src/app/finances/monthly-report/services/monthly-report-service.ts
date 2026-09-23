@@ -1,5 +1,6 @@
 import type { MonthlyReportSettings, DEFAULT_SECTIONS } from '../types'
 import { getCurrentFiscalYear as getCurrentFY, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
+import { packMonthLong } from './pack-style'
 
 const DEFAULT_SETTINGS: MonthlyReportSettings = {
   business_id: '',
@@ -32,22 +33,78 @@ const DEFAULT_SETTINGS: MonthlyReportSettings = {
   budget_forecast_id: null,
 }
 
-export async function loadSettings(businessId: string): Promise<MonthlyReportSettings> {
+/**
+ * The business's report settings, or `null` when they could not be read.
+ *
+ * D1 (22 Sep 2026 diagnostic): this returned DEFAULT_SETTINGS on any failure,
+ * which is indistinguishable from a business that has never saved any. Both
+ * writers (the settings panel and the PDF layout editor) then post the whole
+ * key set back, and the route fills every absent key with a default — so one
+ * failed GET followed by any save wiped the pinned budget forecast, the
+ * subscription account codes, the wages account names and every section
+ * toggle. A business with no row is NOT this case: the API answers with
+ * defaults and `is_default: true`, which is a real answer and returns settings.
+ */
+export async function loadSettings(businessId: string): Promise<MonthlyReportSettings | null> {
   try {
     const res = await fetch(`/api/monthly-report/settings?business_id=${businessId}`)
+    if (!res.ok) {
+      console.error('[MonthlyReportService] Settings request failed:', res.status)
+      return null
+    }
     const data = await res.json()
-    if (data.settings) {
+    if (data?.settings) {
       return data.settings
     }
-    return { ...DEFAULT_SETTINGS, business_id: businessId }
+    console.error('[MonthlyReportService] Settings response carried no settings')
+    return null
   } catch (err) {
     console.error('[MonthlyReportService] Error loading settings:', err)
-    return { ...DEFAULT_SETTINGS, business_id: businessId }
+    return null
   }
 }
 
 export function getCurrentFiscalYear(): number {
   return getCurrentFY(DEFAULT_YEAR_START_MONTH)
+}
+
+/**
+ * WA.4 — the fiscal year a 'YYYY-MM' month key belongs to (AU FY: named for
+ * the calendar year it ends in; Jul 2026 -> FY2027, Jun 2026 -> FY2026).
+ *
+ * The page used to initialise `fiscalYear` from the clock and `selectedMonth`
+ * as "last completed month" — two different anchors. Every July they disagree:
+ * the page opened on June (FY N) against the NEW fiscal year (FY N+1), so the
+ * YTD window was empty and the budget lookup hit a year with no June in it.
+ * Deriving the FY from the month makes the pair consistent by construction.
+ */
+export function getFiscalYearForMonth(monthKey: string): number {
+  const [y, m] = monthKey.split('-').map(Number)
+  if (!y || !m) return getCurrentFiscalYear()
+  return m >= DEFAULT_YEAR_START_MONTH ? y + 1 : y
+}
+
+/** First and last 'YYYY-MM' of an AU fiscal year (FY2027 -> 2026-07 .. 2027-06). */
+export function fiscalYearBounds(fiscalYear: number): { start: string; end: string } {
+  return {
+    start: `${fiscalYear - 1}-${String(DEFAULT_YEAR_START_MONTH).padStart(2, '0')}`,
+    end: `${fiscalYear}-${String(DEFAULT_YEAR_START_MONTH - 1).padStart(2, '0')}`,
+  }
+}
+
+/**
+ * The month to land on when switching to `fiscalYear`: its last month for a
+ * finished FY, the last completed month for the current FY, and its first
+ * month when even that is too early (the July case — no completed month exists
+ * in the new FY yet, so land on the in-progress July rather than leaving the
+ * selection outside the FY entirely).
+ */
+export function defaultMonthForFiscalYear(fiscalYear: number): string {
+  const { start, end } = fiscalYearBounds(fiscalYear)
+  const lastCompleted = getDefaultReportMonth()
+  let target = end <= lastCompleted ? end : lastCompleted
+  if (target < start) target = start
+  return target
 }
 
 export function getDefaultReportMonth(): string {
@@ -57,7 +114,11 @@ export function getDefaultReportMonth(): string {
   return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`
 }
 
+/**
+ * 'YYYY-MM' → 'August 2026'. Derived from the string, never from a Date: a
+ * UTC-midnight instant read by a local formatter names the month before it
+ * west of Greenwich. packMonthLong is the pack's one table for this.
+ */
 export function formatMonthLabel(monthKey: string): string {
-  const date = new Date(monthKey + '-01')
-  return date.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
+  return packMonthLong(monthKey)
 }

@@ -127,7 +127,6 @@ function makeStubState(overrides: Partial<ForecastWizardState> = {}): ForecastWi
     capexItems: [],
     investments: [],
     plannedSpends: [],
-    otherExpenses: [],
     subscriptions: [],
     maxVisitedStep: 1,
     ...overrides,

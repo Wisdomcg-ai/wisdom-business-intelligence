@@ -4,6 +4,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileIds';
 import { surfaceSupabaseError } from '@/lib/supabase/surfaceError';
+import { reviewedQuarterOf, reviewedQuarterLabel } from '../types';
 import type {
   QuarterlyReview,
   QuarterNumber,
@@ -180,14 +181,32 @@ export class QuarterlyReviewService {
     return updated;
   }
 
-  async completePreWork(id: string): Promise<QuarterlyReview> {
+  /**
+   * Stamp pre-work as done and advance to the next step.
+   *
+   * The next step is supplied by the caller because only the caller knows the
+   * active sequence (see getWorkshopSteps). It used to be hardcoded to '1.1',
+   * a step v2 retired — which left the workshop on a screen outside the
+   * sequence, with no Back button and a Continue that bounced back to pre-work.
+   *
+   * `stepsCompleted` is merged, not replaced. Replacing it wiped the navigation
+   * progress of anyone who went back and re-opened pre-work on a review that
+   * was already several steps in.
+   */
+  async completePreWork(
+    id: string,
+    nextStep: WorkshopStep,
+    stepsCompleted: WorkshopStep[] = []
+  ): Promise<QuarterlyReview> {
+    const merged = [...new Set<WorkshopStep>([...stepsCompleted, 'prework'])];
+
     const { data, error } = await this.getSupabase()
       .from('quarterly_reviews')
       .update({
         prework_completed_at: new Date().toISOString(),
         status: 'prework_complete',
-        current_step: '1.1',
-        steps_completed: ['prework']
+        current_step: nextStep,
+        steps_completed: merged
       })
       .eq('id', id)
       .select()
@@ -697,12 +716,11 @@ export class QuarterlyReviewService {
 
     if (!data) throw new Error('Review not found or access denied');
 
-    // Create quarterly snapshot on completion
-    if (data) {
-      await this.createQuarterlySnapshot(data);
-      await this.saveKpiActuals(data);
-    }
-
+    // The history writes (createQuarterlySnapshot / saveKpiActuals) used to run
+    // HERE, after the row had already been flipped to 'completed', and swallowed
+    // their own failures — so a review that recorded nothing still reported
+    // success. They are now driven by the caller, which owns the one place that
+    // reports what did and did not land. See useQuarterlyReview.completeWorkshop.
     return data;
   }
 
@@ -717,15 +735,23 @@ export class QuarterlyReviewService {
     const snapshot = review.dashboard_snapshot;
     if (!snapshot?.kpis || snapshot.kpis.length === 0) return;
 
-    const quarterKey = `Q${review.quarter}`;
+    // These actuals came off the Scorecard, which scores the quarter the review
+    // REFLECTS ON — not the quarter it plans. Filing them under review.quarter put
+    // last quarter's numbers a quarter late, and at the FY boundary a year late
+    // too (a Q1 FY27 review reflects on Q4 FY26). kpi_actuals is read back as
+    // "what this business actually did in Qn", so the period has to be the
+    // reviewed quarter.
+    const reviewed = reviewedQuarterOf(review);
+    const quarterKey = reviewedQuarterLabel(review);
     const supabase = this.getSupabase();
 
     // kpi_actuals is keyed by business_profiles.id, but review.business_id is a businesses.id.
     // Resolve it; without a profile id the FK would reject every row (the bug that lost actuals).
     const profileId = await resolveBusinessProfileId(supabase, review.business_id);
     if (!profileId) {
-      surfaceSupabaseError('saveKpiActuals.resolveProfile', new Error(`No business_profiles.id for review.business_id=${review.business_id}`));
-      return;
+      // Throw, don't return: the caller decides what the owner is told. Returning
+      // quietly is how this wrote nothing for months while reporting success.
+      throw new Error(`saveKpiActuals: no business_profiles.id for review.business_id=${review.business_id}`);
     }
 
     // Prepare KPI actuals for batch upsert
@@ -736,12 +762,12 @@ export class QuarterlyReviewService {
         business_id: profileId,
         user_id: review.user_id,
         kpi_id: kpi.id,
-        period_year: review.year,
+        period_year: reviewed.year,
         period_quarter: quarterKey,
         period_type: 'quarterly',
         actual_value: kpi.actual,
         target_value: kpi.target || null,
-        notes: `Recorded during Q${review.quarter} ${review.year} Quarterly Review`
+        notes: `${quarterKey} ${reviewed.year} actuals, recorded during the Q${review.quarter} ${review.year} Quarterly Review`
       }));
 
     if (kpiActuals.length === 0) return;
@@ -755,7 +781,12 @@ export class QuarterlyReviewService {
 
     if (error) {
       surfaceSupabaseError('saveKpiActuals', error);
-      // Don't throw - this is supplementary, shouldn't block completion
+      // Throw. Completion is still not blocked — the CALLER catches this and
+      // finishes the review — but it now knows the actuals did not land and can
+      // say so. "Supplementary, shouldn't block completion" was read as "nobody
+      // needs to know", and these rows are the history every later quarter
+      // compares against.
+      throw error;
     }
   }
 
@@ -764,12 +795,13 @@ export class QuarterlyReviewService {
    */
   async createQuarterlySnapshot(review: QuarterlyReview): Promise<void> {
     const supabase = this.getSupabase();
+    const reviewedSnapshotQuarter = reviewedQuarterOf(review);
+    const reviewedLabel = reviewedQuarterLabel(review);
 
     // quarterly_snapshots is keyed by business_profiles.id; review.business_id is a businesses.id.
     const profileId = await resolveBusinessProfileId(supabase, review.business_id);
     if (!profileId) {
-      surfaceSupabaseError('createQuarterlySnapshot.resolveProfile', new Error(`No business_profiles.id for review.business_id=${review.business_id}`));
-      return;
+      throw new Error(`createQuarterlySnapshot: no business_profiles.id for review.business_id=${review.business_id}`);
     }
 
     // Build financial snapshot
@@ -795,32 +827,43 @@ export class QuarterlyReviewService {
     // Build KPIs snapshot
     const kpisSnapshot = review.dashboard_snapshot?.kpis || [];
 
-    // Build initiatives snapshot from rocks
-    const initiativesSnapshot = review.quarterly_rocks?.map(r => ({
-      id: r.id,
+    // Initiatives: the rocks this review held to ACCOUNT, with how they went —
+    // not the rocks it just planned. The row is a record of the reviewed quarter,
+    // and quarterly_rocks are next quarter's, every one of them 'not_started' at
+    // this point, which is why completion_rate was previously always 0.
+    const rocksReviewed = review.rocks_review || [];
+    const initiativesSnapshot = rocksReviewed.map(r => ({
+      id: r.rockId,
       title: r.title,
       owner: r.owner,
-      status: r.status,
+      status: r.decision,
       progressPercentage: r.progressPercentage || 0,
-      successCriteria: r.successCriteria
-    })) || [];
+      successCriteria: r.successCriteria,
+      outcomeNarrative: r.outcomeNarrative,
+      lessonsLearned: r.lessonsLearned
+    }));
 
     // Calculate completion stats
-    const completedCount = review.quarterly_rocks?.filter(r => r.status === 'completed').length || 0;
-    const totalCount = review.quarterly_rocks?.length || 0;
+    const completedCount = rocksReviewed.filter(r => r.decision === 'completed').length;
+    const totalCount = rocksReviewed.length;
     const completionRate = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
     // Build snapshot data matching existing schema
     const snapshotData = {
       business_id: profileId,
       user_id: review.user_id,
-      snapshot_year: review.year,
-      snapshot_quarter: `Q${review.quarter}`,
+      // The row describes the quarter the review REFLECTED ON. Its financials,
+      // KPIs and reflections are all that quarter's, and QuarterlyPlanStep reads
+      // snapshot_quarter back as "the quarter these actuals are FOR" to fill past
+      // quarters in the plan grid — so labelling it with the planning quarter put
+      // last quarter's revenue in next quarter's column.
+      snapshot_year: reviewedSnapshotQuarter.year,
+      snapshot_quarter: reviewedLabel,
 
       // Initiative stats
       total_initiatives: totalCount,
       completed_initiatives: completedCount,
-      in_progress_initiatives: review.quarterly_rocks?.filter(r => r.status === 'on_track' || r.status === 'at_risk').length || 0,
+      in_progress_initiatives: rocksReviewed.filter(r => r.decision === 'carry_forward' || r.decision === 'modify').length,
       cancelled_initiatives: 0,
       completion_rate: completionRate,
 
@@ -845,7 +888,8 @@ export class QuarterlyReviewService {
 
     if (error) {
       surfaceSupabaseError('createQuarterlySnapshot', error);
-      // Don't throw - this is supplementary, shouldn't block completion
+      // See saveKpiActuals: reported to the caller, which completes anyway.
+      throw error;
     }
   }
 

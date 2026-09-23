@@ -14,7 +14,7 @@
  * detection query is identical so both hooks will always agree.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface ConsolidatedBSResponse {
@@ -29,6 +29,9 @@ export function useConsolidatedBalanceSheet(
   businessId: string | null | undefined,
 ) {
   const [report, setReport] = useState<any | null>(null)
+  // Bumped by every request and every clear(), as in useConsolidatedReport: a
+  // superseded response is not cached.
+  const latestRequest = useRef(0)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isConsolidationGroup, setIsConsolidationGroup] = useState<
@@ -64,6 +67,8 @@ export function useConsolidatedBalanceSheet(
   const generateBalanceSheet = useCallback(
     async (reportMonth: string, fiscalYear: number) => {
       if (!businessId || !isConsolidationGroup) return null
+      const request = ++latestRequest.current
+      const current = () => request === latestRequest.current
       setIsLoading(true)
       setError(null)
       try {
@@ -80,23 +85,35 @@ export function useConsolidatedBalanceSheet(
           .json()
           .catch(() => ({}))
         if (!res.ok) {
-          setError(
-            body.error ??
-              `Failed to load consolidated balance sheet (${res.status})`,
-          )
+          if (current()) {
+            setError(
+              body.error ??
+                `Failed to load consolidated balance sheet (${res.status})`,
+            )
+          }
           return null
         }
-        setReport(body.report ?? null)
+        if (current()) setReport(body.report ?? null)
         return body.report ?? null
       } catch (err: any) {
-        setError(err?.message ?? 'Network error loading consolidated BS')
+        if (current()) setError(err?.message ?? 'Network error loading consolidated BS')
         return null
       } finally {
-        setIsLoading(false)
+        if (current()) setIsLoading(false)
       }
     },
     [businessId, isConsolidationGroup],
   )
+
+  // WA.4 — the page lazy-loads with a `!report` guard, so a fiscal-year switch
+  // must clear the cache or the consolidated tabs keep showing the previous FY.
+  // DRG-16 — a month change too, including a request still in flight.
+  const clear = useCallback(() => {
+    latestRequest.current++
+    setReport(null)
+    setError(null)
+    setIsLoading(false)
+  }, [])
 
   return {
     report,
@@ -104,5 +121,6 @@ export function useConsolidatedBalanceSheet(
     error,
     isConsolidationGroup,
     generateBalanceSheet,
+    clear,
   }
 }

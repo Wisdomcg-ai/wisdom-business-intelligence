@@ -51,6 +51,35 @@ export const MONITORED_CRONS: readonly MonitoredCron[] = [
     maxStaleHours: 30,
     activeFrom: '2026-08-08T08:00:00Z',
   },
+  // Daily 03:00 UTC, 2h before metric-invariants reads what it writes. Omitting
+  // it would recreate this branch's own bug one level up: the BS mirror went
+  // stale for months because nothing refreshed it, and a dead refresher that
+  // nobody watches is the same silence wearing a different hat.
+  {
+    path: '/api/cron/sync-bs-mirror',
+    label: 'BS mirror refresh',
+    maxStaleHours: 30,
+    activeFrom: '2026-08-17T00:00:00Z',
+  },
+  // Daily 19:30 UTC (05:30 AEST) — feeds the CFO production board's
+  // "items to reconcile" counts. A silent death here would leave the board
+  // showing yesterday's reconciliation state as if it were fresh.
+  {
+    path: '/api/cron/bank-reconciliation-sweep',
+    label: 'Bank reconciliation sweep',
+    maxStaleHours: 30,
+    activeFrom: '2026-09-02T00:00:00Z',
+  },
+  // 02:15 UTC on the 1st–7th of each month — stores the month just closed for
+  // every FX pair a consolidation needs. The longest quiet gap is the 7th to
+  // the next 1st (25 days); 27 days tolerates one missed slot. Silence here is
+  // how IICT's HKD went into AUD 1:1 for three months.
+  {
+    path: '/api/cron/sync-fx-rates',
+    label: 'Monthly FX rates',
+    maxStaleHours: 24 * 27,
+    activeFrom: '2026-09-16T00:00:00Z',
+  },
 ]
 
 export interface HeartbeatSnapshot {
@@ -120,4 +149,37 @@ export function evaluateCronHealth(
     }
   }
   return alerts
+}
+
+/** Start-marker heartbeats are stamped BEFORE a run's work so a killed run
+ *  leaves evidence; they are never completions and must be excluded when
+ *  finding a cron's latest real outcome. */
+export const START_MARKER = 'run started — not yet completed'
+
+/**
+ * Latest COMPLETED heartbeat per monitored cron. Shared by the 2-hourly
+ * watchdog and the daily health report so the two can never disagree about
+ * what "stale" means. 10 rows is ample: markers and completions interleave,
+ * and a cron whose last 10 rows are ALL start-markers is being killed on
+ * every run — for which "no completed heartbeat" (→ missing/stale) is the
+ * right read.
+ */
+export async function loadLatestHeartbeats(
+  supabase: { from: (t: string) => any },
+): Promise<Record<string, HeartbeatSnapshot>> {
+  const latest: Record<string, HeartbeatSnapshot> = {}
+  await Promise.all(
+    MONITORED_CRONS.map(async (m) => {
+      const { data } = await supabase
+        .from('cron_heartbeats')
+        .select('ran_at, status, error_message')
+        .eq('cron_path', m.path)
+        .order('ran_at', { ascending: false })
+        .limit(10)
+      const row = ((data ?? []) as Array<{ ran_at: string; status: string; error_message: string | null }>)
+        .find((r) => r.error_message !== START_MARKER)
+      latest[m.path] = { ranAtMs: row ? Date.parse(row.ran_at) : null, status: row?.status ?? null }
+    }),
+  )
+  return latest
 }

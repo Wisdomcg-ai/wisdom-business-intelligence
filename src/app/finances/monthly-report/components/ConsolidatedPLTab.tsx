@@ -23,6 +23,7 @@
 
 import { Fragment, useState } from 'react'
 import { AlertTriangle, Info } from 'lucide-react'
+import { buildConsolidatedRows } from '../utils/consolidated-rows'
 
 interface ForecastLineVM {
   account_type: string
@@ -102,10 +103,6 @@ function fmtPercent(value: number | null): string {
   return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`
 }
 
-function alignmentKey(line: { account_type: string; account_name: string }) {
-  return `${line.account_type.toLowerCase().trim()}::${line.account_name.toLowerCase().trim()}`
-}
-
 interface Props {
   report: ConsolidatedReportVM | null
   reportMonth: string // 'YYYY-MM'
@@ -144,85 +141,10 @@ export default function ConsolidatedPLTab({
     )
   }
 
-  // Defensive defaults — older API payloads may not ship budgetLines yet.
-  const budgetLines = report.consolidated.budgetLines ?? []
-  const tenantsWithoutBudget = report.diagnostics.tenants_without_budget ?? []
-
-  // Phase 34 Step 2 — budget mode drives per-tenant column visibility.
-  // Defaults to 'per_tenant' for responses from pre-Step-2 servers so the
-  // existing UI stays unchanged until the backend is upgraded.
-  const budgetMode: 'single' | 'per_tenant' =
-    report.diagnostics.budget_mode ?? 'per_tenant'
-  const isSingleMode = budgetMode === 'single'
-
-  // Index budgets by alignment key for O(1) lookup
-  const budgetByKey = new Map<string, ForecastLineVM>()
-  for (const b of budgetLines) budgetByKey.set(alignmentKey(b), b)
-
-  // Per-tenant budget lookup: tenant_id → (key → row)
-  const tenantBudgetIndex = new Map<string, Map<string, ForecastLineVM>>()
-  for (const col of report.byTenant) {
-    const m = new Map<string, ForecastLineVM>()
-    for (const b of col.budgetLines ?? []) m.set(alignmentKey(b), b)
-    tenantBudgetIndex.set(col.tenant_id, m)
-  }
-
-  // Aggregate eliminations by alignment key for per-row lookup
-  const elimsByKey = new Map<string, number>()
-  for (const e of report.eliminations) {
-    const k = alignmentKey(e)
-    elimsByKey.set(k, (elimsByKey.get(k) ?? 0) + e.amount)
-  }
-
-  // Build display rows from consolidated.lines (canonical order).
-  const rows = report.consolidated.lines.map((l) => {
-    const key = alignmentKey(l)
-    const tenantCells = report.byTenant.map((col) => {
-      const actualLine = col.lines.find((el) => alignmentKey(el) === key)
-      const actual = actualLine?.monthly_values[reportMonth] ?? 0
-      const hasBudget = col.budgetLines != null
-      const budgetLine = hasBudget
-        ? tenantBudgetIndex.get(col.tenant_id)?.get(key)
-        : undefined
-      const budget = budgetLine?.monthly_values[reportMonth] ?? 0
-      const variance = actual - budget
-      return {
-        actual,
-        budget,
-        variance,
-        hasBudget,
-      }
-    })
-    const elim = elimsByKey.get(key) ?? 0
-    const consolidatedActual = l.monthly_values[reportMonth] ?? 0
-    const consolidatedBudget =
-      budgetByKey.get(key)?.monthly_values[reportMonth] ?? 0
-    const consolidatedVariance = consolidatedActual - consolidatedBudget
-    const consolidatedVariancePct =
-      consolidatedBudget !== 0
-        ? (consolidatedVariance / Math.abs(consolidatedBudget)) * 100
-        : null
-    return {
-      accountType: l.account_type,
-      accountName: l.account_name,
-      tenantCells,
-      elim,
-      consolidatedActual,
-      consolidatedBudget,
-      consolidatedVariance,
-      consolidatedVariancePct,
-    }
-  })
-
-  // "Do we have any budget data?"
-  //   - per_tenant: at least one tenant has budgetLines attached
-  //   - single:     the consolidated budgetLines column is populated AND the
-  //                 engine confirmed a business-level forecast was found (or
-  //                 diagnostic is absent on pre-Step-2 responses — fall back
-  //                 to checking non-empty budgetLines).
-  const hasAnyBudget = isSingleMode
-    ? report.diagnostics.single_budget_found !== false && budgetLines.length > 0
-    : report.byTenant.some((c) => c.budgetLines != null)
+  // WD.6 — the row derivation now lives in utils/consolidated-rows.ts,
+  // shared with the PDF's per-entity page so the two can never drift.
+  const { rows, isSingleMode, hasAnyBudget, tenantsWithoutBudget } =
+    buildConsolidatedRows(report, reportMonth)
 
   return (
     <div className="space-y-4 bg-white rounded-lg shadow-sm p-4">

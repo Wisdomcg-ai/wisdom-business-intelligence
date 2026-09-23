@@ -43,6 +43,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { toDateOnly, parseDateOnly } from '@/lib/utils/date-only'
 import { FinancialData, CoreMetricsData, KPIData, StrategicInitiative, YearType, MonthlyTargetsData } from '../types'
 import { STANDARD_KPIS, INDUSTRY_KPIS } from '../utils/constants'
 import { FinancialService } from '../services/financial-service'
@@ -90,6 +91,12 @@ export function useStrategicPlanning(
   // Auto-save states
   const [isDirty, setIsDirty] = useState(false)
   const [isLoadComplete, setIsLoadComplete] = useState(false)
+  // D3 (22 Sep 2026 diagnostic): a failed read used to be indistinguishable
+  // from an empty plan — loadFinancialGoals returns nulls WITH an `error` the
+  // hook dropped, and getUserKPIs answered [] for a failed query. Autosave then
+  // wrote zeros over the 3-year revenue and profit targets and deactivated
+  // every stored KPI. A load that failed may not be saved back.
+  const [loadUnavailable, setLoadUnavailable] = useState(false)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
 
@@ -339,11 +346,12 @@ export function useStrategicPlanning(
                 year1Months,
                 currentYearRemainingMonths
               },
-              // Phase 42: send plan period as ISO date strings (YYYY-MM-DD)
+              // Phase 42: send plan period as ISO date strings (YYYY-MM-DD).
+              // B2: the LOCAL calendar date — toISOString() sent the day before in Australia.
               planPeriod: planStartDate && planEndDate && year1EndDate ? {
-                planStartDate: planStartDate.toISOString().slice(0, 10),
-                planEndDate:   planEndDate.toISOString().slice(0, 10),
-                year1EndDate:  year1EndDate.toISOString().slice(0, 10),
+                planStartDate: toDateOnly(planStartDate),
+                planEndDate:   toDateOnly(planEndDate),
+                year1EndDate:  toDateOnly(year1EndDate),
               } : undefined,
             },
             kpis,
@@ -397,6 +405,13 @@ export function useStrategicPlanning(
     try {
       if (!businessId || !userId) {
         console.log('[Strategic Planning] ⚠️ Cannot save: missing businessId or userId')
+        return false
+      }
+
+      // D3: the plan in state is not this client's — saving it would write
+      // zeros over their targets and deactivate their KPIs.
+      if (loadUnavailable) {
+        console.error('[Strategic Planning] ⚠️ Refusing to save: the plan could not be loaded')
         return false
       }
 
@@ -572,6 +587,7 @@ export function useStrategicPlanning(
     sprintKeyActions,
     operationalActivities,
     isLoadComplete,
+    loadUnavailable,
     saveViaApi
   ])
 
@@ -770,8 +786,14 @@ export function useStrategicPlanning(
           quarterlyTargets: loadedQuarterlyTargets,
           extendedPeriod: loadedExtendedPeriod,
           planPeriod: loadedPlanPeriod,
-          currentActuals: loadedCurrentActuals
+          currentActuals: loadedCurrentActuals,
+          error: loadFinancialError
         } = await FinancialService.loadFinancialGoals(bizId)
+
+        if (loadFinancialError) {
+          console.error('[Strategic Planning] ❌ Financial goals could not be read:', loadFinancialError)
+          setLoadUnavailable(true)
+        }
 
         // ── Phase 73-04: Annual Reset Gate ────────────────────────────────────
         // Fires at most once per mount (resetRanRef guard) and only when:
@@ -822,10 +844,19 @@ export function useStrategicPlanning(
         // business_kpis.business_id references businesses(id), so try that first
         // Then fall back to business_profiles.id for legacy data
         const kpiBizId = overrideBusinessId || bizId
-        let loadedKPIs = await KPIService.getUserKPIs(kpiBizId)
+        const firstKpiRead = await KPIService.getUserKPIsResult(kpiBizId)
+        let loadedKPIs = firstKpiRead.kpis
+        let kpiReadOk = firstKpiRead.ok
         if (loadedKPIs.length === 0 && kpiBizId !== bizId) {
           console.log(`[Strategic Planning] 🔄 No KPIs found with businesses.id, trying business_profiles.id`)
-          loadedKPIs = await KPIService.getUserKPIs(bizId)
+          const secondKpiRead = await KPIService.getUserKPIsResult(bizId)
+          loadedKPIs = secondKpiRead.kpis
+          kpiReadOk = kpiReadOk && secondKpiRead.ok
+        }
+        if (!kpiReadOk) {
+          // An empty list here is not "this client has no KPIs" — saving it
+          // would deactivate every stored one (D3).
+          setLoadUnavailable(true)
         }
 
         // ── Plan Period Resolution (Phase 42) ───────────────────────
@@ -842,9 +873,12 @@ export function useStrategicPlanning(
 
         if (loadedPlanPeriod?.planStartDate) {
           // Existing plan — use persisted dates regardless of who is viewing.
-          resolvedPlanStart = new Date(loadedPlanPeriod.planStartDate as string)
-          resolvedPlanEnd   = new Date((loadedPlanPeriod.planEndDate ?? loadedPlanPeriod.planStartDate) as string)
-          resolvedYear1End  = new Date((loadedPlanPeriod.year1EndDate ?? loadedPlanPeriod.planStartDate) as string)
+          // B2: stored "YYYY-MM-DD" -> LOCAL midnight, the same representation the
+          // suggestion and the adjust dialog build (new Date(str) was UTC midnight).
+          const toPlanDate = (s: string) => parseDateOnly(s) ?? new Date(s)
+          resolvedPlanStart = toPlanDate(loadedPlanPeriod.planStartDate as string)
+          resolvedPlanEnd   = toPlanDate((loadedPlanPeriod.planEndDate ?? loadedPlanPeriod.planStartDate) as string)
+          resolvedYear1End  = toPlanDate((loadedPlanPeriod.year1EndDate ?? loadedPlanPeriod.planStartDate) as string)
           console.log('[Strategic Planning] Loaded persisted plan period:', loadedPlanPeriod)
         } else if (!loadedFinancialData) {
           // Truly new plan — generate suggestion. Both coach and owner view see the same.
@@ -1027,9 +1061,9 @@ export function useStrategicPlanning(
     // 1. Load is complete (prevents saving during initial load)
     // 2. Data is dirty (user has made changes)
     // 3. We have business and user IDs
-    if (!isLoadComplete || !isDirty || !businessId || !userId) {
+    if (!isLoadComplete || !isDirty || !businessId || !userId || loadUnavailable) {
       if (isDirty) {
-        console.log(`[AutoSave] ⚠️ Dirty but can't save: isLoadComplete=${isLoadComplete}, businessId=${businessId ? 'set' : 'MISSING'}, userId=${userId ? 'set' : 'MISSING'}`)
+        console.log(`[AutoSave] ⚠️ Dirty but can't save: isLoadComplete=${isLoadComplete}, businessId=${businessId ? 'set' : 'MISSING'}, userId=${userId ? 'set' : 'MISSING'}, loadUnavailable=${loadUnavailable}`)
       }
       return
     }
@@ -1053,7 +1087,7 @@ export function useStrategicPlanning(
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [isLoadComplete, isDirty, businessId, userId, saveAllData])
+  }, [isLoadComplete, isDirty, businessId, userId, loadUnavailable, saveAllData])
 
   // Reset saved status after 3 seconds
   useEffect(() => {
@@ -1173,6 +1207,8 @@ export function useStrategicPlanning(
     // Loading & Error
     isLoading,
     error,
+    /** The plan could not be read, so nothing may be saved over it (D3). */
+    loadUnavailable,
 
     // Auto-save status
     isDirty,

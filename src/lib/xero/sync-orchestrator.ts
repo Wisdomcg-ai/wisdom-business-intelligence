@@ -35,6 +35,8 @@ import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { getValidAccessToken } from '@/lib/xero/token-manager'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { assertBusinessProfileId } from '@/lib/utils/assert-profile-id'
+import { syncPayrollForBusiness } from './payroll-sync'
+import { autoMapIfUnmapped } from '@/lib/monthly-report/auto-map'
 import {
   computeCoverage,
   type CoverageRecord,
@@ -55,6 +57,12 @@ import {
   classifyByXeroType,
   type CatalogMap,
 } from './accounts-catalog'
+import {
+  createFxSplitTenantRun,
+  emptyFxSplitRecord,
+  type FxSplitRecord,
+  type FxSplitTenantRun,
+} from './fx-split-tenant'
 
 // ─── Public types ───────────────────────────────────────────────────────────
 
@@ -68,11 +76,47 @@ export type SyncResult = {
   coverage: CoverageRecord
   reconciliation: { status: 'ok' | 'mismatch'; discrepancy_count: number }
   error?: string
+  /**
+   * WB.2 — payroll sync summary for this business, when the run budget allowed
+   * it. Absent = not attempted this cycle (budget exhausted before its turn);
+   * skipped_some = attempted but stopped early (deadline or detail cap) —
+   * stalest-first rotation converges the remainder over subsequent cycles.
+   */
+  payroll?: {
+    tenants_synced: number
+    runs_upserted: number
+    payslips_upserted: number
+    employees_upserted: number
+    xero_requests: number
+    skipped_some: boolean
+    errors: string[]
+  }
+}
+
+/**
+ * How one Xero org finished within a sync run.
+ *   success / partial — its data landed and last_synced_at was stamped
+ *                       (partial: with failed months or reconciliation gaps)
+ *   paused            — stopped by Xero's daily request limit; not stamped
+ *   error             — the org's sync broke off (token refused, 403, …); not stamped
+ */
+export type TenantSyncOutcome = {
+  tenant_id: string
+  tenant_name: string | null
+  status: 'success' | 'partial' | 'paused' | 'error'
 }
 
 export type SyncOptions = {
   fyOverride?: number
   tenantIdFilter?: string
+  /**
+   * Called once for every org the run attempts, as it finishes. For a caller
+   * that must say WHICH org failed (the dashboard's Sync Xero button) —
+   * SyncResult only carries the business rollup. A callback rather than a
+   * SyncResult field so the cron's results and the FX flag-off golden stay
+   * byte-identical.
+   */
+  onTenantOutcome?: (outcome: TenantSyncOutcome) => void
 }
 
 // ─── Date helpers ───────────────────────────────────────────────────────────
@@ -172,6 +216,18 @@ function singlePeriodPLUrl(periodMonth: string): string {
 }
 
 /**
+ * WD.7 — the cash-basis twin of singlePeriodPLUrl: paymentsOnly=true asks
+ * Xero for the cash P&L. Same single-period shape (no periods=/timeframe=).
+ */
+function singlePeriodCashPLUrl(periodMonth: string): string {
+  const [yStr, mStr] = periodMonth.split('-')
+  const y = parseInt(yStr!, 10)
+  const m = parseInt(mStr!, 10)
+  const qs = `fromDate=${firstDayOfMonth(y, m)}&toDate=${lastDayOfMonth(y, m)}&standardLayout=false&paymentsOnly=true`
+  return `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?${qs}`
+}
+
+/**
  * Single-period FY-total URL — used as the reconciler oracle for one window.
  * Same shape as the per-month URLs (no periods=, no timeframe=); just spans
  * the full FY range.
@@ -204,6 +260,21 @@ function monthTagToMonthEnd(periodMonth: string): string {
   return lastDayOfMonth(y, m)
 }
 
+/**
+ * `error` of a SyncResult refused because another sync of the business holds
+ * the single-flight lock — not a failure of this business's Xero. Exported so
+ * callers can tell the two apart without string-sniffing.
+ */
+export const SYNC_IN_FLIGHT =
+  'Another sync for this business is already in progress (within 15-minute staleness window).'
+
+/**
+ * `error` of a SyncResult for a business with no active Xero connection. Only
+ * ever a real answer: a failed connection lookup throws instead.
+ */
+export const SYNC_NO_CONNECTIONS =
+  'No active xero_connections for this business. Connect Xero before syncing.'
+
 function inFlightRejectionResult(businessId: string): SyncResult {
   return {
     business_id: businessId,
@@ -214,8 +285,7 @@ function inFlightRejectionResult(businessId: string): SyncResult {
     xero_request_count: 0,
     coverage: { months_covered: 0, first_period: '', last_period: '', expected_months: 24 },
     reconciliation: { status: 'ok', discrepancy_count: 0 },
-    error:
-      'Another sync for this business is already in progress (within 15-minute staleness window).',
+    error: SYNC_IN_FLIGHT,
   }
 }
 
@@ -234,15 +304,27 @@ function inFlightRejectionResult(businessId: string): SyncResult {
  * adjustments for. Path A: this list should be empty.
  */
 /**
- * Materiality for the P&L monthly-sum vs FY-total checks ONLY. Xero itself
- * rounds FX-revalued accounts differently between a monthly report and an FY
- * report, so a persistent $0.01 delta is Xero disagreeing with Xero — not a
- * data defect (proven on the Pulse fork: Kogarah's FX account sat at exactly
- * $0.01 for a week and paged Sentry every sync). Books balance to the cent;
- * reports round — so the balance-sheet equation check deliberately stays at
- * $0.01 and does NOT use this constant.
+ * Materiality for the P&L monthly-sum vs FY-total checks. Xero itself rounds
+ * FX-revalued accounts differently between a monthly report and an FY report,
+ * so a persistent $0.01 delta is Xero disagreeing with Xero — not a data
+ * defect (proven on the Pulse fork: Kogarah's FX account sat at exactly
+ * $0.01 for a week and paged Sentry every sync).
  */
 const PL_RECONCILIATION_MATERIALITY = 0.05
+
+/**
+ * Materiality for the BS Net Assets == Equity write-gate. This deliberately
+ * sat at $0.01 on the theory that "books balance to the cent; reports round"
+ * applied only to the P&L. Attaquer disproved it (1 Sep 2026): its July BS —
+ * five foreign-currency bank accounts revalued per-row, the FX offset in
+ * equity rounded independently — re-adds $0.03 off in Xero's OWN report,
+ * while Xero's displayed totals agree because they come from unrounded
+ * internals. The $0.01 gate refused to store that month forever. The BS is a
+ * report too; cents-level residuals are structural for FX-holding orgs, and
+ * every genuine defect we've caught ($2k–$70k) clears $0.05 by orders of
+ * magnitude. Matt approved $0.05 (P&L parity) 1 Sep 2026.
+ */
+const BS_EQUATION_MATERIALITY = 0.05
 
 function regressionAdjustments(
   monthlyRows: ParsedPLRow[],
@@ -360,7 +442,7 @@ async function syncBalanceSheetForTenant(
   for (const [date, sums] of byDate.entries()) {
     const netAssets = sums.asset - sums.liability
     const delta = Math.round((netAssets - sums.equity) * 100) / 100
-    if (Math.abs(delta) > 0.01) {
+    if (Math.abs(delta) > BS_EQUATION_MATERIALITY) {
       unbalancedDates.push({ balance_date: date, delta })
       unbalancedSet.add(date)
       try {
@@ -427,6 +509,71 @@ async function syncBalanceSheetForTenant(
       )
     }
     rowsInserted = dbRows.length
+
+    // BS stale-row sweep — the P&L's P3a sweep, which the BS mirror never
+    // got. The cron fetches FUTURE month-ends all month (Xero answers a
+    // forward date with the balance as of now — this is what keeps the cash
+    // position fresh), so an account that carries a balance mid-month and
+    // clears to zero by the real month-end VANISHES from the final report:
+    // the upsert never touches its forward-dated row and the lingering value
+    // breaks A − L − E by exactly that amount. Proven fleet-wide 1 Sep 2026:
+    // six businesses off by $2.97–$70,539.88, every one collapsing to ≤1¢
+    // once rows absent from the latest write were excluded (JDS: a $70,539.88
+    // 'Wages Payable' fetched mid-payrun on 23 Aug, zero by month-end).
+    //
+    // Per-date scope; only BALANCED dates are swept (an unbalanced date was
+    // never upserted, and sweeping against a gated fetch would delete good
+    // rows). Failure is non-fatal — next sync retries.
+    const dateToAccountIds = new Map<string, string[]>()
+    for (const r of dbRows) {
+      const arr = dateToAccountIds.get(r.balance_date) ?? []
+      arr.push(r.account_id)
+      dateToAccountIds.set(r.balance_date, arr)
+    }
+    let bsStaleSwept = 0
+    for (const [date, accountIds] of dateToAccountIds) {
+      const inClause = `(${accountIds.map((id) => `"${id}"`).join(',')})`
+      const sweepRes = (await supabase
+        .from('xero_bs_lines')
+        .delete({ count: 'exact' })
+        .eq('business_id', profileId)
+        .eq('tenant_id', conn.tenant_id)
+        .eq('balance_date', date)
+        .not('account_id', 'in', inClause)) as any
+      if (sweepRes?.error) {
+        try {
+          Sentry.captureMessage('xero_bs_lines stale-row sweep failed', {
+            level: 'warning',
+            tags: {
+              invariant: 'xero_sync_bs_stale_sweep',
+              business_id: profileId,
+              tenant_id: conn.tenant_id,
+              balance_date: date,
+            },
+            extra: { error: sweepRes.error.message ?? sweepRes.error.code ?? 'unknown' },
+          } as any)
+        } catch {
+          // Sentry failure must not abort.
+        }
+      } else {
+        bsStaleSwept += sweepRes?.count ?? 0
+      }
+    }
+    if (bsStaleSwept > 0) {
+      try {
+        Sentry.captureMessage('xero_bs_lines stale rows swept', {
+          level: 'info',
+          tags: {
+            invariant: 'xero_sync_bs_stale_sweep',
+            business_id: profileId,
+            tenant_id: conn.tenant_id,
+          },
+          extra: { swept: bsStaleSwept },
+        } as any)
+      } catch {
+        // Sentry failure must not abort.
+      }
+    }
   }
 
   return {
@@ -460,6 +607,30 @@ export async function syncBusinessXeroPL(
   // money rows, so a wrong-id-class value fails loudly here instead of being
   // rejected by a cryptic FK error (or silently orphaned where the FK drifted).
   await assertBusinessProfileId(supabase as any, profileId, { input: businessId, bizId })
+
+  // WD.7 — opt-in cash-basis mirror. When the pack enables it
+  // (monthly_report_settings.sections.cash_basis, businesses-space id), every
+  // per-month P&L fetch gets a paymentsOnly=true twin stamped basis='cash'.
+  // Off by default: zero extra Xero requests until a pack turns it on.
+  let cashBasisEnabled = false
+  // FX account split — opt-in per business (sections.fx_account_split === true,
+  // strictly boolean), read from the SAME settings row so a business that has
+  // not opted in issues no extra query. XERO_FX_SPLIT_DISABLE=true switches it
+  // off fleet-wide without a deploy, like FORECAST_FX_VIA_ENGINE_DISABLE.
+  // See fx-split-tenant.ts for what it does and why.
+  let fxSplitRequested = false
+  try {
+    const { data: mrs } = await supabase
+      .from('monthly_report_settings')
+      .select('sections')
+      .eq('business_id', bizId)
+      .maybeSingle()
+    cashBasisEnabled = (mrs?.sections as Record<string, unknown> | null)?.cash_basis === true
+    fxSplitRequested = (mrs?.sections as Record<string, unknown> | null)?.fx_account_split === true
+  } catch {
+    // default off — a settings read failure must never block the sync
+  }
+  const fxSplitEnabled = fxSplitRequested && process.env.XERO_FX_SPLIT_DISABLE !== 'true'
 
   // 1. Atomically claim a sync_jobs row (44-05 single-flight guard).
   const { data: jobIdData, error: beginErr } = await supabase.rpc(
@@ -566,16 +737,25 @@ export async function syncBusinessXeroPL(
     const fyWindows: Window[] = [currentWindow, priorWindow]
 
     // 4. Iterate active xero_connections (multi-org per D-09).
-    const { data: connections } = await supabase
+    const { data: connections, error: connectionsError } = await supabase
       .from('xero_connections')
       .select('id, tenant_id, tenant_name, business_id')
       .in('business_id', ids.all)
       .eq('is_active', true)
 
+    // postgrest-js resolves a failed query into {data: null, error}. Falling
+    // through, a lookup failure reported "no active connections — connect
+    // Xero" for a business that IS connected. Throw so the catch below records
+    // the failure it actually is.
+    if (connectionsError) {
+      throw new Error(
+        `xero_connections lookup failed: ${(connectionsError as any)?.message ?? String(connectionsError)}`,
+      )
+    }
+
     if (!Array.isArray(connections) || connections.length === 0) {
       finalStatus = 'error'
-      finalError =
-        'No active xero_connections for this business. Connect Xero before syncing.'
+      finalError = SYNC_NO_CONNECTIONS
       return {
         business_id: businessId,
         status: 'error',
@@ -589,10 +769,37 @@ export async function syncBusinessXeroPL(
       }
     }
 
+    // FX split v1 refuses multi-org businesses (Dragon, IICT). The split rows
+    // carry per-org codes (Urban Road 497/498/499, JDS 198/199), and
+    // forecast-read-service.aggregateXeroRows pools same-currency orgs on
+    // account_code — enabling it there would add a new code-pooling case,
+    // which the house rule forbids. Recorded per tenant, never silently.
+    const fxSplitMultiOrg = fxSplitEnabled && connections.length > 1
+    if (fxSplitMultiOrg) {
+      Sentry.addBreadcrumb({
+        category: 'xero.sync',
+        level: 'info',
+        message: 'fx_account_split refused: business has more than one active Xero connection',
+        data: { business_id: profileId, connections: connections.length },
+      })
+    }
+
     let tenantErrorCount = 0
     let tenantPartialCount = 0
     let tenantPausedCount = 0
     let tenantSuccessCount = 0
+
+    const reportTenantOutcome = (
+      conn: { tenant_id: string | null; tenant_name: string | null },
+      status: TenantSyncOutcome['status'],
+    ) => {
+      if (!opts.onTenantOutcome) return
+      try {
+        opts.onTenantOutcome({ tenant_id: conn.tenant_id ?? '', tenant_name: conn.tenant_name ?? null, status })
+      } catch {
+        // A caller's reporting hook must never fail the sync.
+      }
+    }
 
     console.log('[syncBusinessXeroPL] connections:', connections.length, 'currentFY:', currentFY, 'priorFY:', priorFY, 'fyStartMonth:', fyStartMonth)
 
@@ -620,6 +827,7 @@ export async function syncBusinessXeroPL(
         }
         console.warn('[syncBusinessXeroPL] skipping connection with empty tenant_id:', conn.id)
         tenantErrorCount += 1
+        reportTenantOutcome(conn, 'error')
         continue
       }
 
@@ -733,9 +941,48 @@ export async function syncBusinessXeroPL(
           throw catErr
         }
 
+        // FX account split — only for an opted-in, single-org business.
+        // createFxSplitTenantRun never throws (its one read degrades to
+        // "fetch every month"), and nothing it does can fail the tenant.
+        let fxRun: FxSplitTenantRun | null = null
+        let fxSplitRecord: FxSplitRecord | null = null
+        if (fxSplitEnabled && fxSplitMultiOrg) {
+          fxSplitRecord = { ...emptyFxSplitRecord(true), skipped_reason: 'multi_org' }
+        } else if (fxSplitEnabled) {
+          try {
+            fxRun = await createFxSplitTenantRun({
+              supabase,
+              profileId,
+              tenantId: conn.tenant_id,
+              accessToken,
+              catalog,
+              runMonths: fyWindows.flatMap((w) => w.monthsToFetch),
+              today,
+            })
+            fxSplitRecord = fxRun.record
+          } catch (fxErr) {
+            // Belt and braces: the split is supplementary, so even a defect in
+            // its setup must leave this tenant syncing exactly as flag-off.
+            fxRun = null
+            fxSplitRecord = {
+              ...emptyFxSplitRecord(true),
+              kept: [{ month: '*', reason: 'error', error: String((fxErr as Error)?.message ?? fxErr).slice(0, 200) }],
+            }
+            try {
+              Sentry.captureException(fxErr, {
+                tags: { invariant: 'xero_sync_fx_split', business_id: profileId, tenant_id: conn.tenant_id },
+              } as any)
+            } catch { /* ignore */ }
+          }
+        }
+
         // 4e. Per-window per-month fetch loop (Path A core).
         for (const window of fyWindows) {
           const monthlyRows: ParsedPLRow[] = []
+          // WD.7 — cash rows are kept OUT of monthlyRows: the FY-total
+          // reconciler oracle is accruals-only, and mixing bases there would
+          // corrupt the materiality check. They rejoin at the upsert.
+          const cashMonthlyRows: ParsedPLRow[] = []
 
           for (const periodMonth of window.monthsToFetch) {
             try {
@@ -753,6 +1000,49 @@ export async function syncBusinessXeroPL(
                 conn.tenant_id,
               )
               monthlyRows.push(...parsed)
+
+              // FX account split: decide this month (maybe one TB request).
+              // Only RateLimitDailyExceededError escapes — to the month catch
+              // below, which pauses the tenant as for any other call. Every
+              // other failure keeps the merged row and never lands in
+              // months_failed.
+              if (fxRun) {
+                const tbRequests = await fxRun.processMonth(periodMonth, parsed)
+                xeroRequestCount += tbRequests
+                tenantXeroRequestCount += tbRequests
+              }
+
+              // WD.7 — the cash twin. Supplementary: a cash-fetch failure is
+              // captured but never marks the month failed (the accrual row
+              // above already landed) and never aborts the window.
+              if (cashBasisEnabled) {
+                try {
+                  const cashRes = await fetchXeroWithRateLimit(singlePeriodCashPLUrl(periodMonth), {
+                    accessToken,
+                    tenantId: conn.tenant_id,
+                  })
+                  xeroRequestCount++
+                  tenantXeroRequestCount++
+                  cashMonthlyRows.push(
+                    ...parsePLSinglePeriod(cashRes.json, periodMonth, 'cash', conn.tenant_id),
+                  )
+                } catch (cashErr) {
+                  if (cashErr instanceof RateLimitDailyExceededError) {
+                    tenantPaused = true
+                    throw cashErr
+                  }
+                  try {
+                    Sentry.captureException(cashErr, {
+                      tags: {
+                        invariant: 'xero_sync_cash_basis_month',
+                        business_id: profileId,
+                        tenant_id: conn.tenant_id,
+                        period_month: periodMonth,
+                      },
+                    } as any)
+                  } catch { /* ignore */ }
+                }
+              }
             } catch (monthErr) {
               if (monthErr instanceof RateLimitDailyExceededError) {
                 tenantPaused = true
@@ -867,7 +1157,19 @@ export async function syncBusinessXeroPL(
           //   including JDS-style flat sibling sub-sections). Parser's
           //   section-based type is the fallback for FXGROUPID / SYNTH-AID
           //   rows that don't have a catalog entry.
-          const dbRows = monthlyRows.map((r) => {
+          // WD.7 — cash rows rejoin here; the mapping is basis-agnostic
+          // (r.basis flows through) and the natural key now includes basis.
+          //
+          // FX account split: the merged row is swapped for its coded rows HERE
+          // and nowhere earlier — reconcilePL and regressionAdjustments above
+          // ran on the unsplit monthlyRows, because the FY-total oracle still
+          // carries the merged row. The per-month stale-row sweep below then
+          // removes the merged row in a split month and the coded rows in a
+          // fallback month. Cash rows are never split (v1) — which is why, with
+          // cash_basis also on, the sweep adds an accruals-scoped pass (below).
+          // A reused month keeps its stored updated_at.
+          const accrualRowsForDb = fxRun ? fxRun.substitute(monthlyRows) : monthlyRows
+          const dbRows = [...accrualRowsForDb, ...cashMonthlyRows].map((r) => {
             const catEntry = catalog.get(r.account_id)
             const catalogType = classifyByXeroType(catEntry?.account_type)
             return {
@@ -881,7 +1183,7 @@ export async function syncBusinessXeroPL(
               amount: r.amount,
               basis: r.basis,
               source: 'xero',
-              updated_at: new Date().toISOString(),
+              updated_at: fxRun?.storedUpdatedAt(r) ?? new Date().toISOString(),
             }
           })
 
@@ -889,15 +1191,37 @@ export async function syncBusinessXeroPL(
             const upsertResult = (await supabase
               .from('xero_pl_lines')
               .upsert(dbRows, {
-                onConflict: 'business_id,tenant_id,account_id,period_month',
+                onConflict: 'business_id,tenant_id,account_id,period_month,basis',
                 ignoreDuplicates: false,
               })) as any
             if (upsertResult?.error) {
-              throw new Error(
-                `xero_pl_lines upsert: ${
-                  upsertResult.error.message ?? upsertResult.error.code ?? 'unknown'
-                }`,
-              )
+              // WD.7 deploy-window fallback: until the natural-key migration
+              // is applied to prod, the 5-column conflict target matches no
+              // unique constraint. Cash is off fleet-wide until after the
+              // apply, so retrying accruals-only on the old 4-column key is
+              // lossless. Remove once the migration is verified in prod.
+              const msg = String(upsertResult.error.message ?? '')
+              if (/no unique|constraint matching|does not exist/i.test(msg) && cashMonthlyRows.length === 0) {
+                const retry = (await supabase
+                  .from('xero_pl_lines')
+                  .upsert(dbRows, {
+                    onConflict: 'business_id,tenant_id,account_id,period_month',
+                    ignoreDuplicates: false,
+                  })) as any
+                if (retry?.error) {
+                  throw new Error(
+                    `xero_pl_lines upsert (4-col fallback): ${
+                      retry.error.message ?? retry.error.code ?? 'unknown'
+                    }`,
+                  )
+                }
+              } else {
+                throw new Error(
+                  `xero_pl_lines upsert: ${
+                    upsertResult.error.message ?? upsertResult.error.code ?? 'unknown'
+                  }`,
+                )
+              }
             }
             rowsInserted += dbRows.length
             tenantRowsInserted += dbRows.length
@@ -927,22 +1251,17 @@ export async function syncBusinessXeroPL(
             // non-fatal — today's data is already correct, and the next
             // sync retries. Sentry-info when staleSwept > 0 so we can see
             // the legacy-cleanup transient.
-            const monthToAccountIds = new Map<string, string[]>()
-            for (const r of dbRows) {
-              const arr = monthToAccountIds.get(r.period_month) ?? []
-              arr.push(r.account_id)
-              monthToAccountIds.set(r.period_month, arr)
-            }
             let staleSwept = 0
-            for (const [month, ids] of monthToAccountIds) {
+            const sweepMonth = async (month: string, ids: string[], basis?: 'accruals' | 'cash') => {
               const inClause = `(${ids.map((id) => `"${id}"`).join(',')})`
-              const sweepRes = (await supabase
+              let q = supabase
                 .from('xero_pl_lines')
                 .delete({ count: 'exact' })
                 .eq('business_id', profileId)
                 .eq('tenant_id', conn.tenant_id)
                 .eq('period_month', month)
-                .not('account_id', 'in', inClause)) as any
+              if (basis) q = q.eq('basis', basis)
+              const sweepRes = (await q.not('account_id', 'in', inClause)) as any
               if (sweepRes?.error) {
                 try {
                   Sentry.captureMessage('xero_pl_lines stale-row sweep failed', {
@@ -952,6 +1271,7 @@ export async function syncBusinessXeroPL(
                       business_id: profileId,
                       tenant_id: conn.tenant_id,
                       period_month: month,
+                      ...(basis ? { basis } : {}),
                     },
                     extra: {
                       error:
@@ -961,9 +1281,50 @@ export async function syncBusinessXeroPL(
                 } catch {
                   /* ignore */
                 }
-                continue
+                return
               }
               staleSwept += sweepRes?.count ?? 0
+            }
+            // FX account split + WD.7 cash twin: the flag-off sweep keys each
+            // month on the UNION of accruals and cash ids, with no basis filter.
+            // Once the split is live that union goes wrong in both directions:
+            //  - the cash twin is never split, so it still writes the merged FX
+            //    id — which protected the stale ACCRUALS merged row beside the
+            //    new coded rows (FX counted twice on every accruals reader);
+            //  - a month whose cash fetch failed (supplementary: the month is
+            //    not marked failed, so it is still swept) has no cash ids, so
+            //    the union is the accruals ids, which no longer carry the
+            //    merged id — and the unscoped delete took the stored CASH
+            //    merged row until a later cash fetch succeeded.
+            // So with the split live and cash_basis on, sweep each basis
+            // against its own ids: accruals every month it was written, cash
+            // only in months where cash rows were written — never in a month
+            // whose cash fetch failed. Flag-off (and split-on without cash)
+            // keeps the union sweep, so its golden is unchanged.
+            if (fxRun && cashBasisEnabled) {
+              const idsByBasis = { accruals: new Map<string, string[]>(), cash: new Map<string, string[]>() }
+              for (const r of dbRows) {
+                const byMonth = idsByBasis[r.basis === 'cash' ? 'cash' : 'accruals']
+                const arr = byMonth.get(r.period_month) ?? []
+                arr.push(r.account_id)
+                byMonth.set(r.period_month, arr)
+              }
+              for (const [month, ids] of idsByBasis.accruals) {
+                await sweepMonth(month, ids, 'accruals')
+              }
+              for (const [month, ids] of idsByBasis.cash) {
+                await sweepMonth(month, ids, 'cash')
+              }
+            } else {
+              const monthToAccountIds = new Map<string, string[]>()
+              for (const r of dbRows) {
+                const arr = monthToAccountIds.get(r.period_month) ?? []
+                arr.push(r.account_id)
+                monthToAccountIds.set(r.period_month, arr)
+              }
+              for (const [month, ids] of monthToAccountIds) {
+                await sweepMonth(month, ids)
+              }
             }
             if (staleSwept > 0) {
               console.log(
@@ -1068,6 +1429,32 @@ export async function syncBusinessXeroPL(
           }
         }
 
+        // FX split status never changes the tenant's: a kept month is correct
+        // data, only ungrouped (the cash twin's stance). One Sentry warning per
+        // tenant per run when any month kept its merged row.
+        fxRun?.report()
+
+        // Nothing landed, and something failed: every P&L month and every
+        // balance-sheet date was refused or broke (e.g. Xero answers
+        // /Organisation and /Accounts but 403s every report). Graded 'partial',
+        // this org's freshness clock below would move with no data behind it —
+        // a refused org reading fresh. It did not sync: send it to the tenant
+        // catch as an error. An org whose fetches all succeeded but hold no rows
+        // (a new, empty file) has no failure and is unaffected.
+        const tenantNothingLanded =
+          tenantRowsInserted === 0 &&
+          (tenantMonthsFailed.length > 0 ||
+            tenantDiscrepancies.length > 0 ||
+            bsResult.monthsFailed.length > 0 ||
+            bsResult.unbalancedDates.length > 0)
+        if (tenantNothingLanded) {
+          const plMonthsAttempted = fyWindows.reduce((s, w) => s + w.monthsToFetch.length, 0)
+          throw new Error(
+            `No data landed for tenant ${conn.tenant_id}: pl months failed ${tenantMonthsFailed.length}/${plMonthsAttempted}, ` +
+              `bs dates failed ${bsResult.monthsFailed.length}, unbalanced ${bsResult.unbalancedDates.length}`,
+          )
+        }
+
         // 4h. Per-tenant terminal UPDATE.
         const tenantExpectedTotal = fyWindows.reduce((s, w) => s + w.expectedMonths, 0)
         const tenantCoverage = aggregateCoverage(tenantCoveragePerWindow, tenantExpectedTotal)
@@ -1113,6 +1500,9 @@ export async function syncBusinessXeroPL(
                   months_failed: tenantMonthsFailed,
                   absorber_adjustments: tenantAbsorberAdjustments,
                   reconciler_discrepancies: tenantDiscrepancies.map((d) => d.account_name),
+                  // Only for a business that opted in — absent otherwise, so a
+                  // flag-off tenant's sync_jobs row is unchanged.
+                  ...(fxSplitRecord ? { fx_split: fxSplitRecord } : {}),
                 },
                 bs: {
                   months_fetched: bsResult.monthsFetched,
@@ -1163,6 +1553,7 @@ export async function syncBusinessXeroPL(
             )
           }
         }
+        reportTenantOutcome(conn, tenantStatus)
       } catch (err) {
         // (W3) Per-tenant exception. Mark tenant 'paused' for daily-rate
         // limit, otherwise 'error'. Continue to next tenant.
@@ -1171,6 +1562,7 @@ export async function syncBusinessXeroPL(
         const isPaused = err instanceof RateLimitDailyExceededError || tenantPaused
         if (isPaused) tenantPausedCount++
         else tenantErrorCount++
+        reportTenantOutcome(conn, isPaused ? 'paused' : 'error')
         if (tenantJobId !== null) {
           await supabase
             .from('sync_jobs')
@@ -1240,6 +1632,29 @@ export async function syncBusinessXeroPL(
           sync_job_id: syncJobId,
         },
       } as any)
+    }
+
+    // WA.5b — a business whose sync landed data but which has ZERO account
+    // mappings can never render a monthly report (generate/route.ts turns the
+    // empty set into a hard 400 NO_MAPPINGS). Auto-map used to run only on the
+    // Xero OAuth return leg, so anyone connected before that wiring stayed
+    // stuck. Fill the gap here, where every sync path converges. Non-fatal and
+    // strictly zero-mappings-only: autoMapIfUnmapped never touches a business
+    // that has any rows, and never throws (failures are Sentry-tagged inside).
+    //
+    // account_mappings.business_id is businesses.id (FK), so pass bizId, never
+    // the raw input: a business_profiles.id (what the dashboard's Sync Xero
+    // button posts) counted zero mappings for every business and tried to
+    // insert a full set under the wrong id — an FK error on every press.
+    if (finalStatus !== 'error' && rowsInserted + rowsUpdated > 0) {
+      const autoMap = await autoMapIfUnmapped(supabase, bizId)
+      if (autoMap.triggered) {
+        Sentry.captureMessage('[Sync] Auto-mapped previously unmapped business', {
+          level: 'info' as any,
+          tags: { invariant: 'auto-map-on-sync', business_id: profileId },
+          extra: { created: autoMap.created, sync_job_id: syncJobId },
+        } as any)
+      }
     }
 
     return {
@@ -1386,7 +1801,39 @@ export async function runSyncForAllBusinesses(): Promise<SyncResult[]> {
     }
 
     try {
-      results.push(await syncBusinessXeroPL(businessId))
+      const syncResult = await syncBusinessXeroPL(businessId)
+
+      // WB.2 — payroll piggybacks each business's slot, inside the SAME
+      // wall-clock budget (order + budget + skipped-list, per the house rule
+      // for per-item crons). It never changes the PL sync's status: payroll
+      // is additive telemetry on the result, and its own failures are
+      // captured inside syncPayrollForBusiness.
+      if (syncResult.status !== 'error') {
+        const remaining = RUN_ALL_BUDGET_MS - (Date.now() - startedAt)
+        if (remaining > PER_BUSINESS_RESERVE_MS) {
+          try {
+            const payroll = await syncPayrollForBusiness(supabase, businessId, {
+              deadlineMs: Date.now() + Math.min(remaining - PER_BUSINESS_RESERVE_MS / 2, 120_000),
+              maxDetailFetches: 40,
+            })
+            syncResult.payroll = {
+              tenants_synced: payroll.tenants_synced,
+              runs_upserted: payroll.runs_upserted,
+              payslips_upserted: payroll.payslips_upserted,
+              employees_upserted: payroll.employees_upserted,
+              xero_requests: payroll.xero_requests,
+              skipped_some: payroll.skipped_some,
+              errors: payroll.errors,
+            }
+          } catch (payrollErr) {
+            Sentry.captureException(payrollErr, {
+              tags: { invariant: 'payroll-sync', business_id: businessId },
+            } as any)
+          }
+        }
+      }
+
+      results.push(syncResult)
     } catch (err: any) {
       results.push({
         business_id: businessId,

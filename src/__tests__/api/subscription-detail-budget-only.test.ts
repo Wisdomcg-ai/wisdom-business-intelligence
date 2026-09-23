@@ -79,7 +79,7 @@ vi.mock('@/lib/utils/verify-business-access', () => ({
 // ── Service-role supabase mock (the module-level `supabase`) ─────────────────
 //
 // The route does several .from(...) queries:
-//   - xero_connections (.select('*').eq().eq().maybeSingle())
+//   - xero_connections (.select('*').eq().eq().order().order().limit() → array, via resolveXeroConnections)
 //   - subscription_budgets (.select(...).eq().eq() → returns array)
 //   - xero_pl_lines_wide_compat (.select(...).eq().in() → returns array)
 //   - monthly_report_settings (.select('budget_forecast_id').eq().maybeSingle())
@@ -92,6 +92,25 @@ vi.mock('@/lib/utils/verify-business-access', () => ({
 type TableData = { rows?: any[]; single?: any | null; error?: any | null }
 let tableFixtures: Record<string, TableData> = {}
 
+/**
+ * Which business_id values each table was filtered by.
+ *
+ * The mock below deliberately ignores filter ARGUMENTS when returning rows —
+ * fixtures are per-table — but a mock that discards them entirely cannot see a
+ * dual-ID bug, which is this codebase's most recurring incident class. The P&L
+ * read filtered on the raw businesses-space id against a table that is entirely
+ * business_profiles-space, so it matched nothing for every client and every
+ * account subtotal silently fell through to the vendor-sum fallback. Recording
+ * the values is what makes that assertable.
+ */
+let businessIdFilters: Record<string, string[]> = {}
+
+function recordBusinessIdFilter(table: string, col: string, val: unknown) {
+  if (col !== 'business_id') return
+  const values = Array.isArray(val) ? val.map(String) : [String(val)]
+  businessIdFilters[table] = [...(businessIdFilters[table] ?? []), ...values]
+}
+
 function chainable(table: string): any {
   const fx = tableFixtures[table] ?? { rows: [], single: null }
   const rows = fx.rows ?? []
@@ -99,8 +118,8 @@ function chainable(table: string): any {
   const error = fx.error ?? null
 
   const c: any = {
-    eq: () => c,
-    in: () => c,
+    eq: (col: string, val: unknown) => { recordBusinessIdFilter(table, col, val); return c },
+    in: (col: string, val: unknown) => { recordBusinessIdFilter(table, col, val); return c },
     or: () => c,
     is: () => c,
     order: () => c,
@@ -113,6 +132,16 @@ function chainable(table: string): any {
   }
   return c
 }
+
+// The resolver has its own tests; stubbing it here keeps this test about the
+// ROUTE — does it filter by the resolved id-set, or by the raw request id?
+vi.mock('@/lib/business/resolveBusinessProfileIds', () => ({
+  resolveBusinessProfileIds: vi.fn(async (_c: unknown, id: string) => ({
+    businessId: id,
+    profileId: 'profile-1',
+    all: [id, 'profile-1'],
+  })),
+}))
 
 vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(() => ({
@@ -133,19 +162,37 @@ type XeroFixtures = {
   accounts: any[]
   currentBankTxns: any[]
   priorBankTxns: any[]
+  currentBills: any[]
+  priorBills: any[]
 }
 let xeroFixtures: XeroFixtures = {
   accounts: [],
   currentBankTxns: [],
   priorBankTxns: [],
+  currentBills: [],
+  priorBills: [],
 }
 let bankTxnCallCount = 0
+let billsCallCount = 0
 
 function mockFetch(url: any): Promise<Response> {
   const u = String(url)
   if (u.includes('/api.xro/2.0/Accounts') && !u.includes('BankTransactions')) {
     return Promise.resolve(
       new Response(JSON.stringify({ Accounts: xeroFixtures.accounts }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  }
+  if (u.includes('/api.xro/2.0/Invoices')) {
+    billsCallCount += 1
+    // First call = current month, second = prior month (mirrors the bank-txn
+    // call ordering; page=1 returns <100 items so one fetch per period).
+    const isCurrent = billsCallCount === 1
+    const items = isCurrent ? xeroFixtures.currentBills : xeroFixtures.priorBills
+    return Promise.resolve(
+      new Response(JSON.stringify({ Invoices: items }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
@@ -170,6 +217,7 @@ function mockFetch(url: any): Promise<Response> {
 
 // ─── Imports AFTER mock declarations ──────────────────────────────────────────
 import { POST } from '@/app/api/monthly-report/subscription-detail/route'
+import { createVendorKey, extractVendorName } from '@/lib/utils/vendor-normalization'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -182,7 +230,9 @@ function makeRequest(body: any): NextRequest {
 }
 
 beforeEach(() => {
+  businessIdFilters = {}
   bankTxnCallCount = 0
+  billsCallCount = 0
   tableFixtures = {}
   xeroFixtures = {
     accounts: [
@@ -191,15 +241,20 @@ beforeEach(() => {
     ],
     currentBankTxns: [],
     priorBankTxns: [],
+    currentBills: [],
+    priorBills: [],
   }
   // Default xero_connections row so the route doesn't short-circuit.
+  // rows (not single): the route now enumerates ALL active connections via
+  // resolveXeroConnections — the old .maybeSingle() silently crawled one org
+  // of a multi-org business (Dragon has two, IICT three).
   tableFixtures['xero_connections'] = {
-    single: {
+    rows: [{
       id: 'conn-1',
       business_id: 'biz-1',
       tenant_id: 'tenant-1',
       is_active: true,
-    },
+    }],
   }
   vi.stubGlobal('fetch', vi.fn(mockFetch))
 })
@@ -254,6 +309,7 @@ describe('S2 — subscription-detail budget-only vendor visibility', () => {
     xeroFixtures.currentBankTxns = [
       {
         Type: 'SPEND',
+        Status: 'AUTHORISED',
         Contact: { Name: 'Stripe Au' },
         LineItems: [{ AccountCode: '440', LineAmount: 50, Description: '' }],
       },
@@ -293,6 +349,7 @@ describe('S2 — subscription-detail budget-only vendor visibility', () => {
     xeroFixtures.currentBankTxns = [
       {
         Type: 'SPEND',
+        Status: 'AUTHORISED',
         Contact: { Name: 'Stripe Au' },
         LineItems: [{ AccountCode: '440', LineAmount: 50, Description: '' }],
       },
@@ -346,6 +403,7 @@ describe('S2 — subscription-detail budget-only vendor visibility', () => {
     xeroFixtures.currentBankTxns = [
       {
         Type: 'SPEND',
+        Status: 'AUTHORISED',
         Contact: { Name: 'Adobe' },
         LineItems: [{ AccountCode: '440', LineAmount: 50, Description: '' }],
       },
@@ -370,5 +428,132 @@ describe('S2 — subscription-detail budget-only vendor visibility', () => {
     expect(v.transaction_count).toBe(1)
     // budget may be 0 or undefined for unbudgeted — assert "not > 0".
     expect(v.budget ?? 0).toBe(0)
+  })
+
+  // ── Bills gap (19 Aug 2026) ────────────────────────────────────────────────
+  // Paying a supplier bill creates a Payment in Xero, not a SPEND bank
+  // transaction, so bill-paid subscriptions were INVISIBLE to this route: $0
+  // actual, "not billed this month" badge, and a false line in the
+  // budgeted-not-billed leakage card. These pin the fix.
+
+  it('Test 5: a bill-paid vendor shows its actual instead of a false "not billed"', async () => {
+    // The stored vendor_key must come through the SAME canonical path the
+    // route uses (extractVendorName may collapse/rename) — that is how real
+    // budget rows were keyed on save.
+    const vultrKey = createVendorKey(extractVendorName('Vultr.com', 'Cloud hosting'))
+
+    xeroFixtures.currentBankTxns = []
+    xeroFixtures.currentBills = [
+      {
+        Type: 'ACCPAY',
+        Status: 'AUTHORISED',
+        Contact: { Name: 'Vultr.com' },
+        LineItems: [{ AccountCode: '440', LineAmount: 777, Description: 'Cloud hosting' }],
+      },
+    ]
+    tableFixtures['subscription_budgets'] = {
+      rows: [{
+        vendor_name: 'Vultr.com', vendor_key: vultrKey, monthly_budget: 777,
+        account_codes: ['440'], frequency: 'monthly', renewal_month: null,
+      }],
+    }
+
+    const res = await POST(makeRequest({
+      business_id: 'biz-1',
+      report_month: '2026-04',
+      account_codes: ['440'],
+    }))
+    const json = await res.json()
+    const acc = json.data.accounts.find((a: any) => a.account_code === '440')
+    const v = acc.vendors.find((x: any) => x.vendor_key === vultrKey)
+    expect(v).toBeTruthy()
+    expect(v.actual).toBe(777)
+    // transaction_count > 0 is what suppresses the "not billed this month"
+    // badge AND keeps the vendor out of lapsed_still_budgeted.
+    expect(v.transaction_count).toBeGreaterThan(0)
+    expect(
+      (json.data.leakage?.lapsed_still_budgeted ?? []).map((l: any) => l.vendor_key),
+    ).not.toContain(vultrKey)
+  })
+
+  it('Test 6: bank and bill spend for the SAME vendor sum into one row', async () => {
+    xeroFixtures.currentBankTxns = [
+      {
+        Type: 'SPEND',
+        Status: 'AUTHORISED',
+        Contact: { Name: 'Adobe' },
+        LineItems: [{ AccountCode: '440', LineAmount: 50, Description: '' }],
+      },
+    ]
+    xeroFixtures.currentBills = [
+      {
+        Type: 'ACCPAY',
+        Status: 'AUTHORISED',
+        Contact: { Name: 'Adobe' },
+        LineItems: [{ AccountCode: '440', LineAmount: 30, Description: 'Extra seat' }],
+      },
+    ]
+    tableFixtures['subscription_budgets'] = { rows: [] }
+
+    const res = await POST(makeRequest({
+      business_id: 'biz-1',
+      report_month: '2026-04',
+      account_codes: ['440'],
+    }))
+    const json = await res.json()
+    const acc = json.data.accounts.find((a: any) => a.account_code === '440')
+    expect(acc.vendors).toHaveLength(1)
+    expect(acc.vendors[0].actual).toBe(80)
+    expect(acc.vendors[0].transaction_count).toBe(2)
+  })
+
+  it('Test 7: prior-month bills populate the prior column', async () => {
+    xeroFixtures.priorBills = [
+      {
+        Type: 'ACCPAY',
+        Status: 'AUTHORISED',
+        Contact: { Name: 'Vultr.com' },
+        LineItems: [{ AccountCode: '440', LineAmount: 750, Description: '' }],
+      },
+    ]
+    tableFixtures['subscription_budgets'] = { rows: [] }
+
+    const res = await POST(makeRequest({
+      business_id: 'biz-1',
+      report_month: '2026-04',
+      account_codes: ['440'],
+    }))
+    const json = await res.json()
+    const acc = json.data.accounts.find((a: any) => a.account_code === '440')
+    const v = acc.vendors.find((x: any) => x.vendor_name === 'Vultr.com')
+    expect(v.prior_month_actual).toBe(750)
+    expect(v.actual).toBe(0)
+  })
+})
+
+describe('subscription-detail — the P&L actuals read is dual-ID aware', () => {
+  it('filters xero_pl_lines_wide_compat by BOTH id-spaces, not the raw businesses id', async () => {
+    // xero_pl_lines_wide_compat is business_profiles-space: all 969 rows in prod
+    // sit there and none in businesses-space. Filtering on the request body's
+    // businesses-space id matched nothing for every client, so plActuals stayed
+    // empty and every account subtotal fell through to the vendor-sum fallback.
+    tableFixtures['subscription_budgets'] = {
+      rows: [{ vendor_key: 'zoho', vendor_name: 'Zoho', monthly_budget: 100, frequency: 'monthly', is_active: true, account_codes: ['415'] }],
+    }
+    tableFixtures['account_mappings'] = {
+      rows: [{ xero_account_code: '415', xero_account_name: 'Subscriptions — Software' }],
+    }
+
+    const res = await POST(makeRequest({
+      business_id: 'biz-1',
+      report_month: '2026-04',
+      account_codes: ['415'],
+    }))
+    expect(res.status).toBe(200)
+
+    const filtered = businessIdFilters['xero_pl_lines_wide_compat'] ?? []
+    // The resolver echoes both spaces; the profile id must be among them.
+    expect(filtered).toContain('profile-1')
+    expect(filtered.length).toBeGreaterThan(1)
   })
 })

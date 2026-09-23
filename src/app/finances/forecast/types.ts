@@ -77,6 +77,13 @@ export interface PLLine {
   account_class?: string
   category?: string
   subcategory?: string
+  /**
+   * The report heading the account prints under (account_mappings
+   * report_subcategory), when the caller has one. Only the monthly-report pack
+   * sets it; the cashflow engine groups expenses by it and falls back to its
+   * account-name keywords without it.
+   */
+  report_group?: string | null
   sort_order?: number
   actual_months: { [key: string]: number } // e.g., { "2024-07": 10000, "2024-08": 12000 }
   forecast_months: { [key: string]: number }
@@ -505,6 +512,9 @@ export interface OpExCategory {
   account_name: string
   total: number
   monthly_average: number
+  /** Xero account code. Drives the wizard's subscription double-count guard
+   *  (OpExLine.accountCode) — absent it, the guard silently no-ops. */
+  account_code?: string
 }
 
 // Revenue/COGS line item from Xero
@@ -573,6 +583,13 @@ export interface HistoricalPLSummary {
   // genuinely has no Xero connection).
   lookup_error?: string | null
 
+  // Phase A (CFO-only clients) — true when /api/Xero/pl-summary served this
+  // summary from the synced DB mirror because no ACTIVE xero_connections row
+  // exists (expired/disconnected tenant). The data is real but frozen at the
+  // last successful sync; data_quality (usually 'no_sync') carries staleness.
+  // Absent/false when an active connection was found.
+  xero_disconnected?: boolean
+
   // Prior complete FY - the baseline for comparison
   prior_fy?: PeriodSummary
 
@@ -596,6 +613,13 @@ export interface HistoricalPLSummary {
   // OR when the historical fallback path has no sync history to consult.
   data_quality?: import('@/lib/services/forecast-read-service').DataQuality
   per_tenant_quality?: import('@/lib/services/forecast-read-service').PerTenantQuality[]
+
+  // The quality CHECK itself could not be run — a read behind `data_quality`
+  // errored, so the tier above is a default, not a measurement. Consumers pass
+  // this to DataIntegrityBanner's `checkFailed`, which takes precedence over
+  // the tier. Distinct from a genuine 'no_sync': that one is news about Xero,
+  // this one is news about our own read.
+  quality_check_failed?: boolean
 
   // Phase 67-04 — surfaced when the multi-currency engine path produced this
   // summary. Lets Step 2 render a missing-rate banner so the user knows when
@@ -867,6 +891,20 @@ export interface CashflowForecastMonth {
   depreciation_addback?: number    // Non-cash add-back for identified depn accounts
   company_tax_payment?: number     // Positive amount when tax is paid this month
   capex_payment?: number           // Positive amount = CapEx cash outflow this month
+
+  // Cash model v2 (monthly-report pack) — set on ACTUAL months only, never by
+  // the engine. An actual month's rows must add to the bank movement, so the
+  // balance-sheet movements the engine has no section for travel here.
+  /** Equity movements other than the profit (capital in, drawings, dividends), signed as cash. */
+  equity_lines?: CashflowLine[]
+  movement_in_equity?: number
+  /**
+   * What stops the month's rows adding to the bank movement, stated as rows
+   * rather than hidden in another figure: a P&L and a balance sheet from
+   * different syncs, and movements under 50c that no row lists.
+   */
+  unreconciled_lines?: CashflowLine[]
+  unreconciled_movement?: number
 }
 
 export interface CashflowForecastData {
@@ -876,6 +914,40 @@ export interface CashflowForecastData {
   totals: CashflowForecastMonth       // Annual total column
   lowest_bank_balance: number
   lowest_bank_month: string
+  /**
+   * Account names in statement order, when the caller knows it. The engine
+   * emits each month's lines in the order money first arrives, so an account
+   * whose first cash month is late (Services, Art Supplies) printed after
+   * accounts that follow it in the chart of accounts. The pack sets this from
+   * its P&L lines; renderers without it keep first-appearance order.
+   */
+  line_order?: string[]
+  /**
+   * Expense group headings in the order to print them after the coach's own
+   * order. Without it a renderer can only use the order groups first have
+   * cash, which put Dragon Roofing's Employment Expense last because its
+   * wages start in August. The pack sets it; see buildPackCashflowForecast.
+   */
+  expense_group_order?: string[]
+  /**
+   * Set only by the pack's cash model v2 (buildPackCashModel): its months
+   * before `first_forecast_month` are the bank's actual cash, the rest the
+   * approved budget. Absent on every v1 and forecast-module cashflow, which
+   * renderers read as "print as you always have".
+   */
+  cash_model?: {
+    version: 2
+    /** The last actual month ('YYYY-MM'). */
+    last_actual_month: string
+    /** The first budget month, or null when the whole year is actual. */
+    first_forecast_month: string | null
+    dso_days: number | null
+    dpo_days: number | null
+    /** The sentence the page prints under the table and in the chart's box. */
+    basis: string
+    /** What the coach is told before sending (preflight, harness); never printed in the pack. */
+    warnings: string[]
+  }
 }
 
 // Validation concern for forecast review

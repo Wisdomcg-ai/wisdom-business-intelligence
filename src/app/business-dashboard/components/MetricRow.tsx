@@ -1,8 +1,8 @@
 'use client'
 
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus, HelpCircle } from 'lucide-react'
 import type { WeeklyMetricsSnapshot } from '../services/weekly-metrics-service'
-import type { QuarterColumn, QuarterInfo } from '../hooks/useBusinessDashboard'
+import type { QuarterColumn, QuarterInfo, TrendStatus } from '../hooks/useBusinessDashboard'
 
 interface MetricRowProps {
   label: string
@@ -22,7 +22,7 @@ interface MetricRowProps {
   toggleQuarter: (quarterKey: string) => void
   calculateQTD: (quarterSnapshots: WeeklyMetricsSnapshot[], metricKey: keyof WeeklyMetricsSnapshot) => number
   getQuarterProgress: (quarterInfo: QuarterInfo | null) => { currentWeek: number; totalWeeks: number; percentComplete: number }
-  getTrendStatus: (actual: number, target: number, percentComplete: number) => 'ahead' | 'on-track' | 'behind'
+  getTrendStatus: (actual: number, target: number, percentComplete: number) => TrendStatus
   getQuarterWeeks: (quarterInfo: QuarterInfo) => string[]
   handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void
   inputType?: 'currency' | 'number' | 'percentage'
@@ -69,7 +69,7 @@ export default function MetricRow({
     const qtd = calculateQTD(quarterSnapshots, metricKey)
     const progress = getQuarterProgress(currentQuarterInfo)
     const trend = getTrendStatus(qtd, quarterlyTarget, progress.percentComplete)
-    const bgColor = trend === 'ahead' ? 'bg-green-50' : trend === 'behind' ? 'bg-red-50' : 'bg-yellow-50'
+    const bgColor = getTrendColor(trend)
 
     return (
       <td className={`px-4 py-4 text-sm text-right font-semibold sticky z-10 ${bgColor}`} style={{ left: '460px', width: '120px', minWidth: '120px', maxWidth: '120px' }}>
@@ -78,13 +78,18 @@ export default function MetricRow({
     )
   }
 
-  const getTrendIcon = (trend: string) => {
+  const getTrendIcon = (trend: TrendStatus) => {
+    // PRES-06: 'unknown' means the metric cannot be judged (no target, period not
+    // started, or the load failed). It gets a neutral mark — never the yellow
+    // "on track" dash it used to fall through to.
+    if (trend === 'unknown') return <HelpCircle className="w-3 h-3 ml-1 text-slate-400" />
     if (trend === 'ahead') return <TrendingUp className="w-3 h-3 ml-1 text-green-600" />
     if (trend === 'behind') return <TrendingDown className="w-3 h-3 ml-1 text-red-600" />
     return <Minus className="w-3 h-3 ml-1 text-yellow-600" />
   }
 
-  const getTrendColor = (trend: string) => {
+  const getTrendColor = (trend: TrendStatus) => {
+    if (trend === 'unknown') return 'bg-slate-50'
     if (trend === 'ahead') return 'bg-green-50'
     if (trend === 'behind') return 'bg-red-50'
     return 'bg-yellow-50'

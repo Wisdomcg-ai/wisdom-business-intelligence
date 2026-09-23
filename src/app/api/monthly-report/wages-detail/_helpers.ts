@@ -13,6 +13,7 @@
  * No external dependency added: levenshtein is an inline iterative DP
  * implementation per Phase 71 CONTEXT D-B1 (no library in package.json).
  */
+import { buildFuzzyLookup, isAccountMatch } from '@/lib/utils/account-matching';
 
 export type MatchVia = 'exact' | 'token_sort' | 'fuzzy' | 'no_match';
 
@@ -141,4 +142,220 @@ export function matchEmployeeName(
   }
 
   return { matched: null, via: 'no_match' };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// W0.2 pay-run pagination helpers — moved to @/lib/xero/payrun-paging in WB.1
+// so the payroll sync (lib) and this route share one implementation.
+// Re-exported here so existing imports and tests keep working.
+// ─────────────────────────────────────────────────────────────────────────────
+export {
+  PAY_RUNS_PAGE_SIZE,
+  PAY_RUNS_MAX_PAGES,
+  PAY_RUNS_ORDER,
+  payRunLookbackCutoff,
+  shouldFetchNextPayRunPage,
+  oldestPeriodEnd,
+} from '@/lib/xero/payrun-paging';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WB.4 / WB.5 — payroll month analysis: phasing + P&L tie-out.
+//
+// Pure functions; the route feeds them what it already computed. Both encode
+// rules lifted from the client skills that produce the Calxa packs by hand:
+//
+//   Phasing — "some months have five Fridays, not four; that's a real
+//   budget-phasing variance worth noting" (DD skill). An extra weekly pay run
+//   inflates the month ~25% against a 4-week budget; without the note it reads
+//   as an overspend.
+//
+//   Tie-out — every skill's sign-off checklist starts with "payroll grand
+//   total ties to the P&L wages figure". PAY-TIES ships as a WARNING (per the
+//   invariant-promotion convention): payment-date-keyed pay runs vs period-end
+//   accruals and manual journals can legitimately move wages between months.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PayrollPhasing {
+  /** Distinct payment dates in the month. */
+  pay_runs_in_month: number;
+  /** Typical run count for the dominant calendar (4 for WEEKLY, 2 for FORTNIGHTLY…). */
+  typical_runs: number;
+  /** Dominant calendar type among employees actually paid this month. */
+  calendar_type: string;
+  /** True when the month carries more runs than typical — the five-Friday case. */
+  extra_run: boolean;
+}
+
+/**
+ * Detect budget-phasing months. `calendarTypes` is one entry per PAID employee
+ * (dominant type wins ties by first-seen); `typicalRunsFor` is the existing
+ * estimatePayRunsInMonth mapping, injected so route and tests share it.
+ */
+export function computePayrollPhasing(args: {
+  payRunDates: ReadonlyArray<string>;
+  calendarTypes: ReadonlyArray<string>;
+  typicalRunsFor: (frequency: string) => number;
+}): PayrollPhasing | null {
+  const { payRunDates, calendarTypes, typicalRunsFor } = args;
+  if (payRunDates.length === 0 || calendarTypes.length === 0) return null;
+
+  const counts = new Map<string, number>();
+  let dominant = calendarTypes[0];
+  for (const t of calendarTypes) {
+    const n = (counts.get(t) ?? 0) + 1;
+    counts.set(t, n);
+    if (n > (counts.get(dominant) ?? 0)) dominant = t;
+  }
+
+  const typical = typicalRunsFor(dominant);
+  return {
+    pay_runs_in_month: payRunDates.length,
+    typical_runs: typical,
+    calendar_type: dominant,
+    extra_run: typical > 0 && payRunDates.length > typical,
+  };
+}
+
+export interface PayrollTies {
+  /** Σ payslip gross across the month. */
+  payroll_gross: number;
+  /** Σ payslip super across the month. */
+  payroll_super: number;
+  /** Which payroll side was compared: gross, or gross+super. */
+  payroll_side: number;
+  /** Σ actuals of the CONFIGURED wages accounts from the P&L. */
+  accounts_actual: number;
+  /** Whether the configured account list appears to include a super account. */
+  includes_super_account: boolean;
+  delta: number;
+  within_tolerance: boolean;
+  /**
+   * False when there is nothing real to compare: no P&L actuals existed for
+   * the configured accounts (the route backfills accounts[0] from the payroll
+   * total in that case, which would make the tie circular), or no payroll.
+   */
+  comparable: boolean;
+}
+
+/** DD's Daniel-flagged rule: cent-level rounding must not read as a break. */
+export const PAY_TIES_TOLERANCE = 1;
+
+export function computePayrollTies(args: {
+  payrollGross: number;
+  payrollSuper: number;
+  /** P&L actual across configured wage accounts, BEFORE any backfill. */
+  accountsActual: number;
+  wagesAccountNames: ReadonlyArray<string>;
+}): PayrollTies {
+  const { payrollGross, payrollSuper, accountsActual, wagesAccountNames } = args;
+  const includesSuper = wagesAccountNames.some((n) => /super/i.test(n));
+  // Compare like with like: payslip gross excludes super, so super joins the
+  // payroll side only when the account list carries a super account.
+  const payrollSide = payrollGross + (includesSuper ? payrollSuper : 0);
+  const delta = Math.round((accountsActual - payrollSide) * 100) / 100;
+  const comparable = accountsActual !== 0 && payrollGross !== 0;
+  return {
+    payroll_gross: Math.round(payrollGross * 100) / 100,
+    payroll_super: Math.round(payrollSuper * 100) / 100,
+    payroll_side: Math.round(payrollSide * 100) / 100,
+    accounts_actual: Math.round(accountsActual * 100) / 100,
+    includes_super_account: includesSuper,
+    delta,
+    within_tolerance: Math.abs(delta) <= PAY_TIES_TOLERANCE,
+    comparable,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The account-level budget on the wages page
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One budget line, in the shape both budget sources hand this page.
+ *
+ * `is_from_payroll` exists only on the forecast side (budget_versions has no
+ * such notion), so the fallback that reads it is a forecast-only tier by
+ * construction — see the fourth tier below.
+ */
+export interface WagesBudgetLine {
+  account_name: string
+  forecast_months?: Record<string, number> | null
+  is_from_payroll?: boolean | null
+}
+
+/**
+ * Match one configured wages account to its budget for a month.
+ *
+ * Lifted verbatim out of route.ts — four tiers, first non-zero wins, and the
+ * scan tiers take the LARGEST candidate rather than the first. It moved here
+ * because the route now feeds it whichever budget the client is actually held
+ * to (the approved budget out of budget_versions once they are on the budget
+ * store, the forecast otherwise), and the thing worth pinning in a test is that
+ * a budget-store client's wages budget is the approved one: Urban Road's
+ * August 2026 'Employ - Wages & Salaries' is $52,519 approved against $76,182
+ * in the forecast that this page used to read.
+ *
+ * The tiers are unchanged on purpose. Every forecast client's wages page must
+ * come out of this byte-identical to what it printed before, including the
+ * fourth tier's "any payroll-derived line will do" guess.
+ */
+export function buildWagesBudgetResolver(
+  budgetLines: WagesBudgetLine[],
+  /** account_mappings, Xero name → budget line name. */
+  xeroToForecast: Map<string, string>,
+): (accountName: string, month: string) => number {
+  const budgetLookup = buildFuzzyLookup(budgetLines, (item) => item.account_name)
+
+  // F5 (22 Sep 2026 diagnostic): the last-resort tier below handed the LARGEST
+  // payroll budget line to every configured account that had found nothing —
+  // the same $50,000 counted once per account, so a grand budget of $150,000
+  // against a $50,000 plan. A payroll line may now be claimed by ONE account
+  // per month; the rest fall through at zero, as a budget-store client already
+  // does. Claims live for the life of this resolver, which is one page load.
+  const claimedByMonth = new Map<string, Set<WagesBudgetLine>>()
+
+  return (accountName: string, month: string): number => {
+    let best = 0
+
+    const direct = budgetLookup(accountName)
+    if (direct?.forecast_months) {
+      best = Math.abs(direct.forecast_months[month] || 0)
+    }
+    if (best === 0) {
+      for (const bl of budgetLines) {
+        if (isAccountMatch(accountName, bl.account_name)) {
+          const val = Math.abs(bl.forecast_months?.[month] || 0)
+          if (val > best) best = val
+        }
+      }
+    }
+    if (best === 0) {
+      const mapped = xeroToForecast.get(accountName.toLowerCase())
+      if (mapped) {
+        const bridged = budgetLookup(mapped)
+        if (bridged?.forecast_months) best = Math.abs(bridged.forecast_months[month] || 0)
+      }
+    }
+    if (best === 0) {
+      // Forecast-only by construction: no budget_versions line carries the
+      // flag, so a budget-store client falls out of this tier at zero rather
+      // than borrowing a number from an account nobody asked about.
+      const claimed = claimedByMonth.get(month) ?? new Set<WagesBudgetLine>()
+      let pick: WagesBudgetLine | null = null
+      for (const pl of budgetLines) {
+        if (!pl.is_from_payroll || claimed.has(pl)) continue
+        const val = Math.abs(pl.forecast_months?.[month] || 0)
+        if (val > best) {
+          best = val
+          pick = pl
+        }
+      }
+      if (pick) {
+        claimed.add(pick)
+        claimedByMonth.set(month, claimed)
+      }
+    }
+
+    return best
+  }
 }

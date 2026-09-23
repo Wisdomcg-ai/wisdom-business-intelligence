@@ -215,6 +215,7 @@ function StrategicPlanningContent() {
   const {
     isLoading,
     error,
+    loadUnavailable,
     // Auto-save status
     isDirty,
     saveStatus,
@@ -520,6 +521,22 @@ function StrategicPlanningContent() {
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-gray-600">Loading your strategic plan...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // D3: the plan could not be read, so what is in state is empty defaults —
+  // and autosave would write them over the client's real targets and KPIs. The
+  // hook refuses to save; this says why rather than showing an empty plan.
+  if (loadUnavailable) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="text-center max-w-md px-6" role="alert">
+          <p className="text-amber-700 font-medium mb-2">This plan couldn&apos;t be loaded</p>
+          <p className="text-gray-600">
+            Nothing has been changed and nothing can be saved over it. Reload the page to try again.
+          </p>
         </div>
       </div>
     )

@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { verifyBusinessAccess } from '@/lib/utils/verify-business-access'
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
@@ -71,17 +72,14 @@ async function denyIfNoForecastAccess(
     return null
   }
 
-  // Resolve both ID formats so the access check works regardless of which was stored
+  // Resolve both ID formats so the access check works regardless of which was
+  // stored, then use the canonical helper — the inline owner/assigned-coach
+  // check it replaces admitted neither super_admins nor business_users members
+  // (same gap as monthly-report/generate, found on Urban Road 8 Sep 2026).
   const ids = await resolveBusinessProfileIds(supabaseAdmin, forecast.business_id)
-  const { data: bizAccess } = await supabase
-    .from('businesses')
-    .select('id')
-    .in('id', ids.all)
-    .or(`owner_id.eq.${userId},assigned_coach_id.eq.${userId}`)
-    .limit(1)
-    .maybeSingle()
+  const hasAccess = await verifyBusinessAccess(userId, ids.businessId)
 
-  if (!bizAccess) {
+  if (!hasAccess) {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 })
   }
 

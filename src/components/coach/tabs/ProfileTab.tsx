@@ -480,6 +480,7 @@ export function ProfileTab({
                   <option value="1:1 Coaching">1:1 Coaching</option>
                   <option value="Think Bigger">Think Bigger</option>
                   <option value="Coaching + CFO Services">Coaching + CFO Services</option>
+                  <option value="CFO Services Only">CFO Only</option>
                 </select>
               ) : (
                 <p className="text-gray-900">{programType || '--'}</p>

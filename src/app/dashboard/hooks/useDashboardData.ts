@@ -242,6 +242,7 @@ export function useDashboardData(): UseDashboardDataReturn {
 
   const [data, setData] = useState<DashboardData>({
     annualGoals: null,
+    annualGoalsFailed: false,
     quarterlyGoals: null,
     currentQuarter: getCurrentQuarter(),
     rocks: [],
@@ -285,7 +286,14 @@ export function useDashboardData(): UseDashboardDataReturn {
       .eq('business_id', bId)
       .maybeSingle()
 
-    if (error || !data) return null
+    // PRES-11 — this was `if (error || !data) return null`, collapsing a QUERY
+    // FAILURE and a genuinely-absent row into the same null. Downstream that null
+    // renders "No annual goals set" with a "Set Your Goals" button — telling a
+    // client whose targets are sitting intact in the database that they never set
+    // any, and pointing them at a wizard to re-enter them. Throwing lets the
+    // caller mark the card as unloaded instead.
+    if (error) throw new Error(error.message || 'Failed to load annual goals')
+    if (!data) return null
 
     const revenue = parseFloat(data.revenue_year1) || 0
     const grossProfit = parseFloat(data.gross_profit_year1) || 0
@@ -430,9 +438,17 @@ export function useDashboardData(): UseDashboardDataReturn {
       const targetUserId = activeBusiness?.ownerId || user.id
 
       // Parallelize teamMap with goals/weekly — rocks will use teamMap after
+      // PRES-11 — loadAnnualGoals now throws on a query failure so it can be told
+      // apart from "no goals set". Contained here rather than left to reject the
+      // Promise.all: one failed card must not blank the whole dashboard.
+      let annualGoalsFailed = false
       const [teamMap, annualGoals, currentQuarterGoals, weeklyGoals] = await Promise.all([
         buildTeamMembersMap(bId),
-        loadAnnualGoals(bId),
+        loadAnnualGoals(bId).catch((err) => {
+          console.error('[Dashboard] Annual goals load failed:', err)
+          annualGoalsFailed = true
+          return null
+        }),
         loadQuarterlyGoals(bId, currentQuarter),
         loadWeeklyGoals(bId, targetUserId)
       ])
@@ -481,6 +497,7 @@ export function useDashboardData(): UseDashboardDataReturn {
 
       setData({
         annualGoals,
+        annualGoalsFailed,
         quarterlyGoals,
         currentQuarter: displayQuarter,
         rocks,

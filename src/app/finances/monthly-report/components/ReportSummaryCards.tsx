@@ -17,7 +17,7 @@ function formatCurrency(value: number): string {
   return value < 0 ? `(${str})` : str
 }
 
-function VarianceBadge({ value, percent, isRevenue }: { value: number; percent: number; isRevenue?: boolean }) {
+function VarianceBadge({ value, percent, isRevenue }: { value: number; percent: number | null; isRevenue?: boolean }) {
   // For revenue: positive variance = favorable
   // For expenses: already calculated with correct sign convention
   const isFavorable = value >= 0
@@ -26,19 +26,32 @@ function VarianceBadge({ value, percent, isRevenue }: { value: number; percent: 
 
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>
-      {arrow}{formatCurrency(value)} ({percent >= 0 ? '+' : ''}{percent.toFixed(1)}%)
+      {arrow}{formatCurrency(value)}
+      {/* WA.2/WA.3 — no percentage when there is no budget to compare against:
+          a $0 budget used to render "(+0.0%)", which reads as "on budget". */}
+      {percent !== null && <>&nbsp;({percent >= 0 ? '+' : ''}{percent.toFixed(1)}%)</>}
     </span>
   )
 }
 
+/** Variance as a % of budget — null (render nothing) when there is no budget. */
+function variancePct(variance: number, budget: number): number | null {
+  return budget !== 0 ? (variance / Math.abs(budget)) * 100 : null
+}
+
 export default function ReportSummaryCards({ summary, hasBudget }: ReportSummaryCardsProps) {
+  // WA.2 — the GP and NP badges used to pass the MARGIN (gp_percent /
+  // np_percent) as the badge's percentage, so "−$14,835 (−1.0%)" printed a
+  // −1.0% net margin beside a −110% variance. The badge's percentage is now
+  // always variance ÷ |budget|, and the margin stays where it belongs: the
+  // extraLabel under the card.
   const cards = [
     {
       label: 'Revenue',
       actual: summary.revenue.actual,
       budget: summary.revenue.budget,
       variance: summary.revenue.variance,
-      variancePercent: summary.revenue.variance_percent,
+      variancePercent: variancePct(summary.revenue.variance, summary.revenue.budget),
       icon: <DollarSign className="w-5 h-5 text-brand-navy" />,
       isRevenue: true,
     },
@@ -47,7 +60,7 @@ export default function ReportSummaryCards({ summary, hasBudget }: ReportSummary
       actual: summary.gross_profit.actual,
       budget: summary.gross_profit.budget,
       variance: summary.gross_profit.variance,
-      variancePercent: summary.gross_profit.gp_percent,
+      variancePercent: variancePct(summary.gross_profit.variance, summary.gross_profit.budget),
       icon: <TrendingUp className="w-5 h-5 text-green-600" />,
       isRevenue: true,
       extraLabel: `GP ${summary.gross_profit.gp_percent.toFixed(1)}%`,
@@ -57,7 +70,7 @@ export default function ReportSummaryCards({ summary, hasBudget }: ReportSummary
       actual: summary.opex.actual,
       budget: summary.opex.budget,
       variance: summary.opex.variance,
-      variancePercent: summary.opex.variance_percent,
+      variancePercent: variancePct(summary.opex.variance, summary.opex.budget),
       icon: <TrendingDown className="w-5 h-5 text-amber-600" />,
     },
     {
@@ -65,7 +78,7 @@ export default function ReportSummaryCards({ summary, hasBudget }: ReportSummary
       actual: summary.net_profit.actual,
       budget: summary.net_profit.budget,
       variance: summary.net_profit.variance,
-      variancePercent: summary.net_profit.np_percent,
+      variancePercent: variancePct(summary.net_profit.variance, summary.net_profit.budget),
       icon: <Percent className="w-5 h-5 text-brand-orange" />,
       isRevenue: true,
       extraLabel: `NP ${summary.net_profit.np_percent.toFixed(1)}%`,

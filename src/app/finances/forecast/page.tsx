@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, Suspense } from 'react'
+import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
@@ -10,10 +11,31 @@ import { toast } from 'sonner'
 import PageHeader from '@/components/ui/PageHeader'
 import ForecastService from './services/forecast-service'
 import './forecast-styles.css'
-import type { FinancialForecast, PLLine, XeroConnection } from './types'
-import PLForecastTable from './components/PLForecastTable'
-import AssumptionsTab from './components/AssumptionsTab'
-import { ForecastWizardV4 } from './components/wizard-v4'
+import type { FinancialForecast, PLLine } from './types'
+import {
+  fetchXeroBusinessStatus,
+  type XeroStatusConnection,
+  type XeroStatusResponse,
+} from '@/lib/xero/business-status-view'
+// Code-split everything the operator cannot see on arrival. All of these are
+// already conditionally RENDERED — only the imports were eager, so the whole
+// module graph was downloaded and parsed before first paint. The wizard subtree
+// alone is ~27k lines (all nine steps + useForecastWizard), and it is gated
+// behind `isNewForecast && showWizardV4`; the tabs are mutually exclusive; the
+// rest are modals. ssr:false because every one of them is client-only anyway.
+// Same pattern already used in finances/monthly-report/page.tsx.
+const PLForecastTable = dynamic(() => import('./components/PLForecastTable'), { ssr: false })
+const AssumptionsTab = dynamic(() => import('./components/AssumptionsTab'), { ssr: false })
+const VersionsTab = dynamic(() => import('./components/VersionsTab'), { ssr: false })
+const CSVImportWizard = dynamic(() => import('./components/CSVImportWizard'), { ssr: false })
+const SaveVersionModal = dynamic(() => import('./components/SaveVersionModal'), { ssr: false })
+// Imported from its own module, NOT the wizard-v4 barrel: the barrel re-exports
+// useForecastWizard and the runtime helpers in types.ts, which would drag them
+// back into this chunk and defeat the split.
+const ForecastWizardV4 = dynamic(
+  () => import('./components/wizard-v4/ForecastWizardV4').then((m) => m.ForecastWizardV4),
+  { ssr: false },
+)
 import { ForecastSelector } from './components/ForecastSelector'
 import ForecastKPISummary from './components/ForecastKPISummary'
 import ForecastMultiYearSummary from './components/ForecastMultiYearSummary'
@@ -22,9 +44,6 @@ import ExportControls from './components/ExportControls'
 import { LoadingState } from './components/LoadingState'
 import ErrorState from './components/ErrorState'
 import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp'
-import CSVImportWizard from './components/CSVImportWizard'
-import SaveVersionModal from './components/SaveVersionModal'
-import VersionsTab from './components/VersionsTab'
 import XeroConnectionPanel from './components/XeroConnectionPanel'
 import ForecastTabs, { FORECAST_TAB_IDS, type ForecastTab } from './components/ForecastTabs'
 import ForecastOverview from './components/ForecastOverview'
@@ -32,20 +51,28 @@ import ForecastEmptyState from './components/ForecastEmptyState'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useXeroSync } from './hooks/useXeroSync'
 import { useVersionManager } from './hooks/useVersionManager'
-import { useXeroKeepalive } from '@/hooks/useXeroKeepalive'
+import { useXeroKeepalive, type XeroConnectionStatus as XeroKeepaliveStatus } from '@/hooks/useXeroKeepalive'
 import { isPlanningSeasonActive, getAvailableFiscalYears, getCurrentFiscalYear, getFiscalYearLabel } from './utils/fiscal-year'
 import { getMonthsUntilYearEnd } from '@/lib/utils/fiscal-year-utils'
 import { FYSelectorTabs } from './components/FYSelectorTabs'
 import { PlanningSeasonBanner } from './components/PlanningSeasonBanner'
+import { describeSeedReport } from '@/lib/forecast/xero-budget-seed-client'
+import type { XeroBudgetSeedReport } from '@/lib/services/xero-budget-seed-service'
 // Note: Coach view is at /coach/clients/[id]/forecast
 
-export default function FinancialForecastPage() {
+function FinancialForecastPageInner() {
   const supabase = createClient()
   const searchParams = useSearchParams()
   const { activeBusiness, currentUser, isLoading: contextLoading } = useBusinessContext()
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const hasAutoSyncedRef = useRef(false)
+  // True once the first load has painted. Subsequent loads (an FY tab switch)
+  // must NOT replace the whole page with a spinner — see the render gate below.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
+  // Set when loadInitialData resolves the FY itself, so the effect can ignore
+  // the re-fire its own setState causes.
+  const selfAssignedFYRef = useRef(false)
 
   const [businessId, setBusinessId] = useState('')
   const [userId, setUserId] = useState('')
@@ -64,7 +91,11 @@ export default function FinancialForecastPage() {
   // staring at a $0 dashboard.
   const [pendingMaterializeCheck, setPendingMaterializeCheck] = useState(false)
   const [showMaterializeWarning, setShowMaterializeWarning] = useState(false)
-  const [xeroConnection, setXeroConnection] = useState<XeroConnection | null>(null)
+  // Present when the business has a live Xero org — gates keepalive and the post-OAuth sync.
+  const [xeroConnection, setXeroConnection] = useState<XeroStatusConnection | null>(null)
+  // The whole business, every org — what the Xero panel renders.
+  const [xeroStatus, setXeroStatus] = useState<XeroStatusResponse | null>(null)
+  const [xeroCheckFailed, setXeroCheckFailed] = useState(false)
 
   const [activeTab, setActiveTab] = useState<ForecastTab>(() => {
     // Phase 58 migration: force all existing users to Overview on first load.
@@ -90,6 +121,7 @@ export default function FinancialForecastPage() {
   const [wizardStartStep, setWizardStartStep] = useState<number | undefined>(undefined)
   const [wizardStartFresh, setWizardStartFresh] = useState(false)
   const [isSeedingForecast, setIsSeedingForecast] = useState(false)
+  const [isSeedingFromBudget, setIsSeedingFromBudget] = useState(false)
 
   // FY selector state
   const [selectedFiscalYear, setSelectedFiscalYear] = useState<number | null>(null)
@@ -130,14 +162,22 @@ export default function FinancialForecastPage() {
     loadVersions,
     handleSelectVersion,
     handleSaveAsNewVersion,
-    handleOverwriteVersion
+    handleOverwriteVersion,
+    handleSetActiveVersion,
   } = useVersionManager({
     forecast,
     businessId
   })
 
-  // Keep Xero tokens fresh while user is on this page
-  useXeroKeepalive(businessId || null, !!xeroConnection)
+  // Keep Xero tokens fresh while user is on this page — and re-render the panel
+  // from what each check finds, so a toast never contradicts it.
+  const handleKeepaliveCheck = useCallback((check: XeroKeepaliveStatus) => {
+    if (!check.response) return
+    setXeroStatus(check.response)
+    setXeroCheckFailed(false)
+    setXeroConnection(check.response.connected ? check.response.connection : null)
+  }, [])
+  useXeroKeepalive(businessId || null, !!xeroConnection, { onStatusChange: handleKeepaliveCheck })
 
   // Save active tab to localStorage whenever it changes (Phase 58: v2 key)
   useEffect(() => {
@@ -161,9 +201,20 @@ export default function FinancialForecastPage() {
 
   useEffect(() => {
     setMounted(true)
-    if (!contextLoading) {
-      loadInitialData()
+    if (contextLoading) return
+    // `selectedFiscalYear` is in the dep list so switching FY tabs reloads, but
+    // it starts null and loadInitialData RESOLVES it (see the setSelectedFiscalYear
+    // below). That self-assignment re-fired this effect and ran the whole chain a
+    // second time on every cold load — auth, business_profiles, the Promise.all,
+    // loadPLLines, the paginated actuals scan, and a second /api/Xero/status that
+    // could kick off a second Xero OAuth refresh. Both runs resolve the SAME year,
+    // so the second was pure waste against the DB and Xero's rate limit.
+    // Swallow exactly the echo of our own resolution; real FY switches still load.
+    if (selfAssignedFYRef.current) {
+      selfAssignedFYRef.current = false
+      return
     }
+    loadInitialData()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contextLoading, activeBusiness?.id, selectedFiscalYear])
 
@@ -212,6 +263,15 @@ export default function FinancialForecastPage() {
     }
   ])
 
+  // Every exit from loadInitialData goes through here. `hasLoadedOnce` gates the
+  // full-screen spinner, so a path that set isLoading(false) without marking it
+  // would leave the page stuck behind the spinner forever — e.g. a business with
+  // no forecast, which returns early.
+  const finishLoading = useCallback(() => {
+    setIsLoading(false)
+    setHasLoadedOnce(true)
+  }, [])
+
   const loadInitialData = async () => {
     try {
       setIsLoading(true)
@@ -219,7 +279,7 @@ export default function FinancialForecastPage() {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        setIsLoading(false)
+        finishLoading()
         return
       }
 
@@ -233,22 +293,32 @@ export default function FinancialForecastPage() {
         activeBusinessId: activeBusiness?.id ?? null,
       })
       if (!bizId) {
-        setIsLoading(false)
+        finishLoading()
         return
       }
       setBusinessId(bizId)
 
-      // Fetch business fiscal year start for planning season detection
+      // PERF: the Xero connection status doesn't depend on anything below —
+      // start it NOW and await it at the end, so it overlaps the forecast
+      // load instead of adding a round-trip after it.
+      const xeroStatusPromise = fetchXeroBusinessStatus(bizId)
+
+      // PERF: ONE business_profiles read for both fields. This table was
+      // queried three separate times per page load — fiscal_year_start here,
+      // `id` for the prior-FY check below, and `id` again inside
+      // getOrCreateForecast — each a full sequential round-trip.
       let yearStart = 7 // default AU FY
+      let profileId: string | null = null
       try {
         const { data: bizProfile } = await supabase
           .from('business_profiles')
-          .select('fiscal_year_start')
+          .select('id, fiscal_year_start')
           .eq('business_id', bizId)
           .maybeSingle()
         if (bizProfile?.fiscal_year_start) {
           yearStart = bizProfile.fiscal_year_start
         }
+        profileId = bizProfile?.id ?? null
       } catch (e) {
         // ignored
       }
@@ -268,6 +338,9 @@ export default function FinancialForecastPage() {
         : getCurrentFiscalYear(yearStart)
       const fiscalYear = selectedFiscalYear ?? targetFY
       if (!selectedFiscalYear) {
+        // Resolving the FY ourselves re-fires the load effect; flag it so that
+        // firing is skipped rather than re-running this entire function.
+        selfAssignedFYRef.current = true
         setSelectedFiscalYear(fiscalYear)
       }
 
@@ -279,34 +352,28 @@ export default function FinancialForecastPage() {
       // business_profiles(id), but bizId from resolveBusinessId is businesses.id.
       // Collect both IDs so this query matches the same rows that
       // ForecastService.getOrCreateForecast (which does the same dance) sees.
-      try {
-        const priorFY = fiscalYear - 1
-        const idsToTry: string[] = [bizId]
-        const { data: profile } = await supabase
-          .from('business_profiles')
-          .select('id')
-          .eq('business_id', bizId)
-          .maybeSingle()
-        if (profile?.id && profile.id !== bizId) {
-          idsToTry.push(profile.id)
-        }
-        const { data: priorRows } = await supabase
+      // PERF: the prior-FY probe and the forecast load are independent —
+      // run them concurrently instead of one after the other. Both reuse the
+      // profile id resolved above rather than re-querying for it.
+      const priorFY = fiscalYear - 1
+      const idsToTry: string[] = profileId && profileId !== bizId ? [bizId, profileId] : [bizId]
+      const [priorProbe, forecastResult] = await Promise.all([
+        supabase
           .from('financial_forecasts')
           .select('id')
           .in('business_id', idsToTry)
           .eq('fiscal_year', priorFY)
           .limit(1)
-        setPriorFiscalYearWithForecast(priorRows && priorRows.length > 0 ? priorFY : null)
-      } catch {
-        setPriorFiscalYearWithForecast(null)
-      }
+          .then(r => r.data, () => null),
+        ForecastService.getOrCreateForecast(bizId, uid, fiscalYear, profileId),
+      ])
+      setPriorFiscalYearWithForecast(priorProbe && priorProbe.length > 0 ? priorFY : null)
 
-      const { forecast: loadedForecast, error: forecastError } =
-        await ForecastService.getOrCreateForecast(bizId, uid, fiscalYear)
+      const { forecast: loadedForecast, error: forecastError } = forecastResult
 
       if (forecastError || !loadedForecast) {
         console.error('[Forecast] Error loading forecast:', forecastError)
-        setIsLoading(false)
+        finishLoading()
         return
       }
 
@@ -349,23 +416,25 @@ export default function FinancialForecastPage() {
         return false
       })
 
-      // Load Xero connection via API (bypasses RLS timing issues)
-      try {
-        const statusRes = await fetch(`/api/Xero/status?business_id=${bizId}`)
-        const statusData = await statusRes.json()
-        if (statusData.connected && statusData.connection) {
-          setXeroConnection(statusData.connection)
-        } else {
-          setXeroConnection(null)
-        }
-      } catch (err) {
-        console.error('[Forecast] Error loading Xero connection:', err)
-        // Fall back to direct query if API fails
-        const xeroConn = await ForecastService.getXeroConnection(bizId)
-        setXeroConnection(xeroConn)
+      // Xero connection — the request was started before the forecast load,
+      // so by now it has usually resolved and this await is free.
+      //
+      // A failed check renders as "couldn't check". It used to fall back to a
+      // direct xero_connections query — `.limit(1)` with no order, so an
+      // arbitrary org of a multi-org business — and show it as "Connected to
+      // Xero"; and a 500 body read as "Not connected". Neither was an answer.
+      const xeroCheck = await xeroStatusPromise
+      if (xeroCheck.ok) {
+        setXeroStatus(xeroCheck.data)
+        setXeroCheckFailed(false)
+        setXeroConnection(xeroCheck.data.connected ? xeroCheck.data.connection : null)
+      } else {
+        setXeroStatus(null)
+        setXeroCheckFailed(true)
+        setXeroConnection(null)
       }
 
-      setIsLoading(false)
+      finishLoading()
 
       // Load versions
       if (loadedForecast?.id) {
@@ -374,9 +443,32 @@ export default function FinancialForecastPage() {
     } catch (err) {
       console.error('[Forecast] Error in loadInitialData:', err)
       setError(err instanceof Error ? err.message : 'Failed to load forecast data')
-      setIsLoading(false)
+      finishLoading()
     }
   }
+
+  // Warm the wizard chunk once the page is idle.
+  //
+  // Splitting the wizard out fixed the PAGE load, but "Forecast Builder" is a
+  // button on THIS page, not a separate route — so on its own the split would
+  // just move the wait from page-open to builder-open. Fetching the chunk during
+  // idle time means it is already in the browser cache by the time the operator
+  // clicks, so both complaints improve instead of trading against each other.
+  useEffect(() => {
+    if (!hasLoadedOnce) return
+    const warm = () => { void import('./components/wizard-v4/ForecastWizardV4') }
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number
+      cancelIdleCallback?: (id: number) => void
+    }
+    const id = w.requestIdleCallback
+      ? w.requestIdleCallback(warm, { timeout: 3000 })
+      : window.setTimeout(warm, 1500)
+    return () => {
+      if (w.cancelIdleCallback) w.cancelIdleCallback(id)
+      else window.clearTimeout(id)
+    }
+  }, [hasLoadedOnce])
 
   // Parse assumptions from forecast record for assumption cards
   const parsedAssumptions = useMemo(() => {
@@ -477,7 +569,9 @@ export default function FinancialForecastPage() {
       }
       const { forecastId } = await res.json()
       setSelectedForecastId(forecastId)
-      setSelectedForecastName(null)
+      // Keep the version's own name — Generate defaults the name when the
+      // wizard opens without one, which renamed seeded versions (7 Sep 2026).
+      setSelectedForecastName(forecastId === forecast?.id ? forecast?.name ?? null : null)
       // Critical decision 2 (2026-05-11): wizard opens on Step 1 (Goals) after
       // seed, NOT Step 3. Goals were intentionally stripped from the seed so the
       // operator sets new-year goals BEFORE reviewing seeded revenue/COGS/etc.
@@ -491,9 +585,83 @@ export default function FinancialForecastPage() {
     } finally {
       setIsSeedingForecast(false)
     }
-  }, [businessId, selectedFiscalYear, forecast?.fiscal_year])
+  }, [businessId, selectedFiscalYear, forecast?.fiscal_year, forecast?.id, forecast?.name])
 
-  if (!mounted || isLoading) {
+  // "Start from Xero budget" (budget-seed PR 4, Sep 2026). Mirrors
+  // handleSeedForecast: POST, then open the wizard on Step 1 with startFresh so
+  // the seeded assumptions (goals pre-filled, "As budgeted" OpEx) are the
+  // source of truth. Opt-in and one-shot — the operator chose the (org, budget).
+  const forecastOnScreenId = forecast?.id
+  const forecastOnScreenName = forecast?.name ?? null
+  const handleSeedFromXeroBudget = useCallback(
+    async (choice: { tenantId: string; budgetId: string; budgetName: string; forecastId?: string; forecastName?: string | null }) => {
+      if (!businessId) return
+      const targetFY = selectedFiscalYear || forecast?.fiscal_year
+      if (!targetFY) {
+        toast.error('No target fiscal year selected')
+        return
+      }
+      setIsSeedingFromBudget(true)
+      try {
+        const res = await fetch('/api/forecast/seed-from-xero-budget', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            businessId,
+            targetFiscalYear: targetFY,
+            tenantId: choice.tenantId,
+            budgetId: choice.budgetId,
+            // Target the forecast the surface named (selector: the empty
+            // version) or the one on screen — not "the most recently updated
+            // row for this FY", which differs once there are several versions.
+            forecastId:
+              choice.forecastId ?? (forecast?.fiscal_year === targetFY ? forecastOnScreenId : undefined),
+          }),
+        })
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({ error: 'Import failed' }))
+          if (payload?.code === 'xero_budget_scope_missing') {
+            toast.error('Reconnect Xero to import budgets', {
+              description: 'This connection predates budget access. Reconnect the organisation from Integrations, then try again.',
+            })
+          } else if (res.status === 409) {
+            toast.error('This forecast already has data', {
+              description: 'A budget can only seed an empty forecast. Save a new version first if you want to start over.',
+            })
+          } else {
+            toast.error(payload?.error || 'Import failed')
+          }
+          return
+        }
+        const { forecastId, report } = (await res.json()) as { forecastId: string; report?: XeroBudgetSeedReport }
+        if (report) {
+          const { title, detail } = describeSeedReport(report, choice.budgetName)
+          toast.success(title, detail ? { description: detail, duration: 12_000 } : undefined)
+        }
+        setSelectedForecastId(forecastId)
+        // Keep the version's own name (the selector names the empty version it
+        // seeded; otherwise the forecast on screen) so Generate does not rename it.
+        setSelectedForecastName(
+          choice.forecastName ?? (forecastId === forecastOnScreenId ? forecastOnScreenName : null),
+        )
+        setWizardStartStep(1)
+        setWizardStartFresh(true)
+        setShowForecastSelector(false)
+        setShowWizardV4(true)
+      } finally {
+        setIsSeedingFromBudget(false)
+      }
+    },
+    [businessId, selectedFiscalYear, forecast?.fiscal_year, forecastOnScreenId, forecastOnScreenName],
+  )
+
+  // Full-screen spinner ONLY before the first paint. It used to gate on
+  // `isLoading` alone, so every FY tab click — which sets isLoading(true) via the
+  // load effect — tore the entire page down to a centred spinner, header, tabs
+  // and all, then rebuilt it. Switching year read as the app reloading itself.
+  // After the first load the chrome stays put and the content area shows a quiet
+  // busy state instead.
+  if (!mounted || (isLoading && !hasLoadedOnce)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -602,6 +770,8 @@ export default function FinancialForecastPage() {
           }}
           onSeedForecast={handleSeedForecast}
           isSeedingForecast={isSeedingForecast}
+          onSeedFromXeroBudget={handleSeedFromXeroBudget}
+          isSeedingFromBudget={isSeedingFromBudget}
         />
       </div>
     )
@@ -652,7 +822,11 @@ export default function FinancialForecastPage() {
         <PageHeader
           variant="banner"
           title="Financial Forecast"
-          subtitle={`${getFiscalYearLabel(selectedFiscalYear || forecast.fiscal_year, fiscalYearStart)}${forecast.name ? ` — ${forecast.name}` : ''}`}
+          subtitle={`${getFiscalYearLabel(selectedFiscalYear || forecast.fiscal_year, fiscalYearStart)}${forecast.name ? ` — ${forecast.name}` : ''}${
+            (forecast.assumptions as ForecastAssumptions | null | undefined)?.seedSource?.kind === 'xero_budget'
+              ? ` · from Xero budget “${(forecast.assumptions as ForecastAssumptions).seedSource?.budgetName}”`
+              : ''
+          }`}
           icon={TrendingUp}
           actions={
             <>
@@ -793,7 +967,8 @@ export default function FinancialForecastPage() {
         {/* Xero Status Bar */}
         <div className="mb-3 sm:mb-4 px-1">
           <XeroConnectionPanel
-            xeroConnection={xeroConnection}
+            status={xeroStatus}
+            checkFailed={xeroCheckFailed}
             isSaving={isSaving || isSyncing}
             isExpired={isConnectionExpired}
             onConnect={handleConnectXero}
@@ -810,6 +985,8 @@ export default function FinancialForecastPage() {
             assumptions={parsedAssumptions}
             forecast={forecast}
             plLines={plLines}
+            yearStartMonth={fiscalYearStart}
+            isEstimatedMode={isEstimatedMode}
           />
         )}
 
@@ -895,6 +1072,7 @@ export default function FinancialForecastPage() {
             versions={versions}
             currentVersion={forecast}
             onSelectVersion={handleSelectVersion}
+            onSetActive={handleSetActiveVersion}
             onSaveAsNew={handleSaveAsNewVersion}
             onOverwrite={handleOverwriteVersion}
           />
@@ -997,10 +1175,32 @@ export default function FinancialForecastPage() {
             setShowWizardV4(true)
           }}
           onClose={() => setShowForecastSelector(false)}
+          onSeedFromXeroBudget={handleSeedFromXeroBudget}
+          isSeedingFromBudget={isSeedingFromBudget}
         />
       )}
 
       </div>
     </>
+  )
+}
+
+/**
+ * `useSearchParams()` without a Suspense boundary opts the WHOLE route out of
+ * server rendering (Next's CSR bailout). The built artefact proved it: the
+ * prerendered HTML for this route contained no forecast markup at all, so the
+ * browser received an empty shell and could not paint anything until the entire
+ * client module graph had downloaded, parsed and hydrated. That was the single
+ * largest contributor to "the forecast page takes a long time to load".
+ *
+ * Wrapping the reader in Suspense lets the shell prerender again. 13 of the
+ * pages in this repo that call useSearchParams already do this — the forecast
+ * page was simply missed.
+ */
+export default function FinancialForecastPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <FinancialForecastPageInner />
+    </Suspense>
   )
 }

@@ -7,11 +7,14 @@
 // continuity. See WIZARD_STEPS in ../types.ts for the canonical step
 // numbering and ForecastWizardV4.tsx renderStep() for the switch.
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Plus, Trash2, HelpCircle, X, Info, AlertTriangle } from 'lucide-react';
+import { Fragment, useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { Plus, Trash2, HelpCircle, X, Info, AlertTriangle, Users } from 'lucide-react';
+import { XeroBudgetSeedBanner, XeroBudgetChip, isXeroBudgetSeed } from '../XeroBudgetSeedBanner';
 import { ForecastWizardState, WizardActions, formatCurrency, CostBehavior, OpExLine, SUPER_RATE, calculateNewSalary, InputMode } from '../types';
 import { classifyExpense, getSuggestedValue, isTeamCost } from '../utils/opex-classifier';
-import { getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
+import { getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH, generateFiscalMonthKeys } from '@/lib/utils/fiscal-year-utils';
+import { budgetedTotal, scaleBudgetedMonths, spreadTotalByPattern } from '@/lib/forecast/budgeted-line';
+import { shouldExcludeFromOpEx, deriveTeamCoverage } from '../useForecastWizard';
 
 interface Step5OpExProps {
   state: ForecastWizardState;
@@ -37,6 +40,9 @@ const COST_BEHAVIORS: { value: CostBehavior; label: string; hint: string; color:
   { value: 'variable', label: '% of revenue', hint: '% of revenue', color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-300' },
   { value: 'seasonal', label: '$ with annual increase', hint: 'inflation-linked', color: 'text-amber-700', bgColor: 'bg-amber-50', borderColor: 'border-amber-300' },
   { value: 'adhoc', label: 'Custom per-month', hint: 'manual months', color: 'text-purple-700', bgColor: 'bg-purple-50', borderColor: 'border-purple-300' },
+  // Explicit amount for each month (a Xero budget, or typed in). Projection in
+  // src/lib/forecast/budgeted-line.ts — shared with the summary and materialiser.
+  { value: 'budgeted', label: 'As budgeted', hint: 'per-month budget', color: 'text-indigo-700', bgColor: 'bg-indigo-50', borderColor: 'border-indigo-300' },
 ];
 
 // Phase 51 plan 51-05 (UX-S5-01): tooltip explainer text for the info icon
@@ -48,6 +54,7 @@ const COST_BEHAVIOR_EXPLAINER = [
   '% of revenue: cost scales with revenue (card processing, freight). Use when the line is variable with sales.',
   '$ with annual increase: starts at a fixed amount and grows yearly (inflation-linked subscriptions). Use for fixed costs you expect to creep upward each year.',
   'Custom per-month: enter different values per month manually. Use for one-offs, ad-hoc spend, or seasonally-spiky costs.',
+  'As budgeted: an explicit amount for every month, e.g. pulled from a Xero budget. Later years repeat each month with the annual increase applied. Open the month editor to adjust individual months.',
 ].join('\n\n');
 
 // Helper to get behavior styling
@@ -716,10 +723,21 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
 
   // Check if a line should be treated as a team cost
   // Priority: user override > auto-detection by name
+  // PR-A (M2) parity: team-classified lines only leave OpEx when Step 4
+  // actually carries team data. Without the hasTeamData arm this screen
+  // excluded ~$567k of contractor/wages lines that the summary, the export
+  // and the stored forecast all INCLUDE — OpEx jumped between Step 6 and
+  // Step 9 with no explanation.
+  // 21 Aug 2026 audit (XVAL-2): coverage is per-KIND, not a single flag —
+  // contractor accounts only leave OpEx when Step 4 holds contractor members,
+  // and directors fees / FBT / leave never leave at all.
+  const teamCoverage = useMemo(
+    () => deriveTeamCoverage(state.teamMembers, state.newHires),
+    [state.teamMembers, state.newHires],
+  );
   const isLineTeamCost = useCallback((line: OpExLine): boolean => {
-    if (line.isTeamCostOverride !== undefined) return line.isTeamCostOverride;
-    return isTeamCost(line.name);
-  }, []);
+    return shouldExcludeFromOpEx(line, teamCoverage);
+  }, [teamCoverage]);
 
   // Split lines once: active lines for calculations, all lines for rendering
   const { activeOpexLines, excludedTeamLines } = useMemo(() => {
@@ -757,6 +775,14 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
 
     // Classify each line based on its name and prior year data
     for (const line of linesToClassify) {
+      // An "As budgeted" line carries explicit per-month amounts (a Xero budget
+      // seed, or typed in). Name-based classification must never overwrite it —
+      // on the first Urban Road seed (7 Sep 2026) it re-typed every budgeted
+      // line from prior-year actuals the moment Step 6 opened.
+      if (line.costBehavior === 'budgeted') {
+        classifiedLinesRef.current.add(line.id);
+        continue;
+      }
       const result = classifyExpense(line.name, line.priorYearMonthly, industry);
 
       // Skip team costs - they shouldn't be in OpEx
@@ -798,6 +824,9 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
             break;
           case 'adhoc':
             updates.expectedAnnualAmount = suggested.value;
+            break;
+          case 'budgeted':
+            // The months ARE the value; a suggestion has nothing to set.
             break;
         }
 
@@ -892,10 +921,29 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
   }, [teamMembers, newHires, departures]);
 
   // Calculate annual amount for Y1
+  // 'As budgeted' lines: forecast-year month keys (July FY, as everywhere in
+  // this step) and the per-line month editor's open/closed state.
+  const y1MonthKeys = useMemo(() => generateFiscalMonthKeys(fiscalYear), [fiscalYear]);
+  const yearMonthKeys = useCallback(
+    (year: 1 | 2 | 3) => generateFiscalMonthKeys(fiscalYear + year - 1),
+    [fiscalYear],
+  );
+  const [openBudgetEditors, setOpenBudgetEditors] = useState<Set<string>>(() => new Set());
+  const toggleBudgetEditor = useCallback((lineId: string) => {
+    setOpenBudgetEditors((prev) => {
+      const next = new Set(prev);
+      if (next.has(lineId)) next.delete(lineId); else next.add(lineId);
+      return next;
+    });
+  }, []);
+
   const calculateY1Amount = useCallback((line: OpExLine): number => {
     switch (line.costBehavior) {
       case 'fixed':
         return (line.monthlyAmount || 0) * 12;
+      case 'budgeted':
+        // Y1 months are explicit; growth only matters for rolled-forward years.
+        return budgetedTotal(line, y1MonthKeys, 0);
       case 'variable':
         return (revenueByYear.y1 * (line.percentOfRevenue || 0)) / 100;
       case 'seasonal':
@@ -910,7 +958,7 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
       default:
         return line.priorYearAnnual;
     }
-  }, [revenueByYear.y1]);
+  }, [revenueByYear.y1, y1MonthKeys]);
 
   // Phase 50 (FCST-BUG-02): sum the OpEx lines that were auto-classified as
   // team costs so they're surfaced in the Team Costs row of BudgetFramework
@@ -979,10 +1027,14 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
       case 'adhoc':
         // Apply increase rate to base
         return getBaseAmount() * (1 + getIncreaseRate() / 100);
+      case 'budgeted':
+        // Explicit later-year months win; otherwise each month rolls forward
+        // with the increase rate — the shared projection, not a local formula.
+        return budgetedTotal(line, yearMonthKeys(year), getIncreaseRate());
       default:
         return y1Amount;
     }
-  }, [calculateY1Amount, revenueByYear]);
+  }, [calculateY1Amount, revenueByYear, yearMonthKeys]);
 
   // Get amount for current active year
   const getActiveYearAmount = useCallback((line: OpExLine): number => {
@@ -1028,10 +1080,12 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
     switch (line.costBehavior) {
       case 'variable':
         return (yearRevenue * (line.percentOfRevenue || 0)) / 100;
+      case 'budgeted':
+        return budgetedTotal(line, yearMonthKeys(year), getIncreaseRate());
       default:
         return getBaseAmount() * (1 + getIncreaseRate() / 100);
     }
-  }, [calculateY1Amount, revenueByYear, effectiveDefaultGrowth]);
+  }, [calculateY1Amount, revenueByYear, effectiveDefaultGrowth, yearMonthKeys]);
 
   // Total OpEx by year — uses activeOpexLines (team costs already excluded).
   //
@@ -1129,6 +1183,9 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
       case 'adhoc':
         newLine.expectedAnnualAmount = 0;
         break;
+      case 'budgeted':
+        newLine.budgetedMonthly = spreadTotalByPattern(0, y1MonthKeys);
+        break;
     }
 
     actions.addOpExLine(newLine);
@@ -1148,17 +1205,24 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
       percentOfRevenue: undefined,
       seasonalGrowthPct: undefined,
       expectedAnnualAmount: undefined,
+      budgetedMonthly: undefined,
     };
+
+    // Leaving 'As budgeted' carries its Y1 total into the new behaviour so the
+    // number on screen does not jump; every other switch seeds from prior year.
+    const baseAnnual = line.costBehavior === 'budgeted'
+      ? (budgetedTotal(line, y1MonthKeys, 0) || line.priorYearAnnual)
+      : line.priorYearAnnual;
 
     // Set sensible defaults based on prior year data
     // Note: Don't set explicit growth rates - leave undefined to use default
     switch (newBehavior) {
       case 'fixed':
-        updates.monthlyAmount = Math.round(line.priorYearAnnual / 12);
+        updates.monthlyAmount = Math.round(baseAnnual / 12);
         break;
       case 'variable':
-        if (revenueByYear.y1 > 0 && line.priorYearAnnual > 0) {
-          updates.percentOfRevenue = Math.round((line.priorYearAnnual / revenueByYear.y1) * 1000) / 10;
+        if (revenueByYear.y1 > 0 && baseAnnual > 0) {
+          updates.percentOfRevenue = Math.round((baseAnnual / revenueByYear.y1) * 1000) / 10;
         } else {
           updates.percentOfRevenue = 0;
         }
@@ -1167,7 +1231,11 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
         // Leave seasonalGrowthPct undefined to use default
         break;
       case 'adhoc':
-        updates.expectedAnnualAmount = line.priorYearAnnual;
+        updates.expectedAnnualAmount = baseAnnual;
+        break;
+      case 'budgeted':
+        // Start from last year's monthly shape when we have it, else flat.
+        updates.budgetedMonthly = spreadTotalByPattern(baseAnnual, y1MonthKeys, line.priorYearMonthly);
         break;
     }
 
@@ -1181,13 +1249,13 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
   // top of `year1TeamCosts` double-counts the same wages — JDS confirmed
   // production showed $5,184,624 ≈ 2× the actual $2,562,502.
   //
-  // Fallback: if Step 4 is genuinely empty (no team members AND no new
-  // hires), fall back to the OpEx-classified total so businesses that
-  // haven't filled Step 4 yet still see a non-zero "Team Costs" row.
-  const hasStep4TeamData = teamMembers.length > 0 || newHires.length > 0;
-  const totalTeamCostsForBudget = hasStep4TeamData
-    ? year1TeamCosts
-    : opexClassifiedTeamCosts;
+  // PR-A (M2) coherence: when Step 4 is empty, team-classified OpEx lines
+  // STAY in OpEx (summary, export and the stored forecast all count them
+  // there). The old fallback additionally surfaced them as "Team Costs",
+  // which double-counted them inside this very framework — Available OpEx
+  // was reduced by the wages AND the same wages were shown as allocated.
+  // Team Costs is now simply 0 until Step 4 carries real team data.
+  const totalTeamCostsForBudget = year1TeamCosts;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Phase 57 T11 (B4) — Covered-by-Step-5 badge + legacy refresh banner
@@ -1223,29 +1291,57 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
     setIsRefreshingFromXero(true);
     setRefreshError(null);
     try {
-      const res = await fetch(`/api/Xero/chart-of-accounts?business_id=${encodeURIComponent(businessId)}`);
+      // 21 Aug 2026 audit (COA-04): this whole repair used to be dead code.
+      // It read `a.code` / `a.name` while the route returns `accountCode` /
+      // `accountName`, and it omitted `filter`, so the route defaulted to
+      // filter='subscription' and returned only keyword-suggested accounts.
+      // It matched nothing, then cleared the banner anyway — so the legacy
+      // draft could never be repaired and the subscription double-count guard
+      // (which keys on accountCode) stayed silently disabled.
+      const res = await fetch(
+        `/api/Xero/chart-of-accounts?business_id=${encodeURIComponent(businessId)}&filter=all`,
+      );
       if (!res.ok) {
         throw new Error(`chart-of-accounts returned ${res.status}`);
       }
       const payload = await res.json();
-      const accounts: Array<{ code?: string; accountId?: string; name?: string }> = payload?.accounts || [];
+      const accounts: Array<{ accountCode?: string; accountId?: string; accountName?: string }> =
+        payload?.accounts || [];
 
       // Re-classify opexLines — for each line with no accountCode, find a
       // matching account by accountId or by display name and copy its code.
       // Lines that already have accountCode are left untouched.
+      let matched = 0;
       const updatedOpexLines = state.opexLines.map((line) => {
         if (line.accountCode) return line;
         const match = accounts.find((a) => {
           if (line.accountId && a.accountId && a.accountId === line.accountId) return true;
-          if (a.name && line.name && a.name.trim().toLowerCase() === line.name.trim().toLowerCase()) return true;
+          if (
+            a.accountName &&
+            line.name &&
+            a.accountName.trim().toLowerCase() === line.name.trim().toLowerCase()
+          ) {
+            return true;
+          }
           return false;
         });
-        if (match?.code) return { ...line, accountCode: match.code };
+        if (match?.accountCode) {
+          matched += 1;
+          return { ...line, accountCode: match.accountCode };
+        }
         return line;
       });
 
       actions.setOpExLines(updatedOpexLines);
-      actions.setNeedsAccountCodeRefresh(false);
+      // Only dismiss the banner when the repair actually repaired something.
+      // Clearing it unconditionally is what made the failure invisible.
+      if (matched > 0) {
+        actions.setNeedsAccountCodeRefresh(false);
+      } else {
+        setRefreshError(
+          'No matching Xero accounts found for these lines — their names may have changed in Xero. Subscription double-count protection stays off until they match.',
+        );
+      }
     } catch (err) {
       console.error('[Step5OpEx T11] Xero refresh failed', err);
       setRefreshError('Could not refresh from Xero. Please try again.');
@@ -1256,6 +1352,15 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
 
   return (
     <div className="space-y-6">
+      <XeroBudgetSeedBanner seedSource={state.seedSource}>
+        Expense lines came in from Xero budget <strong>“{state.seedSource?.budgetName}”</strong> as{' '}
+        <strong>As budgeted</strong> — every month is the budget&apos;s own figure, so the totals below match it.
+        Change a line&apos;s type only if you want the wizard to model it differently.
+        {(state.seedSource?.unclassifiedCount ?? 0) > 0 ? (
+          <> {state.seedSource?.unclassifiedCount} account{state.seedSource?.unclassifiedCount === 1 ? '' : 's'} had no category in Xero and {state.seedSource?.unclassifiedCount === 1 ? 'was' : 'were'} left for you to place.</>
+        ) : null}
+      </XeroBudgetSeedBanner>
+
       {/* Budget Framework
           Hotfix (Issue 2): pin to top of viewport while operator scrolls
           the OpEx table below. The wrapper uses sticky positioning + a
@@ -1312,6 +1417,50 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
         </div>
       )}
 
+      {/* 21 Aug 2026 audit (XVAL-2) — "moved to Team Costs" is now shown with
+          its DOLLAR value and a one-click correction, because the silent
+          version of this decision removed $435,481/yr of bill-paid contractors
+          from Dragon Roofing's live forecast and nothing on screen said so.
+          The wizard no longer guesses that contractors are covered unless
+          Step 4 holds contractor members, but the operator still gets to see
+          and overrule every account that left the OpEx total. */}
+      {excludedTeamLines.length > 0 && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
+          <div className="flex items-start gap-3">
+            <Users className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-blue-900">
+                <span className="font-medium">
+                  {formatCurrency(opexClassifiedTeamCosts)}
+                </span>{' '}
+                of expenses moved to Team Costs — Step 4 plans these instead.
+              </p>
+              <p className="text-xs text-blue-700 mt-1">
+                Check each one is really covered by your team plan. Anything you
+                pay on a bill (not through payroll) belongs here in OpEx.
+              </p>
+              <ul className="mt-2 flex flex-wrap gap-2">
+                {excludedTeamLines.map(line => (
+                  <li key={line.id}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        actions.updateOpExLine(line.id, { isTeamCostOverride: false })
+                      }
+                      className="text-xs px-2 py-1 rounded-full border border-blue-300 bg-white text-blue-800 hover:bg-blue-100 transition-colors"
+                      title="Not covered by Step 4 — keep this in Operating Expenses"
+                    >
+                      {line.name} · {formatCurrency(calculateY1Amount(line))}
+                      <span className="ml-1 text-blue-500">keep in OpEx</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Year Tabs + Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {/* Header with tabs */}
@@ -1319,8 +1468,10 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
           <div className="flex items-center gap-4">
             <h3 className="text-lg font-semibold text-gray-900">Operating Expenses</h3>
             {excludedTeamLines.length > 0 && (
-              <span className="text-xs text-gray-400 font-medium">
-                {excludedTeamLines.length} line{excludedTeamLines.length > 1 ? 's' : ''} in Team Costs
+              <span className="text-xs text-gray-500 font-medium">
+                {excludedTeamLines.length} line{excludedTeamLines.length > 1 ? 's' : ''} moved to Team Costs
+                {' · '}
+                {formatCurrency(opexClassifiedTeamCosts)}
               </span>
             )}
 
@@ -1607,6 +1758,10 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
                       const annual = line.expectedAnnualAmount || 0;
                       return { monthly: annual / 12, annual, isEditable: true, isAverage: true };
                     }
+                    case 'budgeted': {
+                      const annual = budgetedTotal(line, y1MonthKeys, 0);
+                      return { monthly: annual / 12, annual, isEditable: true, isAverage: true };
+                    }
                     default:
                       return { monthly: 0, annual: 0, isEditable: false };
                   }
@@ -1627,6 +1782,12 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
                     case 'adhoc':
                       actions.updateOpExLine(line.id, { expectedAnnualAmount: value * 12 });
                       break;
+                    case 'budgeted':
+                      // Re-target the year, keep the monthly shape.
+                      actions.updateOpExLine(line.id, {
+                        budgetedMonthly: scaleBudgetedMonths(line.budgetedMonthly, y1MonthKeys, value * 12),
+                      });
+                      break;
                   }
                 };
 
@@ -1642,11 +1803,17 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
                     case 'adhoc':
                       actions.updateOpExLine(line.id, { expectedAnnualAmount: value });
                       break;
+                    case 'budgeted':
+                      actions.updateOpExLine(line.id, {
+                        budgetedMonthly: scaleBudgetedMonths(line.budgetedMonthly, y1MonthKeys, value),
+                      });
+                      break;
                   }
                 };
 
                 return (
-                  <tr key={line.id} className="hover:bg-gray-50/50 group">
+                  <Fragment key={line.id}>
+                  <tr className="hover:bg-gray-50/50 group">
                     {/* Expense Name */}
                     <td className="px-4 py-2">
                       <input
@@ -1689,6 +1856,7 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
                             <option key={b.value} value={b.value}>{b.label}</option>
                           ))}
                         </select>
+                        {line.costBehavior === 'budgeted' && isXeroBudgetSeed(state.seedSource) && <XeroBudgetChip />}
                         <button
                           type="button"
                           aria-label="What does each option mean?"
@@ -1770,6 +1938,22 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
                             placeholder="0"
                             className={`${inputStyles} w-28`}
                           />
+                          {line.costBehavior === 'budgeted' && (
+                            <button
+                              type="button"
+                              onClick={() => toggleBudgetEditor(line.id)}
+                              aria-expanded={openBudgetEditors.has(line.id)}
+                              aria-label={`Edit months for ${line.name}`}
+                              title="Edit each month"
+                              className={`ml-1 px-1.5 py-0.5 text-[10px] rounded border ${
+                                openBudgetEditors.has(line.id)
+                                  ? 'bg-indigo-600 text-white border-indigo-600'
+                                  : 'bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-50'
+                              }`}
+                            >
+                              Months
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="text-right text-gray-400 text-sm tabular-nums">
@@ -1847,6 +2031,39 @@ export function Step5OpEx({ state, actions, fiscalYear, industry, businessId }: 
                       </div>
                     </td>
                   </tr>
+                  {line.costBehavior === 'budgeted' && !isY2Y3 && openBudgetEditors.has(line.id) && (
+                    <tr className="bg-indigo-50/40" data-testid={`budget-months-${line.id}`}>
+                      <td colSpan={12} className="px-4 py-2">
+                        <div className="flex flex-wrap items-end gap-2">
+                          {y1MonthKeys.map((mk) => {
+                            const [yy, mm] = mk.split('-');
+                            const label = `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(mm) - 1]} ${yy.slice(-2)}`;
+                            return (
+                              <label key={mk} className="flex flex-col text-[10px] text-gray-500">
+                                <span>{label}</span>
+                                <input
+                                  type="number"
+                                  aria-label={`${line.name} ${mk}`}
+                                  value={Math.round(line.budgetedMonthly?.[mk] ?? 0) || ''}
+                                  placeholder="0"
+                                  onChange={(e) =>
+                                    actions.updateOpExLine(line.id, {
+                                      budgetedMonthly: { ...(line.budgetedMonthly ?? {}), [mk]: parseFloat(e.target.value) || 0 },
+                                    })
+                                  }
+                                  className="w-20 px-1.5 py-1 text-right border border-gray-200 rounded tabular-nums text-xs focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400"
+                                />
+                              </label>
+                            );
+                          })}
+                          <span className="ml-2 text-xs text-gray-600 tabular-nums">
+                            Year total {formatCurrency(budgetedTotal(line, y1MonthKeys, 0))}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
 

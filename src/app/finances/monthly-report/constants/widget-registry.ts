@@ -6,6 +6,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'executive_summary',
     label: 'Executive Summary',
     category: 'tables',
+    fullRow: true,
     icon: 'FileText',
     defaultColSpan: 2, defaultRowSpan: 2,
     minColSpan: 2, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
@@ -15,6 +16,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'budget_vs_actual',
     label: 'Budget vs Actual',
     category: 'tables',
+    fullRow: true,
     icon: 'Table2',
     defaultColSpan: 2, defaultRowSpan: 3,
     minColSpan: 2, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
@@ -24,6 +26,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'ytd_summary',
     label: 'YTD Summary',
     category: 'tables',
+    fullRow: true,
     icon: 'Table2',
     defaultColSpan: 2, defaultRowSpan: 3,
     minColSpan: 2, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
@@ -33,6 +36,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'full_year_projection',
     label: 'Full Year Projection',
     category: 'tables',
+    fullRow: true,
     icon: 'Calendar',
     defaultColSpan: 3, defaultRowSpan: 3,
     minColSpan: 3, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
@@ -42,15 +46,57 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'subscription_detail',
     label: 'Subscription Detail',
     category: 'tables',
+    fullRow: true,
     icon: 'CreditCard',
     defaultColSpan: 2, defaultRowSpan: 2,
     minColSpan: 2, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 3,
     dataDependency: 'subscriptions',
   },
+  contractor_detail: {
+    type: 'contractor_detail',
+    label: 'Contractor Analysis',
+    category: 'tables',
+    fullRow: true,
+    icon: 'Users',
+    defaultColSpan: 2, defaultRowSpan: 2,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 3,
+    dataDependency: 'contractors',
+  },
+  payroll_grid: {
+    type: 'payroll_grid',
+    label: 'Payroll Grid (2 months)',
+    category: 'tables',
+    fullRow: true,
+    icon: 'CalendarDays',
+    defaultColSpan: 3, defaultRowSpan: 2,
+    minColSpan: 3, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 3,
+    dataDependency: 'wages',
+  },
+  ratio_analysis: {
+    type: 'ratio_analysis',
+    label: 'Ratio Analysis',
+    category: 'tables',
+    fullRow: true,
+    icon: 'Table2',
+    // Portrait, like contractor_detail: three month columns and a label column
+    // sit comfortably in 180mm, and four ratio blocks read down the page.
+    defaultColSpan: 2, defaultRowSpan: 2,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 3,
+    // No dataDependency: whether the ledger can answer is only known at export
+    // time, and a placement that cannot be produced prints its stated reason.
+    //
+    // The ratios themselves live in widget.config, NOT in a settings column the
+    // way contractor_detail keeps settings.contractor_account_codes. A settings
+    // column holds ONE answer per business; this widget is placed MORE THAN
+    // ONCE with different meanings — a COGS page and a margin page, each with
+    // its own accounts — and a single column would make every placement print
+    // the same ratios.
+  },
   wages_detail: {
     type: 'wages_detail',
     label: 'Wages Detail',
     category: 'tables',
+    fullRow: true,
     icon: 'Users',
     defaultColSpan: 2, defaultRowSpan: 2,
     minColSpan: 2, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 3,
@@ -60,17 +106,144 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'cashflow_forecast_table',
     label: 'Cashflow Forecast Table',
     category: 'tables',
+    fullRow: true,
     icon: 'TrendingUp',
     defaultColSpan: 3, defaultRowSpan: 3,
     minColSpan: 3, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
     dataDependency: 'cashflow',
   },
+  cover_page: {
+    type: 'cover_page',
+    label: 'Cover Page',
+    category: 'tables',
+    fullRow: true,
+    icon: 'FileText',
+    defaultColSpan: 2, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 3, maxRowSpan: 3,
+    // Always renderable — it draws from the report itself.
+  },
+  consolidated_pl: {
+    type: 'consolidated_pl',
+    label: 'Consolidated P&L (per entity)',
+    category: 'tables',
+    fullRow: true,
+    icon: 'Layers',
+    defaultColSpan: 3, defaultRowSpan: 3,
+    minColSpan: 3, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+  },
+  balance_sheet: {
+    type: 'balance_sheet',
+    label: 'Balance Sheet (vs prior period)',
+    category: 'tables',
+    fullRow: true,
+    icon: 'Scale',
+    // Portrait: five columns (Account, two actuals, Variance, % Variance) sit
+    // comfortably in 180mm, and a balance sheet reads down, not across —
+    // the same grain as ytd_summary rather than the wide landscape tables.
+    defaultColSpan: 2, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+    // No dataDependency: the palette can't know whether Xero will answer, and
+    // a placement that can't be produced renders the stated reason (see
+    // assessBalanceSheetForPdf) rather than a grey "Data not available" box.
+  },
+  bank_balances: {
+    type: 'bank_balances',
+    label: 'Bank Balances & Movement',
+    category: 'tables',
+    fullRow: true,
+    icon: 'DollarSign',
+    // The same five columns as the balance sheet, over a short list of
+    // accounts — portrait, and the same sizes.
+    defaultColSpan: 2, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+    // No dataDependency, for the reason balance_sheet has none: a placement
+    // that cannot be produced prints the stated reason (no accounts chosen, a
+    // missing closing rate, an organisation that has not synced) rather than a
+    // grey "Data not available" box.
+  },
+  money_flow: {
+    type: 'money_flow',
+    label: 'Where Did Our Money Go',
+    category: 'tables',
+    fullRow: true,
+    icon: 'ArrowLeftRight',
+    defaultColSpan: 2, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+  },
+  memo: {
+    type: 'memo',
+    label: 'Memo',
+    category: 'tables',
+    fullRow: true,
+    icon: 'StickyNote',
+    defaultColSpan: 2, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+    // No dataDependency — availability is per-month (a memo either exists for
+    // the month or the page is skipped at render).
+  },
+  external_metric: {
+    type: 'external_metric',
+    label: 'External Data',
+    category: 'tables',
+    fullRow: true,
+    icon: 'Database',
+    defaultColSpan: 2, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+    // No dataDependency: the palette can't know per-business series, and a
+    // placed widget with no data for the month renders a placeholder page,
+    // same as every other data-gated widget.
+  },
+  uploaded_insert: {
+    type: 'uploaded_insert',
+    label: 'Uploaded Page (PDF)',
+    category: 'tables',
+    fullRow: true,
+    // One placement per insert: Dragon has two, IICT two.
+    repeatable: true,
+    icon: 'FileUp',
+    // A whole sheet — the uploaded file's pages replace it — so it fills the grid.
+    defaultColSpan: 3, defaultRowSpan: 3,
+    minColSpan: 2, maxColSpan: 3, minRowSpan: 3, maxRowSpan: 3,
+    // No dataDependency: the file is per month, uploaded on the External Data tab.
+  },
 
   // ─── P&L Charts ─────────────────────────────────────────────────
+  // WD.1 — the Calxa Actual/Budget/Last-Year analysis charts, one per section.
+  analysis_chart_income: {
+    type: 'analysis_chart_income',
+    label: 'Income Analysis (A/B/PY)',
+    category: 'pl_charts',
+    fullRow: true,
+    icon: 'BarChart3',
+    defaultColSpan: 3, defaultRowSpan: 2,
+    minColSpan: 3, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+    dataDependency: 'fullYear',
+  },
+  analysis_chart_cogs: {
+    type: 'analysis_chart_cogs',
+    label: 'COGS Analysis (A/B/PY)',
+    category: 'pl_charts',
+    fullRow: true,
+    icon: 'BarChart3',
+    defaultColSpan: 3, defaultRowSpan: 2,
+    minColSpan: 3, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+    dataDependency: 'fullYear',
+  },
+  analysis_chart_expense: {
+    type: 'analysis_chart_expense',
+    label: 'Expenses Analysis (A/B/PY)',
+    category: 'pl_charts',
+    fullRow: true,
+    icon: 'BarChart3',
+    defaultColSpan: 3, defaultRowSpan: 2,
+    minColSpan: 3, maxColSpan: 3, minRowSpan: 2, maxRowSpan: 3,
+    dataDependency: 'fullYear',
+  },
   chart_revenue_breakdown: {
     type: 'chart_revenue_breakdown',
     label: 'Revenue Breakdown',
     category: 'pl_charts',
+    fullRow: true,
     icon: 'PieChart',
     defaultColSpan: 1, defaultRowSpan: 1,
     minColSpan: 1, maxColSpan: 2, minRowSpan: 1, maxRowSpan: 2,
@@ -80,6 +253,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'chart_break_even',
     label: 'Break Even Analysis',
     category: 'pl_charts',
+    fullRow: true,
     icon: 'Target',
     defaultColSpan: 2, defaultRowSpan: 1,
     minColSpan: 1, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 2,
@@ -89,6 +263,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'chart_revenue_vs_expenses',
     label: 'Revenue vs Expenses',
     category: 'pl_charts',
+    fullRow: true,
     icon: 'TrendingUp',
     defaultColSpan: 2, defaultRowSpan: 1,
     minColSpan: 1, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 2,
@@ -98,6 +273,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'chart_variance_heatmap',
     label: 'Variance Heatmap',
     category: 'pl_charts',
+    fullRow: true,
     icon: 'Grid3x3',
     defaultColSpan: 2, defaultRowSpan: 2,
     minColSpan: 2, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 3,
@@ -107,6 +283,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'chart_budget_burn_rate',
     label: 'Budget Burn Rate',
     category: 'pl_charts',
+    fullRow: true,
     icon: 'Flame',
     defaultColSpan: 2, defaultRowSpan: 1,
     minColSpan: 1, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 2,
@@ -118,6 +295,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'chart_cash_runway',
     label: 'Cash Runway',
     category: 'cashflow_charts',
+    fullRow: true,
     icon: 'Timer',
     defaultColSpan: 2, defaultRowSpan: 1,
     minColSpan: 1, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 2,
@@ -127,6 +305,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'chart_cumulative_net_cash',
     label: 'Cumulative Net Cash',
     category: 'cashflow_charts',
+    fullRow: true,
     icon: 'BarChart3',
     defaultColSpan: 2, defaultRowSpan: 1,
     minColSpan: 1, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 2,
@@ -136,6 +315,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'chart_working_capital_gap',
     label: 'Working Capital Gap',
     category: 'cashflow_charts',
+    fullRow: true,
     icon: 'AlertTriangle',
     defaultColSpan: 2, defaultRowSpan: 1,
     minColSpan: 1, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 2,
@@ -145,6 +325,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'chart_cashflow_forecast',
     label: 'Cashflow Forecast Chart',
     category: 'cashflow_charts',
+    fullRow: true,
     icon: 'LineChart',
     defaultColSpan: 2, defaultRowSpan: 2,
     minColSpan: 2, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 3,
@@ -156,6 +337,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'chart_team_cost_pct',
     label: 'Team Cost %',
     category: 'people_charts',
+    fullRow: true,
     icon: 'Users',
     defaultColSpan: 1, defaultRowSpan: 1,
     minColSpan: 1, maxColSpan: 2, minRowSpan: 1, maxRowSpan: 2,
@@ -165,6 +347,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'chart_cost_per_employee',
     label: 'Cost Per Employee',
     category: 'people_charts',
+    fullRow: true,
     icon: 'DollarSign',
     defaultColSpan: 2, defaultRowSpan: 1,
     minColSpan: 1, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 2,
@@ -174,6 +357,7 @@ export const WIDGET_DEFINITIONS: Record<WidgetType, WidgetDefinition> = {
     type: 'chart_subscription_creep',
     label: 'Subscription Creep',
     category: 'people_charts',
+    fullRow: true,
     icon: 'TrendingUp',
     defaultColSpan: 2, defaultRowSpan: 1,
     minColSpan: 1, maxColSpan: 3, minRowSpan: 1, maxRowSpan: 2,

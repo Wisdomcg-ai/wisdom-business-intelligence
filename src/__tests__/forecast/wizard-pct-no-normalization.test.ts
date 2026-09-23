@@ -157,12 +157,16 @@ describe('Wizard rollup — sub-1% percentages (revert of #126 normalizedPct gua
 
     const y1 = result.current.summary.year1;
     expect(y1.revenue).toBe(1_000_000);
-    // 1,000,000 × 0.3 / 100 = 3,000. Pre-revert this would have been
-    // 1,000,000 × (0.3 × 100) / 100 = 300,000.
-    expect(y1.teamCosts).toBe(3_000);
+    // 1,000,000 × 0.3 / 100 = 3,000 of commission. Pre-revert this would have
+    // been 1,000,000 × (0.3 × 100) / 100 = 300,000 — the defect this test
+    // guards. Since the 21 Aug 2026 audit (FML-04) the summary also charges
+    // 12% super on commission, matching what the materializer has always
+    // stored: 3,000 × 1.12 = 3,360. The sub-1% behaviour under test is
+    // unchanged — only the super component is new.
+    expect(y1.teamCosts).toBe(3_360);
   });
 
-  it('Commission at 5% of revenue still contributes $50,000 on $1M (above-1% path unchanged)', () => {
+  it('Commission at 5% of revenue still contributes $50,000 + super on $1M (above-1% path unchanged)', () => {
     const { result } = renderHook(() =>
       useForecastWizard(FY_START_YEAR, 'wizard-pct-no-norm-commission-5'),
     );
@@ -194,6 +198,7 @@ describe('Wizard rollup — sub-1% percentages (revert of #126 normalizedPct gua
       });
     });
 
-    expect(result.current.summary.year1.teamCosts).toBe(50_000);
+    // 50,000 commission + 12% super (FML-04, see the 0.3% case above).
+    expect(result.current.summary.year1.teamCosts).toBe(56_000);
   });
 });

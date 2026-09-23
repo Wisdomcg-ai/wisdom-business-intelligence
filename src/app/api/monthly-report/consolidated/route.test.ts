@@ -166,6 +166,7 @@ function buildState(opts: { withBudgetA: boolean; withBudgetB: boolean }) {
       business_id: BIZ,
       tenant_id: T_A,
       fiscal_year: 2026,
+      is_active: true,
       updated_at: '2026-04-01T00:00:00Z',
     })
     forecastPlLines.push(
@@ -179,6 +180,7 @@ function buildState(opts: { withBudgetA: boolean; withBudgetB: boolean }) {
       business_id: BIZ,
       tenant_id: T_B,
       fiscal_year: 2026,
+      is_active: true,
       updated_at: '2026-04-01T00:00:00Z',
     })
     forecastPlLines.push(
@@ -345,5 +347,31 @@ describe('POST /api/monthly-report/consolidated — coach/admin role gate', () =
       fiscal_year: 2026,
     })
     expect(status).toBe(403)
+  })
+})
+
+describe('POST /api/monthly-report/consolidated — missing rates name only the months the report reads (IICT-62)', () => {
+  beforeEach(() => {
+    setAuthMock(mockAuthClient('user-1', BIZ, false))
+  })
+
+  it("IICT's shape: HKD lines back to Apr 2025, rates to Mar 2026 — the August 2026 report lists Jul and Aug only", async () => {
+    const months = ['2025-04', '2025-12', '2026-03', '2026-06', '2026-07', '2026-08', '2026-09']
+    const state = buildState({ withBudgetA: false, withBudgetB: false })
+    state.xero_connections[1] = { ...state.xero_connections[1], functional_currency: 'HKD' }
+    state.xero_pl_lines_wide_compat = [
+      ...plLines.filter((l) => l.tenant_id === T_A),
+      { business_id: BIZ, tenant_id: T_B, account_name: 'Sales', account_code: null, account_type: 'revenue', section: 'Revenue', monthly_values: Object.fromEntries(months.map((m) => [m, 1000])) },
+    ] as typeof plLines
+    state.fx_rates = ['2025-04', '2025-12', '2026-03'].map((m) => ({
+      currency_pair: 'HKD/AUD', rate_type: 'monthly_average', period: `${m}-01`, rate: 0.19, source: 'oxr',
+    })) as never[]
+    setServiceMock(mockSupabase(state))
+    const { status, json } = await invokeRoute({ business_id: BIZ, report_month: '2026-08', fiscal_year: 2027 })
+    expect(status).toBe(200)
+    expect(json.report.fx_context.missing_rates).toEqual([
+      { currency_pair: 'HKD/AUD', period: '2026-07' },
+      { currency_pair: 'HKD/AUD', period: '2026-08' },
+    ])
   })
 })

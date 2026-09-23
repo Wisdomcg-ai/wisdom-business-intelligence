@@ -1,7 +1,9 @@
 'use client'
 
-import { Loader2, CreditCard, Settings } from 'lucide-react'
-import type { SubscriptionDetailData } from '../types'
+import { Loader2, CreditCard, Settings, AlertTriangle, TrendingUp, PauseCircle } from 'lucide-react'
+import type { SubscriptionDetailData, SubscriptionLeakageSummary } from '../types'
+import { subscriptionDetailOnTotalBudget, unconnectedOrganisationsNote } from '@/lib/monthly-report/subscription-page'
+import { packMonthYY, packPriorMonth } from '../services/pack-style'
 
 interface SubscriptionAnalysisTabProps {
   data: SubscriptionDetailData | null
@@ -23,19 +25,12 @@ function varianceColor(variance: number): string {
 
 function formatMonthLabel(reportMonth: string): string {
   if (!reportMonth) return ''
-  const d = new Date(reportMonth + '-01')
-  const month = d.toLocaleDateString('en-AU', { month: 'short' })
-  const year = d.getFullYear().toString().slice(-2)
-  return `${month} ${year}`
+  return packMonthYY(reportMonth)
 }
 
 function formatPriorMonthLabel(reportMonth: string): string {
   if (!reportMonth) return 'Last Month'
-  const [y, m] = reportMonth.split('-').map(Number)
-  const priorDate = new Date(y, m - 2, 1)
-  const month = priorDate.toLocaleDateString('en-AU', { month: 'short' })
-  const year = priorDate.getFullYear().toString().slice(-2)
-  return `${month} ${year}`
+  return packMonthYY(packPriorMonth(reportMonth))
 }
 
 export default function SubscriptionAnalysisTab({ data, isLoading, error, onOpenSettings }: SubscriptionAnalysisTabProps) {
@@ -52,6 +47,23 @@ export default function SubscriptionAnalysisTab({ data, isLoading, error, onOpen
     return (
       <div className="mb-6 p-4 bg-red-50 rounded-lg border border-red-200 max-w-3xl">
         <p className="text-sm text-red-800">{error}</p>
+      </div>
+    )
+  }
+
+  // Could not be checked, not "nothing spent": an organisation keeps its books
+  // in another currency and a month this page reads has no rate stored, so
+  // nothing on it can be stated in Australian dollars (IICT-35).
+  if (data?.translation_unavailable) {
+    const { missing, organisations } = data.translation_unavailable
+    const months = [...new Set(missing.map((m) => m.period))].sort().join(', ')
+    const pairs = [...new Set(missing.map((m) => m.currency_pair))].join(', ')
+    return (
+      <div className="mb-6 p-4 bg-amber-50 rounded-lg border border-amber-200 max-w-3xl">
+        <p className="text-sm text-amber-900">
+          These subscriptions cannot be shown this month: no {pairs} exchange rate is stored for {months}, so{' '}
+          {organisations.join(' and ')} cannot be shown in Australian dollars. Load the rates under Admin, Consolidation.
+        </p>
       </div>
     )
   }
@@ -77,11 +89,25 @@ export default function SubscriptionAnalysisTab({ data, isLoading, error, onOpen
     )
   }
 
+  // The totals' budget as this tab showed it before the client joined the
+  // budget store — the same default as the pack's standard page, whose vendor
+  // rows this table repeats with no Unallocated row to reconcile an approved total.
+  const shown = subscriptionDetailOnTotalBudget(data, 'pre_budget_store').detail
   const currentMonthLabel = formatMonthLabel(data.report_month)
   const priorMonthLabel = formatPriorMonthLabel(data.report_month)
 
+  // Money on these accounts the totals below do not carry, because the
+  // organisation that posted it is no longer connected (subscription-page).
+  const unconnected = unconnectedOrganisationsNote(shown)
+
   return (
     <div className="max-w-3xl mx-auto">
+      {unconnected && (
+        <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+          <p className="text-sm text-amber-900">{unconnected}</p>
+        </div>
+      )}
+      {data.leakage && <LeakageSummaryBanner leakage={data.leakage} />}
       <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200">
         <table className="w-full">
           <thead>
@@ -94,21 +120,98 @@ export default function SubscriptionAnalysisTab({ data, isLoading, error, onOpen
             </tr>
           </thead>
           <tbody>
-            {data.accounts.map((account) => (
+            {shown.accounts.map((account) => (
               <AccountGroup key={account.account_code} account={account} />
             ))}
 
             {/* Grand Total */}
             <tr className="bg-brand-navy text-white font-semibold">
               <td className="px-4 py-2.5 text-sm">Grand Total</td>
-              <td className="px-4 py-2.5 text-sm text-right">{fmt(data.grand_total.prior_month)}</td>
-              <td className="px-4 py-2.5 text-sm text-right">{fmt(data.grand_total.budget)}</td>
-              <td className="px-4 py-2.5 text-sm text-right">{fmt(data.grand_total.actual)}</td>
-              <td className="px-4 py-2.5 text-sm text-right">{fmt(data.grand_total.variance)}</td>
+              <td className="px-4 py-2.5 text-sm text-right">{fmt(shown.grand_total.prior_month)}</td>
+              <td className="px-4 py-2.5 text-sm text-right">{fmt(shown.grand_total.budget)}</td>
+              <td className="px-4 py-2.5 text-sm text-right">{fmt(shown.grand_total.actual)}</td>
+              <td className="px-4 py-2.5 text-sm text-right">{fmt(shown.grand_total.variance)}</td>
             </tr>
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+/**
+ * The three subscription-leakage classes, above the detail table — the lines a
+ * coach acts on rather than reads. Renders nothing when the month is clean, so
+ * a quiet month stays quiet.
+ *
+ * Budget figures behind these are CADENCE-AWARE: an annual renewal compares
+ * against its full annual amount in its renewal month (and $0 elsewhere), so a
+ * February renewal is "on budget", not an $11k blowout — the artefact that
+ * teaches people to ignore variance reports.
+ */
+function LeakageSummaryBanner({ leakage }: { leakage: SubscriptionLeakageSummary }) {
+  const cards: {
+    key: keyof SubscriptionLeakageSummary['totals']
+    lines: SubscriptionLeakageSummary['new_unbudgeted']
+    title: string
+    explain: string
+    icon: React.ReactNode
+    tone: string
+  }[] = [
+    {
+      key: 'new_unbudgeted',
+      lines: leakage.new_unbudgeted,
+      title: 'New — not in budget',
+      explain: 'Billing this month with no budget line. The most common subscription leak: someone signed up mid-year.',
+      icon: <AlertTriangle className="w-4 h-4" />,
+      tone: 'border-red-200 bg-red-50 text-red-800',
+    },
+    {
+      key: 'price_rises',
+      lines: leakage.price_rises,
+      title: 'Billing above budget',
+      explain: 'Monthly vendors charging ≥10% (and ≥$10) over their budget — price creep.',
+      icon: <TrendingUp className="w-4 h-4" />,
+      tone: 'border-amber-200 bg-amber-50 text-amber-800',
+    },
+    {
+      key: 'lapsed_still_budgeted',
+      lines: leakage.lapsed_still_budgeted,
+      title: 'Budgeted, not billed',
+      explain: 'Monthly vendors with a budget and no charge this month — possibly cancelled but still budgeted, overstating the plan.',
+      icon: <PauseCircle className="w-4 h-4" />,
+      tone: 'border-gray-200 bg-gray-50 text-gray-700',
+    },
+  ]
+  const active = cards.filter((c) => c.lines.length > 0)
+  if (active.length === 0) return null
+
+  return (
+    <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {active.map((c) => (
+        <div key={c.key} className={`rounded-lg border p-3 ${c.tone}`} title={c.explain}>
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
+              {c.icon}
+              {c.title}
+            </span>
+            <span className="text-sm font-bold tabular-nums">{fmt(leakage.totals[c.key])}</span>
+          </div>
+          <ul className="mt-2 space-y-0.5">
+            {c.lines.slice(0, 4).map((l) => (
+              <li key={l.vendor_key} className="flex justify-between text-xs">
+                <span className="truncate pr-2">{l.vendor_name}</span>
+                <span className="tabular-nums whitespace-nowrap">
+                  {c.key === 'lapsed_still_budgeted' ? fmt(l.expected) : fmt(Math.abs(l.delta))}
+                </span>
+              </li>
+            ))}
+            {c.lines.length > 4 && (
+              <li className="text-xs opacity-70">+{c.lines.length - 4} more</li>
+            )}
+          </ul>
+        </div>
+      ))}
     </div>
   )
 }

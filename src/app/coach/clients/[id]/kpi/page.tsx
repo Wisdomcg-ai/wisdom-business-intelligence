@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { TrendingUp, ArrowLeft, Loader2 } from 'lucide-react'
+import { TrendingUp, ArrowLeft, Loader2, AlertTriangle } from 'lucide-react'
 import PageHeader from '@/components/ui/PageHeader'
 import QuarterProgressCard from '@/app/business-dashboard/components/QuarterProgressCard'
 import { useBusinessDashboard } from '@/app/business-dashboard/hooks/useBusinessDashboard'
@@ -24,6 +24,7 @@ export default function CoachClientKPIPage() {
     getQuarterProgress,
     getTrendStatus,
     formatCurrency,
+    loadError,
   } = useBusinessDashboard(id)
 
   if (isLoading) {
@@ -32,6 +33,34 @@ export default function CoachClientKPIPage() {
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin text-brand-orange mx-auto mb-4" />
           <p className="text-sm sm:text-base text-gray-600">Loading client KPI dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // PRES-05 — same failure as the client-facing dashboard: without targets and
+  // snapshots every badge on this page is derived from zeros. A coach reviewing
+  // a client must not be shown a green board built on a failed load.
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-center min-h-screen p-4">
+        <div className="max-w-md w-full rounded-lg border border-red-300 bg-red-50 p-6 text-center">
+          <AlertTriangle className="w-10 h-10 text-red-600 mx-auto mb-3" />
+          <h2 className="text-lg font-semibold text-red-800 mb-1">
+            Couldn&apos;t load this client&apos;s KPI data
+          </h2>
+          <p className="text-sm text-red-700 mb-4">
+            Targets and weekly numbers didn&apos;t load, so the badges on this page
+            would not reflect the client&apos;s real position.
+          </p>
+          <p className="text-xs text-red-600/80 mb-4 font-mono break-words">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded bg-red-600 text-white text-sm font-medium hover:bg-red-700"
+          >
+            Try again
+          </button>
         </div>
       </div>
     )

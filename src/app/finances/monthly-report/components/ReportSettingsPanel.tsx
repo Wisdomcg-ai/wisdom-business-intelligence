@@ -7,6 +7,8 @@ import type { MonthlyReportSettings, ReportSections, ForecastOption, AccountMapp
 import { createClient } from '@/lib/supabase/client'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import TemplatePicker from './TemplatePicker'
+import BudgetSpreadsheetImport from './BudgetSpreadsheetImport'
+import { budgetVersionChoice } from '../utils/budget-version-choice'
 import TemplateSaveModal from './TemplateSaveModal'
 
 interface ReportSettingsPanelProps {
@@ -51,6 +53,7 @@ const SECTION_GROUPS: SectionGroup[] = [
       { key: 'balance_sheet', label: 'Balance Sheet' },
       { key: 'cashflow', label: 'Cashflow Forecast' },
       { key: 'trend_charts', label: 'Trend Charts' },
+      { key: 'cash_basis', label: 'Cash-basis mirror (extra Xero calls; needs a sync cycle)' },
     ],
   },
   {
@@ -92,6 +95,18 @@ const COLUMN_LABELS = {
   show_budget_annual_total: 'Budget Annual Total',
 }
 
+/** A locked budget version, as offered in the source picker. */
+interface BudgetVersionOption {
+  id: string
+  label: string | null
+  effective_from: string | null
+  months_covered: number | null
+  fiscal_year: number
+  /** null = a version covering the whole business; else the Xero organisation's. */
+  tenant_id: string | null
+  source: string | null
+}
+
 export default function ReportSettingsPanel({
   isOpen,
   onClose,
@@ -109,6 +124,10 @@ export default function ReportSettingsPanel({
   onSaveTemplate,
 }: ReportSettingsPanelProps) {
   const [localSettings, setLocalSettings] = useState<MonthlyReportSettings>(settings)
+  const [budgetVersions, setBudgetVersions] = useState<BudgetVersionOption[]>([])
+  const [organisations, setOrganisations] = useState<Array<{ tenant_id: string; name: string }>>([])
+  const [showBudgetImport, setShowBudgetImport] = useState(false)
+  const [versionsReloadedAt, setVersionsReloadedAt] = useState(0)
   const [forecasts, setForecasts] = useState<ForecastOption[]>([])
   const [expenseAccounts, setExpenseAccounts] = useState<AccountMapping[]>([])
   const [wagesAccountOptions, setWagesAccountOptions] = useState<string[]>([])
@@ -123,6 +142,25 @@ export default function ReportSettingsPanel({
   useEffect(() => {
     async function loadData() {
       const supabase = createClient()
+      // budget_versions.business_id is businesses-space ONLY — unlike the
+      // forecast query below, which deliberately spans both id-spaces.
+      const versionRes = await supabase
+        .from('budget_versions')
+        .select('id, label, effective_from, months_covered, fiscal_year, locked_at, tenant_id, source')
+        .eq('business_id', businessId)
+        .not('locked_at', 'is', null)
+        .order('effective_from', { ascending: false })
+      setBudgetVersions((versionRes.data as BudgetVersionOption[]) ?? [])
+      // The organisations, for the import's scope picker and for naming a
+      // per-organisation version. businesses-space, like budget_versions.
+      const orgRes = await supabase
+        .from('xero_connections')
+        .select('tenant_id, tenant_name, display_name, display_order')
+        .eq('business_id', businessId)
+        .eq('is_active', true)
+        .order('display_order', { ascending: true })
+      setOrganisations(((orgRes.data ?? []) as Array<{ tenant_id: string; tenant_name: string | null; display_name: string | null }>)
+        .map((c) => ({ tenant_id: c.tenant_id, name: c.display_name || c.tenant_name || c.tenant_id })))
       // Resolve business_profiles.id from businesses.id
       const ids = await resolveBusinessProfileIds(supabase, businessId)
       const forecastRes = await supabase
@@ -167,7 +205,7 @@ export default function ReportSettingsPanel({
       setWagesAccountOptions(Array.from(namesSet).sort())
     }
     if (businessId && isOpen) loadData()
-  }, [businessId, isOpen])
+  }, [businessId, isOpen, versionsReloadedAt])
 
   const handleSectionToggle = (key: keyof ReportSections) => {
     setLocalSettings(prev => ({
@@ -198,8 +236,14 @@ export default function ReportSettingsPanel({
           show_budget_next_month: localSettings.show_budget_next_month,
           show_budget_annual_total: localSettings.show_budget_annual_total,
           budget_forecast_id: localSettings.budget_forecast_id,
+          budget_source: localSettings.budget_source ?? 'forecast',
           subscription_account_codes: localSettings.subscription_account_codes,
           wages_account_names: localSettings.wages_account_names,
+          // WD.3 — standing "refer to …" commentary lines (empty rows dropped).
+          standing_commentary:
+            (localSettings.standing_commentary ?? []).filter(l => l.label.trim() !== '') .length > 0
+              ? (localSettings.standing_commentary ?? []).filter(l => l.label.trim() !== '')
+              : null,
           // Phase 35 D-16: enables auto-revert when this save lands on an approved/sent report.
           report_month: reportMonth,
         }),
@@ -221,6 +265,19 @@ export default function ReportSettingsPanel({
     }
   }
 
+  /**
+   * The year the import's months must belong to: the report's own month when
+   * the panel was opened for one, else the fiscal year today sits in. A budget
+   * imported against the wrong year cannot be matched to a month at all.
+   */
+  const budgetImportFiscalYear = (() => {
+    const month = reportMonth && /^\d{4}-\d{2}$/.test(reportMonth) ? reportMonth : null
+    const [year, monthNumber] = month
+      ? month.split('-').map(Number)
+      : [new Date().getFullYear(), new Date().getMonth() + 1]
+    return monthNumber >= 7 ? year + 1 : year
+  })()
+
   const handleSaveTemplate = async (name: string, isDefault: boolean) => {
     if (!onSaveTemplate) return
     setIsSavingTemplate(true)
@@ -234,6 +291,14 @@ export default function ReportSettingsPanel({
       setIsSavingTemplate(false)
     }
   }
+
+  // What the picker offers, and why it may not be selectable: the resolver's
+  // rule, not "exactly one version" — Dragon is held to one version per
+  // organisation and IICT to one for the group (DRG-03).
+  const budgetChoice = budgetVersionChoice(
+    budgetVersions,
+    Object.fromEntries(organisations.map((o) => [o.tenant_id, o.name])),
+  )
 
   if (!isOpen) return null
 
@@ -299,10 +364,41 @@ export default function ReportSettingsPanel({
             </div>
           )}
 
-          {/* Budget Forecast Selection */}
+          {/* Where the budget column comes from. Two questions, kept apart: this
+              one is "is this client on the budget store yet"; which VERSION
+              applies to a given month is decided by its effective date. */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-2">Budget Forecast</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">Budget source</h3>
             <select
+              value={localSettings.budget_source ?? 'forecast'}
+              onChange={(e) => setLocalSettings(prev => ({ ...prev, budget_source: e.target.value as 'forecast' | 'budget_version' }))}
+              disabled={!budgetChoice.selectable}
+              className="w-full rounded-lg border-gray-300 text-sm focus:border-brand-orange focus:ring-brand-orange disabled:bg-gray-50 disabled:text-gray-500"
+            >
+              <option value="forecast">Forecast — re-cut as the year runs</option>
+              <option value="budget_version">{budgetChoice.label}</option>
+            </select>
+            {/* Three states, never two. */}
+            {budgetChoice.note && (
+              <p className={`mt-1 text-xs ${budgetChoice.tone === 'warning' ? 'text-amber-700' : 'text-gray-500'}`}>{budgetChoice.note}</p>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowBudgetImport(true)}
+              className="mt-2 text-xs font-medium text-brand-orange hover:underline"
+            >
+              Import a budget from a spreadsheet…
+            </button>
+          </div>
+
+          {/* Budget Forecast Selection */}
+          <div className={localSettings.budget_source === 'budget_version' ? 'opacity-50' : undefined}>
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">Budget Forecast</h3>
+            {localSettings.budget_source === 'budget_version' && (
+              <p className="mb-1 text-xs text-gray-500">Not used while the budget source is the Xero budget.</p>
+            )}
+            <select
+              disabled={localSettings.budget_source === 'budget_version'}
               value={localSettings.budget_forecast_id || ''}
               onChange={(e) => setLocalSettings(prev => ({ ...prev, budget_forecast_id: e.target.value || null }))}
               className="w-full rounded-lg border-gray-300 text-sm focus:border-brand-orange focus:ring-brand-orange"
@@ -402,6 +498,71 @@ export default function ReportSettingsPanel({
             </div>
           ))}
 
+          {/* WD.3 — Standing commentary lines */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">Standing Commentary</h3>
+            <p className="text-xs text-gray-500 mb-2">
+              &ldquo;Refer to …&rdquo; lines that appear under the Budget vs Actual statement every
+              month. A line pointing at a page not in the pack is flagged in the PDF, never dropped.
+            </p>
+            <div className="space-y-2">
+              {(localSettings.standing_commentary ?? []).map((line, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={line.label}
+                    onChange={(e) =>
+                      setLocalSettings(prev => ({
+                        ...prev,
+                        standing_commentary: (prev.standing_commentary ?? []).map((l, j) =>
+                          j === i ? { ...l, label: e.target.value } : l),
+                      }))
+                    }
+                    placeholder="e.g. Wages"
+                    className="w-36 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-orange"
+                  />
+                  <span className="text-xs text-gray-400 whitespace-nowrap">refer to</span>
+                  <input
+                    type="text"
+                    value={line.refer_to}
+                    onChange={(e) =>
+                      setLocalSettings(prev => ({
+                        ...prev,
+                        standing_commentary: (prev.standing_commentary ?? []).map((l, j) =>
+                          j === i ? { ...l, refer_to: e.target.value } : l),
+                      }))
+                    }
+                    placeholder="e.g. Wages Analysis"
+                    className="flex-1 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-orange"
+                  />
+                  <button
+                    onClick={() =>
+                      setLocalSettings(prev => ({
+                        ...prev,
+                        standing_commentary: (prev.standing_commentary ?? []).filter((_, j) => j !== i),
+                      }))
+                    }
+                    className="text-gray-400 hover:text-red-500 text-sm px-1"
+                    title="Remove line"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() =>
+                  setLocalSettings(prev => ({
+                    ...prev,
+                    standing_commentary: [...(prev.standing_commentary ?? []), { label: '', refer_to: '' }],
+                  }))
+                }
+                className="text-sm text-brand-orange hover:underline"
+              >
+                + Add standing line
+              </button>
+            </div>
+          </div>
+
           {/* Column Visibility */}
           <div>
             <h3 className="text-sm font-semibold text-gray-900 mb-2">Column Visibility</h3>
@@ -445,6 +606,16 @@ export default function ReportSettingsPanel({
         onClose={() => setShowSaveModal(false)}
         onSave={handleSaveTemplate}
         isSaving={isSavingTemplate}
+      />
+
+      {/* The budget the client is held to, from the coach's spreadsheet */}
+      <BudgetSpreadsheetImport
+        isOpen={showBudgetImport}
+        onClose={() => setShowBudgetImport(false)}
+        businessId={businessId}
+        fiscalYear={budgetImportFiscalYear}
+        organisations={organisations}
+        onImported={() => setVersionsReloadedAt(Date.now())}
       />
     </div>
   )

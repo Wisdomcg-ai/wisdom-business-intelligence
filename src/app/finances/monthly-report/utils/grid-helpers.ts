@@ -1,6 +1,49 @@
-import type { LayoutPage, LayoutWidget, WidgetBoundingBox, GridConfig } from '../types/pdf-layout'
+import type { LayoutPage, LayoutWidget, WidgetBoundingBox, GridConfig, WidgetType } from '../types/pdf-layout'
 import { GRID_CONFIG } from '../types/pdf-layout'
 import { WIDGET_DEFINITIONS } from '../constants/widget-registry'
+
+/**
+ * WC.2 — is this widget pinned to a full row? Tables and charts honour box.x
+ * only as a symmetric MARGIN (box.w reaches nothing but the KPI cards), so any
+ * off-column placement renders broken. See WidgetDefinition.fullRow.
+ */
+export function isFullRowWidget(type: WidgetType): boolean {
+  return WIDGET_DEFINITIONS[type]?.fullRow === true
+}
+
+/**
+ * Clamp a proposed placement for its widget type: full-row widgets snap to
+ * col 0 × full grid width; free widgets pass through. Row/rowSpan untouched.
+ */
+export function clampPlacement(
+  type: WidgetType,
+  orientation: 'portrait' | 'landscape',
+  col: number,
+  colSpan: number,
+): { col: number; colSpan: number } {
+  if (!isFullRowWidget(type)) return { col, colSpan }
+  return { col: 0, colSpan: GRID_CONFIG[orientation].cols }
+}
+
+/**
+ * Defensive render-time normalisation for a whole layout. Layouts saved before
+ * the full-row rule (or edited by hand) may hold a table in column 2 — rather
+ * than render it with a page-wide margin, snap it in place. Pure; returns a new
+ * object only when something changed.
+ */
+export function normalizeLayoutPlacements<T extends { pages: LayoutPage[] }>(layout: T): T {
+  let changed = false
+  const pages = layout.pages.map((page) => {
+    const widgets = page.widgets.map((w) => {
+      const clamped = clampPlacement(w.type, page.orientation, w.col, w.colSpan)
+      if (clamped.col === w.col && clamped.colSpan === w.colSpan) return w
+      changed = true
+      return { ...w, ...clamped }
+    })
+    return widgets.some((w, i) => w !== page.widgets[i]) ? { ...page, widgets } : page
+  })
+  return changed ? { ...layout, pages } : layout
+}
 
 /**
  * Get the set of occupied cells for a page (excluding a specific widget for drag validation)

@@ -22,7 +22,7 @@
 
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
+import { convertAssumptionsToPLLines, findRetiredExistingLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
 import { requireSectionPermission } from '@/lib/permissions/requireSectionPermission'
@@ -185,11 +185,45 @@ async function postHandler(
       | { forecast_id: string; computed_at: string; lines_count: number }
       | null
 
+    // ── Retire superseded rows ───────────────────────────────────────────
+    // Same contract as the wizard generate route: the RPC never deletes, so
+    // derived rows the converter stopped emitting (team-covered twins,
+    // subscription-covered twins, code-less twins) are removed here — exactly
+    // those, never "everything absent from the payload" (D-44.1-06).
+    let linesRetired = 0
+    const retired = findRetiredExistingLines(
+      assumptions as any,
+      (existingPLLines as any) || [],
+      generatedLines,
+    )
+    if (retired.length > 0) {
+      const retiredIds = retired.map(r => r.id as string)
+      const { error: retireError } = await supabase
+        .from('forecast_pl_lines')
+        .delete()
+        .eq('forecast_id', forecastId)
+        .eq('is_manual', false)
+        .in('id', retiredIds)
+      if (retireError) {
+        Sentry.captureException(retireError, {
+          tags: { route: 'forecast/[id]/recompute', invariant: 'forecast_pl_lines_retire_failed' },
+          extra: {
+            context: '[forecast/recompute] Superseded rows were not deleted after materialize',
+            forecastId,
+            retired: retired.map(r => ({ id: r.id, code: r.account_code, name: r.account_name })),
+          },
+        } as any)
+      } else {
+        linesRetired = retiredIds.length
+      }
+    }
+
     return NextResponse.json({
       success: true,
       forecast_id: result?.forecast_id ?? forecastId,
       computed_at: result?.computed_at ?? null,
       lines_count: result?.lines_count ?? generatedLines.length,
+      lines_retired: linesRetired,
     })
   } catch (error) {
     Sentry.captureException(error, { tags: { route: 'forecast/[id]/recompute' }, extra: { context: "[forecast/recompute] Error" } } as any)

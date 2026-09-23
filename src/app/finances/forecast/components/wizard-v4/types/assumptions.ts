@@ -9,7 +9,7 @@
 // COST BEHAVIOR
 // ============================================================
 
-export type CostBehavior = 'fixed' | 'variable' | 'adhoc' | 'seasonal';
+export type CostBehavior = 'fixed' | 'variable' | 'adhoc' | 'seasonal' | 'budgeted'; // 'budgeted' = explicit amount per month
 
 export interface CostBehaviorConfig {
   type: CostBehavior;
@@ -71,6 +71,11 @@ export interface COGSLineAssumption {
   year3Monthly?: Record<string, number>; // Monthly data for Y3
   year2Quarterly?: { q1: number; q2: number; q3: number; q4: number }; // Legacy compat
   year3Quarterly?: { q1: number; q2: number; q3: number; q4: number }; // Legacy compat
+  // FML-06 (21 Aug 2026 audit): Step 3's Y2/Y3 margin trend selector. The
+  // summary has always applied ±2 percentage points for these; without the
+  // field on the wire the stored forecast ignored the operator's margin plan
+  // and the setting evaporated on reopen.
+  y2y3Trend?: 'improves' | 'increases' | 'same';
 }
 
 export interface COGSAssumptions {
@@ -89,6 +94,14 @@ export interface ExistingTeamMember {
   role: string;
   employmentType: 'full-time' | 'part-time' | 'casual' | 'contractor';
   currentSalary: number;
+  /**
+   * PR-A materializer fidelity (M3a): the Year-1 effective salary the wizard
+   * summary uses (state newSalary = currentSalary with the Y1 increase
+   * applied). The converter compounds THIS by salaryIncreasePct^(yearN-1) so
+   * stored wages equal the displayed summary. Absent on legacy payloads —
+   * converter falls back to currentSalary.
+   */
+  year1Salary?: number;
   hoursPerWeek?: number;
   salaryIncreasePct: number; // e.g., 3 = 3% increase
   increaseMonth?: string; // e.g., '2026-07' for start of FY
@@ -105,6 +118,8 @@ export interface PlannedHire {
   hourlyRate?: number; // For casuals
   weeksPerYear?: number; // For casuals (default 48)
   startMonth: string; // e.g., '2026-03'
+  /** PR-A (M3a): per-hire annual increase % — summary default is 3. */
+  increasePct?: number;
   notes?: string;
 }
 
@@ -165,13 +180,49 @@ export interface OpExLineAssumption {
   // For adhoc:
   expectedAnnualAmount?: number;
   expectedMonths?: string[]; // Which months to spread across
+  // For budgeted: explicit amount per "YYYY-MM" (Y1–Y3). Months beyond the
+  // budget's coverage roll forward by calendar month with annualIncreasePct
+  // (falling back to opex.defaultIncreasePct). See src/lib/forecast/budgeted-line.ts.
+  budgetedMonthly?: Record<string, number>;
   // Subscription flag
   isSubscription?: boolean;
   notes?: string;
+
+  // ── 21 Aug 2026 audit additions ──────────────────────────────────────────
+  // PROC-06: the Xero account code. Without it the restore round-trip returned
+  // code-less lines, which silently disarmed the subscription double-count
+  // guard (it keys on accountCode) for the rest of the session.
+  accountCode?: string;
+  // PROC-06: the operator's explicit include/exclude decision. Auto-detection
+  // re-runs on restore without this, so a deliberate "keep this in OpEx" was
+  // forgotten every time the wizard was reopened.
+  isTeamCostOverride?: boolean;
+
+  // FML-01 / PROC-01: per-year Y2/Y3 hand-tuning. The on-screen summary and
+  // Step 8 Review have always honored these, but they were never exported —
+  // so the STORED forecast kept the growth-formula value and the tuning
+  // vanished on the next reopen, with the Y1-only parity check blind to it.
+  y2Override?: number;          // explicit Y2 annual amount
+  y3Override?: number;          // explicit Y3 annual amount
+  y2PercentOverride?: number;   // explicit Y2 % of revenue (variable lines)
+  y3PercentOverride?: number;   // explicit Y3 % of revenue (variable lines)
+  y2SeasonalTargetAmount?: number;
+  y3SeasonalTargetAmount?: number;
+  // Lifecycle flags the summary honors; exported so the materializer agrees.
+  isOneTime?: boolean;
+  oneTimeYear?: number;
+  startYear?: number;
 }
 
 export interface OpExAssumptions {
   lines: OpExLineAssumption[];
+  /**
+   * PROC-08 (21 Aug 2026 audit): the wizard-level default % change applied to
+   * Y2/Y3. It drives subscription growth, unclassified-line growth and the
+   * per-line default, but was never persisted — so a coach who set "hold costs
+   * flat" (0%) came back to a forecast quietly back at 3%.
+   */
+  defaultIncreasePct?: number;
 }
 
 // ============================================================
@@ -244,7 +295,8 @@ export interface SubscriptionVendorSnapshot {
   vendorKey: string;
   vendorName: string;
   monthlyBudget: number;
-  frequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc' | 'one-time';
+  /** 'one-time' is legacy and still read; see lib/subscriptions/frequency. */
+  frequency: 'monthly' | 'quarterly' | 'bi-annual' | 'annual' | 'ad-hoc' | 'one-time';
   category?: string;
   accountCodes?: string[];
 }
@@ -336,6 +388,23 @@ export interface ForecastAssumptions {
    * docstring above for full rationale.
    */
   priorYearByMonth?: PriorYearByMonthSnapshot;
+
+  // ------------------------------------------------------------------
+  // PR-A materializer fidelity — buckets the summary's net profit includes
+  // that previously never reached the stored P&L. All optional (legacy
+  // payloads omit them; the converter treats absent as zero).
+  // ------------------------------------------------------------------
+  /** Prior-FY Xero Other Income total, carried flat into each forecast year (summary parity). */
+  xeroOtherIncome?: number;
+  /** Prior-FY Xero Other Expense total, carried flat into each forecast year (summary parity). */
+  xeroOtherExpense?: number;
+
+  /**
+   * Where this forecast's starting numbers came from, when not typed in.
+   * Set once by a seed (today: the Xero budget seed) and never updated —
+   * the seed is one-shot. Drives the provenance banners in the wizard.
+   */
+  seedSource?: import('@/lib/services/xero-budget-seed-service').ForecastSeedSource;
 }
 
 // ============================================================

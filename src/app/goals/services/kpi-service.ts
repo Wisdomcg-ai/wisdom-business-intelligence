@@ -337,10 +337,26 @@ export class KPIService {
   /**
    * Get user's saved KPIs from Supabase
    */
+  /**
+   * The business's KPIs — unchanged for every caller that only wants the list.
+   * Prefer getUserKPIsResult when a failed read must not look like "no KPIs".
+   */
   static async getUserKPIs(businessId: string): Promise<KPIData[]> {
+    return (await KPIService.getUserKPIsResult(businessId)).kpis
+  }
+
+  /**
+   * The KPIs AND whether they could be read (D3, 22 Sep 2026).
+   *
+   * getUserKPIs answered [] for a failed query and for a business with no KPIs
+   * alike. The goals hook took the empty list as the client's KPIs, and its
+   * autosave then deactivated every stored KPI — the read failure became a
+   * write. `ok: false` says the list means nothing.
+   */
+  static async getUserKPIsResult(businessId: string): Promise<{ kpis: KPIData[]; ok: boolean }> {
     try {
       if (!businessId) {
-        return []
+        return { kpis: [], ok: true }
       }
 
       // Dual-ID hardening: a client's business_kpis can be keyed under EITHER the
@@ -358,7 +374,7 @@ export class KPIService {
 
       if (error) {
         console.error('[KPI Service] ❌ Error fetching user KPIs:', error)
-        return []
+        return { kpis: [], ok: false }
       }
 
       // Dedupe by kpi_id (rows can exist under both id-spaces). See
@@ -378,10 +394,10 @@ export class KPIService {
       }))
 
       console.log(`[KPI Service] 📥 Loaded ${result.length} user KPIs (dual-id safe)`)
-      return result
+      return { kpis: result, ok: true }
     } catch (err) {
       console.error('[KPI Service] ❌ Error getting user KPIs:', err)
-      return []
+      return { kpis: [], ok: false }
     }
   }
 

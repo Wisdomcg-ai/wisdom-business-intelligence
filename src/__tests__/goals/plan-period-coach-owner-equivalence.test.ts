@@ -85,6 +85,10 @@ vi.mock('@/app/goals/services/kpi-service', () => ({
     loadKPIs: vi.fn().mockResolvedValue({ kpis: [] }),
     saveKPIs: vi.fn().mockResolvedValue({ success: true }),
     getUserKPIs: vi.fn().mockResolvedValue([]),
+    // D3: the hook reads KPIs through the result form, so a failed read is not
+    // mistaken for "no KPIs". Without this the hook takes its failure path and
+    // this fence stops exercising the real one.
+    getUserKPIsResult: vi.fn().mockResolvedValue({ kpis: [], ok: true }),
     saveUserKPIs: vi.fn().mockResolvedValue({ success: true }),
   },
 }))

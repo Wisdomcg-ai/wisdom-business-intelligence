@@ -1,8 +1,11 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { convertAssumptionsToPLLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
+import { convertAssumptionsToPLLines, findRetiredExistingLines } from '@/app/finances/forecast/services/assumptions-to-pl-lines'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import * as Sentry from '@sentry/nextjs'
+import { applyDraftPublishGuard } from '@/lib/forecast/draft-publish-guard'
+import { checkSummaryParity } from '@/lib/forecast/summary-parity'
+import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 
@@ -128,13 +131,166 @@ async function postHandler(request: Request) {
       forecastData.completed_at = new Date().toISOString()
     }
 
+    // An UPDATE with no name supplied keeps the row's existing name. The
+    // default above is for brand-new rows only — applying it on update renamed
+    // every version the wizard opened without a name (the budget-seed flow,
+    // 7 Sep 2026: "FY2027 from Xero budget" became "FY2027 Forecast (Sep 2026)").
+    if (!forecastName && forecastId && !createNew) {
+      delete forecastData.name
+    }
+
+    // ── Phase A (CFO-only clients) — refuse to finalize an EMPTY forecast ──
+    //
+    // Derive the P&L lines BEFORE any row is created or activated. A final
+    // generate whose assumptions carry no revenue/COGS/OpEx lines (the
+    // failed-seed wizard trap: Dragon Roofing 2026-04/2026-08, Efficient
+    // Living 2026-07) used to activate a 0-line forecast that the monthly
+    // report then auto-picked as a silent $0 budget and the cashflow page
+    // choked on. Draft saves stay allowed — a mid-wizard draft is
+    // legitimately incomplete.
+    let generatedLines: ReturnType<typeof convertAssumptionsToPLLines> | null = null
+    // Hoisted: the post-RPC retire step needs the rows the converter was given.
+    let existingPLLines: Parameters<typeof convertAssumptionsToPLLines>[0]['existingLines'] = []
+    if (assumptions && !isDraft) {
+      if (forecastId && !createNew) {
+        const { data } = await supabase
+          .from('forecast_pl_lines')
+          .select('*')
+          .eq('forecast_id', forecastId)
+          .order('sort_order', { ascending: true })
+        existingPLLines = data || []
+      }
+
+      generatedLines = convertAssumptionsToPLLines({
+        assumptions,
+        forecastStartMonth: forecastData.forecast_start_month as string,
+        forecastEndMonth: forecastData.forecast_end_month as string,
+        fiscalYear,
+        forecastDuration: forecastDuration || 1,
+        existingLines: existingPLLines,
+      })
+
+      if (!isDraft && generatedLines.length === 0) {
+        return NextResponse.json(
+          {
+            error:
+              'This forecast has no P&L lines to generate — revenue, COGS and operating expense lines are all empty. ' +
+              'Use "Refresh from Xero" on the Prior Year step (or add lines manually) before generating.',
+            code: 'EMPTY_FORECAST',
+          },
+          { status: 422 },
+        )
+      }
+    }
+
     let resultForecastId: string
 
+    // ── PR-A (M5) — drafts are saves, not publishes ────────────────────────
+    //
+    // A draft autosave used to route through create_active_forecast_locked,
+    // which DEACTIVATED the business's approved forecast and installed a
+    // 3-second-old, half-configured draft as the live budget the monthly
+    // report varies against. Draft creates now insert an is_active=false row
+    // and never touch the active forecast; only a final Generate activates.
+    // `|| createNew` closes the (forecastId present + createNew + isDraft)
+    // hole: that combination previously fell through to
+    // create_active_forecast_locked, which publishes an ACTIVE row while
+    // isDraft suppresses line derivation — an active, zero-line forecast
+    // that bypasses the EMPTY_FORECAST gate. Drafts never activate.
+    if (isDraft && (!forecastId || createNew)) {
+      // The INSERT path was unguarded: a brand-new draft row carried a
+      // populated `assumptions`, i.e. a published-looking record for a forecast
+      // nobody has generated. Route it through the same guard as the UPDATE so
+      // the work lands in draft_assumptions (23 Aug 2026).
+      const draftInsertPayload = applyDraftPublishGuard(forecastData, true)
+      const { data: draftRow, error: draftError } = await supabase
+        .from('financial_forecasts')
+        .insert({ ...draftInsertPayload, forecast_type: 'forecast', is_active: false })
+        .select('id')
+        .single()
+
+      if (draftError || !draftRow) {
+        Sentry.captureException(draftError, { tags: { route: 'forecast-wizard-v4/generate' }, extra: { context: '[wizard-v4/generate] Draft insert error' } } as any)
+        return NextResponse.json(
+          { error: 'Failed to create draft forecast', details: draftError?.message },
+          { status: 500 }
+        )
+      }
+
+      return NextResponse.json({
+        success: true,
+        forecastId: draftRow.id,
+        plLinesGenerated: 0,
+        computed_at: null,
+        is_draft: true,
+      })
+    }
+
     if (forecastId && !createNew) {
-      // UPDATE existing forecast
+      // UPDATE existing forecast.
+      //
+      // A draft update saves WORK; it must not move PUBLISHED numbers.
+      // `revenue_goal` / `gross_profit_goal` / `net_profit_goal` are read by the
+      // coach's client forecast page and the completeness checker, and
+      // `wizard_state` holds the approved summary. Materialisation is skipped for
+      // drafts (see the `!isDraft` gate below), so writing those four on a
+      // 3-second autosave advanced the headline while `forecast_pl_lines` stayed
+      // at the last Generate — the live row then described a forecast that had
+      // never been published. Only a final Generate moves the headline and the
+      // stored P&L together.
+      // 21 Aug 2026 audit (PROC-04): a FINAL generate now writes only the
+      // draft-safe subset here, and publishes the headline (wizard_state,
+      // goals, is_completed) after materialisation succeeds — see the
+      // publish step below. Previously the headline went first, so a failing
+      // materialise RPC returned 500 having already advanced the ACTIVE
+      // forecast's approved summary and goals while forecast_pl_lines stayed
+      // at the previous Generate: exactly the headline/lines divergence the
+      // draft-publish guard exists to prevent, reintroduced on the error path.
+      // PROC-09 (21 Aug 2026 audit): the row was matched on id ALONE, with a
+      // payload whose business_id came from the POSTED businessId. Nothing
+      // asserted the two agreed, so on a coach/admin session (RLS-permitted
+      // across clients) any client-side state bug pairing business A's id with
+      // business B's forecast id would silently rewrite B's forecast — and
+      // reassign it to A. Ownership is now verified before the write.
+      const { data: targetRow, error: targetError } = await supabase
+        .from('financial_forecasts')
+        .select('id, business_id')
+        .eq('id', forecastId)
+        .maybeSingle()
+
+      if (targetError) {
+        Sentry.captureException(targetError, {
+          tags: { route: 'forecast-wizard-v4/generate' },
+          extra: { context: '[wizard-v4/generate] Target forecast lookup failed', forecastId },
+        } as any)
+        return NextResponse.json(
+          { error: 'Failed to load forecast', details: targetError.message },
+          { status: 500 }
+        )
+      }
+      if (!targetRow) {
+        return NextResponse.json({ error: 'Forecast not found' }, { status: 404 })
+      }
+      if (targetRow.business_id !== profileId) {
+        Sentry.captureMessage('[wizard-v4/generate] forecastId does not belong to businessId', {
+          level: 'error' as any,
+          tags: {
+            route: 'forecast-wizard-v4/generate',
+            invariant: 'forecast_business_mismatch',
+          },
+          extra: { forecastId, postedBusinessId: businessId, resolvedProfileId: profileId },
+        } as any)
+        return NextResponse.json(
+          { error: 'Forecast does not belong to this business' },
+          { status: 403 }
+        )
+      }
+
+      const updatePayload = applyDraftPublishGuard(forecastData, true)
+
       const { data: updated, error: updateError } = await supabase
         .from('financial_forecasts')
-        .update(forecastData)
+        .update(updatePayload)
         .eq('id', forecastId)
         .select('id')
         .single()
@@ -185,23 +341,19 @@ async function postHandler(request: Request) {
     // forecast_pl_lines in a single transaction — derivation failure rolls
     // back the assumption write. See migration
     // supabase/migrations/20260429000002_save_assumptions_and_materialize_rpc.sql.
+    // PR-A (M5): drafts never materialize. The old unconditional materialize
+    // meant every 3-second autosave overwrote the live forecast's P&L lines
+    // with the half-configured draft state (per-account clobber). Lines are
+    // derived only on a final Generate; the D-18 freshness invariant is
+    // log-only by default, and Generate recomputes computed_at.
     let plLinesGenerated = 0
+    let linesRetired = 0
     let computedAt: string | null = null
-    if (assumptions) {
-      const { data: existingPLLines } = await supabase
-        .from('forecast_pl_lines')
-        .select('*')
-        .eq('forecast_id', resultForecastId)
-        .order('sort_order', { ascending: true })
-
-      const generatedLines = convertAssumptionsToPLLines({
-        assumptions,
-        forecastStartMonth: forecastData.forecast_start_month as string,
-        forecastEndMonth: forecastData.forecast_end_month as string,
-        fiscalYear,
-        forecastDuration: forecastDuration || 1,
-        existingLines: existingPLLines || [],
-      })
+    if (assumptions && generatedLines && !isDraft) {
+      // Lines were derived above (pre-write emptiness gate). For the update
+      // path the existing rows were read via `forecastId` — identical to
+      // `resultForecastId`; for the create path the forecast is brand-new and
+      // has no rows, matching the previous read-after-create behaviour.
 
       // Shape pl_lines for the RPC — the RPC owns the INSERT (and the DELETE
       // of existing is_manual=false rows), so we pass plain objects, not the
@@ -217,6 +369,13 @@ async function postHandler(request: Request) {
         is_from_xero: line.is_from_xero || false,
       }))
 
+      // NOTE: deliberately NOT passing p_force_full_replace. That flag
+      // DELETEs every derived row absent from the payload, which would
+      // re-open the D-44.1-06 loss vector (a converter sub-function that
+      // throws is caught and logged, so its whole category would silently
+      // vanish from the forecast). Obsolete lines are instead dropped
+      // precisely, at the converter's pass-through of unmatched existing
+      // rows — see RETIRED_LINE_NAMES in assumptions-to-pl-lines.ts.
       const { data: rpcResult, error: rpcError } = await supabase.rpc(
         'save_assumptions_and_materialize',
         {
@@ -244,12 +403,174 @@ async function postHandler(request: Request) {
         plLinesGenerated = result.lines_count ?? generatedLines.length
         computedAt = result.computed_at ?? null
       }
+
+      // ── Retire superseded rows ─────────────────────────────────────────────
+      //
+      // The RPC upserts by (forecast_id, account_code) and never deletes (the
+      // full-replace flag is deliberately off — D-44.1-06), so a derived row the
+      // converter stopped emitting stays in the table at its old value. Urban
+      // Road's first Generate after a Xero-budget seed (7 Sep 2026) kept the
+      // seed's wages/super/contractor and IT-software rows alongside the
+      // SYS-TEAM-* and SYS-SUBSCRIPTIONS lines that replaced them: the wizard
+      // showed NP $536k, the stored P&L read −$454k. Delete exactly the rows the
+      // converter's retire predicate superseded — never "everything absent from
+      // the payload". Manual rows are never touched (the predicate excludes them;
+      // the filter below belts-and-braces it).
+      const retired = findRetiredExistingLines(assumptions, existingPLLines, generatedLines)
+      if (retired.length > 0) {
+        const retiredIds = retired.map(r => r.id as string)
+        const { error: retireError } = await supabase
+          .from('forecast_pl_lines')
+          .delete()
+          .eq('forecast_id', resultForecastId)
+          .eq('is_manual', false)
+          .in('id', retiredIds)
+        if (retireError) {
+          // The publish itself succeeded; the stale rows are the pre-existing
+          // state, so report rather than fail — but never silently.
+          Sentry.captureException(retireError, {
+            tags: { route: 'forecast-wizard-v4/generate', invariant: 'forecast_pl_lines_retire_failed' },
+            extra: {
+              context: '[wizard-v4/generate] Superseded rows were not deleted after materialize',
+              forecastId: resultForecastId,
+              retired: retired.map(r => ({ id: r.id, code: r.account_code, name: r.account_name })),
+            },
+          } as any)
+        } else {
+          linesRetired = retiredIds.length
+        }
+      }
+
+      // ── Summary parity (WATCH MODE) ────────────────────────────────────────
+      //
+      // The wizard's on-screen summary and these materialised lines are derived
+      // independently — one from WizardState, one from ForecastAssumptions — and
+      // nothing has ever compared them. "The number on screen isn't the number in
+      // the report" is the most expensive recurring defect in this codebase, and
+      // every fix so far addressed one bucket rather than the divergence itself.
+      // Both halves exist in THIS request, so the comparison is free here.
+      //
+      // Watch mode by house rule: report, never block. A parity bug must not stop
+      // a coach publishing a forecast that is probably fine — and until history
+      // shows this is quiet, a hard failure here would be the more likely
+      // client-facing incident. Promote to blocking only once it has proven itself.
+      //
+      // 21 Aug 2026 audit: the check now covers EVERY forecast year, not just
+      // Year 1. Y1-only scope is what let a whole class of Y2/Y3 defects run
+      // silently — operator overrides that never materialised, monthly grids
+      // flattened to quarter-averages, three different seasonal formulas — all
+      // invisible because the only thing watching looked at Year 1.
+      try {
+        const yearSummaries: (typeof summary.year1)[] = [
+          summary?.year1,
+          summary?.year2,
+          summary?.year3,
+        ]
+        for (let yearNum = 1; yearNum <= Math.min(forecastDuration || 1, 3); yearNum++) {
+          const approvedYear = yearSummaries[yearNum - 1]
+          // A year the operator never filled in has no approved figures to
+          // compare against; skip rather than report a phantom divergence.
+          if (!approvedYear) continue
+
+          const parity = checkSummaryParity(
+            approvedYear,
+            generatedLines,
+            generateFiscalMonthKeys(fiscalYear + yearNum - 1, DEFAULT_YEAR_START_MONTH),
+          )
+          if (!parity.matches) {
+            Sentry.captureMessage(
+              `[wizard-v4/generate] Approved summary does not match stored P&L (year ${yearNum})`,
+              {
+                level: 'warning' as any,
+                tags: {
+                  route: 'forecast-wizard-v4/generate',
+                  invariant: 'summary-parity',
+                  forecastYear: String(yearNum),
+                },
+                extra: {
+                  forecastId: resultForecastId,
+                  businessId,
+                  fiscalYear,
+                  yearNum,
+                  divergences: parity.divergences,
+                  monthsCovered: parity.monthsCovered,
+                },
+              } as any,
+            )
+          }
+        }
+      } catch (parityErr) {
+        // Never let the check itself break a publish.
+        Sentry.captureException(parityErr, {
+          tags: { route: 'forecast-wizard-v4/generate', invariant: 'summary-parity' },
+          extra: { context: 'parity check threw', forecastId: resultForecastId },
+        } as any)
+      }
+    }
+
+    // PROC-04 (21 Aug 2026 audit) — publish the HEADLINE now that the lines
+    // are stored. On the update path the first write above deliberately held
+    // back wizard_state, the three goals and is_completed so that a failed
+    // materialise leaves the previously published forecast fully intact
+    // (old headline + old lines) rather than a new headline over old lines.
+    // The create path already writes the whole row inside its locked RPC and
+    // is not exposed to this: a failure there leaves a brand-new row nothing
+    // has read yet.
+    if (!isDraft && forecastId && !createNew) {
+      const { error: publishError } = await supabase
+        .from('financial_forecasts')
+        // draft_assumptions is cleared on publish: the work it held is now the
+        // published record, so leaving it would make the wizard reopen on a
+        // stale copy of what was just generated.
+        .update({ ...forecastData, draft_assumptions: null })
+        .eq('id', resultForecastId)
+
+      if (publishError) {
+        Sentry.captureException(publishError, {
+          tags: {
+            route: 'forecast-wizard-v4/generate',
+            invariant: 'forecast_headline_publish_failed',
+          },
+          extra: {
+            context: '[wizard-v4/generate] Headline publish failed after materialize',
+            forecastId: resultForecastId,
+          },
+        } as any)
+        return NextResponse.json(
+          { error: 'Failed to publish forecast', details: publishError.message },
+          { status: 500 }
+        )
+      }
+    }
+
+    // PR-A follow-up: PUBLISH the forecast — LAST, after materialization
+    // succeeded. Drafts are created is_active=false (PR-A #350), so a fresh
+    // wizard session (draft insert → … → Generate on the UPDATE path) would
+    // otherwise finish with an INACTIVE forecast and the monthly report /
+    // cashflow / /cfo dashboard would find no budget. Activating only after
+    // the lines land means a materialize failure can never leave an active,
+    // zero-line forecast standing in place of the previous good one.
+    if (!isDraft) {
+      const { error: activateError } = await supabase.rpc('activate_forecast_locked', {
+        p_forecast_id: resultForecastId,
+      })
+      if (activateError) {
+        Sentry.captureException(activateError, {
+          tags: { route: 'forecast-wizard-v4/generate', invariant: 'forecast_activation_failed' },
+          extra: { context: '[wizard-v4/generate] Activation failed', forecastId: resultForecastId },
+        } as any)
+        return NextResponse.json(
+          { error: 'Failed to activate forecast', details: activateError.message },
+          { status: 500 }
+        )
+      }
     }
 
     return NextResponse.json({
       success: true,
       forecastId: resultForecastId,
       plLinesGenerated,
+      linesRetired,
       computed_at: computedAt,
     })
   } catch (error) {

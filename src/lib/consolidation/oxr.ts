@@ -52,6 +52,65 @@ export function lastDayOfMonth(year: number, month: number): string {
   return iso(d)
 }
 
+/**
+ * A month is closed once its last day has ended in UTC — OXR's end-of-day
+ * snapshot for that day is then final, so the average and the month-end
+ * closing rate can no longer move.
+ */
+export function isClosedMonth(year: number, month: number, now: Date = new Date()): boolean {
+  return iso(now) > lastDayOfMonth(year, month)
+}
+
+/** The `count` most recent closed months, newest first. Never the current month. */
+export function recentClosedMonths(
+  count: number,
+  now: Date = new Date(),
+): Array<{ year: number; month: number }> {
+  const out: Array<{ year: number; month: number }> = []
+  let year = now.getUTCFullYear()
+  let month = now.getUTCMonth() + 1
+  while (out.length < count) {
+    month -= 1
+    if (month === 0) {
+      month = 12
+      year -= 1
+    }
+    if (isClosedMonth(year, month, now)) out.push({ year, month })
+  }
+  return out
+}
+
+/**
+ * Why a derived month is NOT a complete closed month, or null when it is.
+ *
+ * `deriveMonthlyRatePair` accepts anything with 5+ days so the admin button
+ * can still show a coach a month-to-date figure. Anything stored without a
+ * coach looking must be the real thing: the month has closed, OXR answered
+ * for every calendar day, and the closing rate is dated at month-end — the
+ * exact period `loadClosingSpotRate` looks up.
+ */
+export function incompleteMonthReason(
+  derived: MonthlyRatePair,
+  now: Date = new Date(),
+): string | null {
+  const ym = `${derived.year}-${String(derived.month).padStart(2, '0')}`
+  if (!isClosedMonth(derived.year, derived.month, now)) {
+    return `${ym} has not closed yet`
+  }
+  const monthEnd = lastDayOfMonth(derived.year, derived.month)
+  const daysInMonth = Number(monthEnd.slice(8, 10))
+  if (derived.days_missing.length > 0) {
+    return `OXR had no rate for ${derived.days_missing.length} day(s) of ${ym}: ${derived.days_missing.join(', ')}`
+  }
+  if (derived.days_fetched.length !== daysInMonth) {
+    return `only ${derived.days_fetched.length} of ${daysInMonth} days of ${ym} fetched`
+  }
+  if (derived.closing_spot_date !== monthEnd) {
+    return `closing rate dated ${derived.closing_spot_date}, not month-end ${monthEnd}`
+  }
+  return null
+}
+
 /** Enumerate every calendar day of (year, month) up to today — never future. */
 export function enumerateMonthDays(year: number, month: number): string[] {
   const today = iso(new Date())

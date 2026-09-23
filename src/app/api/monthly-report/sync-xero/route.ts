@@ -11,11 +11,9 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSupabaseSecretKey } from '@/lib/supabase/keys'
 import { createRouteHandlerClient } from '@/lib/supabase/server';
-import { getValidAccessToken } from '@/lib/xero/token-manager';
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds';
 import { syncBusinessXeroPL } from '@/lib/xero/sync-orchestrator';
-import { replaceTenantBSRows } from './bs-writer';
-import { parseSingleMonthBSReport } from './report-parsers';
+import { syncBusinessBSMirror } from '@/lib/xero/bs-mirror-sync';
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
@@ -34,79 +32,7 @@ const supabaseAdmin = createClient(
   getSupabaseSecretKey()
 );
 
-// Map Xero section titles to account types
-// Get last day of month (1-based month)
-function lastDay(year: number, month: number): string {
-  const d = new Date(year, month, 0);
-  return d.toISOString().split('T')[0];
-}
-
-// Generate list of month keys for the last N months
-function getMonthList(count: number): { key: string; fromDate: string; toDate: string }[] {
-  const now = new Date();
-  const months: { key: string; fromDate: string; toDate: string }[] = [];
-
-  for (let i = 0; i < count; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const y = d.getFullYear();
-    const m = d.getMonth() + 1;
-    const key = `${y}-${String(m).padStart(2, '0')}`;
-    const fromDate = `${y}-${String(m).padStart(2, '0')}-01`;
-    const toDate = lastDay(y, m);
-    months.push({ key, fromDate, toDate });
-  }
-
-  return months;
-}
-
-// Fetch single-month P&L from Xero — NO periods parameter
-async function fetchSingleMonthPL(
-  accessToken: string,
-  tenantId: string,
-  fromDate: string,
-  toDate: string,
-): Promise<{ success: boolean; report?: any; error?: string; status?: number }> {
-  const url = `https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss?fromDate=${fromDate}&toDate=${toDate}&standardLayout=true&paymentsOnly=false`;
-
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'xero-tenant-id': tenantId,
-      'Accept': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    return { success: false, error: errorText, status: response.status };
-  }
-
-  const data = await response.json();
-  return { success: true, report: data?.Reports?.[0] };
-}
-
 // Fetch BS snapshot for a given month-end date
-async function fetchSingleMonthBS(
-  accessToken: string,
-  tenantId: string,
-  reportDate: string, // YYYY-MM-DD
-): Promise<{ success: boolean; report?: any; error?: string; status?: number }> {
-  const url = `https://api.xero.com/api.xro/2.0/Reports/BalanceSheet?date=${reportDate}&periods=1&timeframe=MONTH&standardLayout=true`;
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'xero-tenant-id': tenantId,
-      'Accept': 'application/json',
-    },
-  });
-  if (!response.ok) {
-    const errText = await response.text();
-    return { success: false, error: errText, status: response.status };
-  }
-  const data = await response.json();
-  return { success: true, report: data?.Reports?.[0] };
-}
-
 async function postHandler(request: Request) {
   // Stage tracker — included in error responses to aid debugging
   let stage = 'init';
@@ -201,104 +127,80 @@ async function postHandler(request: Request) {
       perTenantErrors.push({ tenant_id: 'all', error: `P&L orchestrator: ${plResult.error}` });
     }
 
-    // Per-connection BS sync loop (P&L was handled above by the orchestrator).
-    for (const connection of connections) {
-      const tenantId = connection.tenant_id;
-      const tenantLabel = connection.display_name || connection.tenant_name || tenantId;
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`[Sync Xero] === BS sync for tenant ${tenantLabel} (${tenantId}) ===`);
-      }
-
-      stage = `refresh_token:${tenantId}`;
-      const tokenResult = await getValidAccessToken(connection, supabaseAdmin);
-      if (!tokenResult.success || !tokenResult.accessToken) {
-        perTenantErrors.push({ tenant_id: tenantId, error: `Token: ${tokenResult.message || tokenResult.error}` });
-        continue; // Skip this tenant, try the next
-      }
-      const accessToken = tokenResult.accessToken;
-
-      // ── Balance Sheet snapshot sync (3 most-recent month-ends) ──
-      // P&L was handled above by syncBusinessXeroPL. BS still uses this route's
-      // own per-tenant fetcher until Phase 44.2-06D ports BS to the orchestrator.
-      stage = `fetch_monthly_bs:${tenantId}`;
-      const bsMonths = getMonthList(13).slice(0, 3); // most-recent 3 month-ends
-      const tenantBSAccounts = new Map<string, {
-        business_id: string;
-        tenant_id: string;
-        account_name: string;
-        account_code: string | null;
-        account_type: 'asset' | 'liability' | 'equity';
-        section: string;
-        monthly_values: Record<string, number>;
-        updated_at: string;
-      }>();
-
-      for (const month of bsMonths) {
-        // Pacing — stay under Xero's 60/min limit
-        await new Promise((r) => setTimeout(r, 500));
-        const bsResult = await fetchSingleMonthBS(accessToken, tenantId, month.toDate);
-        if (!bsResult.success) {
-          Sentry.captureMessage(`[Sync Xero BS] ${tenantLabel} ${month.key}: ${bsResult.status} ${bsResult.error?.slice(0, 150)}`, 'warning' as any);
-          continue;
-        }
-        if (!bsResult.report) continue;
-
-        const bsAccounts = parseSingleMonthBSReport(bsResult.report);
-        for (const [name, data] of bsAccounts) {
-          const existing = tenantBSAccounts.get(name) || {
-            business_id: ids.businessId,
-            tenant_id: tenantId,
-            account_name: name,
-            account_code: null,
-            account_type: data.account_type,
-            section: data.section,
-            monthly_values: {} as Record<string, number>,
-            updated_at: new Date().toISOString(),
-          };
-          existing.monthly_values[month.key] = data.value;
-          tenantBSAccounts.set(name, existing);
-        }
-      }
-
-      const tenantBSLines = Array.from(tenantBSAccounts.values()).filter(
-        (l) => Object.keys(l.monthly_values).length > 0,
-      );
-
-      // Replace this tenant's BS rows atomically-enough (R25 / DM-N5).
-      // delete + insert are scoped to the same id-space (ids.businessId — the table
-      // FK is businesses(id)); an empty fetch never wipes good rows; and a
-      // failed insert restores the prior rows + surfaces as a tenant error
-      // instead of silently returning success with an empty balance sheet.
-      stage = `db_swap_bs:${tenantId}`;
-      const bsSwap = await replaceTenantBSRows(supabaseAdmin, {
-        businessId: ids.businessId,
-        tenantId,
-        tenantLabel,
-        newRows: tenantBSLines,
+    // BS sync via the shared mirror-sync module (one definition — the daily
+    // cron /api/cron/sync-bs-mirror runs the SAME function, so a manual "Sync"
+    // click and the scheduled refresh cannot drift).
+    stage = 'sync_bs_mirror';
+    const bsResult = await syncBusinessBSMirror(supabaseAdmin, ids.businessId, connections);
+    perTenantErrors.push(...bsResult.perTenantErrors);
+    syncedTenantIds.push(...bsResult.syncedTenantIds);
+    // A missed month is dropped from the stored grid by the delete+insert swap,
+    // so the response must not claim a clean sync. months_failed was declared
+    // and returned but never incremented before this.
+    totalMonthsFailed += bsResult.missedMonths.length;
+    for (const m of bsResult.missedMonths) {
+      perTenantErrors.push({
+        tenant_id: m.tenant_id,
+        error: `month ${m.month} missing from stored balance sheet (${m.reason})`,
       });
-      if (bsSwap.status === 'delete_failed' || bsSwap.status === 'insert_failed') {
-        perTenantErrors.push({
-          tenant_id: tenantId,
-          error: `BS sync failed (${bsSwap.status}${bsSwap.status === 'insert_failed' ? `, restored=${bsSwap.restored ?? false}` : ''}): ${bsSwap.error ?? 'unknown'}`,
-        });
-      } else if (bsSwap.status === 'written' && process.env.NODE_ENV !== 'production') {
-        console.log(`[Sync Xero BS] ${tenantLabel}: ${bsSwap.written} BS accounts (${bsMonths.length} months)`);
-      }
-
-      await supabaseAdmin
-        .from('xero_connections')
-        .update({ last_synced_at: new Date().toISOString() })
-        .eq('id', connection.id);
-
-      syncedTenantIds.push(tenantId);
     }
+
+    // The DATA freshness clock is NOT stamped here, and must not be.
+    //
+    // `xero_connections.last_synced_at` is half of dataClockFor()
+    // (lib/xero/connection-status.ts) — the clock behind the coach
+    // connection-health pill, /cfo, /api/Xero/status, the daily health report
+    // and the dashboard's "Last synced" line — so it may only move for an org
+    // whose data actually landed.
+    //
+    // This stage used to stamp every connection in bsResult.syncedTenantIds:
+    // the BALANCE SHEET mirror syncing was enough to move the clock, and
+    // plResult was never consulted. An org whose P&L failed — or was never
+    // reached, because the orchestrator refuses a second concurrent run — but
+    // whose BS synced then read fresh for the whole 48h window, hiding the
+    // failure from every surface above. The old comment called the stamp
+    // "earned" because the request ran both the P&L orchestrator and the BS
+    // mirror. Running is not succeeding.
+    //
+    // syncBusinessXeroPL is the ONE writer. It stamps per tenant, inside the
+    // try, only for a tenant that finished 'success' or 'partial', never from
+    // the catch (sync-orchestrator.ts). It iterates the SAME connection set
+    // selected above — business_id in ids.all, is_active — so dropping this
+    // loop drops no legitimate stamp: every tenant it could have stamped
+    // truthfully, the orchestrator has already stamped. An orchestrator stamp
+    // that fails to write is covered too, because that tenant's success/partial
+    // sync_jobs row is the other half of the max() in dataClockFor.
 
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[Sync Xero] Done: ${totalAccountsSynced} accounts synced across ${syncedTenantIds.length}/${connections.length} tenants`);
     }
 
+    // `success` means the P&L LANDED — not that the request ran to the end.
+    //
+    // It was hardcoded `true`, so a run where the orchestrator returned
+    // status 'error' still answered 200 {success: true}: every tenant errored,
+    // or the 44-05 single-flight guard refused a second concurrent run and no
+    // P&L was attempted at all. The detail sat in `errors`, which neither
+    // caller reads. /integrations branches on this field and announced
+    // "N/M Xero organisations synced"; the monthly-report hook toasted success
+    // and moved its own on-screen clock. The same lie the stamp above used to
+    // write to the database, told to the user's face instead.
+    //
+    // 'partial' stays a success: some tenant's numbers did land, and `errors`
+    // carries what did not. Only 'error' — nothing landed anywhere — is false.
+    // The status stays 200 either way: the BS mirror's work is real, the body
+    // says what happened, and a non-2xx would send both callers down their
+    // network-failure branch and throw the detail away.
+    const plLanded = plResult.status !== 'error';
+
     return NextResponse.json({
-      success: true,
+      success: plLanded,
+      // Surfaced so a caller can tell a clean run from a salvaged one without
+      // parsing `errors`, and so the two UIs can word themselves honestly.
+      pl_status: plResult.status,
+      // /integrations reads `data.error` when success is false; without it the
+      // alert degrades to a bare "Sync failed" that names no cause.
+      ...(plLanded ? {} : { error: plResult.error ?? 'Xero P&L sync failed' }),
       tenants_synced: syncedTenantIds.length,
       tenants_total: connections.length,
       accounts_synced: totalAccountsSynced,
@@ -308,7 +210,7 @@ async function postHandler(request: Request) {
     });
 
   } catch (error) {
-    Sentry.captureException(error, { tags: { route: 'monthly-report/sync-xero' }, extra: { context: "[Sync Xero] Error at stage \"${stage}\"" } } as any);
+    Sentry.captureException(error, { tags: { route: 'monthly-report/sync-xero' }, extra: { context: `[Sync Xero] Error at stage "${stage}"` } } as any);
     const errMsg = error instanceof Error ? error.message : 'Sync failed';
     const stack = error instanceof Error ? error.stack : undefined;
 

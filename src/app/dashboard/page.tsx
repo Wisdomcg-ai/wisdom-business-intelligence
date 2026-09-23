@@ -189,6 +189,7 @@ export default function DashboardPage() {
               title="Annual Goals"
               goals={data.annualGoals}
               icon={Target}
+              loadFailed={data.annualGoalsFailed}
               emptyStateText="No annual goals set"
               emptyStateCta="Set Your Goals"
               emptyStateHref="/goals?step=1"

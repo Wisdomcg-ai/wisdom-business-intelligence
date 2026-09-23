@@ -6,6 +6,14 @@ import { useQuarterlyReview } from '../hooks/useQuarterlyReview';
 import { WorkshopProgress } from '../components/WorkshopProgress';
 import { WorkshopNav } from '../components/WorkshopNav';
 import { CoachNotesPanel } from '../components/CoachNotesPanel';
+import { FirstSessionNotice } from '../components/FirstSessionNotice';
+import { useReviewReadiness } from '../hooks/useReviewReadiness';
+import { historyStepMode, planStepMode } from '../utils/review-readiness';
+import { FoundationBaselineStep } from '../components/steps/FoundationBaselineStep';
+import { FoundationRocksStep } from '../components/steps/FoundationRocksStep';
+import { FoundationOpenItemsStep } from '../components/steps/FoundationOpenItemsStep';
+import { FoundationAnnualPlanStep } from '../components/steps/FoundationAnnualPlanStep';
+import { FoundationQuarterlyPlanStep } from '../components/steps/FoundationQuarterlyPlanStep';
 import { QuarterNumber, ReviewType, YearType, getWorkshopSteps, getPlanningQuarter, getPreviousQuarterOf } from '../types';
 // Phase 73 v2 — year-end annual-reset gate (fires at the Part 3 → Part 4 transition).
 import { shouldRouteToAnnualReset } from '../utils/annual-reset-gate';
@@ -33,12 +41,14 @@ import { StrategicCheckStep } from '../components/steps/StrategicCheckStep';
 // historical reviews; they are simply not imported/rendered here.
 
 import { useCoachView } from '@/hooks/useCoachView';
+import { useBusinessContext } from '@/contexts/BusinessContext';
 import { ArrowLeft, Menu, X, PanelLeftClose, PanelLeftOpen, Loader2 } from 'lucide-react';
 
 function ReviewContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { getPath } = useCoachView();
+  const { currentUser } = useBusinessContext();
   const [showSidebar, setShowSidebar] = useState(false); // mobile
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false); // desktop
 
@@ -55,6 +65,10 @@ function ReviewContent() {
     isSaving,
     isCompleting,
     hasUnsavedChanges,
+    saveError,
+    retrySave,
+    planSyncFailed,
+    historyWriteFailed,
     quarterLabel,
     currentStep,
     stepsCompleted,
@@ -100,6 +114,30 @@ function ReviewContent() {
     updateAnnualInitiativePlan,
     updateCoachNotes,
   } = useQuarterlyReview({ reviewId, quarter, year, reviewType });
+
+  // What this client already has. Resolved once, in the right id-spaces, so a
+  // first-timer's session can capture a baseline and build a plan instead of
+  // opening on a wall of empty tables.
+  const readiness = useReviewReadiness(review);
+
+  // Only a coach or admin gets the mode control. A client sees the notice alone —
+  // how their session runs is a coaching decision, not theirs to flip mid-review.
+  const canOverrideSessionMode =
+    currentUser?.role === 'coach' || currentUser?.role === 'admin';
+
+  // First-session screens replace three steps for a client starting from nothing.
+  // The standard steps are untouched, so an established client can't be affected.
+  const baselineMode = historyStepMode(readiness, readiness.sessionMode) === 'baseline';
+  const buildMode = planStepMode(readiness, readiness.sessionMode) === 'build';
+  // Until we know which version to show, show neither: the standard Scorecard
+  // writes to the review as it opens, which would leave stray target data on a
+  // first-timer's baseline if it flashed up first.
+  const decidingMode = readiness.isLoading;
+  const modeLoader = (
+    <div className="flex items-center justify-center py-16">
+      <Loader2 className="w-8 h-8 animate-spin text-brand-orange" />
+    </div>
+  );
 
   // Use the review's actual type (may differ from URL param if resuming existing review)
   const effectiveReviewType = activeReviewType || reviewType;
@@ -232,6 +270,10 @@ function ReviewContent() {
           />
         );
       case '1.2':
+        if (decidingMode) return modeLoader;
+        if (baselineMode) {
+          return <FoundationBaselineStep review={review} onUpdate={updateDashboardSnapshot} yearType={fyType} />;
+        }
         return (
           <ScorecardReviewStep
             review={review}
@@ -240,6 +282,10 @@ function ReviewContent() {
           />
         );
       case '1.3':
+        if (decidingMode) return modeLoader;
+        if (baselineMode) {
+          return <FoundationRocksStep review={review} onUpdate={updateRocksReview} yearType={fyType} />;
+        }
         return (
           <RocksReviewStep
             review={review}
@@ -266,6 +312,9 @@ function ReviewContent() {
           />
         );
       case '2.2': // v2: Open Items (Open Loops + Issues)
+        if (decidingMode) return modeLoader;
+        // Capture, not triage: two empty lists have nothing to triage.
+        if (baselineMode) return <FoundationOpenItemsStep review={review} />;
         return (
           <OpenItemsStep
             review={review}
@@ -308,6 +357,10 @@ function ReviewContent() {
 
       // Part 4/5: Plan (quarterly) / Next Quarter Sprint (annual)
       case '4.1':
+        if (decidingMode) return modeLoader;
+        if (buildMode) {
+          return <FoundationAnnualPlanStep review={review} onUpdateConfidence={updateConfidence} />;
+        }
         return (
           <ConfidenceRealignmentStep
             review={review}
@@ -317,6 +370,12 @@ function ReviewContent() {
           />
         );
       case '4.2':
+        if (decidingMode) return modeLoader;
+        if (buildMode) {
+          return (
+            <FoundationQuarterlyPlanStep review={review} onUpdateQuarterlyTargets={updateQuarterlyTargets} />
+          );
+        }
         return (
           <QuarterlyPlanStep
             review={review}
@@ -336,6 +395,8 @@ function ReviewContent() {
         return (
           <WorkshopCompleteStep
             review={review}
+            planSyncFailed={planSyncFailed}
+            historyWriteFailed={historyWriteFailed}
           />
         );
       default:
@@ -445,6 +506,19 @@ function ReviewContent() {
         {/* Main Content */}
         <main className="flex-1 min-w-0">
           <div className="bg-white rounded-2xl border border-gray-200 p-4 lg:p-6">
+            {currentStep !== 'complete' && (
+              <FirstSessionNotice
+                readiness={readiness}
+                foundationMode={readiness.foundationMode}
+                detectedFoundationMode={readiness.detectedFoundationMode}
+                sessionMode={readiness.sessionMode}
+                overridden={readiness.overridden}
+                couldNotCheck={readiness.couldNotCheck}
+                isLoading={readiness.isLoading}
+                canOverride={canOverrideSessionMode}
+                onSetSessionMode={readiness.setSessionMode}
+              />
+            )}
             {renderStep()}
           </div>
           {/* Shared session notes — coach + client, autosaved. Hidden on the summary step. */}
@@ -470,6 +544,8 @@ function ReviewContent() {
         isSaving={isSaving}
         isCompleting={isCompleting}
         hasUnsavedChanges={hasUnsavedChanges}
+        saveError={saveError}
+        onRetrySave={retrySave}
         reviewType={effectiveReviewType}
       />
     </div>

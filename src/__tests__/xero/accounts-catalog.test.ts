@@ -99,11 +99,13 @@ describe('refreshXeroAccountsCatalog', () => {
       account_code: '200',
       account_name: 'Sales',
       account_type: 'REVENUE',
+      system_account: null,
     })
     expect(map.get('bbbb2222-2222-2222-2222-bbbbbbbbbbbb')).toEqual({
       account_code: '400',
       account_name: 'Wages',
       account_type: 'EXPENSE',
+      system_account: null,
     })
     expect(upsertCalls.length).toBe(1)
     expect(upsertCalls[0]!.opts.onConflict).toBe(

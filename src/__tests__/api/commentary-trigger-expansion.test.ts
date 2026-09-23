@@ -63,6 +63,17 @@ vi.mock('@/lib/reports/revert-report', () => ({
   revertReportIfApproved: vi.fn(async () => undefined),
 }))
 
+// Phase D (CFO-only clients): the route resolves dual business ids before the
+// connection lookup. Echo the input id in both spaces so the mocked table
+// queries below stay keyed on 'biz-1'.
+vi.mock('@/lib/business/resolveBusinessProfileIds', () => ({
+  resolveBusinessProfileIds: vi.fn(async (_supabase: unknown, id: string) => ({
+    businessId: id,
+    profileId: id,
+    all: [id],
+  })),
+}))
+
 vi.mock('@sentry/nextjs', () => ({
   captureException: vi.fn(),
   captureMessage: vi.fn(),
@@ -82,8 +93,8 @@ function makeLine(overrides: Partial<{
 }> = {}) {
   const actual = overrides.actual ?? 0
   const budget = overrides.budget ?? 0
-  // Convention: variance_amount = budget - actual (positive = favourable for expenses, unfavourable for revenue)
-  // Aligns with existing page.tsx convention (line.variance_amount <= -500 → expense $500+ over)
+  // Expense convention. Revenue lines are re-signed by makeReport below, which
+  // is the only place that knows the category — see the note there.
   const variance_amount = overrides.variance_amount ?? budget - actual
   return {
     account_name: overrides.account_name ?? 'Test Account',
@@ -104,15 +115,30 @@ function makeLine(overrides: Partial<{
   }
 }
 
+/** The categories production treats as revenue — see collectCommentaryTriggers. */
+const REVENUE_CATEGORIES_FIXTURE = new Set(['Revenue', 'Other Income'])
+
 function makeReport(sections: Array<{ category: string; lines: any[] }>) {
   return {
     business_id: 'biz-abc',
     report_month: '2026-04',
     fiscal_year: 2026,
     settings: {} as any,
+    // Revenue variance carries the OPPOSITE sign to expense variance, and this
+    // fixture used to apply the expense convention to both. That is why the
+    // inverted revenue trigger passed its own tests for as long as it did: a
+    // wrong fixture and a wrong reader cancelled out, and the suite went green
+    // on a rule that fired on every revenue BEAT and no shortfall.
+    //
+    // The signing lives here rather than in makeLine because makeReport is the
+    // only place that knows the category — so a future revenue test cannot
+    // forget to opt in. Mirrors calcVariance in src/lib/monthly-report/shared.ts:
+    //   amount = isRevenue ? actual - budget : budget - actual
     sections: sections.map(s => ({
       category: s.category as any,
-      lines: s.lines,
+      lines: REVENUE_CATEGORIES_FIXTURE.has(s.category)
+        ? s.lines.map(l => ({ ...l, variance_amount: l.actual - l.budget }))
+        : s.lines,
       subtotal: makeLine({ account_name: `${s.category} Total` }),
     })),
     summary: {} as any,
@@ -235,6 +261,32 @@ describe('collectCommentaryTriggers — pure helper', () => {
     })
   })
 
+  it('a revenue BEAT is not a shortfall — Urban Road, August 2026', async () => {
+    // The inversion this pins fired on every account that did well and none
+    // that missed. Figures are Urban Road's August 2026 actuals against its
+    // approved budget.
+    const { collectCommentaryTriggers } = await import(
+      '@/app/finances/monthly-report/utils/commentary-triggers'
+    )
+
+    const report = makeReport([
+      {
+        category: 'Revenue',
+        lines: [
+          // Beat by $48,338 — must NOT trigger.
+          makeLine({ account_name: 'NZ Sales', actual: 50838, budget: 2500 }),
+          // Missed by $9,043 — must trigger.
+          makeLine({ account_name: 'Framed Prints (41600)', actual: 50807, budget: 59850 }),
+        ],
+      },
+    ])
+
+    const result = collectCommentaryTriggers(report)
+    const names = result.revenue_lines.map(l => l.account_name)
+    expect(names).toContain('Framed Prints (41600)')
+    expect(names).not.toContain('NZ Sales')
+  })
+
   it('Test 5: large favourable expense — variance ≥$500 AND ≥20%', async () => {
     const { collectCommentaryTriggers } = await import(
       '@/app/finances/monthly-report/utils/commentary-triggers'
@@ -340,18 +392,24 @@ describe('POST /api/monthly-report/commentary — expanded payload + trigger_rea
       const builder: any = {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
+        in: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
         not: vi.fn().mockReturnThis(),
+        limit: vi.fn(),
         maybeSingle: vi.fn(),
       }
 
       if (table === 'xero_connections') {
-        builder.maybeSingle.mockResolvedValue({
-          data: { id: 'conn-1', tenant_id: 'tenant-1', is_active: true },
+        // Phase D: route chain is .select().in().eq().order().limit() and
+        // picks the first row (multi-connection-safe; the old maybeSingle
+        // errored for 2+ active connections).
+        builder.limit = vi.fn().mockResolvedValue({
+          data: [{ id: 'conn-1', tenant_id: 'tenant-1', is_active: true }],
           error: null,
         })
       } else if (table === 'xero_pl_lines_wide_compat') {
-        // .select().eq() → array (not maybeSingle)
-        builder.eq = vi.fn().mockResolvedValue({
+        // Phase D: .select().in() → array (dual-ID resolved read)
+        builder.in = vi.fn().mockResolvedValue({
           data: [
             { account_name: 'Marketing', account_code: '6010' },
             { account_name: 'Sales', account_code: '4000' },
@@ -454,5 +512,84 @@ describe('POST /api/monthly-report/commentary — expanded payload + trigger_rea
     expect(body.commentary['Marketing']).toMatchObject({
       trigger_reason: 'expense_over_budget_dollar',
     })
+  })
+
+  it('Test 9d: activity_lines are drafted as account_activity; a triggered account keeps its trigger', async () => {
+    // A pack whose COGS commentary lists every account that moved sends the
+    // accounts no threshold fired on as activity_lines (Urban Road's Rugs,
+    // $326 against $336). An account in both buckets is the triggered one.
+    const { POST } = await import('@/app/api/monthly-report/commentary/route')
+    const req = new NextRequest('http://localhost/api/monthly-report/commentary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        business_id: 'biz-abc',
+        report_month: '2026-04',
+        expense_lines: [{ account_name: 'Marketing', xero_account_name: 'Marketing', actual: 900, budget: 300 }],
+        activity_lines: [
+          { account_name: 'Travel', xero_account_name: 'Travel', actual: 326.48, budget: 336 },
+          { account_name: 'Marketing', xero_account_name: 'Marketing', actual: 900, budget: 300 },
+        ],
+      }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.commentary.Travel).toMatchObject({ trigger_reason: 'account_activity', draft_facts: '', draft_clause: null })
+    expect(body.commentary.Marketing).toMatchObject({ trigger_reason: 'expense_over_budget_dollar' })
+  })
+
+  it('Test 9c: asks Xero for posted documents only, and sales invoices only for revenue lines', async () => {
+    // Urban Road, August 2026: drafts, voids and unscoped sales invoices in the
+    // month's fetch put ~$800 of phantom freight into the commentary, and 620
+    // sales invoices a month crowd bills toward the 10-page cap.
+    const { POST } = await import('@/app/api/monthly-report/commentary/route')
+    const urls = () => mockFetch.mock.calls.map((c: any[]) => decodeURIComponent(String(c[0])))
+
+    const expenseOnly = new NextRequest('http://localhost/api/monthly-report/commentary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        business_id: 'biz-abc',
+        report_month: '2026-08',
+        expense_lines: [{ account_name: 'Marketing', xero_account_name: 'Marketing' }],
+      }),
+    })
+    expect((await POST(expenseOnly)).status).toBe(200)
+
+    const invoiceCalls = urls().filter(u => u.includes('/Invoices?'))
+    expect(invoiceCalls).toHaveLength(1)
+    expect(invoiceCalls[0]).toContain('Type=="ACCPAY"')
+    expect(invoiceCalls[0]).toContain('Statuses=AUTHORISED,PAID')
+    const bankCalls = urls().filter(u => u.includes('/BankTransactions?'))
+    expect(bankCalls).toHaveLength(1)
+    expect(bankCalls[0]).toContain('Status=="AUTHORISED"')
+    // Supplier credits only: the customer credits that took $957.03 off Urban
+    // Road's August Rolled Prints explain nothing on an expense line.
+    const expenseCreditCalls = urls().filter(u => u.includes('/CreditNotes?'))
+    expect(expenseCreditCalls).toHaveLength(1)
+    expect(expenseCreditCalls[0]).toContain('Type=="ACCPAYCREDIT"')
+    expect(expenseCreditCalls[0]).not.toContain('ACCRECCREDIT')
+
+    mockFetch.mockClear()
+    const withRevenue = new NextRequest('http://localhost/api/monthly-report/commentary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        business_id: 'biz-abc',
+        report_month: '2026-08',
+        expense_lines: [{ account_name: 'Marketing', xero_account_name: 'Marketing' }],
+        revenue_lines: [{ account_name: 'Sales', xero_account_name: 'Sales' }],
+      }),
+    })
+    expect((await POST(withRevenue)).status).toBe(200)
+    const types = urls().filter(u => u.includes('/Invoices?')).map(u => /Type=="(\w+)"/.exec(u)?.[1])
+    expect(types.sort()).toEqual(['ACCPAY', 'ACCREC'])
+    // Still one credit-note request: both types, so the month alone, with type
+    // and status checked per document.
+    const creditCalls = urls().filter(u => u.includes('/CreditNotes?'))
+    expect(creditCalls).toHaveLength(1)
+    expect(creditCalls[0]).not.toContain('Type==')
+    expect(creditCalls[0]).toContain('DateTime(2026,8,1)')
   })
 })

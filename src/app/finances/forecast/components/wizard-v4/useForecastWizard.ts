@@ -18,7 +18,6 @@ import {
   OpExLine,
   CapExItem,
   Investment,
-  OtherExpense,
   PlannedSpend,
   VendorBudget,
   ForecastSummary,
@@ -37,7 +36,9 @@ import {
   monthlyToQuarterly,
   getRevenueLineYearTotal,
 } from './types';
-import { isTeamCost } from './utils/opex-classifier';
+import { budgetedTotal } from '@/lib/forecast/budgeted-line';
+import { toast } from 'sonner';
+import { isCoveredByTeamStep, type TeamCoverage } from './utils/opex-classifier';
 import { getEffectiveSeasonality } from './utils/line-distribution';
 import { getFiscalYear, getFiscalMonthIndex, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils';
 import type { PLLineItem } from '@/app/finances/forecast/types';
@@ -52,6 +53,7 @@ import type {
   SubscriptionAuditSummary,
   SubscriptionVendorSnapshot,
 } from './types/assumptions';
+import { normaliseName as normaliseTeamName } from './utils/merge-saved-team';
 
 // Bump this to force all users to re-init from APIs (invalidates stale localStorage)
 //
@@ -71,8 +73,50 @@ const WIZARD_VERSION = 11;
 // Single source of truth for whether an OpEx line should be excluded from the
 // OpEx rollup (because team wages are generated separately by convertTeam()).
 // Used by both the summary rollup and the assumptions export so they cannot drift.
-function shouldExcludeFromOpEx(line: { name: string; isTeamCostOverride?: boolean }): boolean {
-  return line.isTeamCostOverride !== undefined ? line.isTeamCostOverride : isTeamCost(line.name);
+//
+// PR-A materializer fidelity (M2): exclusion now requires ACTUAL team data.
+// The old unconditional exclusion deleted contractor/wages/super OpEx lines
+// from the stored forecast even when Step 4 was empty — $566,671/yr of real
+// cost vanished from a live Dragon Roofing forecast because it appeared in
+// neither the team lines (no members) nor the OpEx lines (filtered here).
+// An explicit operator override (Step 5 include/exclude toggle) always wins.
+// Exported so BudgetTracker/ExcelExport share the same rule instead of
+// drifting inline copies.
+// 21 Aug 2026 audit (XVAL-2): `hasTeamData` was too coarse. Step 4's Xero
+// payroll import produces EMPLOYEES only, so "any team data" wrongly licensed
+// the removal of contractor accounts paid through bills — Dragon Roofing's
+// live FY2027 forecast lost $435,481/yr of "Virtual Contractors" that way, and
+// directors fees / FBT / leave provisions were exposed to the same deletion.
+// Exclusion now asks what Step 4 ACTUALLY generates (see isCoveredByTeamStep).
+// Callers pass a TeamCoverage; a bare boolean is still accepted so older call
+// sites keep compiling, and it means "employees only" — the conservative read.
+export function shouldExcludeFromOpEx(
+  line: { name: string; isTeamCostOverride?: boolean },
+  coverage: TeamCoverage | boolean,
+): boolean {
+  if (line.isTeamCostOverride !== undefined) return line.isTeamCostOverride;
+  const resolved: TeamCoverage =
+    typeof coverage === 'boolean'
+      ? { employees: coverage, contractors: false }
+      : coverage;
+  if (!resolved.employees && !resolved.contractors) return false;
+  return isCoveredByTeamStep(line.name, resolved);
+}
+
+/**
+ * What Step 4 currently generates, derived from the live member lists.
+ * `type` is the EmploymentType on TeamMember/NewHire; a member with no type
+ * counts as an employee, which is what the Xero payroll import produces.
+ */
+export function deriveTeamCoverage(
+  teamMembers: { type?: string }[],
+  newHires: { type?: string }[],
+): TeamCoverage {
+  const all = [...teamMembers, ...newHires];
+  return {
+    employees: all.some(m => m.type !== 'contractor'),
+    contractors: all.some(m => m.type === 'contractor'),
+  };
 }
 
 // Remap month keys from prior year to forecast year by CALENDAR MONTH (not
@@ -167,11 +211,11 @@ const createInitialState = (fiscalYearStart: number, businessId: string): Foreca
   capexItems: [],
   investments: [],
   plannedSpends: [],
-  otherExpenses: [],
   // Phase 57 (T02): empty until the mount-time fetch in useForecastWizard
   // resolves. Populated from /api/subscription-budgets?business_id=... on
   // wizard mount. T07 (B2) will read this for the rollup.
   subscriptions: [],
+  seedSource: null,
   // Phase 57 (T03/T04, B3): operator starts at step 1. Advanced by
   // `nextStep`/`goToStep` (T04). Soft-migration carries this forward for
   // legacy v10 drafts so visited steps remain clickable post-swap.
@@ -187,13 +231,81 @@ const getStorageKey = (businessId: string, fiscalYear: number) =>
 // Exported for testing — Phase 57 (T03, B3) added a non-trivial v10 → v11
 // soft-migration block that warrants direct unit-test coverage. The hook
 // itself remains the production entry point.
-export const loadStateFromStorage = (businessId: string, fiscalYear: number): ForecastWizardState | null => {
+/**
+ * How long a localStorage draft may outlive its last save before the server
+ * copy is preferred instead. 24h keeps the cache doing its real job (page
+ * refreshes, navigating away and back, finishing a session tomorrow morning)
+ * while ending the "week-old draft on another machine wins" failure.
+ */
+export const MAX_LOCAL_DRAFT_AGE_MS = 24 * 60 * 60 * 1000;
+
+export const loadStateFromStorage = (
+  businessId: string,
+  fiscalYear: number,
+  expectedForecastId?: string | null,
+): ForecastWizardState | null => {
   if (typeof window === 'undefined') return null;
   try {
     const key = getStorageKey(businessId, fiscalYear);
     const stored = localStorage.getItem(key);
     if (stored) {
       const parsed = JSON.parse(stored);
+
+      // Draft identity guard. The slot is keyed by business + fiscal year only,
+      // so every scenario for a business shares it. A draft belonging to a
+      // different forecast must never hydrate this one: the mount path skips the
+      // full API init when a usable draft is present, so the wrong lines would be
+      // shown under this forecast's name and then autosaved onto it.
+      //
+      // `undefined` on the stored side means the draft predates this guard and
+      // its owner is unknown. That is only safe when no specific forecast was
+      // requested — opening a NAMED forecast with an unowned draft is exactly the
+      // dangerous case, so it is discarded. The server copy is authoritative and
+      // the full init reloads it, so nothing durable is lost either way.
+      const requested = expectedForecastId ?? null;
+      const owner: string | null | undefined = parsed?.forecastId;
+      const ownerKnown = owner !== undefined;
+      if (parsed && (ownerKnown ? owner !== requested : requested !== null)) {
+        console.warn(
+          '[ForecastWizard] Discarding draft belonging to a different forecast (draft=',
+          ownerKnown ? owner : 'unknown',
+          'opening=',
+          requested,
+          ')',
+        );
+        return null;
+      }
+
+      // PROC-03 (21 Aug 2026 audit) — draft FRESHNESS guard.
+      //
+      // The local draft used to win over server state unconditionally, with no
+      // way to tell how old it was. Opening a forecast on a second device whose
+      // browser still held last week's draft restored the week-old numbers and
+      // then wrote them back over the newer server draft on the first edit —
+      // silent work loss behind a green "Draft saved".
+      //
+      // A local draft older than MAX_LOCAL_DRAFT_AGE_MS is discarded so the
+      // server copy (which every autosave also writes) rehydrates instead.
+      // Nothing durable is lost: the full init reloads the saved assumptions.
+      // Same-session and same-day work — the reason this cache exists — is
+      // untouched.
+      // An UNSTAMPED draft predates this guard. Those are allowed through:
+      // discarding them would throw away every in-flight draft on the deploy
+      // that ships this, and they re-stamp themselves on the next save. Only a
+      // draft that carries a stamp AND has gone stale is discarded.
+      const draftSavedAt: unknown = parsed?.draftSavedAt;
+      if (typeof draftSavedAt === 'string') {
+        const draftAgeMs = Date.now() - Date.parse(draftSavedAt);
+        if (!Number.isFinite(draftAgeMs) || draftAgeMs > MAX_LOCAL_DRAFT_AGE_MS) {
+          console.warn(
+            '[ForecastWizard] Discarding stale local draft (savedAt=',
+            draftSavedAt,
+            ') — reloading the server copy, which is authoritative.',
+          );
+          return null;
+        }
+      }
+
       // Validate it has the expected structure and matching version
       if (parsed && parsed.businessId === businessId && parsed.fiscalYearStart === fiscalYear) {
         // Phase 56 (P1 B2): soft version handling. Previously, ANY mismatch
@@ -365,18 +477,51 @@ export const loadStateFromStorage = (businessId: string, fiscalYear: number): Fo
   return null;
 };
 
+// H13: one-shot guard so a full-quota browser doesn't spam a toast per keystroke.
+let quotaWarningShown = false;
+
 // Save state to localStorage
 const saveStateToStorage = (state: ForecastWizardState) => {
   if (typeof window === 'undefined') return;
   try {
     const key = getStorageKey(state.businessId, state.fiscalYearStart);
-    localStorage.setItem(key, JSON.stringify({ ...state, wizardVersion: WIZARD_VERSION }));
+    // PROC-03 (21 Aug 2026 audit): stamp every local draft. Without a
+    // timestamp there was no way to tell a fresh draft from a week-old one, so
+    // a stale copy on a second device silently shadowed newer server work and
+    // then overwrote it on the first edit — under a green "Draft saved".
+    localStorage.setItem(
+      key,
+      JSON.stringify({ ...state, wizardVersion: WIZARD_VERSION, draftSavedAt: new Date().toISOString() }),
+    );
   } catch (err) {
+    // H13: a quota error here silently stopped ALL local draft persistence —
+    // every later mount restored an increasingly stale draft with nothing on
+    // screen to say so. Surface it once per session; the server draft
+    // (performAutoSave) is unaffected and remains the durable copy.
     console.error('[ForecastWizard] Error saving to localStorage:', err);
+    if (typeof window !== 'undefined' && !quotaWarningShown) {
+      quotaWarningShown = true;
+      try {
+        toast.error(
+          'Browser storage is full — local draft backup is off. Your work still saves to the server; avoid closing the tab mid-step.',
+          { duration: 12000 },
+        );
+      } catch { /* toast unavailable in tests */ }
+    }
   }
 };
 
-export function useForecastWizard(fiscalYearStart: number, businessId: string, startFresh?: boolean) {
+export function useForecastWizard(
+  fiscalYearStart: number,
+  businessId: string,
+  startFresh?: boolean,
+  /**
+   * The forecast being opened, when known. Stamped onto the local draft so a
+   * draft belonging to another scenario can never hydrate this one — see the
+   * identity guard in `loadStateFromStorage`.
+   */
+  existingForecastId?: string | null,
+) {
   // Track if we've initialized from storage to avoid overwriting
   const initializedRef = useRef(false);
   // Track if we restored from localStorage (has meaningful data)
@@ -402,13 +547,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         }
       }
       initializedRef.current = true;
-      return createInitialState(fiscalYearStart, businessId);
+      return { ...createInitialState(fiscalYearStart, businessId), forecastId: existingForecastId ?? null };
     }
 
     // Try to load from localStorage first
-    const stored = loadStateFromStorage(businessId, fiscalYearStart);
+    const stored = loadStateFromStorage(businessId, fiscalYearStart, existingForecastId);
     if (stored) {
       initializedRef.current = true;
+      // Stamp the owner so a draft written before this guard (or one resumed for
+      // an as-yet-unsaved forecast) records who it belongs to from now on.
+      stored.forecastId = existingForecastId ?? stored.forecastId ?? null;
       // Check if the restored state has meaningful data (not just defaults)
       const hasMeaningfulData = (
         stored.opexLines?.length > 0 ||
@@ -422,7 +570,7 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       }
       return stored;
     }
-    return createInitialState(fiscalYearStart, businessId);
+    return { ...createInitialState(fiscalYearStart, businessId), forecastId: existingForecastId ?? null };
   });
 
   // Auto-save to localStorage whenever state changes
@@ -582,6 +730,24 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     });
   }, []);
 
+  /**
+   * Restore the forecast duration from the SAVED forecast row.
+   *
+   * Distinct from `setForecastDuration`, which refuses once `durationLocked`
+   * flips (leaving Step 1). That guard exists to stop an OPERATOR changing the
+   * duration mid-build — it must not block re-hydrating what was already saved.
+   * A restored draft carries `durationLocked: true`, so #374's fix silently
+   * no-opped on exactly the path most people hit: reopening an existing
+   * forecast. That is why Step 1 kept showing 3 years.
+   */
+  const hydrateForecastDuration = useCallback((duration: ForecastDuration) => {
+    setState((prev) => {
+      if (prev.forecastDuration === duration) return prev;
+      const newActiveYear = prev.activeYear > duration ? 1 : prev.activeYear;
+      return { ...prev, forecastDuration: duration, activeYear: newActiveYear as 1 | 2 | 3 };
+    });
+  }, []);
+
   const updateGoals = useCallback((goals: Goals) => {
     setState((prev) => ({ ...prev, goals }));
   }, []);
@@ -593,6 +759,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
 
   // Phase 72-02 — plan-period slice. Pure persistence; no derived side effects.
   // Read by Step 3 (and any future plan-Y1 consumer) via getPlanY1MonthKeys.
+  /**
+   * Record which forecast this draft belongs to. Called once the server assigns
+   * an id to a brand-new forecast, so the local draft stops looking like an
+   * unowned one and the identity guard in `loadStateFromStorage` can match it on
+   * the next open.
+   */
+  const setForecastIdentity = useCallback((id: string | null) => {
+    setState(prev => (prev.forecastId === id ? prev : { ...prev, forecastId: id }));
+  }, []);
+
   const setPlanPeriod = useCallback((period: PlanPeriod | null) => {
     setState((prev) => ({ ...prev, planPeriod: period }));
   }, []);
@@ -600,17 +776,39 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
   // Step 2: Prior Year - also creates revenue/COGS/OpEx lines from the data
   const setPriorYear = useCallback((data: PriorYearData) => {
     setState((prev) => {
+      // Completed (actual) months stay locked to Xero even on a destructive
+      // re-seed. This function predates the #347/#349 fixes, so Step 2's
+      // "Refresh from Xero" button used to hand back a verbatim prior-year
+      // copy — silently undoing July's real figures. The empty-forecast toast
+      // actively points operators at that button, so the regression was very
+      // reachable.
+      const completedKeys = new Set(Object.keys(prev.currentYTD?.revenue_by_month ?? {}));
+      const matchName = (n: string) => n.trim().toLowerCase();
+      const ytdRevByName = new Map(
+        (prev.currentYTD?.revenue_lines ?? []).map(l => [matchName(l.account_name), l.by_month ?? {}]),
+      );
+      const ytdCogsByName = new Map(
+        (prev.currentYTD?.cogs_lines ?? []).map(l => [matchName(l.account_name), l.by_month ?? {}]),
+      );
+
       // Create revenue lines from prior year data
       // If no individual lines but we have a total, create a default line
       let revenueLines: RevenueLine[] = [];
       if (data.revenue.byLine.length > 0) {
-        revenueLines = data.revenue.byLine.map((line) => ({
-          id: line.id,
-          name: line.name,
-          year1Monthly: remapMonthKeysToForecastYear(line.byMonth, prev.fiscalYearStart),
-          year2Monthly: {},
-          year3Monthly: {},
-        }));
+        revenueLines = data.revenue.byLine.map((line) => {
+          const remapped = remapMonthKeysToForecastYear(line.byMonth, prev.fiscalYearStart);
+          const ytd = ytdRevByName.get(matchName(line.name)) ?? {};
+          for (const key of completedKeys) {
+            remapped[key] = Math.round(ytd[key] ?? 0);
+          }
+          return {
+            id: line.id,
+            name: line.name,
+            year1Monthly: remapped,
+            year2Monthly: {},
+            year3Monthly: {},
+          };
+        });
       } else if (data.revenue.total > 0) {
         // Create a default Sales Revenue line with monthly distribution
         const monthlyAmount = Math.round(data.revenue.total / 12);
@@ -641,14 +839,25 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       // If no individual lines but we have a total, create a default line
       let cogsLines: COGSLine[] = [];
       if (data.cogs.byLine.length > 0) {
-        cogsLines = data.cogs.byLine.map((line) => ({
-          id: line.id,
-          name: line.name,
-          accountId: line.id,
-          priorYearTotal: line.total,
-          costBehavior: 'variable' as const,
-          percentOfRevenue: line.percentOfRevenue,
-        }));
+        cogsLines = data.cogs.byLine.map((line) => {
+          // Seed ONLY the completed months from Xero actuals. The converter
+          // resolves per month (PR-A M1): grid where present, cost-behavior
+          // formula elsewhere — so actuals lock without freezing the rest.
+          const year1Monthly: Record<string, number> = {};
+          const ytd = ytdCogsByName.get(matchName(line.name)) ?? {};
+          for (const key of completedKeys) {
+            year1Monthly[key] = Math.round(ytd[key] ?? 0);
+          }
+          return {
+            id: line.id,
+            name: line.name,
+            accountId: line.id,
+            priorYearTotal: line.total,
+            costBehavior: 'variable' as const,
+            percentOfRevenue: line.percentOfRevenue,
+            year1Monthly,
+          };
+        });
       } else if (data.cogs.total > 0) {
         // Create a default Cost of Sales line
         cogsLines = [{
@@ -734,6 +943,13 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
   // reserved for first-time setup paths only.
   const setPriorYearDisplay = useCallback((data: PriorYearData) => {
     setState((prev) => ({ ...prev, priorYear: data }));
+  }, []);
+
+  // fix/step3-cogs-actuals: refresh the YTD actuals source without touching
+  // line arrays. Used by the restored-draft display refresh so drafts saved
+  // before COGS actuals existed in currentYTD still pick them up.
+  const setCurrentYTD = useCallback((ytd: ForecastWizardState['currentYTD']) => {
+    setState((prev) => ({ ...prev, currentYTD: ytd }));
   }, []);
 
   // Step 3: Revenue & COGS
@@ -822,13 +1038,38 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     (member: Omit<TeamMember, 'id' | 'newSalary' | 'superAmount'>) => {
       const newSalary = calculateNewSalary(member.currentSalary, member.increasePct);
       const superAmount = calculateSuper(newSalary, member.type);
-      setState((prev) => ({
-        ...prev,
-        teamMembers: [
-          ...prev.teamMembers,
-          { ...member, id: generateId(), newSalary, superAmount },
-        ],
-      }));
+      setState((prev) => {
+        // Adding somebody who is already on the team is not an add.
+        //
+        // This appended unconditionally, and the Xero refresh loop calls it
+        // once per employee with no idea what the team already holds. Urban
+        // Road's FY2027 forecast ended up with 25 members for 6 employees and
+        // 13 contractors — every salaried person twice, once from the restored
+        // draft and once from Xero — which put SYS-TEAM-WAGES at $121,699 a
+        // month against a real payroll of $52,519, and the Full Year page's
+        // wages forecast $546,000 above the budget beside it.
+        //
+        // Fixed at the append rather than in the callers: there are several
+        // paths in (first load, restore, "Refresh from Xero"), and getting the
+        // orchestration right in each is how this happened in the first place.
+        // Identity is Xero's employee id where there is one, the normalised
+        // name otherwise — the same two keys mergeSavedTeamMembers dedupes on.
+        const xeroId = member._xeroEmployeeId
+        const nameKey = normaliseTeamName(member.name)
+        const already = prev.teamMembers.some((m) =>
+          (xeroId && m._xeroEmployeeId === xeroId) ||
+          (!!nameKey && normaliseTeamName(m.name) === nameKey),
+        )
+        if (already) return prev
+
+        return {
+          ...prev,
+          teamMembers: [
+            ...prev.teamMembers,
+            { ...member, id: generateId(), newSalary, superAmount },
+          ],
+        }
+      });
     },
     []
   );
@@ -960,6 +1201,48 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     }));
   }, []);
 
+  /**
+   * Merge saved OpEx lines over the Xero-seeded ones instead of replacing them.
+   *
+   * PROC-06 (21 Aug 2026 audit): the restore path called setOpExLines with the
+   * SAVED list, which buildAssumptions had already filtered (team-covered and
+   * subscription-covered lines removed) and stripped of account codes. After
+   * any reopen on a fresh browser, Step 5 no longer listed those accounts at
+   * all — so if the operator later cleared Step 4 or deactivated a vendor,
+   * there was no line left to un-exclude and the cost silently vanished from
+   * BOTH buckets. Codes were gone too, which disarmed the subscription
+   * double-count guard for the rest of the session.
+   *
+   * Merging keeps the full Xero-seeded set as the base and lets the saved
+   * values win per line, so the operator's work is restored without losing the
+   * accounts the export legitimately filtered out.
+   */
+  const mergeSavedOpExLines = useCallback((saved: OpExLine[]) => {
+    setState((prev) => {
+      if (prev.opexLines.length === 0) return { ...prev, opexLines: saved };
+      const savedByKey = new Map<string, OpExLine>();
+      for (const line of saved) {
+        savedByKey.set((line.accountId || line.id || line.name).toString(), line);
+        savedByKey.set(line.name.trim().toLowerCase(), line);
+      }
+      const merged = prev.opexLines.map((base) => {
+        const hit =
+          savedByKey.get((base.accountId || base.id || base.name).toString()) ??
+          savedByKey.get(base.name.trim().toLowerCase());
+        // Keep the base line's identity (id, accountCode) and take the saved
+        // planning values over it.
+        return hit ? { ...base, ...hit, id: base.id, accountCode: hit.accountCode ?? base.accountCode } : base;
+      });
+      // Saved lines with no seeded counterpart (manually added in the wizard)
+      // still need to appear.
+      const seenNames = new Set(merged.map(l => l.name.trim().toLowerCase()));
+      for (const line of saved) {
+        if (!seenNames.has(line.name.trim().toLowerCase())) merged.push(line);
+      }
+      return { ...prev, opexLines: merged };
+    });
+  }, []);
+
   // Phase 57 T11 (B4) — clear the legacy "Refresh from Xero" nudge banner once
   // the operator has triggered the refresh and opexLines have populated
   // accountCodes. The banner only shows when needsAccountCodeRefresh === true,
@@ -969,6 +1252,12 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       ...prev,
       needsAccountCodeRefresh: needsRefresh,
     }));
+  }, []);
+
+  // Seed provenance (Xero budget). Restored on open; buildAssumptions writes
+  // it back so the first autosave does not erase where the numbers came from.
+  const setSeedSource = useCallback((source: ForecastWizardState['seedSource']) => {
+    setState((prev) => ({ ...prev, seedSource: source ?? null }));
   }, []);
 
   const updateOpExLine = useCallback((lineId: string, updates: Partial<OpExLine>) => {
@@ -1089,39 +1378,21 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     setState(prev => ({ ...prev, plannedSpends: items || [] }));
   }, []);
 
-  // Step 7: Other Expenses
-  const addOtherExpense = useCallback((expense: Omit<OtherExpense, 'id'>) => {
-    setState((prev) => ({
-      ...prev,
-      otherExpenses: [...prev.otherExpenses, { ...expense, id: generateId() }],
-    }));
-  }, []);
-
-  const updateOtherExpense = useCallback((expenseId: string, updates: Partial<OtherExpense>) => {
-    setState((prev) => ({
-      ...prev,
-      otherExpenses: prev.otherExpenses.map((exp) =>
-        exp.id === expenseId ? { ...exp, ...updates } : exp
-      ),
-    }));
-  }, []);
-
-  const removeOtherExpense = useCallback((expenseId: string) => {
-    setState((prev) => ({
-      ...prev,
-      otherExpenses: prev.otherExpenses.filter((exp) => exp.id !== expenseId),
-    }));
-  }, []);
-
   // Phase 57 (T02) — bulk replace subscriptions. Invoked by the mount-time
   // loader below; T12 (B4) will additionally invoke this from
   // Step6Subscriptions on every vendor edit so the rollup (T07) sees changes
   // synchronously.
   const setSubscriptions = useCallback((vendors: VendorBudget[]) => {
-    setState((prev) => ({
-      ...prev,
-      subscriptions: vendors,
-    }));
+    setState((prev) => {
+      // Identity bail-out. Step 5's mirror effect depends on `actions`, and
+      // `actions` changes on every state change (saveDraft/generateForecast
+      // close over state), so an unconditional new-object return made
+      // effect → setState → new actions → effect an infinite loop. Bailing
+      // when the array is the same reference breaks it at the source, no
+      // matter what the consumer's dep array does.
+      if (prev.subscriptions === vendors) return prev;
+      return { ...prev, subscriptions: vendors };
+    });
   }, []);
 
   // Initialize from Xero data
@@ -1135,6 +1406,10 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         total_revenue: number;
         months_count: number;
         revenue_lines?: PLLineItem[];
+        // fix/step3-cogs-actuals — COGS actuals flow into state.currentYTD so
+        // Step 3's redistribution can lock actual months at real values.
+        cogs_by_month?: Record<string, number>;
+        cogs_lines?: PLLineItem[];
       };
     }) => {
       setState((prev) => {
@@ -1162,37 +1437,65 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
           }
           const matchedYtdNames = new Set<string>();
 
+          // fix/init-lock-all-actual-months: completed months are locked for
+          // EVERY line — at $0 when the line had no activity. Previously a
+          // prior-year line with no YTD match (Dragon: Sales - Deposit,
+          // Sales - Referral Fee, Other Revenue in Jul 2026) treated the
+          // completed month as a FUTURE month and distributed forecast
+          // dollars into it, inflating the month's displayed total above the
+          // real Xero actual.
+          const completedMonthKeys = new Set(
+            Object.keys(data.currentYTD?.revenue_by_month ?? {}),
+          );
+
           revenueLines = data.priorYear.revenue.byLine.map((line) => {
             const priorMonthlyRemapped = remapMonthKeysToForecastYear(
               line.byMonth,
               prev.fiscalYearStart,
             );
 
-            // Fallback (FCST-05): no target → preserve legacy verbatim copy.
+            // fix/no-goals-seed-duplicates: register the YTD match BEFORE the
+            // no-target early-return. The legacy branch used to skip matching
+            // entirely, so for businesses with NO saved goals (mount runs
+            // before Step 1 is typed — every fresh CFO client), the FCST-04
+            // append below re-added every traded YTD line as a DUPLICATE row,
+            // and July double-counted (prior-July copy + actual-July twin).
+            const ytdLine = ytdByName.get(matchKey(line.name));
+            if (ytdLine) matchedYtdNames.add(matchKey(line.name));
+            const ytdMonths = ytdLine?.by_month ?? {};
+
+            // Fallback (FCST-05): no target → preserve legacy verbatim copy
+            // of prior-year for FUTURE months, but completed months still
+            // lock to actuals ($0 when the line didn't trade).
             if (targetRevenue <= 0) {
+              const year1Monthly: Record<string, number> = {};
+              for (const key of monthKeys) {
+                if (completedMonthKeys.has(key)) {
+                  year1Monthly[key] = Math.round(ytdMonths[key] ?? 0);
+                } else {
+                  year1Monthly[key] = priorMonthlyRemapped[key] || 0;
+                }
+              }
               return {
                 id: line.id,
                 name: line.name,
-                year1Monthly: priorMonthlyRemapped,
+                year1Monthly,
                 year2Monthly: {},
                 year3Monthly: {},
               };
             }
 
-            const ytdLine = ytdByName.get(matchKey(line.name));
-            if (ytdLine) matchedYtdNames.add(matchKey(line.name));
-
             const lineShare = priorYearTotal > 0 ? line.total / priorYearTotal : 0;
             const lineYearTarget = Math.round(targetRevenue * lineShare);
-
-            const ytdMonths = ytdLine?.by_month ?? {};
             const year1Monthly: Record<string, number> = {};
             const futureMonthKeys: string[] = [];
             let lineYtdTotal = 0;
 
             for (const key of monthKeys) {
-              if (ytdMonths[key] !== undefined) {
-                year1Monthly[key] = Math.round(ytdMonths[key]);
+              if (completedMonthKeys.has(key)) {
+                // Lock at the line's actual — $0 when the line had no
+                // activity that month (fix/init-lock-all-actual-months).
+                year1Monthly[key] = Math.round(ytdMonths[key] ?? 0);
                 lineYtdTotal += year1Monthly[key];
               } else {
                 futureMonthKeys.push(key);
@@ -1558,7 +1861,15 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         if (departure && departure.endMonth < bonusKey) return sum;
         return sum + b.amount;
       }, 0);
-      teamCosts += bonusTotal;
+      // FML-04 (21 Aug 2026 audit): bonuses attract superannuation. The
+      // materializer has always charged it (convertTeam pools bonuses into the
+      // employee wage base before applying superPct) while this summary did
+      // not — so the approved on-screen number was cheaper than the forecast
+      // that got stored, and "summary ≡ stored P&L" failed on every business
+      // using bonuses. The materializer is the ATO-correct side: bonuses are
+      // ordinary time earnings. Charging it here raises the displayed cost to
+      // the truthful figure instead of storing an untruthful one.
+      teamCosts += bonusTotal * (1 + SUPER_RATE);
 
       // Commissions - based on percentage of linked revenue line
       // P0-13: when per-line Y2/Y3 monthly is empty but the year revenue total
@@ -1579,11 +1890,17 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         // The dual-unit guard from #126 (P56 P1a Team-Commission-001)
         // misclassified them as 0-1 decimals and inflated 100×. Trust the
         // input format — all wizard inputs are stored as 0-100 percentages.
-        teamCosts += lineRevenue * ((commission.percentOfRevenue || 0) / 100);
+        // FML-04: commissions are ordinary time earnings too, and the
+        // materializer charges super on them — see the bonus note above.
+        teamCosts += lineRevenue * ((commission.percentOfRevenue || 0) / 100) * (1 + SUPER_RATE);
       }
 
-      // OpEx - handle all cost behaviors including seasonal
-      const defaultIncrease = state.defaultOpExIncreasePct || 3;
+      // OpEx - handle all cost behaviors including seasonal.
+      // FML-05 (21 Aug 2026 audit): `|| 3` silently rewrote a deliberate 0%
+      // ("hold costs flat") to 3%, while Step 5's display and the materializer
+      // both honored the 0 — three different Y2/Y3 answers for the same plan.
+      // Nullish coalescing keeps 0 meaning zero.
+      const defaultIncrease = state.defaultOpExIncreasePct ?? 3;
 
       // Phase 57 T07 (B2) — Subscriptions feed the rollup.
       //
@@ -1631,12 +1948,13 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         }
       }
 
+      const teamCoverage = deriveTeamCoverage(state.teamMembers, state.newHires);
       const opex = state.opexLines.reduce((sum, line) => {
         // Skip one-time expenses that don't belong to this year
         if (line.isOneTime && line.oneTimeYear && line.oneTimeYear !== yearNum) return sum;
         // Skip expenses that haven't started yet
         if (line.startYear && line.startYear > yearNum) return sum;
-        if (shouldExcludeFromOpEx(line)) return sum;
+        if (shouldExcludeFromOpEx(line, teamCoverage)) return sum;
 
         // Phase 57 T07: skip lines covered by Step 5 Subscriptions to prevent
         // double-counting the same Xero account in both buckets. ONLY
@@ -1662,7 +1980,8 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
           case 'fixed': {
             // Monthly amount × 12, with annual increase applied
             const baseAmount = (line.monthlyAmount || 0) * 12;
-            const increaseFactor = 1 + (line.annualIncreasePct || defaultIncrease) / 100;
+            // FML-05: `??` so a line explicitly set to 0% stays at 0%.
+            const increaseFactor = 1 + (line.annualIncreasePct ?? defaultIncrease) / 100;
             lineAmount = baseAmount * Math.pow(increaseFactor, yearNum - 1);
             break;
           }
@@ -1680,6 +1999,16 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
             // Expected annual amount (same each year)
             lineAmount = line.expectedAnnualAmount || 0;
             break;
+          case 'budgeted': {
+            // Explicit per-month amounts — the SAME projection the materialiser
+            // uses (src/lib/forecast/budgeted-line.ts), same growth fallback.
+            lineAmount = budgetedTotal(
+              line,
+              generateMonthKeys(state.fiscalYearStart + (yearNum - 1)),
+              line.annualIncreasePct ?? defaultIncrease,
+            );
+            break;
+          }
           case 'seasonal': {
             // Use prior year pattern with growth applied
             const priorTotal = line.priorYearAnnual || 0;
@@ -1722,14 +2051,6 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         return sum + item.annualDepreciation;
       }, 0);
 
-      // Other Expenses - one-off expenses only count in Y1
-      const otherExpenses = state.otherExpenses.reduce((sum, exp) => {
-        if (exp.frequency === 'once') return yearNum === 1 ? sum + exp.amount : sum;
-        if (exp.frequency === 'monthly') return sum + exp.amount * 12;
-        if (exp.frequency === 'quarterly') return sum + exp.amount * 4;
-        if (exp.frequency === 'annual') return sum + exp.amount;
-        return sum + exp.amount;
-      }, 0);
 
       // Investment costs (one-time strategic spends, Year 1 only)
       const investments = yearNum === 1
@@ -1781,7 +2102,6 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         - subscriptions // Phase 57 T07 (B2): subscriptions are now their own bucket
         - opex
         - finalDepreciation
-        - otherExpenses // user-entered one-offs (Step 7), NOT Xero other_expense bucket
         - finalInvestments
         + xeroOtherIncome
         - xeroOtherExpense;
@@ -1802,7 +2122,6 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         opex: Math.round(opex),
         depreciation: Math.round(finalDepreciation),
         investments: Math.round(finalInvestments),
-        otherExpenses: Math.round(otherExpenses), // user-entered list
         otherIncome: Math.round(xeroOtherIncome),
         xeroOtherExpense: Math.round(xeroOtherExpense),
         netProfit: Math.round(netProfit),
@@ -1837,6 +2156,14 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       const priorYearTotal = state.priorYear?.revenue.byLine.find(l => l.id === line.id)?.total || year1Total;
       const growthPct = priorYearTotal > 0 ? ((year1Total - priorYearTotal) / priorYearTotal) * 100 : 0;
 
+      // Omit EMPTY Y2/Y3 maps. monthlyToQuarterly({}) returns
+      // {q1:0,q2:0,q3:0,q4:0} — truthy — and convertRevenue reads only the
+      // quarterly fields for Y2/Y3, so an operator who set Y2/Y3 goals but
+      // never opened those tabs stored $0 revenue for FY28/FY29 against a
+      // full year of team + OpEx: two catastrophically negative years in the
+      // saved forecast while every screen showed the goal figures.
+      const hasY2 = line.year2Monthly && Object.keys(line.year2Monthly).length > 0;
+      const hasY3 = line.year3Monthly && Object.keys(line.year3Monthly).length > 0;
       return {
         accountId: line.id,
         accountName: line.name,
@@ -1845,32 +2172,53 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
         growthPct: Math.round(growthPct * 10) / 10,
         // Store actual forecasted values for restoration
         year1Monthly: line.year1Monthly,
-        year2Monthly: line.year2Monthly,
-        year3Monthly: line.year3Monthly,
+        year2Monthly: hasY2 ? line.year2Monthly : undefined,
+        year3Monthly: hasY3 ? line.year3Monthly : undefined,
         // Legacy compat
-        year2Quarterly: monthlyToQuarterly(line.year2Monthly),
-        year3Quarterly: monthlyToQuarterly(line.year3Monthly),
+        year2Quarterly: hasY2 ? monthlyToQuarterly(line.year2Monthly) : undefined,
+        year3Quarterly: hasY3 ? monthlyToQuarterly(line.year3Monthly) : undefined,
       };
     });
 
     // Build COGS assumptions
-    const cogsLines: COGSLineAssumption[] = state.cogsLines.map(line => ({
-      accountId: line.accountId || line.id,
-      accountName: line.name,
-      priorYearTotal: line.priorYearTotal || 0,
-      costBehavior: line.costBehavior,
-      percentOfRevenue: line.costBehavior === 'variable' ? line.percentOfRevenue : undefined,
-      monthlyAmount: line.costBehavior === 'fixed' ? line.monthlyAmount : undefined,
-      notes: line.notes,
-    }));
+    // PR-A materializer fidelity (M1): persist the operator's monthly COGS
+    // grid — including locked actual months — exactly like the revenue
+    // mapper above. Without these fields convertCOGS re-derived every month
+    // from percentOfRevenue and the stored GP diverged from the approved
+    // summary by $2M on a live forecast. Empty maps are omitted so the
+    // converter's behavior-based fallback still applies to untouched lines.
+    const cogsLines: COGSLineAssumption[] = state.cogsLines.map(line => {
+      const hasY1 = line.year1Monthly && Object.keys(line.year1Monthly).length > 0;
+      const hasY2 = line.year2Monthly && Object.keys(line.year2Monthly).length > 0;
+      const hasY3 = line.year3Monthly && Object.keys(line.year3Monthly).length > 0;
+      return {
+        accountId: line.accountId || line.id,
+        accountName: line.name,
+        priorYearTotal: line.priorYearTotal || 0,
+        costBehavior: line.costBehavior,
+        percentOfRevenue: line.costBehavior === 'variable' ? line.percentOfRevenue : undefined,
+        monthlyAmount: line.costBehavior === 'fixed' ? line.monthlyAmount : undefined,
+        year1Monthly: hasY1 ? line.year1Monthly : undefined,
+        year2Monthly: hasY2 ? line.year2Monthly : undefined,
+        year3Monthly: hasY3 ? line.year3Monthly : undefined,
+        year2Quarterly: hasY2 ? monthlyToQuarterly(line.year2Monthly) : undefined,
+        year3Quarterly: hasY3 ? monthlyToQuarterly(line.year3Monthly) : undefined,
+        // FML-06: the Y2/Y3 margin trend the summary already applies.
+        y2y3Trend: line.y2y3Trend,
+        notes: line.notes,
+      };
+    });
 
     // Build team assumptions
+    // PR-A (M3a): year1Salary = the summary's Y1 wage (newSalary, i.e. the
+    // Y1 increase already applied) so the converter can compound identically.
     const existingTeam: ExistingTeamMember[] = state.teamMembers.map(member => ({
       employeeId: member.id,
       name: member.name,
       role: member.role,
       employmentType: member.type,
       currentSalary: member.currentSalary,
+      year1Salary: member.newSalary || calculateNewSalary(member.currentSalary, member.increasePct || 0),
       hoursPerWeek: member.hoursPerWeek,
       salaryIncreasePct: member.increasePct,
       includeInForecast: true,
@@ -1886,19 +2234,37 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       hourlyRate: hire.hourlyRate,
       weeksPerYear: hire.weeksPerYear,
       startMonth: hire.startMonth,
+      // PR-A (M3a): summary honors per-hire increase (default 3) — persist it.
+      increasePct: hire.increasePct,
     }));
 
     // Build OpEx assumptions — filter out team cost lines to prevent double-counting
-    // (team wages are generated separately by convertTeam())
+    // (team wages are generated separately by convertTeam()).
+    // PR-A (M2): exclusion applies only when Step 4 actually carries team data
+    // — otherwise team-classified Xero lines stay in OpEx (the summary applies
+    // the identical rule, so displayed and stored totals agree).
+    // PR-A (M6): lines covered by an active subscription vendor are excluded
+    // here too — the converter emits the vendor-budget subscriptions line
+    // instead, mirroring the summary's coveredAccountCodes skip.
+    const exportTeamCoverage = deriveTeamCoverage(state.teamMembers, state.newHires);
+    const exportCoveredCodes = new Set<string>();
+    for (const v of state.subscriptions.filter(s => s.isActive)) {
+      for (const code of v.accountCodes ?? []) {
+        if (typeof code === 'string' && code.trim()) exportCoveredCodes.add(code.trim());
+      }
+    }
     const opexLineAssumptions: OpExLineAssumption[] = state.opexLines
-      .filter(line => !shouldExcludeFromOpEx(line))
+      .filter(line => !shouldExcludeFromOpEx(line, exportTeamCoverage))
+      .filter(line => !(line.accountCode && exportCoveredCodes.has(line.accountCode)))
       .map(line => ({
       accountId: line.accountId || line.id,
       accountName: line.name,
       priorYearTotal: line.priorYearAnnual,
       costBehavior: line.costBehavior,
       monthlyAmount: line.costBehavior === 'fixed' ? line.monthlyAmount : undefined,
-      annualIncreasePct: line.costBehavior === 'fixed' ? line.annualIncreasePct : undefined,
+      annualIncreasePct:
+        line.costBehavior === 'fixed' || line.costBehavior === 'budgeted' ? line.annualIncreasePct : undefined,
+      budgetedMonthly: line.costBehavior === 'budgeted' ? line.budgetedMonthly : undefined,
       percentOfRevenue: line.costBehavior === 'variable' ? line.percentOfRevenue : undefined,
       seasonalGrowthPct: line.costBehavior === 'seasonal' ? line.seasonalGrowthPct : undefined,
       seasonalTargetAmount: line.costBehavior === 'seasonal' ? line.seasonalTargetAmount : undefined,
@@ -1906,6 +2272,21 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       expectedMonths: line.costBehavior === 'adhoc' ? line.expectedMonths : undefined,
       isSubscription: line.isSubscription,
       notes: line.notes,
+      // 21 Aug 2026 audit — everything below used to be dropped on export,
+      // so the stored forecast and the reopened wizard both lost it.
+      // PROC-06: identity + the operator's explicit include/exclude decision.
+      accountCode: line.accountCode,
+      isTeamCostOverride: line.isTeamCostOverride,
+      // FML-01/PROC-01: Y2/Y3 hand-tuning the summary already honors.
+      y2Override: line.y2Override,
+      y3Override: line.y3Override,
+      y2PercentOverride: line.y2PercentOverride,
+      y3PercentOverride: line.y3PercentOverride,
+      y2SeasonalTargetAmount: line.y2SeasonalTargetAmount,
+      y3SeasonalTargetAmount: line.y3SeasonalTargetAmount,
+      isOneTime: line.isOneTime,
+      oneTimeYear: line.oneTimeYear,
+      startYear: line.startYear,
     }));
 
     // Build CapEx assumptions
@@ -2030,6 +2411,9 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       },
       opex: {
         lines: opexLineAssumptions,
+        // PROC-08: persist the wizard-level default so reopening a forecast
+        // doesn't silently reset Y2/Y3 growth to 3%.
+        defaultIncreasePct: state.defaultOpExIncreasePct,
       },
       capex: {
         items: capexItems,
@@ -2037,6 +2421,13 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
       plannedSpends: state.plannedSpends,
       // Phase 57 (T09): at-save-time snapshot of active vendor budgets.
       subscriptions: subscriptionsSnapshot,
+      // Budget-seed provenance travels with every save (the seed wrote it; the
+      // wizard used to drop it on the first autosave — Urban Road, 7 Sep 2026).
+      ...(state.seedSource ? { seedSource: state.seedSource } : {}),
+      // PR-A materializer fidelity: buckets the summary nets off that must
+      // reach the stored P&L (converter emits matching lines).
+      xeroOtherIncome: state.priorYear?.otherIncome?.total ?? 0,
+      xeroOtherExpense: state.priorYear?.otherExpenses?.total ?? 0,
       // Hotfix (fix/step2-byMonth-priorYear-restore): at-save-time snapshot
       // of category-level prior-year monthly figures so the saved-assumptions
       // fallback in ForecastWizardV4.tsx can reconstruct
@@ -2151,17 +2542,29 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     }
   }, [state, buildAssumptions, summary]);
 
-  const actions: WizardActions = {
+  // PR-B (D3): the actions object must be referentially STABLE. It was a
+  // plain literal rebuilt on every render, and Step6Subscriptions has an
+  // effect with `actions` in its dependency array that calls
+  // actions.setSubscriptions — effect → setState → re-render → new actions
+  // → effect… an infinite passive-effect loop that pegged the CPU and
+  // starved the localStorage draft saver on the subscriptions review phase.
+  // Every member is already a stable useCallback, so useMemo over their
+  // identities yields a constant object.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const actions: WizardActions = useMemo(() => ({
     goToStep,
     nextStep,
     prevStep,
     setActiveYear,
     setBusinessProfile,
     setPlanPeriod,
+    setForecastIdentity,
+    hydrateForecastDuration,
     setForecastDuration,
     updateGoals,
     setPriorYear,
     setPriorYearDisplay,
+    setCurrentYTD,
     setRevenuePattern,
     setRevenueLines,
     setCOGSLines,
@@ -2188,10 +2591,12 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     setDefaultPayFrequency,
     setDefaultOpExIncreasePct,
     setOpExLines,
+    mergeSavedOpExLines,
     updateOpExLine,
     addOpExLine,
     removeOpExLine,
     setNeedsAccountCodeRefresh,
+    setSeedSource,
     addCapExItem,
     updateCapExItem,
     removeCapExItem,
@@ -2202,14 +2607,27 @@ export function useForecastWizard(fiscalYearStart: number, businessId: string, s
     updatePlannedSpend,
     removePlannedSpend,
     setPlannedSpends,
-    addOtherExpense,
-    updateOtherExpense,
-    removeOtherExpense,
     setSubscriptions,
     initializeFromXero,
+    buildAssumptions,
     saveDraft,
     generateForecast,
-  };
+  }), [
+    goToStep, nextStep, prevStep, setActiveYear, setBusinessProfile,
+    setPlanPeriod, setForecastIdentity, setForecastDuration, hydrateForecastDuration, updateGoals, setPriorYear,
+    setPriorYearDisplay, setCurrentYTD, setRevenuePattern, setRevenueLines,
+    setCOGSLines, updateRevenueLine, addRevenueLine, removeRevenueLine,
+    updateCOGSLine, addCOGSLine, removeCOGSLine, updateTeamMember,
+    addTeamMember, removeTeamMember, addNewHire, updateNewHire, removeNewHire,
+    addDeparture, removeDeparture, addBonus, updateBonus, removeBonus,
+    addCommission, updateCommission, removeCommission, setDefaultPayFrequency,
+    setDefaultOpExIncreasePct, setOpExLines, mergeSavedOpExLines, updateOpExLine, addOpExLine,
+    removeOpExLine, setNeedsAccountCodeRefresh, setSeedSource, addCapExItem, updateCapExItem,
+    removeCapExItem, addInvestment, updateInvestment, removeInvestment,
+    addPlannedSpend, updatePlannedSpend, removePlannedSpend, setPlannedSpends,
+    setSubscriptions,
+    initializeFromXero, saveDraft, generateForecast, buildAssumptions,
+  ]);
 
   return {
     state,

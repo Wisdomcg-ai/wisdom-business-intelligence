@@ -47,9 +47,15 @@ function makeMockSupabase(opts: MockOpts) {
       ctx._filters.push({ kind: 'in', col, val })
       return ctx
     }
+    ctx.is = () => ctx
     ctx.order = () => ctx
     ctx.limit = () => ctx
     ctx.range = () => ctx
+    // xero_pl_lines is read by readAllRows: the page after the last id received.
+    ctx.gt = (col: string, val: any) => {
+      ctx._filters.push({ kind: 'gt', col, val })
+      return ctx
+    }
     ctx.maybeSingle = async () => {
       if (table === 'financial_forecasts') return { data: opts.forecast, error: opts.forecast ? null : new Error('not found') }
       if (table === 'sync_jobs') {
@@ -65,6 +71,8 @@ function makeMockSupabase(opts: MockOpts) {
       if (table === 'forecast_pl_lines') data = opts.forecastPlLines ?? []
       if (table === 'xero_pl_lines') data = opts.xeroPlLines ?? []
       if (table === 'xero_connections') data = opts.xeroConnections
+      const after = ctx._filters.find((f: any) => f.kind === 'gt' && f.col === 'id')
+      if (after) data = data.filter((r: any) => String(r.id) > after.val)
       return Promise.resolve({ data, error: null }).then(resolve, reject)
     }
     return ctx

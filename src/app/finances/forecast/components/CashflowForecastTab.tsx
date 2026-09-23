@@ -13,6 +13,8 @@ interface CashflowForecastTabProps {
   plLines: PLLine[]
   businessId: string
   hasXeroConnection: boolean
+  /** The Xero status check failed: `hasXeroConnection` is false for want of an answer, not because there is no Xero. */
+  xeroCheckFailed?: boolean
 }
 
 export default function CashflowForecastTab({
@@ -20,6 +22,7 @@ export default function CashflowForecastTab({
   plLines,
   businessId,
   hasXeroConnection,
+  xeroCheckFailed = false,
 }: CashflowForecastTabProps) {
   const [showSettings, setShowSettings] = useState(false)
   const [viewMode, setViewMode] = useState<'table' | 'chart'>('table')
@@ -33,6 +36,7 @@ export default function CashflowForecastTab({
     saveAssumptions,
     syncFromXero,
     updateAssumption,
+    assumptionsUnavailable,
   } = useCashflowForecast({ forecast, plLines, businessId, hasXeroConnection })
 
   if (isLoading || (isSyncing && !data)) {
@@ -46,6 +50,22 @@ export default function CashflowForecastTab({
     )
   }
 
+  // D2: the stored assumptions could not be read, so everything below them is
+  // the defaults. Saying so beats a cashflow built on assumptions that are not
+  // this client's — and the hook refuses to save or sync over the real ones.
+  if (assumptionsUnavailable) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm p-8 text-center" role="alert">
+        <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
+        <h3 className="text-lg font-medium text-gray-900">Cashflow assumptions couldn&apos;t be loaded</h3>
+        <p className="text-sm text-gray-500 mt-1 max-w-md mx-auto">
+          Opening balances, debtor and creditor days, loans and planned stock changes are unavailable,
+          so this forecast isn&apos;t shown and nothing can be saved over them. Reload the page to try again.
+        </p>
+      </div>
+    )
+  }
+
   if (!data || plLines.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow-sm p-8 text-center">
@@ -53,7 +73,7 @@ export default function CashflowForecastTab({
         <h3 className="text-lg font-medium text-gray-900">Cashflow Forecast</h3>
         <p className="text-sm text-gray-500 mt-1 max-w-md mx-auto">
           Complete your P&L forecast first, then switch to this tab to see your cash position month by month.
-          {!hasXeroConnection && ' Connect Xero to auto-populate opening balances.'}
+          {!hasXeroConnection && !xeroCheckFailed && ' Connect Xero to auto-populate opening balances.'}
         </p>
         <div className="mt-4 flex items-center justify-center gap-3">
           <button

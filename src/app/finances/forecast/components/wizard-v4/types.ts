@@ -50,8 +50,11 @@ export interface XeroFieldFingerprint {
 }
 
 export type RevenuePattern = 'seasonal' | 'straight-line' | 'manual';
-export type ExpenseFrequency = 'once' | 'monthly' | 'quarterly' | 'annual';
-export type CostBehavior = 'fixed' | 'variable' | 'adhoc' | 'seasonal';
+// 'budgeted' — an explicit amount per month (src/lib/forecast/budgeted-line.ts).
+// Added for the Xero budget seed (.planning/XERO-BUDGET-SEED-PLAN.md); also
+// selectable by hand. Projection lives in ONE helper used by the summary and
+// the materialiser, so the screen and the stored P&L cannot disagree.
+export type CostBehavior = 'fixed' | 'variable' | 'adhoc' | 'seasonal' | 'budgeted';
 
 // Business profile data from business_profiles table
 export interface BusinessProfile {
@@ -96,6 +99,14 @@ export interface QuarterlyData {
 export interface RevenueLine {
   id: string;
   name: string;
+  /**
+   * Pinned line: top-down distribution must not move it. When the operator
+   * types a monthly TOTAL (or drives the year against the Step 1 goal), a
+   * locked line keeps its current values and the remainder is spread across
+   * the unlocked lines only — e.g. "Management Services is $18k/month, work
+   * everything else around it". Undefined = unlocked (existing behaviour).
+   */
+  isLocked?: boolean;
   year1Monthly: MonthlyData;
   year2Monthly?: MonthlyData;     // Monthly data for Y2 (new — replaces quarterly)
   year3Monthly?: MonthlyData;     // Monthly data for Y3 (new — replaces quarterly)
@@ -141,16 +152,32 @@ export function quarterlyToMonthly(
 }
 
 // Convert monthly data to quarterly (for legacy compatibility)
-export function monthlyToQuarterly(monthly?: MonthlyData): QuarterlyData {
-  if (!monthly) return { q1: 0, q2: 0, q3: 0, q4: 0 };
-  const values = Object.values(monthly);
-  if (values.length < 12) return { q1: 0, q2: 0, q3: 0, q4: 0 };
-  return {
-    q1: (values[0] || 0) + (values[1] || 0) + (values[2] || 0),
-    q2: (values[3] || 0) + (values[4] || 0) + (values[5] || 0),
-    q3: (values[6] || 0) + (values[7] || 0) + (values[8] || 0),
-    q4: (values[9] || 0) + (values[10] || 0) + (values[11] || 0),
-  };
+/**
+ * Sum a monthly map into fiscal quarters.
+ *
+ * 21 Aug 2026 audit (FML-02): this used to read Object.values POSITIONALLY and
+ * return {0,0,0,0} for any map with fewer than 12 entries. Both were unsafe —
+ * a partially filled Y2/Y3 grid exported four zeros (the stored year became $0
+ * while the screen showed the typed months), and filling a grid out of
+ * chronological order scrambled months into the wrong quarters. Quarters are
+ * now derived from each key's CALENDAR MONTH against the fiscal year start, so
+ * partial and out-of-order maps both land correctly.
+ */
+export function monthlyToQuarterly(
+  monthly?: MonthlyData,
+  yearStartMonth: number = 7,
+): QuarterlyData {
+  const out: QuarterlyData = { q1: 0, q2: 0, q3: 0, q4: 0 };
+  if (!monthly) return out;
+  for (const [key, value] of Object.entries(monthly)) {
+    const month = Number(key.split('-')[1]);
+    if (!Number.isFinite(month) || month < 1 || month > 12) continue;
+    const fiscalIndex = (month - yearStartMonth + 12) % 12;
+    const quarter = Math.floor(fiscalIndex / 3);
+    const bucket = (['q1', 'q2', 'q3', 'q4'] as const)[quarter];
+    out[bucket] += value || 0;
+  }
+  return out;
 }
 
 // Get total from a RevenueLine for a given year (handles both monthly and legacy quarterly)
@@ -313,6 +340,11 @@ export interface OpExLine {
   // For ad-hoc costs:
   expectedAnnualAmount?: number;
   expectedMonths?: string[]; // Which months to spread across (e.g., ['2026-03', '2026-09'])
+  // For budgeted costs ('budgeted'): explicit amount per month, keyed "YYYY-MM".
+  // May span Y1–Y3; months beyond coverage roll forward by calendar month with
+  // annualIncreasePct (projectBudgetedMonths). Set by the Xero budget seed or
+  // the Step 5 month editor.
+  budgetedMonthly?: MonthlyData;
   // For seasonal costs:
   seasonalGrowthPct?: number; // Annual growth % to apply to the seasonal pattern
   seasonalTargetAmount?: number; // Target annual amount (alternative to growth %) — Y1
@@ -358,16 +390,6 @@ export interface Investment {
   monthlyDistribution: number[]; // 12 values
 }
 
-export interface OtherExpense {
-  id: string;
-  description: string;
-  amount: number;
-  frequency: ExpenseFrequency;
-  startMonth: number; // 1-12
-  endMonth?: number;
-  notes?: string;
-}
-
 /**
  * Phase 57 (T02) — Subscription vendor budget held in wizard state.
  *
@@ -390,10 +412,16 @@ export interface OtherExpense {
 export interface VendorBudget {
   vendorKey: string;
   vendorName: string;
+  /** Set once the operator commits a budget by hand. Frequency changes stop
+   *  re-deriving the amount from analyzer figures after this — changing a
+   *  dropdown used to silently overwrite a typed number. UI-only (not
+   *  persisted); resets on reload, which is the safe direction. */
+  budgetTouched?: boolean;
   // Frequency the vendor charges at — used for display + reconciliation.
   // Note: Step6Subscriptions allows 'ad-hoc' as a UI label; both shapes are
   // accepted here for back-compat with existing component state.
-  frequency: 'monthly' | 'quarterly' | 'annual' | 'ad-hoc' | 'one-time';
+  /** 'one-time' is legacy and still read; see lib/subscriptions/frequency. */
+  frequency: 'monthly' | 'quarterly' | 'bi-annual' | 'annual' | 'ad-hoc' | 'one-time';
   monthlyBudget: number;
   // Active flag — only active vendors contribute to the rollup (T07).
   isActive: boolean;
@@ -555,11 +583,35 @@ export function getPlannedSpendPLBreakdown(
   return getBreakdownLegacy(item, yearNum);
 }
 
+/**
+ * How many months of a charge fall inside a forecast year's window, given the
+ * charge stops after `limitMonths`.
+ *
+ * 21 Aug 2026 audit (FML-07): the taxonomy math had no end. An operating lease
+ * charged 12 payments in EVERY forecast year — ignoring both the purchase
+ * month in Y1 and the lease TERM, so a 2-year vehicle lease inflated the
+ * 3-year cost by 50% — and depreciation never stopped at the end of useful
+ * life, so a short-life asset depreciated past its own base. Both the approved
+ * summary and the stored forecast were overstated for any business with leases
+ * or financed/short-life assets.
+ */
+function chargeableMonthsInYear(
+  startMonthOfFY: number,
+  yearNum: 1 | 2 | 3,
+  limitMonths: number,
+): number {
+  const monthsInY1 = Math.max(0, 13 - startMonthOfFY);
+  const startIdx = yearNum === 1 ? 0 : yearNum === 2 ? monthsInY1 : monthsInY1 + 12;
+  const windowMonths = yearNum === 1 ? monthsInY1 : 12;
+  if (limitMonths <= 0) return 0;
+  // Months of this window that are still before the charge ends.
+  return Math.max(0, Math.min(windowMonths, limitMonths - startIdx));
+}
+
 function getBreakdownWithTaxonomy(
   item: PlannedSpend,
   yearNum: 1 | 2 | 3,
 ): PlannedSpendPLBreakdown {
-  const monthsRemaining = yearNum === 1 ? Math.max(0, 13 - item.month) : 12;
   const depreciableBase = item.amount - (item.residual_value || 0);
   const usefulLifeMonths = item.useful_life_months || 0;
   const termMonths = item.term_months || 0;
@@ -570,14 +622,24 @@ function getBreakdownWithTaxonomy(
         return { depreciation: 0, expenses: 0, total: 0 };
       }
       const monthlyDep = depreciableBase / usefulLifeMonths;
-      const dep = Math.round(monthlyDep * monthsRemaining);
+      // FML-07: capped at useful life — an asset cannot depreciate past its
+      // depreciable base.
+      const months = chargeableMonthsInYear(item.month, yearNum, usefulLifeMonths);
+      const dep = Math.round(monthlyDep * months);
       return { depreciation: dep, expenses: 0, total: dep };
     }
     case 'operating_lease': {
       const monthlyPayment =
         item.leaseMonthlyPayment ??
         (termMonths > 0 ? item.amount / termMonths : 0);
-      const exp = Math.round(monthlyPayment * 12);
+      // FML-07: Y1 charges only from the lease's start month, and payments
+      // stop at the end of the term. An unknown term keeps the previous
+      // full-year behaviour rather than silently zeroing the cost.
+      const months =
+        termMonths > 0
+          ? chargeableMonthsInYear(item.month, yearNum, termMonths)
+          : (yearNum === 1 ? Math.max(0, 13 - item.month) : 12);
+      const exp = Math.round(monthlyPayment * months);
       return { depreciation: 0, expenses: exp, total: exp };
     }
     case 'finance_lease':
@@ -585,7 +647,8 @@ function getBreakdownWithTaxonomy(
       let dep = 0;
       if (usefulLifeMonths > 0) {
         const monthlyDep = depreciableBase / usefulLifeMonths;
-        dep = Math.round(monthlyDep * monthsRemaining);
+        const depMonths = chargeableMonthsInYear(item.month, yearNum, usefulLifeMonths);
+        dep = Math.round(monthlyDep * depMonths);
       }
       let interestExp = 0;
       if (termMonths > 0 && item.interest_rate !== undefined) {
@@ -721,6 +784,32 @@ export interface ForecastWizardState {
   // Version marker for localStorage invalidation
   wizardVersion?: number;
 
+  /**
+   * Which forecast this draft belongs to — the identity guard for the
+   * localStorage draft.
+   *
+   * The draft slot is keyed only by business + fiscal year, so every scenario
+   * for a business shares ONE slot. Opening an existing forecast skips the full
+   * API init whenever a usable draft is present, which meant the draft's lines
+   * were shown under the newly-opened forecast's name and then autosaved onto
+   * it: edit Best Case, open Base Case, and Base Case silently became Best Case.
+   *
+   * Recording the owning forecast id lets the loader discard a draft that
+   * belongs to a different forecast. `null` means "an unsaved new forecast";
+   * `undefined` means a draft written before this guard existed and whose owner
+   * is therefore unknown.
+   */
+  forecastId?: string | null;
+
+  /**
+   * Where this forecast's numbers came from, when it was seeded from a Xero
+   * budget (PR 4 of the budget-seed work, Sep 2026). Restored from the saved
+   * assumptions on open and written back by buildAssumptions, so the
+   * provenance survives autosaves and the banners keyed on it stay put.
+   * `null`/absent = built by hand or seeded from a prior year.
+   */
+  seedSource?: import('@/lib/services/xero-budget-seed-service').ForecastSeedSource | null;
+
   // Phase 56 (P1 B2): when present, indicates the draft was loaded from a
   // localStorage entry written by an older WIZARD_VERSION. Carries the prior
   // version number so debug tooling can trace which fields fell through to
@@ -784,6 +873,13 @@ export interface ForecastWizardState {
     // per-month actuals the API already returns so initializeFromXero can
     // lock completed-month values to the cent.
     revenue_lines?: PLLineItem[];
+    // COGS actuals (fix/step3-cogs-actuals): without these, Step 3's COGS
+    // redistribution locked actual months at $0 (July showed 100% GP) and
+    // pushed the full-year COGS target into the remaining months — the last
+    // month absorbed the residue and went deeply negative (Dragon Roofing,
+    // 2026-08-11: June at −54.1% GP).
+    cogs_by_month?: Record<string, number>;
+    cogs_lines?: PLLineItem[];
   } | null;
 
   // Step 3: Revenue & COGS
@@ -817,8 +913,6 @@ export interface ForecastWizardState {
   // Step 6: Planned Spending (new — replaces CapEx + Investments)
   plannedSpends: PlannedSpend[];
 
-  // Step 7: Other Expenses
-  otherExpenses: OtherExpense[];
 
   // Step 6 Subscriptions (Phase 57 T02) — vendor budgets loaded on wizard
   // mount from /api/subscription-budgets and kept in sync as the operator
@@ -872,6 +966,18 @@ export interface WizardActions {
 
   // Phase 72-02 — plan-period slice (extended-period plans). See state.planPeriod.
   setPlanPeriod: (period: PlanPeriod | null) => void;
+  /** Record which forecast the local draft belongs to (see state.forecastId). */
+  setForecastIdentity: (id: string | null) => void;
+  /** Restore the seed provenance from saved assumptions (see state.seedSource). */
+  setSeedSource: (source: import('@/lib/services/xero-budget-seed-service').ForecastSeedSource | null) => void;
+  /** Restore a SAVED duration, bypassing durationLocked (not an operator edit). */
+  hydrateForecastDuration: (duration: ForecastDuration) => void;
+  /**
+   * The canonical assumptions payload — exactly what the server materialises
+   * into forecast_pl_lines. Exposed so consumers (the Excel export) can render
+   * from the same input rather than re-deriving the P&L themselves.
+   */
+  buildAssumptions: () => import('./types/assumptions').ForecastAssumptions;
 
   // Step 1: Duration & Goals
   setForecastDuration: (duration: ForecastDuration) => void;
@@ -890,6 +996,9 @@ export interface WizardActions {
   // every wizard mount / hard-refresh. Use this on the always-on Xero refresh
   // path so operator customizations on Steps 3/5/6 survive.
   setPriorYearDisplay: (data: PriorYearData) => void;
+  // fix/step3-cogs-actuals — refresh YTD actuals (incl. COGS) without
+  // rebuilding line arrays.
+  setCurrentYTD: (ytd: ForecastWizardState['currentYTD']) => void;
 
   // Step 3: Revenue & COGS
   setRevenuePattern: (pattern: RevenuePattern) => void;
@@ -924,6 +1033,8 @@ export interface WizardActions {
   // Step 5: OpEx
   setDefaultOpExIncreasePct: (pct: number) => void;
   setOpExLines: (lines: OpExLine[]) => void;
+  /** PROC-06: restore saved values OVER the Xero-seeded list instead of replacing it. */
+  mergeSavedOpExLines: (lines: OpExLine[]) => void;
   updateOpExLine: (lineId: string, updates: Partial<OpExLine>) => void;
   addOpExLine: (line: Omit<OpExLine, 'id'>) => void;
   removeOpExLine: (lineId: string) => void;
@@ -947,10 +1058,6 @@ export interface WizardActions {
   // Bulk replace — used by save/load restore path
   setPlannedSpends: (items: PlannedSpend[]) => void;
 
-  // Step 7: Other Expenses
-  addOtherExpense: (expense: Omit<OtherExpense, 'id'>) => void;
-  updateOtherExpense: (expenseId: string, updates: Partial<OtherExpense>) => void;
-  removeOtherExpense: (expenseId: string) => void;
 
   // Step 6 Subscriptions (Phase 57 T02) — bulk replace. T12 (B4) will wire
   // Step6Subscriptions to call this on every vendor edit. For T02 the action
@@ -967,6 +1074,8 @@ export interface WizardActions {
       total_revenue: number;
       months_count: number;
       revenue_lines?: PLLineItem[]; // Phase 44.3 — per-line YTD breakdown for target-aware init
+      cogs_by_month?: Record<string, number>; // fix/step3-cogs-actuals — COGS actuals for month locking
+      cogs_lines?: PLLineItem[];
     };
   }) => void;
 
@@ -998,8 +1107,6 @@ export interface YearlySummary {
   opex: number;
   depreciation: number;
   investments?: number;
-  /** User-entered one-off / recurring expenses from Step 7 (NOT Xero's other_expense bucket). */
-  otherExpenses: number;
   /** Xero `other_income` account_type bucket — carried over from prior FY actuals. */
   otherIncome: number;
   /** Xero `other_expense` account_type bucket — carried over from prior FY actuals. */

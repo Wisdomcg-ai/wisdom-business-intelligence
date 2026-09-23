@@ -57,6 +57,11 @@ interface UseCashflowForecastReturn {
   isSyncing: boolean
   saveAssumptions: (updated: Partial<CashflowAssumptions>) => Promise<void>
   syncFromXero: () => Promise<void>
+  /**
+   * The stored assumptions could not be read (D2). Everything below them is
+   * the DEFAULTS, so nothing may be written back over the real ones.
+   */
+  assumptionsUnavailable: boolean
   updateAssumption: <K extends keyof CashflowAssumptions>(key: K, value: CashflowAssumptions[K]) => void
 }
 
@@ -79,6 +84,13 @@ export function useCashflowForecast({
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  // D2 (22 Sep 2026 diagnostic): a failed assumptions read left the DEFAULTS in
+  // state and still marked the hook loaded. The auto-sync below then fired —
+  // defaults have opening_bank_balance 0 and no balance_date — and wrote Xero's
+  // figures over the stored ones (sync-balances posts save: true), and the next
+  // edit posted the whole defaulted object, wiping loans, planned stock changes
+  // and the debtor/creditor days a coach had set.
+  const [assumptionsUnavailable, setAssumptionsUnavailable] = useState(false)
   const [hasAutoSynced, setHasAutoSynced] = useState(false)
 
   // Load assumptions, payroll summary, and Xero actuals on mount
@@ -109,6 +121,12 @@ export function useCashflowForecast({
             planned_stock_changes: data.planned_stock_changes || {},
           })
         }
+        // A forecast with no assumptions row yet answers 200 with no data: the
+        // defaults are then this forecast's real starting point, not a failure.
+        setAssumptionsUnavailable(false)
+      } else {
+        console.error('[useCashflowForecast] Assumptions request failed:', assumptionsRes.status)
+        setAssumptionsUnavailable(true)
       }
 
       // Merge Xero actuals with forecast P&L lines
@@ -126,6 +144,7 @@ export function useCashflowForecast({
       setLoaded(true)
     } catch (err) {
       console.error('[useCashflowForecast] Error loading data:', err)
+      setAssumptionsUnavailable(true)
     } finally {
       setIsLoading(false)
     }
@@ -214,6 +233,8 @@ export function useCashflowForecast({
   useEffect(() => {
     if (
       loaded &&
+      // Never from the defaults: that is what made this a data-loss path (D2).
+      !assumptionsUnavailable &&
       hasXeroConnection &&
       !hasAutoSynced &&
       !isSyncing &&
@@ -225,7 +246,7 @@ export function useCashflowForecast({
       setHasAutoSynced(true)
       syncFromXero()
     }
-  }, [loaded, hasXeroConnection, hasAutoSynced, isSyncing, assumptions.opening_bank_balance, assumptions.balance_date, forecast?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loaded, assumptionsUnavailable, hasXeroConnection, hasAutoSynced, isSyncing, assumptions.opening_bank_balance, assumptions.balance_date, forecast?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Run engine client-side via useMemo (instant updates)
   // Use mergedLines (Xero actuals + forecast) for the most complete picture
@@ -308,6 +329,12 @@ export function useCashflowForecast({
 
   const saveAssumptions = useCallback(async (updated: Partial<CashflowAssumptions>) => {
     if (!forecast?.id || !businessId) return
+    if (assumptionsUnavailable) {
+      // What is in state is the defaults, and this POST replaces the whole
+      // stored object (D2).
+      toast.error("Cashflow assumptions couldn't be loaded — reload the page before saving")
+      return
+    }
 
     const merged = { ...assumptions, ...updated }
     setAssumptions(merged)
@@ -332,10 +359,15 @@ export function useCashflowForecast({
       console.error('[useCashflowForecast] Save error:', err)
       toast.error('Failed to save cashflow assumptions')
     }
-  }, [forecast?.id, businessId, assumptions])
+  }, [forecast?.id, businessId, assumptions, assumptionsUnavailable])
 
   const syncFromXero = useCallback(async () => {
     if (!forecast?.id || !businessId) return
+    if (assumptionsUnavailable) {
+      // sync-balances posts save: true — it writes the stored assumptions (D2).
+      toast.error("Cashflow assumptions couldn't be loaded — reload the page before syncing")
+      return
+    }
 
     setIsSyncing(true)
     try {
@@ -398,7 +430,7 @@ export function useCashflowForecast({
     } finally {
       setIsSyncing(false)
     }
-  }, [forecast?.id, businessId, forecast?.actual_start_month])
+  }, [forecast?.id, businessId, forecast?.actual_start_month, assumptionsUnavailable])
 
   // Compute data quality metrics so the UI can show what's actually feeding the cashflow
   const dataQuality = useMemo<CashflowDataQuality>(() => {
@@ -433,6 +465,7 @@ export function useCashflowForecast({
     saveAssumptions,
     syncFromXero,
     updateAssumption,
+    assumptionsUnavailable,
   }
 }
 

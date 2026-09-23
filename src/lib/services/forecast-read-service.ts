@@ -31,6 +31,7 @@
 import * as Sentry from '@sentry/nextjs'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
+import { readAllRows } from '@/lib/supabase/read-all-rows'
 // Phase 67-03 — FX engine wiring for multi-currency consolidated businesses.
 import { needsFxConsolidation } from '@/lib/utils/needs-fx-consolidation'
 import { buildConsolidation } from '@/lib/consolidation/engine'
@@ -39,6 +40,8 @@ import {
   generateFiscalMonthKeys,
   DEFAULT_YEAR_START_MONTH,
 } from '@/lib/utils/fiscal-year-utils'
+// DRG-40 — long → wide grouping, per org then merged on type and name.
+import { aggregateXeroPlRows } from './aggregate-xero-pl-rows'
 
 /**
  * Phase 44.1 D-44.1-08 — soft-fail invariant gate.
@@ -62,6 +65,13 @@ const STRICT_INVARIANTS = process.env.FORECAST_INVARIANTS_STRICT === 'true'
  */
 const freshnessViolationSeen = new Set<string>()
 
+/**
+ * Dedupe key for `data_quality_unreadable` captures. Same rationale as
+ * `freshnessViolationSeen`: GET /api/Xero/pl-summary fires on every page load,
+ * and a persistently unreadable source would otherwise spam Sentry.
+ */
+const qualityReadFailureSeen = new Set<string>()
+
 export type AccountType =
   | 'revenue'
   | 'cogs'
@@ -80,6 +90,20 @@ export type AccountType =
  * (faded-with-overlay when not 'verified' per CONTEXT.md UX decision).
  */
 export type DataQuality = 'verified' | 'partial' | 'failed' | 'no_sync' | 'stale'
+
+/**
+ * Result of a data-quality computation.
+ *
+ * `quality_check_failed` is the fail-open guard: the three honest outcomes are
+ * a value, a genuinely empty source, and "we could not check". Without it a
+ * failed read of xero_connections or sync_jobs silently became 'no_sync' — a
+ * confident statement that the business has never synced.
+ */
+export interface QualityResult {
+  data_quality: DataQuality
+  per_tenant_quality: PerTenantQuality[]
+  quality_check_failed: boolean
+}
 
 export interface PerTenantQuality {
   tenant_id: string
@@ -141,7 +165,7 @@ export interface MonthlyComposite {
   coverage: CoverageRecord
   /** Earliest computed_at across forecast_pl_lines rows (oldest derivation). */
   computed_at: string | null
-  /** financial_forecasts.updated_at — the assumptions freshness timestamp. */
+  /** financial_forecasts.assumptions_published_at (legacy fallback: updated_at) — when the assumptions behind the stored lines were published. */
   assumptions_updated_at: string | null
   /**
    * D-44.2-03 — read-path quality gate. Worst-of-tenants rollup across
@@ -150,6 +174,14 @@ export interface MonthlyComposite {
   data_quality: DataQuality
   /** D-44.2-04 — per-tenant breakdown for the 44.2-09 drawer. */
   per_tenant_quality: PerTenantQuality[]
+  /**
+   * The quality CHECK itself could not be run — a read behind `data_quality`
+   * errored, so the tier above is a default rather than a measurement. Third
+   * state, distinct from both 'verified' and any known-bad tier; consumers
+   * pass it to DataIntegrityBanner's `checkFailed`, which takes precedence
+   * over `quality`.
+   */
+  quality_check_failed: boolean
 }
 
 export interface CategorySubtotals {
@@ -169,6 +201,7 @@ export interface CashflowProjection {
 }
 
 interface RawXeroRow {
+  id: string
   account_code: string | null
   account_name: string
   account_type: string
@@ -185,7 +218,11 @@ interface RawForecastRow {
   computed_at: string | null
 }
 
-const REVENUE_LIKE_CATEGORIES = new Set(['revenue', 'other_income'])
+// Both spellings: xero_pl_lines.account_type uses the snake_case enum
+// ('other_income'), while forecast_pl_lines.category carries the display
+// string the materializer writes ('Other Income' → 'other income'). Matching
+// only the enum silently sign-flipped materialized other-income rows.
+const REVENUE_LIKE_CATEGORIES = new Set(['revenue', 'other_income', 'other income'])
 
 export class ForecastReadService {
   constructor(private supabase: SupabaseClient) {}
@@ -201,7 +238,7 @@ export class ForecastReadService {
     //    partial index guarantees active-forecast uniqueness at write time).
     const { data: forecast, error: fError } = await this.supabase
       .from('financial_forecasts')
-      .select('id, business_id, fiscal_year, is_active, is_completed, updated_at')
+      .select('id, business_id, fiscal_year, is_active, is_completed, updated_at, assumptions_published_at')
       .eq('id', forecastId)
       .maybeSingle()
 
@@ -249,7 +286,16 @@ export class ForecastReadService {
         : this.fetchAllXeroRows(ids.all).then((raw) => this.aggregateXeroRows(raw)),
     ])
 
-    const assumptionsUpdatedAt: string | null = (forecast.updated_at as string) ?? null
+    // D-18 freshness is about when the ASSUMPTIONS BEHIND THE LINES were
+    // published — not when the row was last touched. updated_at moves on every
+    // draft autosave and every cashflow save, so keying the invariant to it made
+    // it fire on perfectly healthy forecasts (prod 23 Aug: Envisage 30.6h
+    // "stale", Armstrong 7 days, both with byte-identical assumptions) and told
+    // the operator to run recompute — which re-materialises from that same
+    // column and was the destructive path. Fall back to updated_at only for
+    // legacy rows materialised before assumptions_published_at existed.
+    const assumptionsUpdatedAt: string | null =
+      (forecast.assumptions_published_at as string) ?? (forecast.updated_at as string) ?? null
 
     const forecastRowsRaw: RawForecastRow[] = (plLinesRes.data ?? []) as RawForecastRow[]
 
@@ -302,6 +348,7 @@ export class ForecastReadService {
       assumptions_updated_at: assumptionsUpdatedAt,
       data_quality: quality.data_quality,
       per_tenant_quality: quality.per_tenant_quality,
+      quality_check_failed: quality.quality_check_failed,
     }
   }
 
@@ -316,8 +363,37 @@ export class ForecastReadService {
    */
   public async getDataQualityForBusiness(
     businessIds: string[],
-  ): Promise<{ data_quality: DataQuality; per_tenant_quality: PerTenantQuality[] }> {
+  ): Promise<QualityResult> {
     return this.computeDataQuality(businessIds)
+  }
+
+  /**
+   * A read behind the quality gate failed. Capture it — a swallowed read that
+   * still produces a confident tier is the bug class this guard exists for —
+   * but dedupe per (source, tenant, business set) within a warm instance so a
+   * persistently broken source cannot spam Sentry from a per-page-load route.
+   */
+  private captureQualityReadFailure(
+    source: 'xero_connections' | 'sync_jobs',
+    businessIds: string[],
+    error: unknown,
+    tenantId?: string,
+  ): void {
+    const key = `${source}:${tenantId ?? '-'}:${businessIds.join(',')}`
+    if (qualityReadFailureSeen.has(key)) return
+    qualityReadFailureSeen.add(key)
+    Sentry.captureMessage(
+      `[forecast-read-service] data_quality ${source} read failed — reporting "couldn't check"`,
+      {
+        level: 'warning',
+        tags: { invariant: 'data_quality_unreadable', source },
+        extra: {
+          business_ids: businessIds,
+          tenant_id: tenantId ?? null,
+          error: String((error as { message?: string })?.message ?? error),
+        },
+      } as Parameters<typeof Sentry.captureMessage>[1],
+    )
   }
 
   /**
@@ -331,15 +407,26 @@ export class ForecastReadService {
    */
   private async computeDataQuality(
     businessIds: string[],
-  ): Promise<{ data_quality: DataQuality; per_tenant_quality: PerTenantQuality[] }> {
+  ): Promise<QualityResult> {
+    // Set by any read below that FAILS (as opposed to returning no rows).
+    // An unreadable source cannot be reported as 'no_sync' — that is a claim
+    // about Xero ("nothing has ever synced"), not about our own read.
+    let checkFailed = false
     // 1. Active tenants for this business. Going through xero_connections
     //    rather than sync_jobs catches tenants that have never synced —
     //    those should report 'no_sync', not be silently absent.
-    const { data: connections } = await this.supabase
+    const { data: connections, error: connectionsError } = await this.supabase
       .from('xero_connections')
       .select('tenant_id, business_id')
       .in('business_id', businessIds)
       .eq('is_active', true)
+
+    if (connectionsError) {
+      // Without the tenant list there is nothing to check. Reporting 'no_sync'
+      // here would claim the business has no Xero at all.
+      checkFailed = true
+      this.captureQualityReadFailure('xero_connections', businessIds, connectionsError)
+    }
 
     const tenants = new Set<string>()
     for (const c of (connections ?? []) as Array<{ tenant_id: string | null }>) {
@@ -352,7 +439,7 @@ export class ForecastReadService {
     const perTenant: PerTenantQuality[] = []
 
     for (const tenantId of tenants) {
-      const { data: latest } = await this.supabase
+      const { data: latest, error: latestError } = await this.supabase
         .from('sync_jobs')
         .select('status, started_at, finished_at, reconciliation')
         .in('business_id', businessIds)
@@ -366,7 +453,13 @@ export class ForecastReadService {
       let lastSyncStatus: string | null = null
       let discrepancyCount = 0
 
-      if (!latest) {
+      if (latestError) {
+        // Distinguish "the read failed" from "this tenant has never synced".
+        // Both leave us without a row; only the second is news about Xero.
+        checkFailed = true
+        this.captureQualityReadFailure('sync_jobs', businessIds, latestError, tenantId)
+        quality = 'no_sync'
+      } else if (!latest) {
         quality = 'no_sync'
       } else {
         lastSyncAt = ((latest as any).started_at ?? null) as string | null
@@ -412,7 +505,11 @@ export class ForecastReadService {
       }
     }
 
-    return { data_quality: business, per_tenant_quality: perTenant }
+    return {
+      data_quality: business,
+      per_tenant_quality: perTenant,
+      quality_check_failed: checkFailed,
+    }
   }
 
   /**
@@ -468,30 +565,35 @@ export class ForecastReadService {
   // ────────────────────────────────────────────────────────────────────────
 
   /**
-   * Paginated fetch of xero_pl_lines for all resolved business IDs.
+   * Every xero_pl_lines row for all resolved business IDs.
    *
    * Supabase/PostgREST caps a single SELECT at 1000 rows. Without pagination,
    * multi-year tenants silently truncate — see Phase 44.1 hotfix
    * (2026-04-29) and the Step 2 reconciliation gap diagnosed via JDS (1830
-   * rows total, 1000-row cap was dropping ~$5.3M COGS + $3.8M OpEx).
+   * rows total, 1000-row cap was dropping ~$5.3M COGS + $3.8M OpEx). That
+   * hotfix paged with un-ORDERed `.range()` calls and stopped on a short page,
+   * so a sync between two pages could repeat one row and skip another, and a
+   * Max rows cap below 1,000 ended the read early. readAllRows pages by id to
+   * an empty page instead (15 Sep 2026: JDS 1,764 rows, Efficient Living 1,272).
+   *
+   * Accruals only and not soft-deleted, as xero_pl_lines_wide_compat reads the
+   * table: aggregateXeroRows SUMS per account and month, so a cash-basis twin
+   * from the WD.7 sync mirror would double every figure.
+   *
+   * Throws when the read cannot finish; getMonthlyComposite's callers turn that
+   * into a 500, never into a composite with accounts missing.
    */
   private async fetchAllXeroRows(businessIds: string[]): Promise<RawXeroRow[]> {
-    const all: RawXeroRow[] = []
-    const pageSize = 1000
-    let from = 0
-    while (true) {
-      const { data, error } = await this.supabase
+    const read = await readAllRows<RawXeroRow>('xero_pl_lines', () =>
+      this.supabase
         .from('xero_pl_lines')
-        .select('account_code, account_name, account_type, period_month, amount, tenant_id')
+        .select('id, account_code, account_name, account_type, period_month, amount, tenant_id')
         .in('business_id', businessIds)
-        .range(from, from + pageSize - 1)
-      if (error) throw error
-      if (!data || data.length === 0) break
-      all.push(...(data as RawXeroRow[]))
-      if (data.length < pageSize) break
-      from += pageSize
-    }
-    return all
+        .eq('basis', 'accruals')
+        .is('deleted_at', null),
+    )
+    if (!read.ok) throw read.error
+    return read.rows
   }
 
   /**
@@ -594,26 +696,7 @@ export class ForecastReadService {
   }
 
   private aggregateXeroRows(xeroRows: ReadonlyArray<RawXeroRow>): MonthlyCompositeRow[] {
-    const grouped = new Map<string, MonthlyCompositeRow>()
-    for (const row of xeroRows) {
-      const key = row.account_code ?? `NAME:${row.account_name}`
-      let agg = grouped.get(key)
-      if (!agg) {
-        agg = {
-          account_code: row.account_code,
-          account_name: row.account_name,
-          account_type: this.normalizeAccountType(row.account_type),
-          monthly_values: {},
-        }
-        grouped.set(key, agg)
-      }
-      // 'YYYY-MM-DD' → 'YYYY-MM'
-      const monthKey = (row.period_month ?? '').slice(0, 7)
-      if (!monthKey) continue
-      const amt = Number(row.amount)
-      agg.monthly_values[monthKey] = (agg.monthly_values[monthKey] ?? 0) + (Number.isFinite(amt) ? amt : 0)
-    }
-    return [...grouped.values()]
+    return aggregateXeroPlRows(xeroRows)
   }
 
   private normalizeAccountType(raw: string | null | undefined): AccountType {

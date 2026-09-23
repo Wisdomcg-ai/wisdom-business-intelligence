@@ -27,7 +27,6 @@ import {
   AlertTriangle,
   Lightbulb,
   Clock,
-  Download,
   Loader2,
   Users,
   TrendingUp,
@@ -44,6 +43,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useCoachView } from '@/hooks/useCoachView';
+import { ExportPlanPdfButton } from '../../components/ExportPlanPdfButton';
 
 export default function QuarterlySummaryPage() {
   const params = useParams();
@@ -138,11 +138,12 @@ export default function QuarterlySummaryPage() {
     );
   }
 
-  // Calculate "next quarter" relative to the REVIEW's quarter, not today's date.
-  // The quarterly targets and rocks saved during the review are for the quarter after the review.
-  const nextQ = review.quarter === 4
-    ? { quarter: 1, year: review.year + 1 }
-    : { quarter: review.quarter + 1, year: review.year };
+  // The review is NAMED for the quarter being PLANNED (see the quarter helpers in
+  // types/index.ts), so the targets and rocks it produced belong to review.quarter
+  // itself — that is the key QuarterlyRocksStep writes them under. This used to add
+  // 1, a leftover from the old "review = the quarter that just ended" model, which
+  // printed a Q2 plan as "Q3 Targets" on the summary a client reads.
+  const planQ = { quarter: review.quarter, year: review.year };
   const targets = review.quarterly_targets;
   const commitments = review.personal_commitments;
   const actionReplay = review.action_replay;
@@ -185,13 +186,7 @@ export default function QuarterlySummaryPage() {
             <Pencil className="w-4 h-4" />
             Edit Review
           </button>
-          <button
-            onClick={() => alert('PDF export coming soon!')}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700"
-          >
-            <Download className="w-4 h-4" />
-            Export PDF
-          </button>
+          <ExportPlanPdfButton review={review} />
         </div>
       </div>
 
@@ -979,7 +974,7 @@ export default function QuarterlySummaryPage() {
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <DollarSign className="w-5 h-5 text-gray-600" />
-            Q{nextQ.quarter} {nextQ.year} Targets
+            Q{planQ.quarter} {planQ.year} Targets
           </h2>
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="grid grid-cols-3 gap-4">
@@ -1019,7 +1014,7 @@ export default function QuarterlySummaryPage() {
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Mountain className="w-5 h-5 text-gray-600" />
-            Q{nextQ.quarter} Rocks (90-Day Sprint)
+            Q{planQ.quarter} Rocks (90-Day Sprint)
           </h2>
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="space-y-4">

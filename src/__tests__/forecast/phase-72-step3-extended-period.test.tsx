@@ -190,10 +190,19 @@ describe('Step3RevenueCOGS — extended-period plan period rendering', () => {
     const row = await screen.findByText(/Sales Revenue/i);
     expect(row).toBeTruthy();
 
-    // Locate all numeric inputs in the monthly table body (one per editable cell).
+    // Locate the numeric inputs in the LINE row (one per editable cell).
     // For our seeded line with no actuals lock and extended 13-mo plan,
     // every cell is editable → 13 inputs.
-    const inputs = document.querySelectorAll('input[type="number"][inputmode="decimal"]');
-    expect(inputs.length).toBe(13);
+    //
+    // Excludes the TOTAL REVENUE row, which now carries an input per month
+    // too (top-down monthly entry) and is tagged data-testid="month-total-*".
+    const lineInputs = document.querySelectorAll(
+      'input[type="number"][inputmode="decimal"]:not([data-testid^="month-total-"])',
+    );
+    expect(lineInputs.length).toBe(13);
+
+    // The top-down total row mirrors the same 13 columns.
+    const totalInputs = document.querySelectorAll('[data-testid^="month-total-"]');
+    expect(totalInputs.length).toBe(13);
   });
 });

@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { recordHeartbeat } from '@/lib/cron/heartbeat'
 import { withQuerySchema } from '@/lib/api/with-schema'
+import { checkSummaryParity } from '@/lib/forecast/summary-parity'
+import { generateFiscalMonthKeys, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 
 /**
  * Metric invariants — daily plausibility checks over the Xero MIRROR.
@@ -20,6 +22,8 @@ import { withQuerySchema } from '@/lib/api/with-schema'
  *   bs_equation        assets − liabilities − equity at the latest month (identity)
  *   bs_uncategorized   Σ|latest-month value| of section-less BS rows (identity)
  *   mirror_freshness   months since the newest P&L month in the mirror (freshness)
+ *   mirror_write_freshness  hours since the mirror was last WRITTEN (freshness) —
+ *                      the label-based check above cannot detect a dead pipe
  *
  * EVERY check starts at 'watch' severity: recorded, shown in the daily email,
  * never paging. Promotion to warn/critical happens only after the observed
@@ -35,12 +39,37 @@ export const maxDuration = 120
 const CRON_PATH = '/api/cron/metric-invariants'
 
 /** $0.01 — books balance to the cent; the mirror must too. */
-const BS_EQUATION_TOLERANCE = 0.01
+// 1 Sep 2026: $0.01 → $0.05, aligned with the sync write-gate (Matt-approved).
+// FX-holding orgs (Attaquer: 5 foreign-currency bank accounts) carry
+// structural cents-level rounding in Xero's own BS report; storing those
+// months and then flagging them daily forever would be noise, not signal.
+const BS_EQUATION_TOLERANCE = 0.05
 /** Matches the R34 Gate-4 rule: uncategorized BS rows must net to nothing. */
 const BS_UNCATEGORIZED_TOLERANCE = 0.01
 /** Months of P&L content lag tolerated before the mirror reads as stale.
  *  2 = the current (incomplete) month plus one full missed month. */
 const FRESHNESS_MAX_MONTHS_BEHIND = 2
+/**
+ * Hours since the mirror was last WRITTEN before a tenant is considered stale.
+ *
+ * REL-02 (26 Aug 2026). `mirror_freshness` below measures the newest period
+ * LABEL, which is a property of the calendar, not of the pipeline: Armstrong &
+ * Co's Xero grant was revoked and every sync 403'd for 15 days, yet its newest
+ * label stayed "2026-08" so the check PASSED throughout — and would have kept
+ * passing for ~60 more days. The one check whose stated job is "is the mirror
+ * serving current numbers" could not see a dead pipe.
+ *
+ * Chosen from live data, not guessed: every healthy active tenant last wrote
+ * 5.6h ago (the 6-hourly sync bumps updated_at on every run), while Armstrong
+ * sat at 371.6h. 18h = three sync cadences, so a single skipped or slow run
+ * cannot trip it, and a genuinely dead pipe trips it within a day.
+ */
+const MIRROR_WRITE_STALE_HOURS = 18
+/** Dollars of difference tolerated between an approved summary and its stored P&L.
+ *  The materialiser rounds each line to cents, so a many-line forecast accumulates
+ *  sub-dollar drift that is arithmetic, not error. $1 is comfortably above it and
+ *  far below anything a coach would notice. */
+const FORECAST_PARITY_TOLERANCE = 1
 
 interface InvariantRow {
   run_at: string
@@ -79,6 +108,8 @@ function monthsBetween(fromKey: string, to: Date): number {
   return (to.getUTCFullYear() - y) * 12 + (to.getUTCMonth() + 1 - m)
 }
 
+import { evaluateBsEquation, type PathABsRow } from '@/lib/invariants/bs-equation'
+
 const round2 = (n: number) => Math.round(n * 100) / 100
 
 async function getHandler(req: NextRequest) {
@@ -112,18 +143,69 @@ async function getHandler(req: NextRequest) {
       ).entries(),
     )
 
+    // 2 Sep 2026: read the PATH-A mirror (xero_bs_lines, via its compat view),
+    // not xero_balance_sheet_lines. Every report page, the money-flow gate and
+    // the fleet repair read xero_bs_lines; this check was watching the other
+    // table and reported Armstrong-only for weeks while six tenants sat out of
+    // balance in the mirror that actually renders. The view already filters
+    // basis='accruals'. balances_by_date is keyed 'YYYY-MM-DD' month-ends.
     const { data: bsData, error: bsError } = await supabase
-      .from('xero_balance_sheet_lines')
-      .select('tenant_id, account_name, account_type, section, monthly_values')
+      .from('xero_bs_lines_wide_compat')
+      .select('tenant_id, account_name, account_type, section, balances_by_date')
     if (bsError) throw new Error(`balance-sheet query failed: ${bsError.message}`)
 
+    // `xero_pl_lines` is LONG format (one row per account per period_month); the
+    // wide `monthly_values` shape this checker reads exists only on the compat
+    // view. Querying the table directly made every run fail with "column
+    // xero_pl_lines.monthly_values does not exist" — so this cron has never
+    // written a single row since it shipped, and the failure was only visible in
+    // cron_heartbeats. The balance-sheet table above IS natively wide, which is
+    // why only the P&L half was broken.
+    //
+    // basis='accruals' is required, not cosmetic: without it a future cash-basis
+    // sync would return a second row per account and silently double every P&L
+    // figure the invariants check.
     const { data: plData, error: plError } = await supabase
-      .from('xero_pl_lines')
+      .from('xero_pl_lines_wide_compat')
       .select('tenant_id, account_name, account_type, section, monthly_values')
+      .eq('basis', 'accruals')
     if (plError) throw new Error(`P&L query failed: ${plError.message}`)
 
-    const bsByTenant = new Map<string, MirrorLine[]>()
-    for (const row of (bsData ?? []) as MirrorLine[]) {
+    // REL-02: the compat view has no updated_at, so read WRITE times from the
+    // underlying long table. This is the liveness signal — a tenant whose Xero
+    // grant is revoked stops being written to, while its period LABELS stay put.
+    const writeAtByTenant = new Map<string, string>()
+    try {
+      const { data: writeRows } = await supabase
+        .from('xero_pl_lines')
+        .select('tenant_id, updated_at')
+        .is('deleted_at', null)
+      for (const r of writeRows ?? []) {
+        if (!r.tenant_id || !r.updated_at) continue
+        const prev = writeAtByTenant.get(r.tenant_id)
+        if (!prev || r.updated_at > prev) writeAtByTenant.set(r.tenant_id, r.updated_at)
+      }
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { route: 'cron/metric-invariants', invariant: 'mirror_write_freshness' },
+      } as any)
+    }
+
+    // Only ACTIVE connections are expected to be written to; an intentionally
+    // disconnected tenant is not "stale", it is retired.
+    const activeTenantIds = new Set<string>()
+    try {
+      const { data: activeConns } = await supabase
+        .from('xero_connections')
+        .select('tenant_id')
+        .eq('is_active', true)
+      for (const c of activeConns ?? []) if (c.tenant_id) activeTenantIds.add(c.tenant_id)
+    } catch {
+      // If this fails, the check below simply skips — never invents a failure.
+    }
+
+    const bsByTenant = new Map<string, PathABsRow[]>()
+    for (const row of (bsData ?? []) as PathABsRow[]) {
       if (!row.tenant_id) continue
       const list = bsByTenant.get(row.tenant_id) ?? []
       list.push(row)
@@ -143,52 +225,43 @@ async function getHandler(req: NextRequest) {
       const bs = bsByTenant.get(tenantId) ?? []
       const pl = plByTenant.get(tenantId) ?? []
 
-      // ── bs_equation: assets − liabilities − equity at the latest month ──
-      const bsMonth = newestMonthKey(bs)
-      if (bsMonth) {
-        let assets = 0
-        let liabilities = 0
-        let equity = 0
-        for (const l of bs) {
-          const v = Number(l.monthly_values?.[bsMonth] ?? 0)
-          if (!Number.isFinite(v)) continue
-          if (l.account_type === 'asset') assets += v
-          else if (l.account_type === 'liability') liabilities += v
-          else if (l.account_type === 'equity') equity += v
-        }
-        const delta = round2(assets - liabilities - equity)
+      // ── bs_equation: assets − liabilities − equity at the newest COMPLETED
+      //    month-end of the Path-A mirror (forward-dated current-month
+      //    snapshots are legitimately in flux and are skipped) ──
+      const bsEval = evaluateBsEquation(bs, now)
+      if (bsEval.balance_date) {
+        // A month with NO data satisfies the equation trivially — 0 − 0 − 0 = 0 —
+        // and would be recorded as a pass. A monitoring check that reports success
+        // for absent data is worse than no check: it converts "we are not syncing
+        // this tenant" into "this tenant is healthy". Distinguish the two.
         rows.push({
           run_at: runAt,
           check_name: 'bs_equation',
           family: 'identity',
           severity: 'watch',
           subject: tenantName,
-          observed: Math.abs(delta),
+          observed: bsEval.hasData ? Math.abs(bsEval.delta) : null,
           threshold: BS_EQUATION_TOLERANCE,
-          passed: Math.abs(delta) <= BS_EQUATION_TOLERANCE,
-          detail: `${bsMonth}: assets ${round2(assets)} − liabilities ${round2(liabilities)} − equity ${round2(equity)} = ${delta}`,
+          passed: bsEval.hasData && Math.abs(bsEval.delta) <= BS_EQUATION_TOLERANCE,
+          detail: bsEval.hasData
+            ? `${bsEval.balance_date}: assets ${bsEval.assets} − liabilities ${bsEval.liabilities} − equity ${bsEval.equity} = ${bsEval.delta}`
+            : `${bsEval.balance_date}: no balance-sheet values for this tenant — cannot verify the equation`,
         })
 
-        // ── bs_uncategorized: section-less rows must net to nothing ──
-        let uncategorized = 0
-        let uncategorizedCount = 0
-        for (const l of bs) {
-          if ((l.section ?? '').trim() !== '') continue
-          const v = Number(l.monthly_values?.[bsMonth] ?? 0)
-          if (!Number.isFinite(v) || v === 0) continue
-          uncategorized += Math.abs(v)
-          uncategorizedCount++
-        }
+        // ── bs_uncategorized: on the Path-A mirror every row carries an
+        //    asset/liability/equity type (equity rows have section NULL by
+        //    parser design), so "uncategorised" means an unknown account_type —
+        //    those rows are outside the equation and must net to nothing ──
         rows.push({
           run_at: runAt,
           check_name: 'bs_uncategorized',
           family: 'identity',
           severity: 'watch',
           subject: tenantName,
-          observed: round2(uncategorized),
+          observed: bsEval.uncategorised_total,
           threshold: BS_UNCATEGORIZED_TOLERANCE,
-          passed: uncategorized <= BS_UNCATEGORIZED_TOLERANCE,
-          detail: uncategorizedCount > 0 ? `${uncategorizedCount} uncategorized row(s) at ${bsMonth}` : null,
+          passed: bsEval.uncategorised_total <= BS_UNCATEGORIZED_TOLERANCE,
+          detail: bsEval.uncategorised_count > 0 ? `${bsEval.uncategorised_count} untyped row(s) at ${bsEval.balance_date}` : null,
         })
       } else {
         rows.push({
@@ -200,7 +273,7 @@ async function getHandler(req: NextRequest) {
           observed: null,
           threshold: BS_EQUATION_TOLERANCE,
           passed: false,
-          detail: 'no balance-sheet rows in the mirror for this tenant',
+          detail: 'no completed month-end in the balance-sheet mirror for this tenant',
         })
       }
 
@@ -218,6 +291,157 @@ async function getHandler(req: NextRequest) {
         passed: monthsBehind !== null && monthsBehind <= FRESHNESS_MAX_MONTHS_BEHIND,
         detail: plMonth ? `newest P&L month in mirror: ${plMonth}` : 'no P&L rows in the mirror for this tenant',
       })
+
+      // ── mirror_write_freshness: hours since the mirror was last WRITTEN ──
+      //
+      // The check above asks "how old is the newest month LABEL", which a dead
+      // pipeline does not change. This asks "when did data last actually
+      // arrive", which it does. Armstrong & Co: label 2026-08 (passing) while
+      // the last write was 15.5 days earlier (failing) — served as current the
+      // whole time.
+      if (activeTenantIds.has(tenantId)) {
+        const lastWrite = writeAtByTenant.get(tenantId)
+        const hours = lastWrite
+          ? Math.round(((now.getTime() - new Date(lastWrite).getTime()) / 3_600_000) * 10) / 10
+          : null
+        rows.push({
+          run_at: runAt,
+          check_name: 'mirror_write_freshness',
+          family: 'freshness',
+          severity: 'watch',
+          subject: tenantName,
+          observed: hours,
+          threshold: MIRROR_WRITE_STALE_HOURS,
+          passed: hours !== null && hours <= MIRROR_WRITE_STALE_HOURS,
+          detail: lastWrite
+            ? `last mirror write ${lastWrite} (${hours}h ago); healthy tenants write every ~6h`
+            : 'active connection but the mirror has never been written for this tenant',
+        })
+      }
+    }
+
+    // ── fx_rate_coverage ────────────────────────────────────────────────────
+    //
+    // FX-01 (26 Aug 2026). FX rates are entered MANUALLY by design (fx.ts
+    // module doc, decision of 2026-04-18: no cron, no scraper). That design
+    // has one failure mode: nobody remembers. Rates stopped on 2026-05-25 and
+    // for three months IICT Group's HKD entity was summed into AUD at 1:1 —
+    // ~5.3x overstated revenue on the /cfo dashboard, with nothing anywhere
+    // saying so. fx.ts correctly refuses to fabricate a rate and reports the
+    // gap; every consumer simply dropped the report.
+    //
+    // This check is the backstop the manual-entry design always needed: for
+    // every ACTIVE non-AUD tenant that has P&L data in a month, assert an
+    // fx_rates monthly_average row exists for that month. Anything > 0 means a
+    // client's consolidated numbers are currently wrong by the FX factor.
+    try {
+      const { data: fxTenants } = await supabase
+        .from('xero_connections')
+        .select('tenant_id, tenant_name, functional_currency')
+        .eq('is_active', true)
+        .not('functional_currency', 'is', null)
+        .neq('functional_currency', 'AUD')
+
+      for (const t of fxTenants ?? []) {
+        const pair = `${t.functional_currency}/AUD`
+
+        // Months this tenant actually has P&L data for (last 12 months).
+        const { data: plMonths } = await supabase
+          .from('xero_pl_lines')
+          .select('period_month')
+          .eq('tenant_id', t.tenant_id)
+          .is('deleted_at', null)
+          .gte('period_month', new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10))
+
+        const monthsWithData = Array.from(
+          new Set((plMonths ?? []).map((r) => String(r.period_month).slice(0, 7))),
+        ).sort()
+
+        const { data: fxRows } = await supabase
+          .from('fx_rates')
+          .select('period')
+          .eq('currency_pair', pair)
+          .eq('rate_type', 'monthly_average')
+
+        const monthsWithRate = new Set(
+          (fxRows ?? []).map((r) => String(r.period).slice(0, 7)),
+        )
+        const uncovered = monthsWithData.filter((m) => !monthsWithRate.has(m))
+
+        rows.push({
+          run_at: runAt,
+          check_name: 'fx_rate_coverage',
+          family: 'identity',
+          severity: 'watch',
+          subject: `${t.tenant_name ?? t.tenant_id} (${pair})`,
+          observed: uncovered.length,
+          threshold: 0,
+          passed: uncovered.length === 0,
+          detail: uncovered.length
+            ? `months with P&L but NO ${pair} monthly_average rate: ${uncovered.join(', ')} — these values are summed UNTRANSLATED`
+            : `all ${monthsWithData.length} months with P&L have a ${pair} rate`,
+        })
+      }
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { route: 'cron/metric-invariants', invariant: 'fx_rate_coverage' },
+      } as any)
+    }
+
+    // ── forecast_summary_parity ─────────────────────────────────────────────
+    //
+    // Does each live forecast's STORED P&L still equal the summary the coach
+    // approved? The Generate route checks this at publish time, but that only
+    // covers forecasts published from now on — a budget that drifted months ago
+    // stays wrong and invisible until someone regenerates it. This is the sweep
+    // that finds the ones already broken.
+    //
+    // Subject is the business name, so a coach reading the daily email sees WHO
+    // is affected rather than a forecast UUID. Watch severity per the house rule.
+    {
+      const { data: forecasts, error: fcError } = await supabase
+        .from('financial_forecasts')
+        .select('id, fiscal_year, wizard_state, business_id, business_profiles(business_name)')
+        .eq('is_active', true)
+      if (fcError) throw new Error(`forecast query failed: ${fcError.message}`)
+
+      const live = ((forecasts ?? []) as any[]).filter(f => f.wizard_state && f.wizard_state.year1)
+
+      for (const fc of live) {
+        const name =
+          (Array.isArray(fc.business_profiles) ? fc.business_profiles[0]?.business_name : fc.business_profiles?.business_name) ||
+          fc.business_id ||
+          fc.id
+
+        const { data: lines, error: lineError } = await supabase
+          .from('forecast_pl_lines')
+          .select('category, forecast_months')
+          .eq('forecast_id', fc.id)
+        if (lineError) throw new Error(`forecast line query failed: ${lineError.message}`)
+
+        const parity = checkSummaryParity(
+          fc.wizard_state.year1,
+          (lines ?? []) as { category?: string | null; forecast_months?: Record<string, number> | null }[],
+          generateFiscalMonthKeys(fc.fiscal_year, DEFAULT_YEAR_START_MONTH),
+          FORECAST_PARITY_TOLERANCE,
+        )
+
+        rows.push({
+          run_at: runAt,
+          check_name: 'forecast_summary_parity',
+          family: 'identity',
+          severity: 'watch',
+          subject: `${name} FY${fc.fiscal_year}`,
+          observed: parity.netProfit.difference,
+          threshold: FORECAST_PARITY_TOLERANCE,
+          passed: parity.matches,
+          detail: parity.matches
+            ? `stored P&L matches the approved summary across ${parity.monthsCovered} months`
+            : parity.divergences
+                .map(d => `${d.bucket}: approved ${d.approved} vs stored ${d.stored}`)
+                .join('; '),
+        })
+      }
     }
 
     // Persist ALL rows — pass and fail. History is what calibration reads.
