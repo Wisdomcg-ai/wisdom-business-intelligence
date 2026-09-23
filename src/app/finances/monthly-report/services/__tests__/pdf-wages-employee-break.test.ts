@@ -52,18 +52,27 @@ function employeeRowsPerPage(doc: any, employees: number): number[] {
   return counts
 }
 
+/**
+ * Every roster length around the break, one case each. This ran as a single
+ * `it` looping 14→64, which is 51 full pack renders against vitest's 5s
+ * default: ~1.5s on an idle machine, but over the limit when the suite runs it
+ * alongside everything else, so it timed out and reddened PRs at random. A case
+ * per length gives each render its own budget and names the length that broke.
+ */
+const ROSTER_LENGTHS = Array.from({ length: 64 - 14 + 1 }, (_, i) => 14 + i)
+
 describe('Wages Analysis — the employee table leaves no orphan', () => {
-  it('every page carrying employees carries at least three, at every roster length around the break', () => {
-    const orphans: string[] = []
-    for (let employees = 14; employees <= 64; employees++) {
-      const doc: any = new MonthlyReportPDFService(fixtureReport({ budget_source: 'forecast' } as any), {
-        wagesDetail: wages(employees),
-      }).generate()
-      const perPage = employeeRowsPerPage(doc, employees)
-      // Every name still prints, once.
-      expect(perPage.reduce((s, n) => s + n, 0), `${employees} employees`).toBe(employees)
-      if (perPage.some((n) => n < Math.min(3, employees))) orphans.push(`${employees}: ${perPage.join('+')}`)
-    }
-    expect(orphans).toEqual([])
+  it.each(ROSTER_LENGTHS)('%i employees: every page carrying them carries at least three', (employees) => {
+    const doc: any = new MonthlyReportPDFService(fixtureReport({ budget_source: 'forecast' } as any), {
+      wagesDetail: wages(employees),
+    }).generate()
+    const perPage = employeeRowsPerPage(doc, employees)
+    // Every name still prints, once.
+    expect(perPage.reduce((s, n) => s + n, 0), `${employees} employees`).toBe(employees)
+    // The orphan: a page carrying employee rows but fewer than three of them.
+    expect(
+      perPage.filter((n) => n < Math.min(3, employees)),
+      `${employees} employees split ${perPage.join('+')}`,
+    ).toEqual([])
   })
 })
