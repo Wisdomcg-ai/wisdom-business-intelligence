@@ -12,7 +12,6 @@ import {
   Sparkles,
   FileText,
   ArrowRight,
-  Download,
   Users,
   TrendingUp,
   ClipboardList,
@@ -22,6 +21,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useCoachView } from '@/hooks/useCoachView';
+import { ExportPlanPdfButton } from '../ExportPlanPdfButton';
 
 interface WorkshopCompleteStepProps {
   review: QuarterlyReview;
@@ -386,16 +386,12 @@ export function WorkshopCompleteStep({
           View Full Summary
         </Link>
 
-        <button
-          onClick={() => {
-            // Future: Generate PDF
-            alert('PDF export coming soon!');
-          }}
-          className="flex-1 flex items-center justify-center gap-2 px-6 py-4 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
-        >
-          <Download className="w-5 h-5" />
-          Export PDF
-        </button>
+        <ExportPlanPdfButton
+          review={review}
+          label="Export PDF"
+          wrapperClassName="flex-1"
+          className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors disabled:opacity-60"
+        />
 
         <Link
           href={getPath('/quarterly-review')}

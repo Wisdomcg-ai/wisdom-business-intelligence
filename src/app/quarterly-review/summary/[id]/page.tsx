@@ -27,7 +27,6 @@ import {
   AlertTriangle,
   Lightbulb,
   Clock,
-  Download,
   Loader2,
   Users,
   TrendingUp,
@@ -44,6 +43,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useCoachView } from '@/hooks/useCoachView';
+import { ExportPlanPdfButton } from '../../components/ExportPlanPdfButton';
 
 export default function QuarterlySummaryPage() {
   const params = useParams();
@@ -186,13 +186,7 @@ export default function QuarterlySummaryPage() {
             <Pencil className="w-4 h-4" />
             Edit Review
           </button>
-          <button
-            onClick={() => alert('PDF export coming soon!')}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700"
-          >
-            <Download className="w-4 h-4" />
-            Export PDF
-          </button>
+          <ExportPlanPdfButton review={review} />
         </div>
       </div>
 
