@@ -10,7 +10,14 @@
  * page of empty headings reads as a form the owner failed to fill in, rather
  * than the plan they just built.
  */
-import type { QuarterlyReview, QuarterlyTargets, Rock, PersonalCommitments, YearType } from '../types';
+import type {
+  QuarterlyReview,
+  QuarterlyTargets,
+  Rock,
+  InitiativeDecision,
+  PersonalCommitments,
+  YearType,
+} from '../types';
 
 export type PlanBlock =
   | { kind: 'figures'; title: string; note?: string; items: { label: string; value: string }[] }
@@ -47,7 +54,14 @@ export interface PlanKpi {
 export interface PlanPageInput {
   review: Pick<
     QuarterlyReview,
-    'quarter' | 'year' | 'quarterly_targets' | 'quarterly_rocks' | 'personal_commitments' | 'one_thing_answer' | 'one_thing_for_success'
+    | 'quarter'
+    | 'year'
+    | 'quarterly_targets'
+    | 'quarterly_rocks'
+    | 'initiative_decisions'
+    | 'personal_commitments'
+    | 'one_thing_answer'
+    | 'one_thing_for_success'
   >;
   businessName: string | null;
   yearType: YearType;
@@ -203,6 +217,40 @@ function rockDetail(rock: Rock): string | undefined {
  * own heading and tile is what pushed "Next steps" onto a second, near-empty
  * page in the first render of this page.
  */
+/**
+ * The rocks a session actually set.
+ *
+ * Sprint Planning (step 4.3) writes what the client commits to into
+ * `initiative_decisions`, NOT into `quarterly_rocks`. Reading only the latter
+ * printed a plan with no rocks on it — found 24 Sep 2026 by walking a whole
+ * session and exporting the PDF at the end. Every review since early 2026 has
+ * the same shape; only the old seeded ones carry `quarterly_rocks`, so that
+ * stays as the first source and this is the fallback.
+ *
+ * `defer` and `kill` are decisions NOT to do it this quarter, so they are left
+ * off. A decision carrying another quarter's tag belongs to that quarter.
+ */
+export function rocksFromDecisions(
+  decisions: InitiativeDecision[] | null | undefined,
+  quarter: number
+): { text: string; detail?: string }[] {
+  const thisQuarter = `q${Math.min(Math.max(quarter, 1), 4)}`;
+  return (decisions ?? [])
+    .filter(d => d?.title?.trim())
+    .filter(d => d.decision === 'keep' || d.decision === 'accelerate')
+    .filter(d => !d.quarterAssigned || d.quarterAssigned === thisQuarter)
+    .map(d => {
+      const parts: string[] = [];
+      if (d.assignedTo?.trim()) parts.push(d.assignedTo.trim());
+      const due = formatPlainDate(d.endDate);
+      if (due) parts.push(`by ${due}`);
+      const who = parts.join(' · ');
+      const outcome = (d.outcome || d.why || '').trim();
+      const detail = who && outcome ? `${who} — ${outcome}` : who || outcome;
+      return { text: d.title.trim(), detail: detail || undefined };
+    });
+}
+
 function commitmentBlocks(c: PersonalCommitments | null | undefined): PlanBlock[] {
   if (!c) return [];
   const items: { label: string; value: string }[] = [];
@@ -276,12 +324,12 @@ export function buildPlanPage(input: PlanPageInput): PlanPage {
 
   const rocks = (review.quarterly_rocks as Rock[] | null) ?? [];
   const namedRocks = rocks.filter(r => r?.title?.trim());
-  if (namedRocks.length > 0) {
-    blocks.push({
-      kind: 'numbered',
-      title: 'My rocks this quarter',
-      items: namedRocks.map(r => ({ text: r.title.trim(), detail: rockDetail(r) })),
-    });
+  const rockItems =
+    namedRocks.length > 0
+      ? namedRocks.map(r => ({ text: r.title.trim(), detail: rockDetail(r) }))
+      : rocksFromDecisions(review.initiative_decisions as InitiativeDecision[] | null, review.quarter);
+  if (rockItems.length > 0) {
+    blocks.push({ kind: 'numbered', title: 'My rocks this quarter', items: rockItems });
   }
 
   const oneThing = (review.one_thing_answer || review.one_thing_for_success || '').trim();
