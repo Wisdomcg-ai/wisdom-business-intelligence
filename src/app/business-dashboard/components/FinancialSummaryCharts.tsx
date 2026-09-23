@@ -11,6 +11,15 @@ interface FinancialSummaryChartsProps {
   refreshTrigger?: number
 }
 
+/** '2026-08' → 'August 2026'. Built from the parts, never through a Date. */
+function monthName(monthKey: string): string {
+  const [year, month] = monthKey.split('-')
+  const names = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December']
+  const name = names[Number(month) - 1]
+  return name ? `${name} ${year}` : monthKey
+}
+
 function formatAxisTick(v: number): string {
   if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
   if (Math.abs(v) >= 1_000) return `$${(v / 1_000).toFixed(0)}K`
@@ -137,7 +146,7 @@ function SkeletonCard() {
 }
 
 export function FinancialSummaryCharts({ businessId, refreshTrigger }: FinancialSummaryChartsProps) {
-  const { chartData, lastSync, isLoading, hasData, loadFailed } = useXeroActuals(businessId, refreshTrigger)
+  const { chartData, lastSync, isLoading, hasData, loadFailed, lastClosedMonth } = useXeroActuals(businessId, refreshTrigger)
 
   if (isLoading) {
     return (
@@ -172,6 +181,9 @@ export function FinancialSummaryCharts({ businessId, refreshTrigger }: Financial
   }
 
   const syncLine = lastSync ? describeLastSync(lastSync) : null
+  // The month in progress is drawn as forecast, not as a part-billed actual —
+  // say so, or the current month reads as a collapse.
+  const actualsLine = lastClosedMonth ? `Actuals to ${monthName(lastClosedMonth)}; the month in progress is shown as forecast.` : null
 
   return (
     <div>
@@ -195,6 +207,9 @@ export function FinancialSummaryCharts({ businessId, refreshTrigger }: Financial
           forecastKey="npForecast"
         />
       </div>
+      {actualsLine && (
+        <p className="text-xs text-gray-400 mt-2">{actualsLine}</p>
+      )}
       {syncLine && (
         <p
           className={`text-xs text-right mt-2 ${syncLine.checkFailed ? 'text-amber-700' : 'text-gray-400'}`}

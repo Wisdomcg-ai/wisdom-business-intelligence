@@ -22,6 +22,12 @@ interface UseXeroActualsResult {
   hasData: boolean
   /** The request failed or did not come back as an answer. Not the same as "no data yet". */
   loadFailed: boolean
+  /**
+   * The last month the actuals run to ('YYYY-MM'), from the route. The month in
+   * progress is drawn as forecast, so the charts say where the actuals stop.
+   * Null when the route did not say.
+   */
+  lastClosedMonth: string | null
 }
 
 const isInstant = (value: unknown): value is string =>
@@ -78,11 +84,13 @@ export function useXeroActuals(businessId: string | undefined, refreshTrigger?: 
   const [isLoading, setIsLoading] = useState(Boolean(businessId))
   const [hasData, setHasData] = useState(false)
   const [loadFailed, setLoadFailed] = useState(false)
+  const [lastClosedMonth, setLastClosedMonth] = useState<string | null>(null)
 
   useEffect(() => {
     if (!businessId) {
       setChartData(null)
       setLastSync(null)
+      setLastClosedMonth(null)
       setHasData(false)
       setLoadFailed(false)
       setIsLoading(false)
@@ -94,6 +102,7 @@ export function useXeroActuals(businessId: string | undefined, refreshTrigger?: 
     const showFailure = () => {
       setChartData(null)
       setLastSync(null)
+      setLastClosedMonth(null)
       setHasData(false)
       setLoadFailed(true)
     }
@@ -117,10 +126,16 @@ export function useXeroActuals(businessId: string | undefined, refreshTrigger?: 
           if (json?.hasData === true && Array.isArray(json.data?.months)) {
             setChartData(json.data.months)
             setLastSync(parseLastSync(json.data.lastSync))
+            setLastClosedMonth(
+              typeof json.data.lastClosedMonth === 'string' && /^\d{4}-\d{2}$/.test(json.data.lastClosedMonth)
+                ? json.data.lastClosedMonth
+                : null,
+            )
             setHasData(true)
           } else if (json?.hasData === false) {
             setChartData(null)
             setLastSync(null)
+            setLastClosedMonth(null)
             setHasData(false)
           } else {
             console.error('[useXeroActuals] Unreadable response body')
@@ -144,5 +159,5 @@ export function useXeroActuals(businessId: string | undefined, refreshTrigger?: 
     }
   }, [businessId, refreshTrigger])
 
-  return { chartData, lastSync, isLoading, hasData, loadFailed }
+  return { chartData, lastSync, isLoading, hasData, loadFailed, lastClosedMonth }
 }
