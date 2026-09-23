@@ -133,6 +133,34 @@ function fyStartYearForYear(fiscalYear: number, yearNum: number): number {
   return fiscalYear - 1 + (yearNum - 1)
 }
 
+/**
+ * The twelve month keys of forecast year `yearNum`, whether or not the
+ * forecast window covers them.
+ *
+ * A forecast that starts mid-year still PRICES a whole year: the wizard
+ * summary charges a fixed line monthlyAmount × 12 and an ad-hoc line its
+ * expectedAnnualAmount, once per year (useForecastWizard.calculateYearSummary).
+ * Anything that divides an annual figure by the window's length instead
+ * inflates it — see the ad-hoc branch of convertOpEx.
+ */
+export function fiscalYearMonthKeys(
+  fiscalYear: number,
+  yearNum: number,
+  yearStartMonth: number = DEFAULT_YEAR_START_MONTH,
+): string[] {
+  // Same convention as getFYYear: a Jan-start year is numbered by its own
+  // calendar year, a Jul-start year by the one it ends in.
+  const startYear =
+    (yearStartMonth === 1 ? fiscalYear : fiscalYear - 1) + (yearNum - 1)
+  const keys: string[] = []
+  for (let idx = 0; idx < 12; idx++) {
+    const calMonth = calendarMonthFromFiscalIndex(idx, yearStartMonth)
+    const year = calMonth >= yearStartMonth ? startYear : startYear + 1
+    keys.push(`${year}-${String(calMonth).padStart(2, '0')}`)
+  }
+  return keys
+}
+
 /** Case-insensitive match on account_name, fallback to account_code */
 function findMatchingLine(
   existingLines: PLLine[],
@@ -448,6 +476,15 @@ function convertOpEx(
         //      Roofing FY2027 had ELEVEN such lines (Accounting $7,617, MV fuel
         //      $5,348, …) totalling $26,356 of net-profit divergence.
         //   2. expectedMonths only ever holds Y1 keys, so Y2/Y3 were $0.
+        //   3. (23 Sep 2026) the annual amount was divided by the months IN THE
+        //      WINDOW, not by the year it prices. A forecast that starts mid-FY
+        //      — Dragon FY2027 runs 2026-08→2027-06, July already closed —
+        //      delivered the whole annual across 11 months while the closed
+        //      month kept the value an earlier materialization wrote, so every
+        //      ad-hoc line came out at 13/12 of its annual (Dragon: +$108,710
+        //      of OpEx across 23 lines on a recompute that changed nothing
+        //      else). The year is the unit of charge: price across the FY's
+        //      twelve months, write only the window's.
         // Resolution: per forecast year, use that year's selected months when
         // present, otherwise spread the annual amount evenly across the year.
         const annual = opexLine.expectedAnnualAmount || 0
@@ -460,11 +497,13 @@ function convertOpEx(
             arr.push(mk)
             monthsByYear.set(y, arr)
           }
-          for (const [, yearMonths] of monthsByYear) {
-            const chosen = yearMonths.filter(mk => selected.has(mk))
-            const target = chosen.length > 0 ? chosen : yearMonths
+          for (const [yearNum, windowMonths] of monthsByYear) {
+            // The whole fiscal year, not just the part still to come.
+            const fullYear = fiscalYearMonthKeys(fiscalYear, yearNum)
+            const chosen = fullYear.filter(mk => selected.has(mk))
+            const target = chosen.length > 0 ? chosen : fullYear
             const perMonth = round2(annual / target.length)
-            for (const mk of yearMonths) {
+            for (const mk of windowMonths) {
               newForecastMonths[mk] = target.includes(mk) ? perMonth : 0
             }
           }
