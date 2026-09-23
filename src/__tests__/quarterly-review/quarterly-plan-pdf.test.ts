@@ -20,6 +20,8 @@ import {
   quarterTitle,
   formatPlainDate,
   kpiTargetLabel,
+  planYearCoversQuarter,
+  MAX_KPIS_ON_PAGE,
   type PlanPageInput,
 } from '@/app/quarterly-review/utils/quarterly-plan-page';
 import { renderPlanPdf } from '@/app/quarterly-review/services/quarterly-plan-pdf';
@@ -346,5 +348,79 @@ describe('the plan is read through the business, not through whoever is logged i
     const data = await loadPlanPdfData(client as never, { business_id: 'biz-1', quarter: 2 } as never);
     expect(data.missing).toHaveLength(2);
     expect(data.kpis).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Both found by exporting a REAL review live (Precision Electrical Group,
+// Q2 FY2026, 23 Sep 2026) rather than from the sample data above.
+// ---------------------------------------------------------------------------
+
+describe('the numbers watched are the ones THAT quarter committed to', () => {
+  const tenActiveKpis = Array.from({ length: 10 }, (_, i) => ({ name: `Business KPI ${i + 1}`, target: 0, unit: null }));
+
+  it('prints the review’s own three, not the ten the business tracks today', () => {
+    // The live page listed Monthly Revenue, Gross Margin, Debtor Days … — the
+    // business's current set — over a plan whose quarter targeted three.
+    const page = buildPlanPage(
+      input({
+        review: review({
+          quarterly_targets: {
+            revenue: 870000,
+            grossProfit: 365400,
+            netProfit: 117000,
+            kpis: [
+              { id: 'kpi-leads', name: 'Leads Per Month', target: 140, unit: 'leads' },
+              { id: 'kpi-conversion', name: 'Quote Win Rate', target: 65, unit: '%' },
+              { id: 'kpi-atv', name: 'Average Job Value', target: 1150, unit: '$' },
+            ],
+          },
+        }),
+        kpis: tenActiveKpis,
+      })
+    );
+    const watching = page.blocks.find(b => b.title === 'Numbers I’m watching') as any;
+    expect(watching.items.map((i: any) => i.text)).toEqual(['Leads Per Month', 'Quote Win Rate', 'Average Job Value']);
+    expect(watching.items.map((i: any) => i.detail)).toEqual(['Target 140 leads', 'Target 65%', 'Target $1,150']);
+  });
+
+  it('falls back to the business’s KPIs for a first session, which targeted none', () => {
+    const page = buildPlanPage(input({ kpis: [{ name: 'Money Coming In Each Month', target: 0, unit: '$' }] }));
+    const watching = page.blocks.find(b => b.title === 'Numbers I’m watching') as any;
+    expect(watching.items[0].text).toBe('Money Coming In Each Month');
+  });
+
+  it('caps the list, and says how many it left off rather than shortening it quietly', () => {
+    const page = buildPlanPage(input({ kpis: tenActiveKpis }));
+    const watching = page.blocks.find(b => b.title === 'Numbers I’m watching') as any;
+    expect(watching.items).toHaveLength(MAX_KPIS_ON_PAGE + 1);
+    expect(watching.items[MAX_KPIS_ON_PAGE].text).toBe('and 4 more on your KPI dashboard');
+  });
+});
+
+describe('the year printed is the quarter’s own year', () => {
+  it('leaves the year off when the plan has rolled past that quarter', () => {
+    // Live: a Q2 FY2026 plan (October to December 2025) printed "The year to
+    // 30 June 2027" with today's targets — a year that quarter knew nothing of.
+    expect(planYearCoversQuarter('2027-06-30', 2, 2026, 'FY')).toBe(false);
+    const page = buildPlanPage(input({ review: review({ quarter: 2, year: 2026 }) }));
+    expect(page.blocks.map(b => b.title)).not.toContain('The year to 30 June 2027');
+    // The quarter's own targets still print.
+    expect(page.blocks[0].title).toBe('My targets this quarter');
+  });
+
+  it('keeps it for a quarter inside the plan year — including the last one', () => {
+    expect(planYearCoversQuarter('2027-06-30', 1, 2027, 'FY')).toBe(true);
+    expect(planYearCoversQuarter('2027-06-30', 4, 2027, 'FY')).toBe(true);
+    expect(planYearCoversQuarter('2027-12-31', 4, 2027, 'CY')).toBe(true);
+    expect(titles(input())).toContain('The year to 30 June 2027');
+  });
+
+  it('shows it when the plan has no year-end to place it by', () => {
+    expect(planYearCoversQuarter(null, 2, 2026, 'FY')).toBe(true);
+    const page = buildPlanPage(
+      input({ review: review({ quarter: 2, year: 2026 }), annual: { revenue: 400000, grossProfit: 160000, netProfit: 40000, yearEnd: null } })
+    );
+    expect(page.blocks.map(b => b.title)).toContain('The year');
   });
 });
