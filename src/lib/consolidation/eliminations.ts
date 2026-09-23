@@ -139,3 +139,23 @@ export function applyEliminations(
 
   return entries
 }
+
+/**
+ * The same eliminations for EVERY month of the year (F4, 22 Sep 2026).
+ *
+ * `applyEliminations` reads one month, and the engine applied the result to
+ * that month alone, so only the report month's column was eliminated: a
+ * $10k/month intercompany fee showed 0 in the September column but $20k of fee
+ * income and $20k of fee expense in September YTD, and the full year carried
+ * eleven months of it. Consolidated totals are meant to be free of
+ * intercompany trade in every period, not just the newest one.
+ */
+export function applyEliminationsByMonth(
+  rules: EliminationRule[],
+  byTenant: EntityColumn[],
+  months: readonly string[],
+): Record<string, EliminationEntry[]> {
+  const out: Record<string, EliminationEntry[]> = {}
+  for (const month of months) out[month] = applyEliminations(rules, byTenant, month)
+  return out
+}
