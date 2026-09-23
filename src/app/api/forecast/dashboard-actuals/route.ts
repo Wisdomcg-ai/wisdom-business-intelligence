@@ -44,7 +44,7 @@
 import { createRouteHandlerClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
-import { generateFiscalMonthKeys, getCurrentFiscalYear, getFiscalMonthLabels } from '@/lib/utils/fiscal-year-utils'
+import { generateFiscalMonthKeys, getCurrentFiscalYear, getFiscalMonthLabels, getExpectedLastActualIndex } from '@/lib/utils/fiscal-year-utils'
 import { resolveBusinessProfileIds, type ResolvedBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { getLastSyncByTenant } from '@/lib/health-checks'
 import {
@@ -510,11 +510,22 @@ async function getHandler(request: Request) {
       } as any)
     }
 
+    // Only a CLOSED month is an actual. xero_pl_lines carries the month in
+    // progress too, part-billed: on 8 Sep 2026 Urban Road's September held
+    // $111k against a $450k plan with most of its bills not yet entered, and
+    // drawn as an actual it reads as a cliff. The same cutoff the KPI strip and
+    // the trajectory chart use (getExpectedLastActualIndex), applied here so
+    // every reader of this route inherits it — the business dashboard's charts
+    // plotted the response's months verbatim.
+    const lastClosedIndex = getExpectedLastActualIndex(fiscalYear, yearStartMonth)
+    const lastClosedMonth = lastClosedIndex >= 0 ? monthKeys[lastClosedIndex] ?? null : null
+
     const months = monthKeys.map((monthKey, idx) => {
       const agg = aggsByMonth.get(monthKey)!
       // A month a foreign org could not be translated into carries no actuals:
       // the alternative is a total that silently adds foreign money to AUD.
-      const actualsUsable = !untranslatedMonths.has(monthKey)
+      // A month that has not closed yet carries none either.
+      const actualsUsable = !untranslatedMonths.has(monthKey) && idx <= lastClosedIndex
       const gpActual = agg.revenueActual - agg.cogsActual
       const gpForecast = agg.revenueForecast - agg.cogsForecast
       const npActual = gpActual - agg.opexActual
@@ -555,6 +566,11 @@ async function getHandler(request: Request) {
       data: {
         months,
         lastSync,
+        /**
+         * The last month whose end has passed, so a reader can say what the
+         * actuals run to. Null before the year has started.
+         */
+        lastClosedMonth,
       },
       hasData: hasAnyData,
     })
