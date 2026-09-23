@@ -6,7 +6,6 @@
 
 import { createClient } from '@/lib/supabase/client';
 import { StrategicPlanningService } from '@/app/goals/services/strategic-planning-service';
-import { getQuarterForMonth, startMonthFromYearType } from '@/lib/utils/fiscal-year-utils';
 import type { StrategicInitiative, InitiativeStatus } from '@/app/goals/types';
 import type { InitiativeDecision, Rock, QuarterlyTargets, RealignmentData, NextYearTargets, AnnualInitiativePlan } from '../types';
 
@@ -113,7 +112,9 @@ export class StrategicSyncService {
   async syncNewInitiatives(
     businessId: string,
     userId: string,
-    newInitiatives: Array<{ title: string; category: string; quarterAssigned?: string }>
+    newInitiatives: Array<{ title: string; category: string; quarterAssigned?: string }>,
+    /** Where an initiative with no quarter of its own goes: the quarter the review plans. */
+    defaultQuarterKey: string = 'q1'
   ): Promise<{ success: boolean; error?: string }> {
     try {
       if (newInitiatives.length === 0) return { success: true };
@@ -122,9 +123,7 @@ export class StrategicSyncService {
       const byQuarter = new Map<string, StrategicInitiative[]>();
 
       for (const init of newInitiatives) {
-        const stepType = init.quarterAssigned
-          ? this.quarterKeyToStepType(init.quarterAssigned)
-          : 'q1';
+        const stepType = this.quarterKeyToStepType(init.quarterAssigned || defaultQuarterKey);
         if (!stepType) continue;
 
         if (!byQuarter.has(stepType)) {
@@ -484,44 +483,23 @@ export class StrategicSyncService {
    * Resolve the correct quarter key using yearType from business_financial_goals.
    * Falls back to the provided quarterKey if yearType can't be determined.
    */
-  private async resolveQuarterKey(businessId: string, fallbackKey: string): Promise<string> {
-    try {
-      const supabase = this.getSupabase();
-
-      // Try to find yearType from financial goals
-      const idsToTry = [businessId];
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user && user.id !== businessId) idsToTry.push(user.id);
-
-      for (const tryId of idsToTry) {
-        const { data } = await supabase
-          .from('business_financial_goals')
-          .select('year_type')
-          .eq('business_id', tryId)
-          .maybeSingle();
-
-        if (data?.year_type) {
-          const now = new Date();
-          const calMonth = now.getMonth() + 1; // 1-12
-          const yearType = data.year_type;
-          const ysm = startMonthFromYearType(yearType as 'FY' | 'CY');
-          const currentQ = getQuarterForMonth(calMonth, ysm);
-          const nextQ = currentQ === 4 ? 1 : currentQ + 1;
-          const nextQStr = `q${nextQ}`;
-
-          console.log(`[StrategicSync] Resolved yearType=${yearType}, syncQuarter=${nextQStr} (next quarter, was ${fallbackKey})`);
-          return nextQStr;
-        }
-      }
-
-      console.log(`[StrategicSync] Could not resolve yearType, using fallback: ${fallbackKey}`);
-      return fallbackKey;
-    } catch (err) {
-      console.warn('[StrategicSync] Error resolving quarter key, using fallback:', fallbackKey, err);
-      return fallbackKey;
-    }
-  }
-
+  /**
+   * The quarter every write in this sync files under.
+   *
+   * This used to ignore its caller and derive "next quarter" from `new Date()`,
+   * keeping the passed key only when year_type could not be read. The two are
+   * different definitions: a review is NAMED for the quarter it plans
+   * (`planQuarterKey`, types/index.ts), while the clock's "quarter after the
+   * one we are in" only coincides with that while the session happens inside
+   * the quarter before the one being planned. Complete a Q1 review in the last
+   * week of Q1 — 24 Sep 2026, six days out — and the clock says q2 while the
+   * review says q1, so the targets, rocks and sprint rows file under a quarter
+   * nobody planned. #561 unified three disagreeing writers behind
+   * planQuarterKey / reviewedQuarterOf for exactly this reason; this was the
+   * same bug, still overriding them from underneath.
+   *
+   * The caller already holds the review. It decides.
+   */
   /**
    * Sync annual review completion data:
    * Part A: Roll forward 3-year financial targets (Y1 = next-year targets, Y2 stays, Y3 = stretch or current)
@@ -702,10 +680,8 @@ export class StrategicSyncService {
   ): Promise<{ success: boolean; errors: string[] }> {
     const errors: string[] = [];
 
-    // Resolve the correct quarter key using yearType
-    const resolvedQuarterKey = await this.resolveQuarterKey(businessId, quarterKey);
-
-    console.log('[StrategicSync] syncAll called with businessId:', businessId, 'quarterKey:', quarterKey, '→ resolved:', resolvedQuarterKey);
+    // The review's own quarter — the one it plans. Never re-derived here.
+    const resolvedQuarterKey = quarterKey;
 
     // Sync initiative decisions
     const decisionsResult = await this.syncInitiativeChanges(businessId, userId, decisions);
@@ -713,7 +689,7 @@ export class StrategicSyncService {
       errors.push(decisionsResult.error);
     }
 
-    // Sync quarterly targets (using resolved quarter key for correct FY mapping)
+    // Sync quarterly targets (the quarter the review plans)
     const targetsResult = await this.syncQuarterlyTargets(businessId, quarterlyTargets, resolvedQuarterKey);
     if (!targetsResult.success && targetsResult.error) {
       errors.push(targetsResult.error);
@@ -727,13 +703,13 @@ export class StrategicSyncService {
       }
     }
 
-    // Sync sprint planning data to quarter rows (using resolved quarter key)
+    // Sync sprint planning data to quarter rows (the quarter the review plans)
     const sprintResult = await this.syncSprintPlanningToQuarter(businessId, decisions, resolvedQuarterKey);
     if (!sprintResult.success && sprintResult.error) {
       errors.push(sprintResult.error);
     }
 
-    // Sync rocks to the correct quarter step_type (using resolved quarter key)
+    // Sync rocks to the quarter the review plans
     const rocksResult = await this.syncRocks(businessId, userId, rocks, resolvedQuarterKey);
     if (!rocksResult.success && rocksResult.error) {
       errors.push(rocksResult.error);
@@ -741,7 +717,7 @@ export class StrategicSyncService {
 
     // Sync new initiatives
     if (newInitiatives.length > 0) {
-      const newResult = await this.syncNewInitiatives(businessId, userId, newInitiatives);
+      const newResult = await this.syncNewInitiatives(businessId, userId, newInitiatives, resolvedQuarterKey);
       if (!newResult.success && newResult.error) {
         errors.push(newResult.error);
       }

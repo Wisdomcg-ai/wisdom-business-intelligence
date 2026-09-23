@@ -607,7 +607,13 @@ export interface InitiativesChanges {
   carriedForward: string[];
   removed: string[];
   deferred: Array<{ id: string; toQuarter: string }>;
-  added: Array<{ title: string; category: string; description?: string }>;
+  /**
+   * `quarterAssigned` is the quarter the coach dropped the new initiative into.
+   * It was recorded on the matching InitiativeDecision but not here, and the
+   * completion sync reads THIS list — so every initiative added during a
+   * session landed in q1 whatever the coach chose.
+   */
+  added: Array<{ title: string; category: string; description?: string; quarterAssigned?: string }>;
 }
 
 // Rock type aligned with Goals Wizard QuarterlyRock
