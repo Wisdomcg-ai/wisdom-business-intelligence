@@ -10,6 +10,8 @@ import { FirstSessionNotice } from '../components/FirstSessionNotice';
 import { useReviewReadiness } from '../hooks/useReviewReadiness';
 import { historyStepMode, planStepMode } from '../utils/review-readiness';
 import { FoundationBaselineStep } from '../components/steps/FoundationBaselineStep';
+import { FoundationRocksStep } from '../components/steps/FoundationRocksStep';
+import { FoundationOpenItemsStep } from '../components/steps/FoundationOpenItemsStep';
 import { FoundationAnnualPlanStep } from '../components/steps/FoundationAnnualPlanStep';
 import { FoundationQuarterlyPlanStep } from '../components/steps/FoundationQuarterlyPlanStep';
 import { QuarterNumber, ReviewType, YearType, getWorkshopSteps, getPlanningQuarter, getPreviousQuarterOf } from '../types';
@@ -280,6 +282,10 @@ function ReviewContent() {
           />
         );
       case '1.3':
+        if (decidingMode) return modeLoader;
+        if (baselineMode) {
+          return <FoundationRocksStep review={review} onUpdate={updateRocksReview} yearType={fyType} />;
+        }
         return (
           <RocksReviewStep
             review={review}
@@ -306,6 +312,9 @@ function ReviewContent() {
           />
         );
       case '2.2': // v2: Open Items (Open Loops + Issues)
+        if (decidingMode) return modeLoader;
+        // Capture, not triage: two empty lists have nothing to triage.
+        if (baselineMode) return <FoundationOpenItemsStep review={review} />;
         return (
           <OpenItemsStep
             review={review}

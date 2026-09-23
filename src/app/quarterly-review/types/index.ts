@@ -199,6 +199,12 @@ export interface RockReviewItem {
   decision: RockReviewDecision;
   outcomeNarrative: string;
   lessonsLearned: string;
+  /**
+   * Typed by the owner in a first session, where there were no rocks to load.
+   * Everything else here came from a rock the system already held, so a reader
+   * can tell "we held them to account" from "they told us what they remember".
+   */
+  selfReported?: boolean;
 }
 
 // Step 2.4: Customer Pulse
