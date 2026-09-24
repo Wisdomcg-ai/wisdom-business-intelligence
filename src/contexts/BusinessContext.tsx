@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import * as Sentry from '@sentry/nextjs'
 import { getUserSystemRole } from '@/lib/auth/roles'
 import type { BusinessId, UserId, BusinessProfileId } from '@/lib/types/ids'
 import { toBusinessId, toUserId, toBusinessProfileId } from '@/lib/types/ids'
@@ -274,13 +275,23 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
       // explicitly — they never get a default business attached to their session.
       if (mappedRole === 'client') {
         // First try via business_users join table (for team members)
-        // Now also fetch the role for proper permissions
-        const { data: businessUser, error: businessUserError } = await supabase
+        // Now also fetch the role for proper permissions.
+        // A client can hold more than one active membership; maybeSingle() errors
+        // on 2+ rows and the client saw "No business linked". Take the newest.
+        const { data: memberships, error: businessUserError } = await supabase
           .from('business_users')
           .select('business_id, role')
           .eq('user_id', user.id)
           .eq('status', 'active')
-          .maybeSingle()
+          .order('created_at', { ascending: false })
+        const businessUser = memberships?.[0] ?? null
+        if (memberships && memberships.length > 1) {
+          Sentry.captureMessage('Client has multiple active business memberships', {
+            level: 'warning',
+            tags: { invariant: 'client_single_active_membership' },
+            extra: { userId: user.id, businessIds: memberships.map((m) => m.business_id) },
+          })
+        }
 
         let business = null
         let loadedVia = ''
