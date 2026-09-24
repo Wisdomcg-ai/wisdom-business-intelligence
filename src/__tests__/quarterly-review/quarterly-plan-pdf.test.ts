@@ -21,11 +21,12 @@ import {
   formatPlainDate,
   kpiTargetLabel,
   planYearCoversQuarter,
-  rocksFromDecisions,
-  isForPlannedQuarter,
   MAX_KPIS_ON_PAGE,
   type PlanPageInput,
 } from '@/app/quarterly-review/utils/quarterly-plan-page';
+// The PDF derives rocks with the WRITER's own helper (#594), so it is tested
+// against the same module the writer uses.
+import { rocksFromDecisions, isForPlannedQuarter } from '@/app/quarterly-review/utils/rocks-from-decisions';
 import { renderPlanPdf } from '@/app/quarterly-review/services/quarterly-plan-pdf';
 
 const NOW = new Date(2026, 8, 23);
@@ -669,5 +670,94 @@ describe('repeated copies fill each other in, field by field', () => {
       2
     );
     expect(rock.linkedInitiatives).toEqual(['x', 'y']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Found 24 Sep 2026 exporting Digital Bond's plan live, after #595.
+// ---------------------------------------------------------------------------
+
+describe('a KPI target reads in its own units, however the unit was spelled', () => {
+  it('prints money as money, whichever word the KPI stored', () => {
+    // Production spells it three ways.
+    for (const unit of ['$', 'currency', 'dollar', ' Currency ']) {
+      expect(kpiTargetLabel({ name: 'Revenue', target: 300000, unit })).toBe('$300,000');
+    }
+  });
+
+  it('prints a percentage as a percentage', () => {
+    for (const unit of ['%', 'percentage', 'percent', 'PERCENT']) {
+      expect(kpiTargetLabel({ name: 'Margin', target: 30, unit })).toBe('30%');
+    }
+  });
+
+  it('prints a plain count as just the number', () => {
+    expect(kpiTargetLabel({ name: 'Hours', target: 30, unit: 'number' })).toBe('30');
+    expect(kpiTargetLabel({ name: 'Hours', target: 1200, unit: null })).toBe('1,200');
+  });
+
+  it('keeps a real unit as a word, including ones that merely START with a unit word', () => {
+    expect(kpiTargetLabel({ name: 'Leads', target: 140, unit: 'leads' })).toBe('140 leads');
+    expect(kpiTargetLabel({ name: 'Time', target: 40, unit: 'hours per quarter' })).toBe('40 hours per quarter');
+    expect(kpiTargetLabel({ name: 'Budget', target: 80, unit: 'percent of allocated budget used' })).toBe(
+      '80 percent of allocated budget used'
+    );
+    expect(kpiTargetLabel({ name: 'Fees', target: 5000, unit: 'AUD per clinician' })).toBe('5,000 AUD per clinician');
+  });
+
+  it('prints Digital Bond’s four KPIs the way a client reads them', () => {
+    const page = buildPlanPage(
+      input({
+        review: review({
+          quarter: 1,
+          quarterly_targets: {
+            revenue: 280000,
+            grossProfit: 252000,
+            netProfit: 140000,
+            kpis: [
+              { id: '1', name: 'Revenue - AI Systems Lab', target: 300000, unit: 'currency' },
+              { id: '2', name: "Adam's Time Delivering Projects", target: 30, unit: 'number' },
+              { id: '3', name: 'Revenue - Partnerships', target: 750000, unit: 'currency' },
+              { id: '4', name: 'Work Done by Systems vs Humans', target: 30, unit: 'percentage' },
+            ],
+          },
+        }),
+      })
+    );
+    const watching = page.blocks.find(b => b.title === 'Numbers I’m watching') as any;
+    expect(watching.items.map((i: any) => i.detail)).toEqual([
+      'Target $300,000',
+      'Target 30',
+      'Target $750,000',
+      'Target 30%',
+    ]);
+  });
+});
+
+describe('a stored rock with no title is not a rock', () => {
+  it('prints no blank bullet for Envisage’s Q4 2025 row, exactly as stored', () => {
+    const page = buildPlanPage(
+      input({
+        review: review({
+          quarterly_rocks: [
+            { id: 'rock-1764161895890', owner: '', title: '', status: 'not_started', priority: 1, doneDefinition: '' },
+          ],
+          initiative_decisions: [],
+        }),
+      })
+    );
+    expect(page.blocks.map(b => b.title)).not.toContain('My rocks this quarter');
+  });
+
+  it('still prints a legacy rock that only has the old "definition of done"', () => {
+    const page = buildPlanPage(
+      input({
+        review: review({
+          quarterly_rocks: [{ id: 'r', title: 'Launch the site', owner: 'Sam', doneDefinition: 'Live with SEO copy' }],
+        }),
+      })
+    );
+    const rocks = page.blocks.find(b => b.title === 'My rocks this quarter') as any;
+    expect(rocks.items).toEqual([{ text: 'Launch the site', detail: 'Sam — Live with SEO copy' }]);
   });
 });

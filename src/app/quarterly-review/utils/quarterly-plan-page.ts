@@ -10,6 +10,7 @@
  * page of empty headings reads as a form the owner failed to fill in, rather
  * than the plan they just built.
  */
+import { rocksFromDecisions, titleKey } from './rocks-from-decisions';
 import type {
   QuarterlyReview,
   QuarterlyTargets,
@@ -176,13 +177,29 @@ const moneyItems = (m: PlanMoneyLines) => [
   { label: 'Net profit', value: planMoney(m.netProfit) },
 ];
 
-/** A KPI's target, in its own units — `$40,000`, `35%`, `120`. */
+/**
+ * The same unit, spelled three ways. Production KPIs record money as "$",
+ * "currency" or "dollar", a percentage as "%", "percentage" or "percent", and a
+ * plain count as "number" — so Digital Bond's page printed "Target 300,000
+ * currency" and "Target 30 percentage" (found 24 Sep 2026, exporting it live).
+ * Anything else is a real unit ("leads", "hours per quarter") and stays a word.
+ * Every percentage target in production is a whole number (12 to 95), so 30
+ * means 30%, never 0.3.
+ */
+const MONEY_UNITS = new Set(['$', 'currency', 'dollar', 'dollars', 'aud']);
+const PERCENT_UNITS = new Set(['%', 'percentage', 'percent']);
+const COUNT_UNITS = new Set(['', 'number', 'count', '#']);
+
+/** A KPI's target, in its own units — `$40,000`, `35%`, `120`, `140 leads`. */
 export function kpiTargetLabel(kpi: PlanKpi): string | null {
   const t = kpi.target;
   if (t === null || t === undefined || !Number.isFinite(t) || t === 0) return null;
-  if (kpi.unit === '$') return planMoney(t);
-  if (kpi.unit === '%') return `${t}%`;
-  return `${t.toLocaleString('en-AU')}${kpi.unit ? ` ${kpi.unit}` : ''}`;
+  const unit = (kpi.unit ?? '').trim();
+  const key = unit.toLowerCase();
+  if (MONEY_UNITS.has(key)) return planMoney(t);
+  if (PERCENT_UNITS.has(key)) return `${t}%`;
+  if (COUNT_UNITS.has(key)) return t.toLocaleString('en-AU');
+  return `${t.toLocaleString('en-AU')} ${unit}`;
 }
 
 /**
@@ -220,98 +237,24 @@ function rockDetail(rock: Rock): string | undefined {
 /**
  * The rocks a session actually set.
  *
- * Sprint Planning (step 4.3) writes what the client commits to into
- * `initiative_decisions`, NOT into `quarterly_rocks`. Reading only the latter
- * printed a plan with no rocks on it — found 24 Sep 2026 by walking a whole
- * session and exporting the PDF at the end. Every review since early 2026 has
- * the same shape; only the old seeded ones carry `quarterly_rocks`, so that
- * stays the first source and this is the fallback.
- *
- * This is the SAME derivation as the rocks writer in #594
- * (utils/rocks-from-decisions.ts) — same predicate, same one-rock-per-title
- * merge, same Rock shape — so a review prints the same rocks, with the same
- * owner and date line, whether they were stored or derived. Once #594 lands,
- * delete titleKey, isForPlannedQuarter and rocksFromDecisions here and import
- * them from there.
+ * Sprint Planning (step 4.3) records what the client commits to in
+ * `initiative_decisions`; until #594 nothing wrote `quarterly_rocks` at all, so
+ * every review completed before it holds decisions only. `quarterly_rocks` stays
+ * the first source (it is what the writer now stores), and the decisions are the
+ * fallback — derived by the WRITER's own rocksFromDecisions, so a review prints
+ * the same rocks whether they were stored or derived.
  */
-
-/** A title as a person means it: case, surrounding and internal spacing ignored. */
-export function titleKey(title: string | null | undefined): string {
-  return String(title ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
-/**
- * "unassigned" is a value, not an absence. Step 4.3 writes the literal string
- * for work kept without a quarter slot — 81 of the 150 decisions in production
- * on 24 Sep 2026, the most common value. It is about the quarter the session is
- * planning, exactly like a missing tag.
- */
-export function isForPlannedQuarter(
-  decision: Pick<InitiativeDecision, 'quarterAssigned'>,
-  plannedQuarter: number
-): boolean {
-  const assigned = (decision.quarterAssigned ?? '').trim().toLowerCase();
-  if (!assigned || assigned === 'unassigned') return true;
-  return assigned === `q${plannedQuarter}`;
-}
-
-/** Decisions that put an initiative on the plate for the coming quarter. */
-const ACTIVE_DECISIONS = new Set(['keep', 'accelerate']);
-
-/**
- * The quarter's rocks from its decisions, one per title.
- *
- * Titles repeat in production — Digital Bond's Q1 FY2027 review holds three
- * twice over, Efficient Living's Q3 holds five four times — and the copies do
- * not carry the same fields: of Efficient Living's four "Due Date Focus", one
- * has the owner. So the first copy is the rock and later copies only fill what
- * it lacks, never overwrite. Filtered by quarter FIRST, so a copy tagged for
- * another quarter never lends this one its fields.
- */
-export function rocksFromDecisions(
-  decisions: InitiativeDecision[] | null | undefined,
-  plannedQuarter: number
-): Rock[] {
-  const planned = Math.min(Math.max(plannedQuarter, 1), 4);
-  const byTitle = new Map<string, Rock>();
-  for (const d of decisions ?? []) {
-    if (!ACTIVE_DECISIONS.has(String(d?.decision ?? '').toLowerCase())) continue;
-    if (!isForPlannedQuarter(d, planned)) continue;
-    const key = titleKey(d.title);
-    if (!key) continue;
-    const existing = byTitle.get(key);
-    if (!existing) {
-      byTitle.set(key, {
-        id: d.initiativeId,
-        title: d.title.trim(),
-        description: d.why || d.notes || undefined,
-        owner: d.assignedTo || '',
-        status: 'not_started',
-        progressPercentage: 0,
-        linkedInitiatives: [d.initiativeId],
-        successCriteria: d.outcome || '',
-        startDate: d.startDate,
-        targetDate: d.endDate,
-        notes: d.notes || undefined,
-      });
-      continue;
-    }
-    if (!existing.owner && d.assignedTo) existing.owner = d.assignedTo;
-    if (!existing.successCriteria && d.outcome) existing.successCriteria = d.outcome;
-    if (!existing.description && (d.why || d.notes)) existing.description = d.why || d.notes;
-    if (!existing.startDate && d.startDate) existing.startDate = d.startDate;
-    if (!existing.targetDate && d.endDate) existing.targetDate = d.endDate;
-    if (!existing.notes && d.notes) existing.notes = d.notes;
-    if (!existing.linkedInitiatives?.includes(d.initiativeId)) {
-      existing.linkedInitiatives = [...(existing.linkedInitiatives ?? []), d.initiativeId];
-    }
-  }
-  return [...byTitle.values()];
-}
-
 /**
  * Stored rocks, one per title, by the same rule — so a review whose rocks were
  * saved with a repeat prints the same page as one whose rocks were derived.
+ *
+ * This looks redundant now that the 4.3 writer dedupes (#594). It is not, and
+ * should not be removed on that reasoning: the dedupe lives at that ONE call
+ * site, while the service method that writes `quarterly_rocks` stores whatever
+ * it is handed. Precision's stored rocks carry hand-authored ids
+ * (rock-q1fy27-1, rock-q2-1) written by something no longer in the codebase, and
+ * Envisage's Q4 2025 review stores a rock with no title at all. The page a
+ * client reads should not depend on every writer remembering the rule.
  */
 function onePerRock(rocks: Rock[]): Rock[] {
   const byTitle = new Map<string, Rock>();
@@ -408,7 +351,7 @@ export function buildPlanPage(input: PlanPageInput): PlanPage {
     stored.length > 0
       ? onePerRock(stored)
       : rocksFromDecisions(review.initiative_decisions as InitiativeDecision[] | null, review.quarter)
-  ).map(r => ({ text: r.title, detail: rockDetail(r) }));
+  ).map(r => ({ text: r.title.trim(), detail: rockDetail(r) }));
   if (rockItems.length > 0) {
     blocks.push({ kind: 'numbered', title: 'My rocks this quarter', items: rockItems });
   }
