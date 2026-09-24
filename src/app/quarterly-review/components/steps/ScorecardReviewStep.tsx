@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { resolveKpiTarget } from '@/lib/kpi/target-source';
+import { kpiTargetLabel } from '../../utils/quarterly-plan-page';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, DashboardSnapshot, CoreMetricsSnapshot } from '../../types';
@@ -35,8 +37,23 @@ interface BusinessKpi {
   friendly_name: string;
   category: string;
   unit: string;
-  year1_target: number;
+  year1_target: number | string | null;
+  /** Some KPIs hold their target here instead — Precision keeps all ten in it. */
+  target_value?: number | string | null;
   current_value: number;
+}
+
+/**
+ * The KPI's target, from whichever column holds it.
+ *
+ * This read `year1_target || 0` alone. Precision keeps every target in
+ * `target_value` with year1_target at its default 0, so its Scorecard showed ten
+ * zeros and SAVED zero as each KPI's target into the review — the history the
+ * next quarter compares against. Same rule as the One-Page Plan and the PDF
+ * (resolveKpiTarget), so the three can never disagree on a KPI. 0 = no target.
+ */
+function kpiTarget(kpi: Pick<BusinessKpi, 'year1_target' | 'target_value'>): number {
+  return resolveKpiTarget(kpi.year1_target, kpi.target_value) ?? 0;
 }
 
 interface QuarterlyTargetsData {
@@ -206,7 +223,7 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
       revenue: { target: financials[0].target, actual: financials[0].actual, variance: calculateVariance(financials[0].target, financials[0].actual), percentageAchieved: calculatePercentage(financials[0].target, financials[0].actual) },
       grossProfit: { target: financials[1].target, actual: financials[1].actual, variance: calculateVariance(financials[1].target, financials[1].actual), percentageAchieved: calculatePercentage(financials[1].target, financials[1].actual) },
       netProfit: { target: financials[2].target, actual: financials[2].actual, variance: calculateVariance(financials[2].target, financials[2].actual), percentageAchieved: calculatePercentage(financials[2].target, financials[2].actual) },
-      kpis: businessKpis.map(kpi => ({ id: kpi.kpi_id, name: kpi.friendly_name || kpi.name, target: kpi.year1_target || 0, actual: kpiActuals[kpi.kpi_id] || 0, unit: kpi.unit })),
+      kpis: businessKpis.map(kpi => ({ id: kpi.kpi_id, name: kpi.friendly_name || kpi.name, target: kpiTarget(kpi), actual: kpiActuals[kpi.kpi_id] || 0, unit: kpi.unit })),
       coreMetrics: {
         leadsPerMonth: buildCoreMetricSnapshot('leadsPerMonth'),
         conversionRate: buildCoreMetricSnapshot('conversionRate'),
@@ -281,13 +298,6 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
       case 'percentage': return parseFloat(value.replace('%', '')) || 0;
       default: return parseFloat(value) || 0;
     }
-  };
-
-  const formatKpiValue = (value: number, unit: string): string => {
-    if (value === 0 || value === null || value === undefined) return '-';
-    if (unit === 'currency' || unit === '$') return formatCurrency(value);
-    if (unit === '%' || unit === 'percentage') return `${value}%`;
-    return `${value}${unit ? ` ${unit}` : ''}`;
   };
 
   const getKpiDisplayUnit = (unit: string): string => {
@@ -545,12 +555,12 @@ export function ScorecardReviewStep({ review, onUpdate, onUpdateCommentary }: Sc
                   <div className="space-y-2">
                     {kpis.map((kpi) => {
                       const actual = kpiActuals[kpi.kpi_id] || 0;
-                      const target = kpi.year1_target || 0;
+                      const target = kpiTarget(kpi);
                       const variance = calculateVariance(target, actual);
                       return (
                         <div key={kpi.kpi_id} className="grid grid-cols-12 gap-4 items-center bg-gray-50 rounded-lg p-3">
                           <div className="col-span-4"><span className="font-medium text-gray-900 text-sm">{kpi.friendly_name || kpi.name}</span></div>
-                          <div className="col-span-2 text-center"><span className="text-sm text-gray-600 font-medium">{formatKpiValue(target, kpi.unit)}</span></div>
+                          <div className="col-span-2 text-center"><span className="text-sm text-gray-600 font-medium">{kpiTargetLabel({ name: kpi.name, target, unit: kpi.unit }) ?? '-'}</span></div>
                           <div className="col-span-3">
                             <div className="flex items-center gap-1">
                               <input type="text"

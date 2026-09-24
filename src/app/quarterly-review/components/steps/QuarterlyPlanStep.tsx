@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { resolveKpiTarget } from '@/lib/kpi/target-source';
+import { kpiTargetLabel } from '../../utils/quarterly-plan-page';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { formatDollar, parseDollarInput } from '@/app/goals/utils/formatting';
 import { calculateQuarters } from '@/app/goals/utils/quarters';
@@ -396,7 +398,7 @@ export function QuarterlyPlanStep({
       // returned zero KPIs for every client (the list rendered empty in the workshop).
       const { data: kpiData } = await supabase
         .from('business_kpis')
-        .select('kpi_id, name, friendly_name, unit, current_value, year1_target, year2_target, year3_target')
+        .select('kpi_id, name, friendly_name, unit, current_value, year1_target, year2_target, year3_target, target_value')
         .eq('business_id', businessId);
 
       if (kpiData && kpiData.length > 0) {
@@ -404,7 +406,10 @@ export function QuarterlyPlanStep({
           id: k.kpi_id || k.name,
           name: k.friendly_name || k.name,
           unit: k.unit || '',
-          year1Target: k.year1_target || 0,
+          // Either column can hold it — Precision keeps every target in
+          // target_value, and `year1_target || 0` showed ten zeros. Same rule as
+          // the Scorecard, the One-Page Plan and the PDF.
+          year1Target: resolveKpiTarget(k.year1_target, k.target_value) ?? 0,
         })));
       }
 
@@ -1413,13 +1418,6 @@ export function QuarterlyPlanStep({
                         const isCurrencyKpi = unit.includes('$') || unit.includes('dollar');
                         const isPercentageKpi = unit.includes('%') || unit.includes('percent');
 
-                        const formatKPIValue = (value: number) => {
-                          if (!value) return '-';
-                          if (isCurrencyKpi) return formatCurrency(value);
-                          if (isPercentageKpi) return `${value.toFixed(1)}%`;
-                          return value.toLocaleString();
-                        };
-
                         const getPlaceholder = () => {
                           if (isCurrencyKpi) return '$';
                           if (isPercentageKpi) return '%';
@@ -1430,7 +1428,7 @@ export function QuarterlyPlanStep({
                           <tr key={kpi.id}>
                             <td className="px-4 py-3 text-sm font-medium text-brand-navy border-r border-slate-200">{kpi.name}</td>
                             <td className="px-4 py-3 text-sm text-gray-700 font-medium border-r border-slate-200 text-center">
-                              {formatKPIValue(kpi.year1Target)}
+                              {kpiTargetLabel({ name: kpi.name, target: kpi.year1Target, unit: kpi.unit }) ?? '-'}
                             </td>
                             {quarterColumns.map(q => (
                               <td key={q.id} className={`px-4 py-2 border-r border-slate-200 ${q.isPast ? 'bg-green-50' : q.isCurrent ? 'bg-amber-50' : ''}`}>
