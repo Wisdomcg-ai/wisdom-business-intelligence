@@ -29,6 +29,12 @@ const db = vi.hoisted(() => ({
   /** Every saveInitiatives call: [stepType, titles]. */
   initiativeSaves: [] as Array<{ stepType: string; titles: string[] }>,
   failTargetUpdate: false,
+  /** strategic_initiatives rows already stored for the business + step_type. */
+  existingInitiatives: [] as Array<{ id: string; title: string }>,
+  initiativeInserts: [] as Array<{ title: string; step_type: string }>,
+  initiativeUpdates: [] as Array<{ id: string; title: string }>,
+  failInitiativeRead: false,
+  failInitiativeInsert: false,
 }));
 
 vi.mock('@/lib/supabase/client', () => ({
@@ -37,7 +43,22 @@ vi.mock('@/lib/supabase/client', () => ({
     from: (table: string) => {
       const builder: Record<string, unknown> = {
         select: () => builder,
-        eq: () => builder,
+        eq: () => {
+          // strategic_initiatives is read as a promise (no maybeSingle), so the
+          // second .eq() resolves it.
+          if (table === 'strategic_initiatives') {
+            return {
+              ...builder,
+              then: (resolve: (v: unknown) => unknown) =>
+                Promise.resolve(
+                  db.failInitiativeRead
+                    ? { data: null, error: { message: 'statement timeout' } }
+                    : { data: db.existingInitiatives, error: null },
+                ).then(resolve),
+            };
+          }
+          return builder;
+        },
         order: () => builder,
         limit: () => builder,
         maybeSingle: async () =>
@@ -49,14 +70,35 @@ vi.mock('@/lib/supabase/client', () => ({
             : { data: null, error: null },
         update: (payload: Record<string, unknown>) => {
           if (table === 'business_financial_goals') db.targetUpdates.push(payload);
-          return {
-            eq: async () =>
-              db.failTargetUpdate && table === 'business_financial_goals'
-                ? { error: { message: 'permission denied for business_financial_goals' } }
-                : { error: null },
+          let id = '';
+          const chain: Record<string, unknown> = {
+            eq: (_column: string, value: unknown) => {
+              if (!id) id = String(value);
+              return chain;
+            },
+            then: (resolve: (v: unknown) => unknown) => {
+              if (table === 'strategic_initiatives') {
+                db.initiativeUpdates.push({ id, title: String(payload.title ?? '') });
+              }
+              return Promise.resolve(
+                db.failTargetUpdate && table === 'business_financial_goals'
+                  ? { error: { message: 'permission denied for business_financial_goals' } }
+                  : { error: null },
+              ).then(resolve);
+            },
           };
+          return chain;
         },
-        insert: async () => ({ error: null }),
+        insert: async (payload: Record<string, unknown>) => {
+          if (table === 'strategic_initiatives') {
+            if (db.failInitiativeInsert) return { error: { message: 'null value in column \"user_id\"' } };
+            db.initiativeInserts.push({
+              title: String(payload.title ?? ''),
+              step_type: String(payload.step_type ?? ''),
+            });
+          }
+          return { error: null };
+        },
       };
       return builder;
     },
@@ -86,6 +128,11 @@ beforeEach(() => {
   db.targetUpdates = [];
   db.initiativeSaves = [];
   db.failTargetUpdate = false;
+  db.existingInitiatives = [];
+  db.initiativeInserts = [];
+  db.initiativeUpdates = [];
+  db.failInitiativeRead = false;
+  db.failInitiativeInsert = false;
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -162,5 +209,79 @@ describe('the caller reads that answer', () => {
 
   it('passes each added initiative\'s quarter through to the sync', () => {
     expect(hook).toMatch(/quarterAssigned:\s*a\.quarterAssigned/);
+  });
+});
+
+describe('completing twice does not store the rock twice', () => {
+  const rock = (over: Record<string, unknown> = {}) => ({
+    // What step 4.3 mints for a rock created in the session: not a UUID, so the
+    // old code took the INSERT branch every single time.
+    id: 'sprint-new-1790198021629',
+    title: 'Due Date Focus',
+    owner: 'Steve',
+    status: 'not_started' as const,
+    progressPercentage: 0,
+    successCriteria: 'Every job quoted within 48h',
+    ...over,
+  });
+
+  it('updates the row it already wrote instead of inserting a second', async () => {
+    db.existingInitiatives = [{ id: '11111111-2222-4333-8444-555555555555', title: 'Due Date Focus' }];
+
+    await strategicSyncService.syncAll('biz-1', 'user-1', [], TARGETS, 'q1', [rock() as never], []);
+
+    expect(db.initiativeInserts).toEqual([]);
+    expect(db.initiativeUpdates).toEqual([
+      { id: '11111111-2222-4333-8444-555555555555', title: 'Due Date Focus' },
+    ]);
+  });
+
+  it('matches on the title whatever its spacing or case', async () => {
+    db.existingInitiatives = [{ id: '11111111-2222-4333-8444-555555555555', title: '  due date FOCUS ' }];
+
+    await strategicSyncService.syncAll('biz-1', 'user-1', [], TARGETS, 'q1', [rock() as never], []);
+
+    expect(db.initiativeInserts).toEqual([]);
+    expect(db.initiativeUpdates).toHaveLength(1);
+  });
+
+  it('inserts a rock the quarter has never seen', async () => {
+    db.existingInitiatives = [];
+
+    await strategicSyncService.syncAll('biz-1', 'user-1', [], TARGETS, 'q1', [rock() as never], []);
+
+    expect(db.initiativeInserts).toEqual([{ title: 'Due Date Focus', step_type: 'q1' }]);
+  });
+
+  it('inserts two rocks of the same title only once', async () => {
+    db.existingInitiatives = [];
+
+    await strategicSyncService.syncAll('biz-1', 'user-1', [], TARGETS, 'q1', [
+      rock() as never,
+      rock({ id: 'sprint-new-1790198021630' }) as never,
+    ], []);
+
+    expect(db.initiativeInserts).toHaveLength(1);
+  });
+
+  it('refuses to guess when the existing rocks cannot be read', async () => {
+    // Inserting blind on a failed read is exactly what built the duplicates.
+    db.failInitiativeRead = true;
+
+    const result = await strategicSyncService.syncAll('biz-1', 'user-1', [], TARGETS, 'q1', [rock() as never], []);
+
+    expect(db.initiativeInserts).toEqual([]);
+    expect(result.success).toBe(false);
+    expect(result.errors.join(' ')).toContain('Could not read existing rocks');
+  });
+
+  it('reports a rock that failed to save instead of counting it', async () => {
+    db.existingInitiatives = [];
+    db.failInitiativeInsert = true;
+
+    const result = await strategicSyncService.syncAll('biz-1', 'user-1', [], TARGETS, 'q1', [rock() as never], []);
+
+    expect(result.success).toBe(false);
+    expect(result.errors.join(' ')).toContain('Rocks not saved');
   });
 });
