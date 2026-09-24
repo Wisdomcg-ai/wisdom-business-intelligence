@@ -18,7 +18,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { rocksFromDecisions, isForPlannedQuarter } from '@/app/quarterly-review/utils/rocks-from-decisions';
+import { rocksFromDecisions, isForPlannedQuarter, titleKey } from '@/app/quarterly-review/utils/rocks-from-decisions';
 import type { InitiativeDecision } from '@/app/quarterly-review/types';
 
 const decision = (over: Partial<InitiativeDecision> = {}): InitiativeDecision =>
@@ -37,10 +37,10 @@ describe('which decisions are this quarter\'s rocks', () => {
   it('keeps what the coach kept or accelerated', () => {
     const rocks = rocksFromDecisions(
       [
-        decision({ initiativeId: 'a', decision: 'keep' }),
-        decision({ initiativeId: 'b', decision: 'accelerate' }),
-        decision({ initiativeId: 'c', decision: 'defer' }),
-        decision({ initiativeId: 'd', decision: 'kill' }),
+        decision({ initiativeId: 'a', title: 'Win three maintenance contracts', decision: 'keep' }),
+        decision({ initiativeId: 'b', title: 'Hire a second estimator', decision: 'accelerate' }),
+        decision({ initiativeId: 'c', title: 'Rebuild the website', decision: 'defer' }),
+        decision({ initiativeId: 'd', title: 'Open a second yard', decision: 'kill' }),
       ],
       2,
     );
@@ -59,8 +59,8 @@ describe('which decisions are this quarter\'s rocks', () => {
   it('leaves another quarter\'s work out of this quarter\'s rocks', () => {
     const rocks = rocksFromDecisions(
       [
-        decision({ initiativeId: 'this', quarterAssigned: 'q2' }),
-        decision({ initiativeId: 'later', quarterAssigned: 'q4' }),
+        decision({ initiativeId: 'this', title: 'This quarter', quarterAssigned: 'q2' }),
+        decision({ initiativeId: 'later', title: 'A later quarter', quarterAssigned: 'q4' }),
       ],
       2,
     );
@@ -103,6 +103,73 @@ describe('which decisions are this quarter\'s rocks', () => {
     expect(rocksFromDecisions([], 2)).toEqual([]);
     expect(rocksFromDecisions(null, 2)).toEqual([]);
     expect(rocksFromDecisions([decision({ decision: 'kill' })], 2)).toEqual([]);
+  });
+});
+
+describe('one rock per title', () => {
+  // initiative_decisions repeats titles in production: Digital Bond's completed
+  // Q1 FY2027 review holds three twice over, Efficient Living's Q3 holds five
+  // FOUR times. The ids differ each time, so id-based grouping never caught it,
+  // and three screens read quarterly_rocks directly.
+  it('stores the coach\'s five rocks once, not eight', () => {
+    const rocks = rocksFromDecisions(
+      [
+        decision({ initiativeId: '1', title: 'Messaging on Digital Bond Website - Update' }),
+        decision({ initiativeId: '2', title: 'Process for delivering a scalable solution' }),
+        decision({ initiativeId: '3', title: 'Determine how to get money off the table and invest' }),
+        decision({ initiativeId: '4', title: 'Messaging on Digital Bond Website - Update' }),
+        decision({ initiativeId: '5', title: 'Process for delivering a scalable solution' }),
+        decision({ initiativeId: '6', title: 'Determine how to get money off the table and invest' }),
+      ],
+      1,
+    );
+    expect(rocks).toHaveLength(3);
+    expect(rocks.map(r => r.priority)).toEqual([1, 2, 3]);
+  });
+
+  it('takes the detail from whichever copy carries it', () => {
+    // One of Efficient Living's four copies has the owner; the others do not.
+    const [rock] = rocksFromDecisions(
+      [
+        decision({ initiativeId: 'a', title: 'Due Date Focus' }),
+        decision({ initiativeId: 'b', title: 'Due Date Focus', assignedTo: 'Steve', outcome: 'Every job quoted in 48h' }),
+        decision({ initiativeId: 'c', title: 'Due Date Focus', endDate: '2026-12-31' }),
+      ],
+      1,
+    );
+    expect(rock.owner).toBe('Steve');
+    expect(rock.successCriteria).toBe('Every job quoted in 48h');
+    expect(rock.targetDate).toBe('2026-12-31');
+    // The first copy's identity is kept, and every decision behind it recorded.
+    expect(rock.id).toBe('a');
+    expect(rock.linkedInitiatives).toEqual(['a', 'b', 'c']);
+  });
+
+  it('does not let the first copy\'s value be overwritten by a later one', () => {
+    const [rock] = rocksFromDecisions(
+      [
+        decision({ initiativeId: 'a', title: 'Due Date Focus', assignedTo: 'Steve' }),
+        decision({ initiativeId: 'b', title: 'Due Date Focus', assignedTo: 'Someone else' }),
+      ],
+      1,
+    );
+    expect(rock.owner).toBe('Steve');
+  });
+
+  it('judges titles the same through case and spacing', () => {
+    expect(titleKey('  Due   Date  FOCUS ')).toBe('due date focus');
+    const rocks = rocksFromDecisions(
+      [
+        decision({ initiativeId: 'a', title: 'Due Date Focus' }),
+        decision({ initiativeId: 'b', title: '  due   date focus  ' }),
+      ],
+      1,
+    );
+    expect(rocks).toHaveLength(1);
+  });
+
+  it('drops a decision with no title at all', () => {
+    expect(rocksFromDecisions([decision({ title: '   ' })], 1)).toEqual([]);
   });
 });
 

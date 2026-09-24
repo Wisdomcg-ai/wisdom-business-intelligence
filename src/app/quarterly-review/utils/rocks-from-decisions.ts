@@ -21,6 +21,15 @@ import type { InitiativeDecision, Rock } from '../types'
 const ACTIVE_DECISIONS = new Set(['keep', 'accelerate'])
 
 /**
+ * How two titles are judged the same rock: ignoring case, surrounding space,
+ * and how much space sits between the words. The same rock re-typed in a later
+ * session is rarely re-typed identically.
+ */
+export function titleKey(title: string | null | undefined): string {
+  return String(title ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+/**
  * A decision belongs to the quarter being planned when it says so, or when it
  * says nothing — an unassigned decision in this step is about the quarter the
  * session is planning.
@@ -45,22 +54,58 @@ export function rocksFromDecisions(
   decisions: InitiativeDecision[] | null | undefined,
   plannedQuarter: number,
 ): Rock[] {
-  return (decisions ?? [])
+  const kept = (decisions ?? [])
     .filter(d => ACTIVE_DECISIONS.has(String(d?.decision ?? '').toLowerCase()))
     .filter(d => isForPlannedQuarter(d, plannedQuarter))
-    .map((d, index) => ({
-      id: d.initiativeId,
-      title: d.title,
-      description: d.why || d.notes || undefined,
-      owner: d.assignedTo || '',
-      status: 'not_started' as const,
-      progressPercentage: 0,
-      linkedInitiatives: [d.initiativeId],
-      // The step calls this "the outcome" — what done looks like.
-      successCriteria: d.outcome || '',
-      startDate: d.startDate,
-      targetDate: d.endDate,
-      notes: d.notes || undefined,
-      priority: index + 1,
-    }))
+
+  // One rock per title. `initiative_decisions` repeats titles in production —
+  // Digital Bond's completed Q1 FY2027 review holds three twice over, Efficient
+  // Living's Q3 holds five FOUR times — and the id differs each time, so the
+  // duplicates survive any id-based grouping. syncRocks keeps
+  // strategic_initiatives clean on its own, but three screens read
+  // quarterly_rocks directly (the close screen, the summary, the history list),
+  // and they would each show eight rocks where the coach set five.
+  //
+  // The first copy is the rock; later copies only fill in what it is missing,
+  // because the repeats do not carry the same fields (one of Efficient
+  // Living's four copies has the owner; the others do not).
+  const byTitle = new Map<string, Rock>()
+
+  for (const d of kept) {
+    const key = titleKey(d.title)
+    if (!key) continue
+
+    const existing = byTitle.get(key)
+    if (!existing) {
+      byTitle.set(key, {
+        id: d.initiativeId,
+        title: d.title,
+        description: d.why || d.notes || undefined,
+        owner: d.assignedTo || '',
+        status: 'not_started' as const,
+        progressPercentage: 0,
+        linkedInitiatives: [d.initiativeId],
+        // The step calls this "the outcome" — what done looks like.
+        successCriteria: d.outcome || '',
+        startDate: d.startDate,
+        targetDate: d.endDate,
+        notes: d.notes || undefined,
+        priority: 0, // numbered below, once the set is final
+      })
+      continue
+    }
+
+    if (!existing.owner && d.assignedTo) existing.owner = d.assignedTo
+    if (!existing.successCriteria && d.outcome) existing.successCriteria = d.outcome
+    if (!existing.description && (d.why || d.notes)) existing.description = d.why || d.notes
+    if (!existing.startDate && d.startDate) existing.startDate = d.startDate
+    if (!existing.targetDate && d.endDate) existing.targetDate = d.endDate
+    if (!existing.notes && d.notes) existing.notes = d.notes
+    // Every decision that fed this rock, so a reader can trace it back.
+    if (!existing.linkedInitiatives?.includes(d.initiativeId)) {
+      existing.linkedInitiatives = [...(existing.linkedInitiatives ?? []), d.initiativeId]
+    }
+  }
+
+  return Array.from(byTitle.values()).map((rock, index) => ({ ...rock, priority: index + 1 }))
 }
