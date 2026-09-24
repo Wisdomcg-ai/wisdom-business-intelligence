@@ -598,7 +598,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
       const syncBusinessId = profileBusinessId || (await getSnapshotBusinessId()) || businessId;
       try {
         const syncQuarterKey = planQuarterKey({ quarter: anchorQuarter });
-        await strategicSyncService.syncAll(
+        const syncResult = await strategicSyncService.syncAll(
           syncBusinessId,
           userId,
           review.initiative_decisions || [],
@@ -608,10 +608,30 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
           (review.initiatives_changes?.added || []).map(a => ({
             title: a.title,
             category: a.category,
+            quarterAssigned: a.quarterAssigned,
           })),
           review.realignment_decision || undefined
         );
-        setPlanSyncFailed(false);
+        // syncAll REPORTS its failures, it does not throw them: every
+        // sub-writer catches its own error into { success: false, error } and
+        // syncAll collects them. Awaiting it and trusting the absence of a
+        // throw is how a failed push of the targets still rendered
+        // "Review Complete!" — the very false green the catch below guards
+        // against. The annual branch already reads its result; so does this.
+        if (!syncResult.success) {
+          captureReviewWriteFailure(
+            new Error(`Strategic sync reported errors: ${JSON.stringify(syncResult.errors)}`),
+            'final-strategic-sync-partial',
+            {
+              reviewId: review.id,
+              businessId: syncBusinessId,
+              quarterKey: syncQuarterKey,
+            }
+          );
+          setPlanSyncFailed(true);
+        } else {
+          setPlanSyncFailed(false);
+        }
       } catch (err) {
         // The sync is the whole point of finishing: it is what pushes the targets,
         // initiatives and rocks into the live strategic tables. Swallowing it and

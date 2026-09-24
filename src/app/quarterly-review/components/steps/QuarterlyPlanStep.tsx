@@ -773,7 +773,10 @@ export function QuarterlyPlanStep({
     onUpdateInitiativeDecisions([...decisions, newDecision]);
     onUpdateInitiativesChanges({
       ...changes,
-      added: [...changes.added, { title: newInitTitle.trim(), category: newInitCategory }],
+      added: [
+        ...changes.added,
+        { title: newInitTitle.trim(), category: newInitCategory, quarterAssigned: quarterId },
+      ],
     });
     setNewInitTitle('');
     setNewInitCategory('marketing');

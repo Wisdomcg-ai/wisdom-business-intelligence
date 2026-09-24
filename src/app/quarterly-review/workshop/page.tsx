@@ -34,6 +34,7 @@ import { WorkshopCompleteStep } from '../components/steps/WorkshopCompleteStep';
 import { RetroStep } from '../components/steps/RetroStep';
 import { OpenItemsStep } from '../components/steps/OpenItemsStep';
 import { StrategicCheckStep } from '../components/steps/StrategicCheckStep';
+import { rocksFromDecisions } from '../utils/rocks-from-decisions';
 
 // Phase 73: the annual-only step components (YearInReviewStep, VisionStrategyStep,
 // NextYearTargetsStep, AnnualInitiativePlanStep) are no longer routed into — the
@@ -388,7 +389,17 @@ function ReviewContent() {
         return (
           <QuarterlyRocksStep
             review={review}
-            onUpdateInitiativeDecisions={updateInitiativeDecisions}
+            onUpdateInitiativeDecisions={(decisions) => {
+              updateInitiativeDecisions(decisions);
+              // The rocks ARE the kept decisions for the quarter being planned;
+              // this step has no separate rock editor. `updateQuarterlyRocks`
+              // was declared, destructured, and handed to no one, so the column
+              // every rock reader depends on — the complete screen, the summary,
+              // history, the client PDF, and syncRocks, which returns early on
+              // an empty list — stayed empty for every review ever completed.
+              // Both updaters write through the same debounced save.
+              updateQuarterlyRocks(rocksFromDecisions(decisions, review.quarter));
+            }}
           />
         );
       case 'complete':
