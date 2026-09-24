@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import * as Sentry from '@sentry/nextjs'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
 import { activeKpis, kpisForPlan } from './kpi-rows'
+import { resolveKpiTarget, type StoredTarget } from '@/lib/kpi/target-source'
 import type { OnePagePlanData } from '../types'
 import type { YearType } from '@/app/goals/types'
 import { calculateQuarters, determinePlanYear } from '@/app/goals/utils/quarters'
@@ -480,6 +481,35 @@ export async function assemblePlanData(params: AssemblePlanDataParams): Promise<
     devLog('[PlanAssembler] KPIs loaded with businessId fallback:', businessId, kpisData.length)
   }
 
+  /**
+   * The review's per-KPI quarter targets: `quarterly_targets.kpis`, shaped
+   * `{ id, name, unit, target }`. This is the ONLY place a KPI's quarter
+   * figure is stored — business_kpis has no quarter_target column, which is
+   * why that column of the plan read 0 for every client of every business.
+   */
+  let reviewKpiTargets: Array<{ id?: string; name?: string; target?: unknown }> = []
+
+  /**
+   * This KPI's target for the quarter, from the review that set it.
+   *
+   * Matched on id first and then on name, because the review stores its own
+   * ids for KPIs the wizard created ('kpi-leads') alongside real
+   * business_kpis uuids, and a KPI renamed since the review would otherwise
+   * lose its figure.
+   */
+  const kpiQuarterTarget = (kpi: any): StoredTarget => {
+    if (reviewKpiTargets.length === 0) return null
+    const id = String(kpi?.kpi_id ?? kpi?.id ?? '').trim().toLowerCase()
+    const name = String(kpi?.kpi_name ?? kpi?.name ?? '').trim().toLowerCase()
+    const match = reviewKpiTargets.find(t => {
+      const tid = String(t?.id ?? '').trim().toLowerCase()
+      const tname = String(t?.name ?? '').trim().toLowerCase()
+      return (!!id && tid === id) || (!!name && tname === name)
+    })
+    const target = match?.target
+    return typeof target === 'number' || typeof target === 'string' ? target : null
+  }
+
   // Load Quarterly Targets — per-quarter from financial_goals, with review override for planning quarter
   const allQuarterlyTargets = financialGoals?.quarterly_targets || {}
   const qKey = currentQuarter.toLowerCase() as 'q1' | 'q2' | 'q3' | 'q4'
@@ -520,6 +550,7 @@ export async function assemblePlanData(params: AssemblePlanDataParams): Promise<
 
     if (latestReviewTargets?.quarterly_targets) {
       const rt = latestReviewTargets.quarterly_targets as any
+      if (Array.isArray(rt.kpis)) reviewKpiTargets = rt.kpis
       if ((rt.revenue || 0) > 0 || (rt.grossProfit || 0) > 0 || (rt.netProfit || 0) > 0) {
         currentQuarterTargets = {
           revenue: rt.revenue || 0,
@@ -686,12 +717,20 @@ export async function assemblePlanData(params: AssemblePlanDataParams): Promise<
       },
     },
 
+    // A target is a number or it is nothing. `year1_target` defaults to 0 and
+    // the real figure often sits in the free-text `target_value` instead
+    // (Precision's nine KPIs, all of them), so `year1_target || 0` printed
+    // "Target 0" across the demo account's page. `quarter_target` is not a
+    // column on business_kpis at all — the quarter's figure comes from the
+    // review, and where there is none the page says so rather than showing a 0
+    // the coach never set.
     kpis: (kpisData || []).slice(0, 5).map((kpi: any) => ({
       name: kpi.kpi_name || kpi.name,
       category: kpi.category || '',
-      year3Target: kpi.year3_target || 0,
-      year1Target: kpi.year1_target || 0,
-      quarterTarget: kpi.quarter_target || 0,
+      unit: kpi.unit || null,
+      year3Target: resolveKpiTarget(kpi.year3_target),
+      year1Target: resolveKpiTarget(kpi.year1_target, kpi.target_value),
+      quarterTarget: resolveKpiTarget(kpiQuarterTarget(kpi)),
     })),
 
     strategicInitiatives: (initiatives || []).map((init: any) => ({

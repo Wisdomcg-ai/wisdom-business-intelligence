@@ -16,6 +16,20 @@ import PageHeader from '@/components/ui/PageHeader'
 import type { OnePagePlanData, PlanSnapshot } from './types'
 import { assemblePlanData } from './services/plan-data-assembler'
 import { planSnapshotService } from './services/plan-snapshot-service'
+import { kpiTargetLabel } from '@/app/quarterly-review/utils/quarterly-plan-page'
+
+/**
+ * A KPI target as the client reads it — `$716,667`, `30%`, `45 days` — or an
+ * em dash where no target was set.
+ *
+ * The figure alone is ambiguous (30 could be 30% or 30 jobs) and a 0 is worse:
+ * it reads as a target of nothing rather than as a target nobody set. The
+ * formatting rule is the one the client's PDF uses, imported rather than
+ * copied, so this page and the plan they take away cannot disagree.
+ */
+function kpiTarget(target: number | null, unit: string | null): string {
+  return kpiTargetLabel({ name: '', target, unit }) ?? '\u2014'
+}
 
 export default function OnePagePlan() {
   const router = useRouter()
@@ -899,9 +913,9 @@ export default function OnePagePlan() {
                 {data.kpis.slice(0, 5).map((kpi, idx) => (
                   <tr key={idx} className="border-b border-gray-200">
                     <td className="p-2 font-semibold pl-4">{kpi.name}</td>
-                    <td className="p-2 text-center">{kpi.year3Target}</td>
-                    <td className="p-2 text-center font-semibold text-brand-navy">{kpi.year1Target}</td>
-                    <td className="p-2 text-center font-semibold text-green-700">{kpi.quarterTarget}</td>
+                    <td className="p-2 text-center">{kpiTarget(kpi.year3Target, kpi.unit)}</td>
+                    <td className="p-2 text-center font-semibold text-brand-navy">{kpiTarget(kpi.year1Target, kpi.unit)}</td>
+                    <td className="p-2 text-center font-semibold text-green-700">{kpiTarget(kpi.quarterTarget, kpi.unit)}</td>
                   </tr>
                 ))}
               </tbody>
