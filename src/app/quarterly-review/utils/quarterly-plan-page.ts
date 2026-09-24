@@ -178,27 +178,46 @@ const moneyItems = (m: PlanMoneyLines) => [
 ];
 
 /**
- * The same unit, spelled three ways. Production KPIs record money as "$",
- * "currency" or "dollar", a percentage as "%", "percentage" or "percent", and a
- * plain count as "number" — so Digital Bond's page printed "Target 300,000
+ * The same unit, spelled several ways. Production KPIs record money as "$",
+ * "currency", "dollar" or "AUD", a percentage as "%", "percentage" or "percent",
+ * and a plain count as "number" — so Digital Bond's page printed "Target 300,000
  * currency" and "Target 30 percentage" (found 24 Sep 2026, exporting it live).
- * Anything else is a real unit ("leads", "hours per quarter") and stays a word.
+ *
+ * Some units are a family word followed by a qualifier a coach typed: "AUD per
+ * clinician", "percent of allocated budget used". The qualifier is kept —
+ * "$250,000 per clinician" is a different target from "$250,000", and a page
+ * that drops "per clinician" states a caseload value as a firm-wide one.
+ * Anything else is a real unit and stays a word ("25 hours per quarter").
  * Every percentage target in production is a whole number (12 to 95), so 30
  * means 30%, never 0.3.
  */
-const MONEY_UNITS = new Set(['$', 'currency', 'dollar', 'dollars', 'aud']);
-const PERCENT_UNITS = new Set(['%', 'percentage', 'percent']);
-const COUNT_UNITS = new Set(['', 'number', 'count', '#']);
+const MONEY_UNITS = ['currency', 'dollars', 'dollar', 'aud', '$'];
+const PERCENT_UNITS = ['percentage', 'percent', '%'];
+const COUNT_UNITS = ['number', 'count', '#'];
 
-/** A KPI's target, in its own units — `$40,000`, `35%`, `120`, `140 leads`. */
+/** The unit's family word, and whatever the coach wrote after it. */
+function splitUnit(unit: string, family: string[]): string | null {
+  const lower = unit.toLowerCase();
+  for (const word of family) {
+    if (lower === word) return '';
+    if (lower.startsWith(`${word} `)) return unit.slice(word.length).trim();
+  }
+  return null;
+}
+
+/** A KPI's target, in its own units — `$40,000`, `35%`, `120`, `25 hours per quarter`. */
 export function kpiTargetLabel(kpi: PlanKpi): string | null {
   const t = kpi.target;
   if (t === null || t === undefined || !Number.isFinite(t) || t === 0) return null;
   const unit = (kpi.unit ?? '').trim();
-  const key = unit.toLowerCase();
-  if (MONEY_UNITS.has(key)) return planMoney(t);
-  if (PERCENT_UNITS.has(key)) return `${t}%`;
-  if (COUNT_UNITS.has(key)) return t.toLocaleString('en-AU');
+  const withRest = (value: string, rest: string) => (rest ? `${value} ${rest}` : value);
+
+  const money = splitUnit(unit, MONEY_UNITS);
+  if (money !== null) return withRest(planMoney(t), money);
+  const percent = splitUnit(unit, PERCENT_UNITS);
+  if (percent !== null) return withRest(`${t}%`, percent);
+  const count = unit === '' ? '' : splitUnit(unit, COUNT_UNITS);
+  if (count !== null) return withRest(t.toLocaleString('en-AU'), count);
   return `${t.toLocaleString('en-AU')} ${unit}`;
 }
 

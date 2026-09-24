@@ -35,6 +35,9 @@ const num = (v: unknown): number | null => {
 };
 
 /** The plan's figures for one quarter, out of the stored `{revenue:{q1..q4}}` shape. */
+/** A target of 0 is "no target set" everywhere the plan prints one. */
+const nonZero = (n: number | null): number | null => (n === null || n === 0 ? null : n);
+
 function quarterSlice(stored: unknown, quarter: number): PlanMoneyLines | null {
   if (!stored) return null;
   const q = typeof stored === 'string' ? safeParse(stored) : (stored as Record<string, any>);
@@ -129,7 +132,10 @@ export async function loadPlanPdfData(
     out.kpis = ((kpis.value?.data as any[]) ?? []).map(k => ({
       // The plain-English name is the one the client chose to see.
       name: k.friendly_name || k.name,
-      target: num(k.year1_target) ?? num(k.target_value),
+      // A KPI can hold its target in either column. year1_target defaults to 0,
+      // so `??` stopped at the 0 and dropped a real target sitting in
+      // target_value — Precision's Debtor Days holds 0 and 45 (found 24 Sep 2026).
+      target: nonZero(num(k.year1_target)) ?? nonZero(num(k.target_value)),
       unit: k.unit ?? null,
     }));
   } else {

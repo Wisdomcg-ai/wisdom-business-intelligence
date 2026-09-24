@@ -338,6 +338,22 @@ describe('the plan is read through the business, not through whoever is logged i
     expect(data.missing).toEqual([]);
   });
 
+  it('finds a KPI target in whichever column holds it', async () => {
+    // Precision's Debtor Days: year1_target 0 (the default), target_value 45.
+    // `??` stopped at the 0 and the page lost a real target.
+    const { client } = fakeDb({
+      name: { name: 'Precision Electrical Group' },
+      goals: null,
+      kpis: [
+        { name: 'Debtor Days (DSO)', friendly_name: 'Debtor Days (DSO)', unit: 'days', year1_target: '0', target_value: '45' },
+        { name: 'Revenue', friendly_name: null, unit: '$', year1_target: '120000', target_value: '90000' },
+        { name: 'Unset', friendly_name: null, unit: 'number', year1_target: '0', target_value: null },
+      ],
+    });
+    const data = await loadPlanPdfData(client as never, { business_id: 'biz-1', quarter: 2 } as never);
+    expect(data.kpis.map(k => k.target)).toEqual([45, 120000, null]);
+  });
+
   it('names what it could not read instead of printing a plan that looks empty', async () => {
     const { client } = fakeDb({ name: { name: 'Test ABC' }, goalsError: { message: 'boom' }, kpisError: { message: 'boom' } });
     const data = await loadPlanPdfData(client as never, { business_id: 'biz-1', quarter: 2 } as never);
@@ -696,13 +712,47 @@ describe('a KPI target reads in its own units, however the unit was spelled', ()
     expect(kpiTargetLabel({ name: 'Hours', target: 1200, unit: null })).toBe('1,200');
   });
 
-  it('keeps a real unit as a word, including ones that merely START with a unit word', () => {
+  it('keeps a real unit as a word', () => {
     expect(kpiTargetLabel({ name: 'Leads', target: 140, unit: 'leads' })).toBe('140 leads');
     expect(kpiTargetLabel({ name: 'Time', target: 40, unit: 'hours per quarter' })).toBe('40 hours per quarter');
-    expect(kpiTargetLabel({ name: 'Budget', target: 80, unit: 'percent of allocated budget used' })).toBe(
-      '80 percent of allocated budget used'
+    expect(kpiTargetLabel({ name: 'Authority', target: 80, unit: 'score' })).toBe('80 score');
+  });
+
+  it('formats a family word and KEEPS what the coach wrote after it', () => {
+    // "$250,000" alone would state a per-clinician caseload as a firm-wide figure.
+    expect(kpiTargetLabel({ name: 'Caseload Value', target: 250000, unit: 'AUD per clinician' })).toBe(
+      '$250,000 per clinician'
     );
-    expect(kpiTargetLabel({ name: 'Fees', target: 5000, unit: 'AUD per clinician' })).toBe('5,000 AUD per clinician');
+    expect(kpiTargetLabel({ name: 'Plan Utilisation', target: 80, unit: 'percent of allocated budget used' })).toBe(
+      '80% of allocated budget used'
+    );
+  });
+
+  it('matches a family word only as a whole word', () => {
+    // "numbers" is not "number", and "percentages" is not a qualifier on "percent".
+    expect(kpiTargetLabel({ name: 'X', target: 12, unit: 'numbers' })).toBe('12 numbers');
+    expect(kpiTargetLabel({ name: 'X', target: 12, unit: 'audits' })).toBe('12 audits');
+  });
+
+  it('prints Distinct Directions’ own KPIs as their coach meant them', () => {
+    const page = buildPlanPage(
+      input({
+        kpis: [
+          { name: 'Clinician Billables', target: 25, unit: 'hours per quarter' },
+          { name: 'Plan Utilisation', target: 80, unit: 'percent of allocated budget used' },
+          { name: 'Caseload Value', target: 250000, unit: 'AUD per clinician' },
+          { name: 'Billables RAG', target: 0, unit: 'RAG status per clinician' },
+        ],
+      })
+    );
+    const watching = page.blocks.find(b => b.title === 'Numbers I’m watching') as any;
+    expect(watching.items.map((i: any) => [i.text, i.detail])).toEqual([
+      ['Clinician Billables', 'Target 25 hours per quarter'],
+      ['Plan Utilisation', 'Target 80% of allocated budget used'],
+      ['Caseload Value', 'Target $250,000 per clinician'],
+      // Target 0 is "none set" — the sentence-shaped unit never reaches the page.
+      ['Billables RAG', undefined],
+    ]);
   });
 
   it('prints Digital Bond’s four KPIs the way a client reads them', () => {
