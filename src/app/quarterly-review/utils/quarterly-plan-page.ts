@@ -225,20 +225,26 @@ function rockDetail(rock: Rock): string | undefined {
  * printed a plan with no rocks on it — found 24 Sep 2026 by walking a whole
  * session and exporting the PDF at the end. Every review since early 2026 has
  * the same shape; only the old seeded ones carry `quarterly_rocks`, so that
- * stays as the first source and this is the fallback.
+ * stays the first source and this is the fallback.
  *
- * `defer` and `kill` are decisions NOT to do it this quarter, so they are left
- * off. A decision carrying another quarter's tag belongs to that quarter.
- *
+ * This is the SAME derivation as the rocks writer in #594
+ * (utils/rocks-from-decisions.ts) — same predicate, same one-rock-per-title
+ * merge, same Rock shape — so a review prints the same rocks, with the same
+ * owner and date line, whether they were stored or derived. Once #594 lands,
+ * delete titleKey, isForPlannedQuarter and rocksFromDecisions here and import
+ * them from there.
+ */
+
+/** A title as a person means it: case, surrounding and internal spacing ignored. */
+export function titleKey(title: string | null | undefined): string {
+  return String(title ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/**
  * "unassigned" is a value, not an absence. Step 4.3 writes the literal string
- * `"unassigned"` for work kept without a quarter slot — 81 of the 150 decisions
- * in production on 24 Sep 2026, the single most common value. The first version
- * of this treated only a MISSING tag as "this quarter", so for most reviews it
- * printed no rocks at all. It is about the quarter the session is planning.
- *
- * This is the same rule as `isForPlannedQuarter` in the rocks writer
- * (utils/rocks-from-decisions.ts, PR #594), so a review shows the same rocks
- * whether they were stored or derived. When that lands, import it from there.
+ * for work kept without a quarter slot — 81 of the 150 decisions in production
+ * on 24 Sep 2026, the most common value. It is about the quarter the session is
+ * planning, exactly like a missing tag.
  */
 export function isForPlannedQuarter(
   decision: Pick<InitiativeDecision, 'quarterAssigned'>,
@@ -249,45 +255,80 @@ export function isForPlannedQuarter(
   return assigned === `q${plannedQuarter}`;
 }
 
+/** Decisions that put an initiative on the plate for the coming quarter. */
 const ACTIVE_DECISIONS = new Set(['keep', 'accelerate']);
 
+/**
+ * The quarter's rocks from its decisions, one per title.
+ *
+ * Titles repeat in production — Digital Bond's Q1 FY2027 review holds three
+ * twice over, Efficient Living's Q3 holds five four times — and the copies do
+ * not carry the same fields: of Efficient Living's four "Due Date Focus", one
+ * has the owner. So the first copy is the rock and later copies only fill what
+ * it lacks, never overwrite. Filtered by quarter FIRST, so a copy tagged for
+ * another quarter never lends this one its fields.
+ */
 export function rocksFromDecisions(
   decisions: InitiativeDecision[] | null | undefined,
-  quarter: number
-): { text: string; detail?: string }[] {
-  const planned = Math.min(Math.max(quarter, 1), 4);
-  return (decisions ?? [])
-    .filter(d => d?.title?.trim())
-    .filter(d => ACTIVE_DECISIONS.has(String(d.decision ?? '').toLowerCase()))
-    .filter(d => isForPlannedQuarter(d, planned))
-    .map(d => {
-      const parts: string[] = [];
-      if (d.assignedTo?.trim()) parts.push(d.assignedTo.trim());
-      const due = formatPlainDate(d.endDate);
-      if (due) parts.push(`by ${due}`);
-      const who = parts.join(' · ');
-      const outcome = (d.outcome || d.why || '').trim();
-      const detail = who && outcome ? `${who} — ${outcome}` : who || outcome;
-      return { text: d.title.trim(), detail: detail || undefined };
-    });
+  plannedQuarter: number
+): Rock[] {
+  const planned = Math.min(Math.max(plannedQuarter, 1), 4);
+  const byTitle = new Map<string, Rock>();
+  for (const d of decisions ?? []) {
+    if (!ACTIVE_DECISIONS.has(String(d?.decision ?? '').toLowerCase())) continue;
+    if (!isForPlannedQuarter(d, planned)) continue;
+    const key = titleKey(d.title);
+    if (!key) continue;
+    const existing = byTitle.get(key);
+    if (!existing) {
+      byTitle.set(key, {
+        id: d.initiativeId,
+        title: d.title.trim(),
+        description: d.why || d.notes || undefined,
+        owner: d.assignedTo || '',
+        status: 'not_started',
+        progressPercentage: 0,
+        linkedInitiatives: [d.initiativeId],
+        successCriteria: d.outcome || '',
+        startDate: d.startDate,
+        targetDate: d.endDate,
+        notes: d.notes || undefined,
+      });
+      continue;
+    }
+    if (!existing.owner && d.assignedTo) existing.owner = d.assignedTo;
+    if (!existing.successCriteria && d.outcome) existing.successCriteria = d.outcome;
+    if (!existing.description && (d.why || d.notes)) existing.description = d.why || d.notes;
+    if (!existing.startDate && d.startDate) existing.startDate = d.startDate;
+    if (!existing.targetDate && d.endDate) existing.targetDate = d.endDate;
+    if (!existing.notes && d.notes) existing.notes = d.notes;
+    if (!existing.linkedInitiatives?.includes(d.initiativeId)) {
+      existing.linkedInitiatives = [...(existing.linkedInitiatives ?? []), d.initiativeId];
+    }
+  }
+  return [...byTitle.values()];
 }
 
 /**
- * The same rock once. Step 4.3 can list an initiative twice — Digital Bond's
- * Q1 FY2027 review holds three titles recorded twice each, with identical
- * decisions — and a page that says "Delegate Sales Calls" twice reads as two
- * pieces of work. The first occurrence wins, so an entry with an owner and date
- * is not replaced by a bare repeat of the same title. Applied to both sources.
+ * Stored rocks, one per title, by the same rule — so a review whose rocks were
+ * saved with a repeat prints the same page as one whose rocks were derived.
  */
-function onePerTitle<T extends { text: string; detail?: string }>(items: T[]): T[] {
-  const seen = new Map<string, T>();
-  for (const item of items) {
-    const key = item.text.trim().replace(/\s+/g, ' ').toLowerCase();
-    const kept = seen.get(key);
-    if (!kept) seen.set(key, item);
-    else if (!kept.detail && item.detail) seen.set(key, { ...kept, detail: item.detail });
+function onePerRock(rocks: Rock[]): Rock[] {
+  const byTitle = new Map<string, Rock>();
+  for (const r of rocks) {
+    const key = titleKey(r.title);
+    if (!key) continue;
+    const existing = byTitle.get(key);
+    if (!existing) {
+      byTitle.set(key, { ...r, title: r.title.trim() });
+      continue;
+    }
+    if (!existing.owner && r.owner) existing.owner = r.owner;
+    if (!existing.successCriteria && r.successCriteria) existing.successCriteria = r.successCriteria;
+    if (!existing.doneDefinition && r.doneDefinition) existing.doneDefinition = r.doneDefinition;
+    if (!existing.targetDate && r.targetDate) existing.targetDate = r.targetDate;
   }
-  return [...seen.values()];
+  return [...byTitle.values()];
 }
 
 function commitmentBlocks(c: PersonalCommitments | null | undefined): PlanBlock[] {
@@ -361,13 +402,13 @@ export function buildPlanPage(input: PlanPageInput): PlanPage {
     blocks.push({ kind: 'bullets', title: 'Numbers I’m watching', items });
   }
 
-  const rocks = (review.quarterly_rocks as Rock[] | null) ?? [];
-  const namedRocks = rocks.filter(r => r?.title?.trim());
-  const rockItems = onePerTitle(
-    namedRocks.length > 0
-      ? namedRocks.map(r => ({ text: r.title.trim(), detail: rockDetail(r) }))
+  const stored = ((review.quarterly_rocks as Rock[] | null) ?? []).filter(r => r?.title?.trim());
+  // One renderer for both sources, so stored and derived print the same line.
+  const rockItems = (
+    stored.length > 0
+      ? onePerRock(stored)
       : rocksFromDecisions(review.initiative_decisions as InitiativeDecision[] | null, review.quarter)
-  );
+  ).map(r => ({ text: r.title, detail: rockDetail(r) }));
   if (rockItems.length > 0) {
     blocks.push({ kind: 'numbered', title: 'My rocks this quarter', items: rockItems });
   }

@@ -470,7 +470,7 @@ describe('the rocks the session actually set reach the page', () => {
           sprintDecision({ title: 'Killed', decision: 'kill' }),
         ] as never,
         2
-      ).map(r => r.text)
+      ).map(r => r.title)
     ).toEqual(['Doing it', 'Pushing harder']);
   });
 
@@ -483,16 +483,23 @@ describe('the rocks the session actually set reach the page', () => {
           sprintDecision({ title: 'Untagged', quarterAssigned: undefined }),
         ] as never,
         2
-      ).map(r => r.text)
+      ).map(r => r.title)
     ).toEqual(['This quarter', 'Untagged']);
   });
 
   it('names who owns it and when it is due, when the session said so', () => {
-    const [rock] = rocksFromDecisions(
-      [sprintDecision({ assignedTo: 'Sam', endDate: '2026-11-30', outcome: 'Every quote on the new template' })] as never,
-      2
+    const page = buildPlanPage(
+      input({
+        review: review({
+          quarterly_rocks: [],
+          initiative_decisions: [
+            sprintDecision({ assignedTo: 'Sam', endDate: '2026-11-30', outcome: 'Every quote on the new template' }),
+          ],
+        }),
+      })
     );
-    expect(rock.detail).toBe('Sam · by 30 November 2026 — Every quote on the new template');
+    const rocks = page.blocks.find(b => b.title === 'My rocks this quarter') as any;
+    expect(rocks.items[0].detail).toBe('Sam · by 30 November 2026 — Every quote on the new template');
   });
 
   it('still prefers real rocks when a review has them', () => {
@@ -609,5 +616,58 @@ describe('the same rock is listed once', () => {
     );
     const rocks = page.blocks.find(b => b.title === 'My rocks this quarter') as any;
     expect(rocks.items).toHaveLength(1);
+  });
+});
+
+describe('repeated copies fill each other in, field by field', () => {
+  it('takes the owner from one copy and the date from another — Efficient Living’s shape', () => {
+    // Four copies of "Due Date Focus"; exactly one carries the owner.
+    const page = buildPlanPage(
+      input({
+        review: review({
+          quarterly_rocks: [],
+          initiative_decisions: [
+            sprintDecision({ title: 'Due Date Focus', initiativeId: 'a' }),
+            sprintDecision({ title: 'Due Date Focus', initiativeId: 'b', assignedTo: 'Priya' }),
+            sprintDecision({ title: 'due date focus', initiativeId: 'c', endDate: '2026-12-15' }),
+            sprintDecision({ title: 'Due Date Focus', initiativeId: 'd', outcome: 'Every job invoiced on time' }),
+          ],
+        }),
+      })
+    );
+    const rocks = page.blocks.find(b => b.title === 'My rocks this quarter') as any;
+    expect(rocks.items).toEqual([
+      { text: 'Due Date Focus', detail: 'Priya · by 15 December 2026 — Every job invoiced on time' },
+    ]);
+  });
+
+  it('never lets a copy tagged for another quarter lend this one its owner', () => {
+    const [rock] = rocksFromDecisions(
+      [
+        sprintDecision({ title: 'Hire', quarterAssigned: 'unassigned' }),
+        sprintDecision({ title: 'Hire', quarterAssigned: 'q3', assignedTo: 'Someone else' }),
+      ] as never,
+      2
+    );
+    expect(rock.owner).toBe('');
+  });
+
+  it('never overwrites what the first copy already said', () => {
+    const [rock] = rocksFromDecisions(
+      [
+        sprintDecision({ title: 'Hire', assignedTo: 'Sam' }),
+        sprintDecision({ title: 'Hire', assignedTo: 'Priya' }),
+      ] as never,
+      2
+    );
+    expect(rock.owner).toBe('Sam');
+  });
+
+  it('keeps every decision behind a rock, so it can be traced back', () => {
+    const [rock] = rocksFromDecisions(
+      [sprintDecision({ title: 'Hire', initiativeId: 'x' }), sprintDecision({ title: 'Hire', initiativeId: 'y' })] as never,
+      2
+    );
+    expect(rock.linkedInitiatives).toEqual(['x', 'y']);
   });
 });
