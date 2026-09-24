@@ -22,6 +22,7 @@ import {
   kpiTargetLabel,
   planYearCoversQuarter,
   rocksFromDecisions,
+  isForPlannedQuarter,
   MAX_KPIS_ON_PAGE,
   type PlanPageInput,
 } from '@/app/quarterly-review/utils/quarterly-plan-page';
@@ -511,5 +512,102 @@ describe('the rocks the session actually set reach the page', () => {
   it('shows no rocks block when the session set none', () => {
     const page = buildPlanPage(input({ review: review({ quarterly_rocks: [], initiative_decisions: [] }) }));
     expect(page.blocks.map(b => b.title)).not.toContain('My rocks this quarter');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Found the same morning, checking #593 against a real completed review before
+// declaring it done: "unassigned" is a literal value, and the most common one.
+// ---------------------------------------------------------------------------
+
+/** Digital Bond's completed Q1 FY2027 review, decisions exactly as stored. */
+const digitalBondDecisions = [
+  ['Niche & Offer', 'q3'],
+  ['Hire someone to help with Ad campaigns', 'q3'],
+  ['Messaging on Digital Bond Website - Update', 'unassigned'],
+  ['Process for delivering a scalable solution', 'unassigned'],
+  ['Messaging on Digital Bond Website - Update', 'unassigned'],
+  ['Process for delivering a scalable solution', 'unassigned'],
+  ['Determine how to get money off the table and invest', 'unassigned'],
+  ['Determine how to get money off the table and invest', 'unassigned'],
+  ['Develop a leveraged sales process', 'unassigned'],
+  ['Delegate Sales Calls', 'unassigned'],
+].map(([title, q], i) => sprintDecision({ title, quarterAssigned: q, initiativeId: `db-${i}` }));
+
+describe('"unassigned" work is the quarter being planned', () => {
+  it('treats the literal "unassigned" the same as no tag at all', () => {
+    // 81 of 150 decisions in production carry it — the most common value.
+    expect(isForPlannedQuarter({ quarterAssigned: 'unassigned' }, 1)).toBe(true);
+    expect(isForPlannedQuarter({ quarterAssigned: undefined }, 1)).toBe(true);
+    expect(isForPlannedQuarter({ quarterAssigned: '' }, 1)).toBe(true);
+  });
+
+  it('reads the tag regardless of case or stray spaces', () => {
+    expect(isForPlannedQuarter({ quarterAssigned: 'Unassigned' }, 1)).toBe(true);
+    expect(isForPlannedQuarter({ quarterAssigned: ' Q1 ' }, 1)).toBe(true);
+    expect(isForPlannedQuarter({ quarterAssigned: 'q3' }, 1)).toBe(false);
+  });
+
+  it('prints Digital Bond’s five rocks — not zero, and not eight', () => {
+    const page = buildPlanPage(
+      input({ review: review({ quarter: 1, quarterly_rocks: [], initiative_decisions: digitalBondDecisions }) })
+    );
+    const rocks = page.blocks.find(b => b.title === 'My rocks this quarter') as any;
+    expect(rocks.items.map((i: any) => i.text)).toEqual([
+      'Messaging on Digital Bond Website - Update',
+      'Process for delivering a scalable solution',
+      'Determine how to get money off the table and invest',
+      'Develop a leveraged sales process',
+      'Delegate Sales Calls',
+    ]);
+  });
+});
+
+describe('the same rock is listed once', () => {
+  it('drops a repeated title, however it is spaced or capitalised', () => {
+    const page = buildPlanPage(
+      input({
+        review: review({
+          quarterly_rocks: [],
+          initiative_decisions: [
+            sprintDecision({ title: 'Delegate Sales Calls' }),
+            sprintDecision({ title: '  delegate   sales calls ' }),
+          ],
+        }),
+      })
+    );
+    const rocks = page.blocks.find(b => b.title === 'My rocks this quarter') as any;
+    expect(rocks.items).toHaveLength(1);
+  });
+
+  it('keeps the owner and date when only one copy carried them', () => {
+    const page = buildPlanPage(
+      input({
+        review: review({
+          quarterly_rocks: [],
+          initiative_decisions: [
+            sprintDecision({ title: 'Hire', assignedTo: '' }),
+            sprintDecision({ title: 'Hire', assignedTo: 'Sam', endDate: '2026-11-30' }),
+          ],
+        }),
+      })
+    );
+    const rocks = page.blocks.find(b => b.title === 'My rocks this quarter') as any;
+    expect(rocks.items).toEqual([{ text: 'Hire', detail: 'Sam · by 30 November 2026' }]);
+  });
+
+  it('applies to stored rocks as well, so both sources print the same page', () => {
+    const page = buildPlanPage(
+      input({
+        review: review({
+          quarterly_rocks: [
+            { id: '1', title: 'Hire', owner: 'Sam', successCriteria: '' },
+            { id: '2', title: 'Hire', owner: 'Sam', successCriteria: '' },
+          ],
+        }),
+      })
+    );
+    const rocks = page.blocks.find(b => b.title === 'My rocks this quarter') as any;
+    expect(rocks.items).toHaveLength(1);
   });
 });

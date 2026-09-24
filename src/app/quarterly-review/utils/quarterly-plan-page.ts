@@ -229,16 +229,37 @@ function rockDetail(rock: Rock): string | undefined {
  *
  * `defer` and `kill` are decisions NOT to do it this quarter, so they are left
  * off. A decision carrying another quarter's tag belongs to that quarter.
+ *
+ * "unassigned" is a value, not an absence. Step 4.3 writes the literal string
+ * `"unassigned"` for work kept without a quarter slot — 81 of the 150 decisions
+ * in production on 24 Sep 2026, the single most common value. The first version
+ * of this treated only a MISSING tag as "this quarter", so for most reviews it
+ * printed no rocks at all. It is about the quarter the session is planning.
+ *
+ * This is the same rule as `isForPlannedQuarter` in the rocks writer
+ * (utils/rocks-from-decisions.ts, PR #594), so a review shows the same rocks
+ * whether they were stored or derived. When that lands, import it from there.
  */
+export function isForPlannedQuarter(
+  decision: Pick<InitiativeDecision, 'quarterAssigned'>,
+  plannedQuarter: number
+): boolean {
+  const assigned = (decision.quarterAssigned ?? '').trim().toLowerCase();
+  if (!assigned || assigned === 'unassigned') return true;
+  return assigned === `q${plannedQuarter}`;
+}
+
+const ACTIVE_DECISIONS = new Set(['keep', 'accelerate']);
+
 export function rocksFromDecisions(
   decisions: InitiativeDecision[] | null | undefined,
   quarter: number
 ): { text: string; detail?: string }[] {
-  const thisQuarter = `q${Math.min(Math.max(quarter, 1), 4)}`;
+  const planned = Math.min(Math.max(quarter, 1), 4);
   return (decisions ?? [])
     .filter(d => d?.title?.trim())
-    .filter(d => d.decision === 'keep' || d.decision === 'accelerate')
-    .filter(d => !d.quarterAssigned || d.quarterAssigned === thisQuarter)
+    .filter(d => ACTIVE_DECISIONS.has(String(d.decision ?? '').toLowerCase()))
+    .filter(d => isForPlannedQuarter(d, planned))
     .map(d => {
       const parts: string[] = [];
       if (d.assignedTo?.trim()) parts.push(d.assignedTo.trim());
@@ -249,6 +270,24 @@ export function rocksFromDecisions(
       const detail = who && outcome ? `${who} — ${outcome}` : who || outcome;
       return { text: d.title.trim(), detail: detail || undefined };
     });
+}
+
+/**
+ * The same rock once. Step 4.3 can list an initiative twice — Digital Bond's
+ * Q1 FY2027 review holds three titles recorded twice each, with identical
+ * decisions — and a page that says "Delegate Sales Calls" twice reads as two
+ * pieces of work. The first occurrence wins, so an entry with an owner and date
+ * is not replaced by a bare repeat of the same title. Applied to both sources.
+ */
+function onePerTitle<T extends { text: string; detail?: string }>(items: T[]): T[] {
+  const seen = new Map<string, T>();
+  for (const item of items) {
+    const key = item.text.trim().replace(/\s+/g, ' ').toLowerCase();
+    const kept = seen.get(key);
+    if (!kept) seen.set(key, item);
+    else if (!kept.detail && item.detail) seen.set(key, { ...kept, detail: item.detail });
+  }
+  return [...seen.values()];
 }
 
 function commitmentBlocks(c: PersonalCommitments | null | undefined): PlanBlock[] {
@@ -324,10 +363,11 @@ export function buildPlanPage(input: PlanPageInput): PlanPage {
 
   const rocks = (review.quarterly_rocks as Rock[] | null) ?? [];
   const namedRocks = rocks.filter(r => r?.title?.trim());
-  const rockItems =
+  const rockItems = onePerTitle(
     namedRocks.length > 0
       ? namedRocks.map(r => ({ text: r.title.trim(), detail: rockDetail(r) }))
-      : rocksFromDecisions(review.initiative_decisions as InitiativeDecision[] | null, review.quarter);
+      : rocksFromDecisions(review.initiative_decisions as InitiativeDecision[] | null, review.quarter)
+  );
   if (rockItems.length > 0) {
     blocks.push({ kind: 'numbered', title: 'My rocks this quarter', items: rockItems });
   }
