@@ -30,9 +30,12 @@ export interface OnePagePlanData {
   kpis: Array<{
     name: string
     category: string
-    year3Target: number
-    year1Target: number
-    quarterTarget: number
+    /** As the coach typed it: '$', '%', 'days', 'AUD per clinician'. */
+    unit: string | null
+    /** null means no target was set — never 0 standing in for unknown. */
+    year3Target: number | null
+    year1Target: number | null
+    quarterTarget: number | null
   }>
 
   // Strategic Initiatives (12-month plan)

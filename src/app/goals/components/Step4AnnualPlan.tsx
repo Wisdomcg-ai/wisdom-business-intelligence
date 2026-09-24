@@ -9,6 +9,7 @@ import { formatDollar, parseDollarInput } from '../utils/formatting'
 import { calculateQuarters, deriveCurrentRemainderColumn, determinePlanYear, QuarterInfo } from '../utils/quarters'
 import { TeamMember, getInitials, getColorForName } from '../utils/team'
 import type { OnePagePlanData } from '@/app/one-page-plan/types'
+import { resolveKpiTarget } from '@/lib/kpi/target-source'
 
 interface Step4Props {
   twelveMonthInitiatives: StrategicInitiative[]
@@ -896,12 +897,15 @@ export default function Step4AnnualPlan({
         year1:   cm ?? {},
         quarter: {},
       },
+      // Same contract as the saved plan: a target is a number or nothing, and
+      // the unit travels with it so '30' is not mistaken for '30%'.
       kpis: kpis.map(k => ({
         name: k.friendlyName || k.name,
         category: ((k as unknown as { category?: string }).category) || 'General',
-        year3Target: Number(k.year3Target) || 0,
-        year1Target: Number(k.year1Target) || 0,
-        quarterTarget: 0,
+        unit: k.unit || null,
+        year3Target: resolveKpiTarget(k.year3Target as never),
+        year1Target: resolveKpiTarget(k.year1Target as never),
+        quarterTarget: null,
       })),
       strategicInitiatives: twelveMonthInitiatives.map(i => {
         const inQuarters: string[] = []
