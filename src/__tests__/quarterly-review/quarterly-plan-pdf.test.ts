@@ -21,6 +21,7 @@ import {
   formatPlainDate,
   kpiTargetLabel,
   planYearCoversQuarter,
+  rocksFromDecisions,
   MAX_KPIS_ON_PAGE,
   type PlanPageInput,
 } from '@/app/quarterly-review/utils/quarterly-plan-page';
@@ -422,5 +423,93 @@ describe('the year printed is the quarter’s own year', () => {
       input({ review: review({ quarter: 2, year: 2026 }), annual: { revenue: 400000, grossProfit: 160000, netProfit: 40000, yearEnd: null } })
     );
     expect(page.blocks.map(b => b.title)).toContain('The year');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Found 24 Sep 2026 by walking a whole first session on production and
+// exporting the PDF at the end: the rock set in Sprint Planning was not on it.
+// ---------------------------------------------------------------------------
+
+/** The exact record step 4.3 wrote in that session. */
+const sprintDecision = (over: Record<string, unknown> = {}) => ({
+  why: '',
+  notes: '',
+  tasks: [],
+  title: 'Finish the quoting template rollout',
+  outcome: '',
+  category: 'other',
+  decision: 'keep',
+  milestones: [],
+  totalHours: 0,
+  initiativeId: 'sprint-new-1790198021629',
+  currentStatus: 'active',
+  quarterAssigned: 'q2',
+  progressPercentage: 0,
+  ...over,
+});
+
+describe('the rocks the session actually set reach the page', () => {
+  it('prints a rock that Sprint Planning recorded, even though quarterly_rocks is empty', () => {
+    // Step 4.3 writes initiative_decisions; nothing routed writes quarterly_rocks.
+    const page = buildPlanPage(
+      input({ review: review({ quarterly_rocks: [], initiative_decisions: [sprintDecision()] }) })
+    );
+    const rocks = page.blocks.find(b => b.title === 'My rocks this quarter') as any;
+    expect(rocks.items.map((i: any) => i.text)).toEqual(['Finish the quoting template rollout']);
+  });
+
+  it('leaves off what the session decided NOT to do this quarter', () => {
+    expect(
+      rocksFromDecisions(
+        [
+          sprintDecision({ title: 'Doing it', decision: 'keep' }),
+          sprintDecision({ title: 'Pushing harder', decision: 'accelerate' }),
+          sprintDecision({ title: 'Deferred', decision: 'defer' }),
+          sprintDecision({ title: 'Killed', decision: 'kill' }),
+        ] as never,
+        2
+      ).map(r => r.text)
+    ).toEqual(['Doing it', 'Pushing harder']);
+  });
+
+  it('leaves off a decision tagged for a different quarter, and keeps an untagged one', () => {
+    expect(
+      rocksFromDecisions(
+        [
+          sprintDecision({ title: 'Next quarter', quarterAssigned: 'q3' }),
+          sprintDecision({ title: 'This quarter', quarterAssigned: 'q2' }),
+          sprintDecision({ title: 'Untagged', quarterAssigned: undefined }),
+        ] as never,
+        2
+      ).map(r => r.text)
+    ).toEqual(['This quarter', 'Untagged']);
+  });
+
+  it('names who owns it and when it is due, when the session said so', () => {
+    const [rock] = rocksFromDecisions(
+      [sprintDecision({ assignedTo: 'Sam', endDate: '2026-11-30', outcome: 'Every quote on the new template' })] as never,
+      2
+    );
+    expect(rock.detail).toBe('Sam · by 30 November 2026 — Every quote on the new template');
+  });
+
+  it('still prefers real rocks when a review has them', () => {
+    // Older reviews (and the seeded ones) carry quarterly_rocks with owner and date.
+    const page = buildPlanPage(
+      input({
+        review: review({
+          quarterly_rocks: [{ id: '1', title: 'The real rock', owner: 'Sam', successCriteria: '' }],
+          initiative_decisions: [sprintDecision({ title: 'The decision' })],
+        }),
+      })
+    );
+    const rocks = page.blocks.find(b => b.title === 'My rocks this quarter') as any;
+    expect(rocks.items.map((i: any) => i.text)).toEqual(['The real rock']);
+  });
+
+  it('shows no rocks block when the session set none', () => {
+    const page = buildPlanPage(input({ review: review({ quarterly_rocks: [], initiative_decisions: [] }) }));
+    expect(page.blocks.map(b => b.title)).not.toContain('My rocks this quarter');
   });
 });
