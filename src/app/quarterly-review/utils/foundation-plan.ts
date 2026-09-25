@@ -5,8 +5,9 @@
  * Matt, 22 Sep 2026: a first session sets JUST this year's numbers — revenue,
  * gross profit and net profit, plus the year type. No vision, no 3-year plan.
  * The baseline captured on the Scorecard seeds the annual targets, those split
- * evenly across the four quarters (adjustable), and the client picks up to three
- * KPIs.
+ * evenly across the four quarters (adjustable), and the client picks their KPIs
+ * from the same library the Goals wizard offers (25 Sep 2026 — the old cap of
+ * three, added in one go, stranded a client who added one and wanted more).
  */
 import type { YearType } from '../types';
 
@@ -24,9 +25,6 @@ export interface FoundationSplit {
   grossProfit: QuarterSplit;
   netProfit: QuarterSplit;
 }
-
-/** A first session offers at most this many KPIs. */
-export const FOUNDATION_KPI_LIMIT = 3;
 
 /** Whole dollars. Money in a plan is never fractional-cent. */
 const dollars = (n: number): number => (Number.isFinite(n) ? Math.round(n) : 0);

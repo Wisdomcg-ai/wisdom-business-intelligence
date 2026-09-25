@@ -940,6 +940,30 @@ export const completedQuartersFor = (planningQuarter: number): number =>
 export const runRateForRemaining = (remainingGap: number, planningQuarter: number): number =>
   Math.round(remainingGap / remainingQuartersFor(planningQuarter));
 
+/**
+ * What the Quarterly Plan pre-fills for a quarter nobody has set: the gap still
+ * to close on the annual target, spread over the quarters left.
+ *
+ * 0 — a quarter left for the coach to set — whenever that gap is not a real
+ * target: the line has no annual target, or it is already met. Spreading
+ * `target − YTD` blindly turned a $0 plan into NEGATIVE quarter targets (JVJ,
+ * 25 Sep 2026: −$1.4M revenue a quarter). The gap itself is still shown on the
+ * Annual Plan step; only the suggestion stops.
+ *
+ * A planned loss (a negative net-profit target) is not pre-filled either — rare
+ * enough that the coach sets it by hand.
+ */
+export const suggestedQuarterTarget = (
+  annualTarget: number | null | undefined,
+  remainingGap: number | null | undefined,
+  planningQuarter: number
+): number => {
+  const target = Number(annualTarget ?? 0);
+  const gap = Number(remainingGap ?? 0);
+  if (!(target > 0) || !(gap > 0)) return 0;
+  return runRateForRemaining(gap, planningQuarter);
+};
+
 // Helper to get default Rock (aligned with Goals Wizard QuarterlyRock)
 export const getDefaultRock = (): Rock => ({
   id: `rock-${Date.now()}`,

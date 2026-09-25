@@ -11,6 +11,7 @@ import {
   isFoundationMode,
   isOverridden,
   couldNotCheck,
+  planHasAnnualTarget,
   toSessionModeOverride,
   type ReviewReadiness,
   type SessionModeOverride,
@@ -134,14 +135,23 @@ export function useReviewReadiness(
               // plain existence check would flip steps 9–10 back to the standard
               // screens on the next page load, mid-session. A plan created during
               // this review still counts as being built in it.
+              //
+              // A row with no annual revenue target is not a plan either
+              // (planHasAnnualTarget). Known trade-off: if a first session fills
+              // in such an EMPTY row that pre-dates the review, a page reload
+              // after that save reads it as a plan and shows the standard
+              // screens for the rest of the session. They then have real targets
+              // to work from, so nothing is lost; setting the client to "First
+              // session" on the readiness page pins the build screens.
               hasPlan: await probe('plan', async () => {
                 const { data, error } = await supabase
                   .from('business_financial_goals')
-                  .select('created_at')
+                  .select('created_at, revenue_year1')
                   .eq('business_id', profileId)
                   .maybeSingle();
                 if (error) throw error;
                 if (!data) return 0;
+                if (!planHasAnnualTarget(data)) return 0;
                 if (!reviewCreatedAt || !data.created_at) return 1;
                 return new Date(data.created_at).getTime() < new Date(reviewCreatedAt).getTime() ? 1 : 0;
               }),

@@ -91,7 +91,11 @@ export default function KPISection({
 
     const selectedKPIIds = new Set(kpis?.map(k => k.id) || [])
     const unselectedCustomKPIs = customKPIsAsKPIData.filter(ck => !selectedKPIIds.has(ck.id))
-    return [...unselectedKPIs, ...unselectedCustomKPIs]
+    // useKPIs reads the business's KPIs ONCE, on mount, so a KPI added since
+    // stayed in the library and "Add" on it silently did nothing. Filter on the
+    // list actually on screen.
+    const unselectedLibraryKPIs = unselectedKPIs.filter(k => !selectedKPIIds.has(k.id))
+    return [...unselectedLibraryKPIs, ...unselectedCustomKPIs]
   }, [unselectedKPIs, customKPIs, kpis])
 
   const allCategories = useMemo(() => {

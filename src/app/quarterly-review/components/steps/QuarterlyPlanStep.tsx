@@ -23,7 +23,7 @@ import {
   getDefaultInitiativesChanges,
   type YearType,
   remainingQuartersFor,
-  runRateForRemaining,
+  suggestedQuarterTarget,
 } from '../../types';
 import {
   Plus,
@@ -632,10 +632,12 @@ export function QuarterlyPlanStep({
           } else if (snapshot && snapshot.remaining) {
             // Recompute from the stored GAP rather than reusing the stored
             // run rate: the gap is a fact (target - actual), the run rate is a
-            // quotient by a count that may be stale.
-            sugR = runRateForRemaining(snapshot.remaining.revenue, review.quarter);
-            sugGP = runRateForRemaining(snapshot.remaining.grossProfit, review.quarter);
-            sugNP = runRateForRemaining(snapshot.remaining.netProfit, review.quarter);
+            // quotient by a count that may be stale. No target, or one already
+            // met, pre-fills nothing — never a negative quarter.
+            const t = snapshot.annualTargets;
+            sugR = suggestedQuarterTarget(t.revenue, snapshot.remaining.revenue, review.quarter);
+            sugGP = suggestedQuarterTarget(t.grossProfit, snapshot.remaining.grossProfit, review.quarter);
+            sugNP = suggestedQuarterTarget(t.netProfit, snapshot.remaining.netProfit, review.quarter);
           } else if (goalsData) {
             sugR = Math.round((goalsData.revenue_year1 || 0) / 4);
             sugGP = Math.round((goalsData.gross_profit_year1 || 0) / 4);

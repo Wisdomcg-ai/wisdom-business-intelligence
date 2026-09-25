@@ -27,12 +27,36 @@ export type Signal = 'yes' | 'no' | 'unknown';
 export interface ReviewReadiness {
   /** A completed quarterly review already exists for this business. */
   hasPriorReview: Signal;
-  /** A business_financial_goals row exists — the root of targets and year type. */
+  /**
+   * A business_financial_goals row exists AND sets this year's revenue target
+   * (see planHasAnnualTarget) — the root of targets and year type.
+   */
   hasPlan: Signal;
   /** At least one KPI is configured. */
   hasKpis: Signal;
   /** Initiatives exist for the quarter being reflected on. */
   hasPriorRocks: Signal;
+}
+
+/**
+ * Does this plan row actually set this year's targets? The SINGLE definition —
+ * the readiness hook, the fleet readiness page and both first-session plan steps
+ * all ask it.
+ *
+ * A row can exist with every target at 0: a Goals wizard session opened and
+ * never filled in leaves one (JVJ Civil and Asphalt, created 28 Jan 2026, and
+ * Envisage, both found 25 Sep 2026). Counting that row as a plan sent the review
+ * down the standard screens, which read the $0 year as a real target:
+ * remaining = $0 − YTD actuals, spread across the quarters as NEGATIVE targets.
+ *
+ * Keyed on revenue alone, the same test the forecast uses (`revenue > 0`): a
+ * business can plan a loss, but a plan with no revenue in it is not a plan.
+ */
+export function planHasAnnualTarget(
+  row: { revenue_year1?: number | string | null } | null | undefined
+): boolean {
+  const revenue = Number(row?.revenue_year1 ?? 0);
+  return Number.isFinite(revenue) && revenue > 0;
 }
 
 export const UNKNOWN_READINESS: ReviewReadiness = {

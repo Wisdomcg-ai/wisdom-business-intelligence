@@ -6,6 +6,7 @@ import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, AnnualPlanSnapshot, RealignmentData, QuarterlyTargets } from '../../types';
 import { getDefaultRealignmentData, getDefaultAnnualPlanSnapshot, remainingQuartersFor } from '../../types';
+import { planHasAnnualTarget } from '../../utils/review-readiness';
 import {
   Target,
   DollarSign,
@@ -648,6 +649,17 @@ export function ConfidenceRealignmentStep({
 
       {goals ? (
         <>
+          {!planHasAnnualTarget(goals) && (
+            <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-6 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-900">
+                This business has no annual targets yet, so there is nothing to measure the year against.
+                Set this year&apos;s revenue, gross profit and net profit in the Goals section — or set the
+                client to &ldquo;First session&rdquo; on the readiness page to build them here.
+              </p>
+            </div>
+          )}
+
           {/* Financial Targets Table */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
             <div className="bg-gray-50 px-5 py-3 border-b border-gray-200">
@@ -678,6 +690,11 @@ export function ConfidenceRealignmentStep({
                     const ytd = ytdActuals[key];
                     const remaining = target - ytd;
                     const runRate = remainingQuarters > 0 ? Math.round(remaining / remainingQuarters) : remaining;
+                    // No target → there is no gap to close; a met target → none
+                    // left. Either way a negative "run rate" is not a target
+                    // (JVJ, 25 Sep 2026: a $0 plan read as −$1.4M a quarter).
+                    const hasTarget = target > 0;
+                    const met = hasTarget && remaining <= 0;
                     const pct = target > 0 ? Math.round((ytd / target) * 100) : 0;
                     const projection = getRunRateProjection(key);
 
@@ -696,7 +713,9 @@ export function ConfidenceRealignmentStep({
                             </div>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-right text-sm font-semibold text-gray-900">{formatCurrency(target)}</td>
+                        <td className="py-3 px-4 text-right text-sm font-semibold text-gray-900">
+                          {hasTarget ? formatCurrency(target) : <span className="font-normal text-gray-400">Not set</span>}
+                        </td>
                         <td className="py-2 px-3">
                           <div className="relative">
                             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
@@ -711,8 +730,18 @@ export function ConfidenceRealignmentStep({
                             />
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-right text-sm text-gray-700">{formatCurrency(remaining)}</td>
-                        <td className={`py-3 px-4 text-right text-sm font-bold ${color}`}>{formatCurrency(runRate)}</td>
+                        <td className="py-3 px-4 text-right text-sm text-gray-700">
+                          {!hasTarget
+                            ? '—'
+                            : met
+                              ? remaining === 0
+                                ? 'Target met'
+                                : `Ahead by ${formatCurrency(-remaining)}`
+                              : formatCurrency(remaining)}
+                        </td>
+                        <td className={`py-3 px-4 text-right text-sm font-bold ${color}`}>
+                          {hasTarget && !met ? formatCurrency(runRate) : '—'}
+                        </td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
                             <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
