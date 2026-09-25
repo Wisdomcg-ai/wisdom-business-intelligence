@@ -199,6 +199,11 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
 
   // Sync debounce ref
   const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // The last background rocks sync failure reported. That sync re-runs after
+  // every save on step 4.3, so a failure that persists would otherwise be
+  // captured once per cycle. A clean sync clears it: a failure that comes back
+  // after one is new.
+  const reportedRocksSyncFailureRef = useRef<string | null>(null);
 
   // Get user and business on mount, also resolve yearType for correct quarter
   // IMPORTANT: We must resolve yearType BEFORE setting businessId state, because
@@ -420,7 +425,24 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
       const quarterKey = planQuarterKey({ quarter: anchorQuarter });
       const syncId = profileBusinessId || businessId;
       try {
-        await strategicSyncService.syncRocks(syncId, userId, review.quarterly_rocks || [], quarterKey);
+        // syncRocks REPORTS a refused write as { success: false, error }; it
+        // does not throw one. Awaiting it and relying on the catch below meant
+        // a write refused during Sprint Planning reached nobody. The UI is left
+        // alone — the completion sync is what reports to the coach.
+        const result = await strategicSyncService.syncRocks(syncId, userId, review.quarterly_rocks || [], quarterKey);
+        if (result.success) {
+          reportedRocksSyncFailureRef.current = null;
+        } else {
+          const failure = `${syncId}|${quarterKey}|${result.error}`;
+          if (failure !== reportedRocksSyncFailureRef.current) {
+            reportedRocksSyncFailureRef.current = failure;
+            captureReviewWriteFailure(new Error(result.error), 'background-rocks-sync-partial', {
+              reviewId: review.id,
+              businessId: syncId,
+              quarterKey,
+            });
+          }
+        }
       } catch (err) {
         console.error('[Sync] Background sync failed:', err);
         captureReviewWriteFailure(err, 'background-rocks-sync', {
