@@ -22,88 +22,127 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import type { InitiativeDecision } from '@/app/quarterly-review/types';
+import { rocksFromDecisions } from '@/app/quarterly-review/utils/rocks-from-decisions';
+
+type InitiativeRow = { id: string; title: string; status?: string; step_type?: string; [column: string]: unknown };
+type RowFilter = (row: Record<string, unknown>) => boolean;
 
 const db = vi.hoisted(() => ({
   /** Every business_financial_goals update, in order. */
   targetUpdates: [] as Array<Record<string, unknown>>,
   failTargetUpdate: false,
-  /** strategic_initiatives rows already stored for the business + step_type. */
-  existingInitiatives: [] as Array<{ id: string; title: string; status?: string }>,
+  /**
+   * strategic_initiatives as the fake holds it. Inserts and updates land here,
+   * so a later read in the same sync sees them, as the database would. A row
+   * given no step_type sits in whichever quarter is read — how the earlier
+   * tests place "a row the quarter already holds".
+   */
+  existingInitiatives: [] as InitiativeRow[],
   initiativeInserts: [] as Array<{ title: string; step_type: string }>,
   initiativeUpdates: [] as Array<{ id: string; title: string }>,
+  /** Every strategic_initiatives update, whole: the row it named and what it wrote. */
+  initiativeWrites: [] as Array<{ id: string; payload: Record<string, unknown> }>,
+  /** Every strategic_initiatives insert, whole. */
+  initiativeInsertRows: [] as Array<Record<string, unknown>>,
   failInitiativeRead: false,
+  /** Fail only a read by a list of ids — the read of the initiatives a review picked. */
+  failPickedRead: false,
   failInitiativeInsert: false,
+  failInitiativeUpdate: false,
 }));
 
-vi.mock('@/lib/supabase/client', () => ({
-  createClient: () => ({
-    auth: { getUser: async () => ({ data: { user: { id: 'user-1' } } }) },
-    from: (table: string) => {
-      const builder: Record<string, unknown> = {
-        select: () => builder,
-        eq: () => {
-          // strategic_initiatives is read as a promise (no maybeSingle), so the
-          // second .eq() resolves it.
-          if (table === 'strategic_initiatives') {
-            return {
-              ...builder,
-              then: (resolve: (v: unknown) => unknown) =>
-                Promise.resolve(
-                  db.failInitiativeRead
-                    ? { data: null, error: { message: 'statement timeout' } }
-                    : { data: db.existingInitiatives, error: null },
-                ).then(resolve),
-            };
-          }
-          return builder;
-        },
-        order: () => builder,
-        limit: () => builder,
-        maybeSingle: async () =>
-          table === 'business_financial_goals'
-            // year_type present on purpose: it is what the old clock-derived
-            // resolveQuarterKey keyed off. Without it that code path fell back
-            // to the caller's key and the override went untested.
-            ? { data: { id: 'goals-1', quarterly_targets: {}, year_type: 'FY' }, error: null }
-            : { data: null, error: null },
-        update: (payload: Record<string, unknown>) => {
-          if (table === 'business_financial_goals') db.targetUpdates.push(payload);
-          let id = '';
-          const chain: Record<string, unknown> = {
-            eq: (_column: string, value: unknown) => {
-              if (!id) id = String(value);
-              return chain;
-            },
-            then: (resolve: (v: unknown) => unknown) => {
-              if (table === 'strategic_initiatives') {
-                db.initiativeUpdates.push({ id, title: String(payload.title ?? '') });
-              }
-              return Promise.resolve(
-                db.failTargetUpdate && table === 'business_financial_goals'
-                  ? { error: { message: 'permission denied for business_financial_goals' } }
-                  : { error: null },
-              ).then(resolve);
-            },
-          };
+vi.mock('@/lib/supabase/client', () => {
+  const matches = (row: Record<string, unknown>, column: string, value: unknown) =>
+    row[column] === undefined && (column === 'step_type' || column === 'business_id') ? true : row[column] === value;
+
+  const initiativeQuery = (filters: RowFilter[], byIds: boolean): Record<string, unknown> => ({
+    eq: (column: string, value: unknown) => initiativeQuery([...filters, (row) => matches(row, column, value)], byIds),
+    in: (column: string, values: unknown[]) => initiativeQuery([...filters, (row) => values.includes(row[column])], true),
+    order: () => initiativeQuery(filters, byIds),
+    then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+      Promise.resolve(
+        db.failInitiativeRead || (byIds && db.failPickedRead)
+          ? { data: null, error: { message: 'statement timeout' } }
+          : { data: db.existingInitiatives.filter((row) => filters.every((f) => f(row))).map((row) => ({ ...row })), error: null },
+      ).then(resolve, reject),
+  });
+
+  const initiatives = {
+    select: () => initiativeQuery([], false),
+    update: (payload: Record<string, unknown>) => {
+      const filters: RowFilter[] = [];
+      let id = '';
+      const chain: Record<string, unknown> = {
+        eq: (column: string, value: unknown) => {
+          if (!id) id = String(value);
+          filters.push((row) => matches(row, column, value));
           return chain;
         },
-        insert: async (payload: Record<string, unknown> | Array<Record<string, unknown>>) => {
-          if (table === 'strategic_initiatives') {
-            if (db.failInitiativeInsert) return { error: { message: 'null value in column \"user_id\"' } };
-            for (const row of Array.isArray(payload) ? payload : [payload]) {
-              db.initiativeInserts.push({
-                title: String(row.title ?? ''),
-                step_type: String(row.step_type ?? ''),
-              });
-            }
+        then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) => {
+          db.initiativeUpdates.push({ id, title: String(payload.title ?? '') });
+          db.initiativeWrites.push({ id, payload });
+          if (db.failInitiativeUpdate) {
+            return Promise.resolve({ error: { message: 'permission denied for strategic_initiatives' } }).then(resolve, reject);
           }
-          return { error: null };
+          for (const row of db.existingInitiatives) if (filters.every((f) => f(row))) Object.assign(row, payload);
+          return Promise.resolve({ error: null }).then(resolve, reject);
         },
       };
-      return builder;
+      return chain;
     },
-  }),
-}));
+    insert: async (payload: Record<string, unknown> | Array<Record<string, unknown>>) => {
+      if (db.failInitiativeInsert) return { error: { message: 'null value in column \"user_id\"' } };
+      for (const row of Array.isArray(payload) ? payload : [payload]) {
+        db.initiativeInserts.push({
+          title: String(row.title ?? ''),
+          step_type: String(row.step_type ?? ''),
+        });
+        db.initiativeInsertRows.push(row);
+        const n = String(db.initiativeInsertRows.length).padStart(12, '0');
+        db.existingInitiatives.push({ status: 'not_started', ...row, id: `00000000-0000-4000-8000-${n}` } as InitiativeRow);
+      }
+      return { error: null };
+    },
+  };
+
+  return {
+    createClient: () => ({
+      auth: { getUser: async () => ({ data: { user: { id: 'user-1' } } }) },
+      from: (table: string) => {
+        if (table === 'strategic_initiatives') return initiatives;
+        const builder: Record<string, unknown> = {
+          select: () => builder,
+          eq: () => builder,
+          order: () => builder,
+          limit: () => builder,
+          maybeSingle: async () =>
+            table === 'business_financial_goals'
+              // year_type present on purpose: it is what the old clock-derived
+              // resolveQuarterKey keyed off. Without it that code path fell back
+              // to the caller's key and the override went untested.
+              ? { data: { id: 'goals-1', quarterly_targets: {}, year_type: 'FY' }, error: null }
+              : { data: null, error: null },
+          update: (payload: Record<string, unknown>) => {
+            if (table === 'business_financial_goals') db.targetUpdates.push(payload);
+            const chain: Record<string, unknown> = {
+              eq: () => chain,
+              then: (resolve: (v: unknown) => unknown) =>
+                Promise.resolve(
+                  db.failTargetUpdate && table === 'business_financial_goals'
+                    ? { error: { message: 'permission denied for business_financial_goals' } }
+                    : { error: null },
+                ).then(resolve),
+            };
+            return chain;
+          },
+          insert: async () => ({ error: null }),
+        };
+        return builder;
+      },
+    }),
+  };
+});
 
 import { strategicSyncService } from '@/app/quarterly-review/services/strategic-sync-service';
 
@@ -120,8 +159,12 @@ beforeEach(() => {
   db.existingInitiatives = [];
   db.initiativeInserts = [];
   db.initiativeUpdates = [];
+  db.initiativeWrites = [];
+  db.initiativeInsertRows = [];
   db.failInitiativeRead = false;
+  db.failPickedRead = false;
   db.failInitiativeInsert = false;
+  db.failInitiativeUpdate = false;
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -345,5 +388,355 @@ describe('a rock the coach dropped is not the rock planned now', () => {
 
     expect(db.initiativeUpdates).toEqual([]);
     expect(db.initiativeInserts).toEqual([{ title: 'Due Date Focus', step_type: 'q1' }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 25 Sep 2026 — Digital Bond. Completing the Q2 review MOVED a 12-month
+// initiative into the quarter: syncRocks updated the 12-month row through its
+// own id, step_type included, and relabelled it 'quarterly_review'.
+// "Determine how to get money off the table and invest" is in the pre-sync
+// snapshot's 12-month list at 00:51:40 UTC and gone from the post-sync one. It
+// got there from 4.2's Available pool, which #604 has since excluded — but a
+// 12-month initiative the coach genuinely picks for the quarter, or a q1 rock
+// carried into q2, took the same path, and the sprint detail followed the
+// decision's id onto the original row.
+//
+// The Goals wizard files an initiative put in a quarter as a row of the
+// quarter's own, a copy with the same title, and leaves the original where it
+// is — production holds such a copy for 95 of its 141 12-month titles.
+// ---------------------------------------------------------------------------
+const TWELVE_MONTH = '22222222-2222-4222-8222-222222222222';
+const Q1_ROCK = '33333333-3333-4333-8333-333333333333';
+const Q2_ROW = '44444444-4444-4444-8444-444444444444';
+const MONEY = 'Determine how to get money off the table and invest';
+
+const twelveMonthRow = (): InitiativeRow => ({
+  id: TWELVE_MONTH,
+  title: MONEY,
+  step_type: 'twelve_month',
+  status: 'not_started',
+  source: 'strategic_ideas',
+  category: 'finance',
+  idea_type: 'strategic',
+  priority: 'high',
+  timeline: 'H2 FY27',
+  assigned_to: 'Mel',
+  description: 'Exit planning',
+});
+
+/** The 12-month initiative, as step 4.2 lists it once the coach drags it into Q2. */
+const pick = (over: Partial<InitiativeDecision> = {}): InitiativeDecision => ({
+  initiativeId: TWELVE_MONTH,
+  title: MONEY,
+  category: 'finance',
+  currentStatus: 'not_started',
+  progressPercentage: 0,
+  decision: 'keep',
+  notes: '',
+  quarterAssigned: 'q2',
+  ...over,
+});
+
+const TASK = {
+  id: 't1',
+  task: 'Book the adviser',
+  assignedTo: 'Sam',
+  minutesAllocated: 90,
+  dueDate: '2026-10-15',
+  status: 'not_started' as const,
+  order: 0,
+};
+const MILESTONE = { id: 'm1', description: 'Adviser engaged', targetDate: '2026-10-31', isCompleted: false };
+
+/** What completion hands syncRocks: the review's rocks, built by the writer's own rule. */
+const rocksOf = (decisions: InitiativeDecision[]) => rocksFromDecisions(decisions, 2);
+const writesTo = (id: string) => db.initiativeWrites.filter((w) => w.id === id);
+const rowById = (id: string) => db.existingInitiatives.find((r) => r.id === id);
+const rowsIn = (stepType: string) => db.existingInitiatives.filter((r) => r.step_type === stepType);
+
+describe('a rock picked from elsewhere in the plan is filed under the quarter; the original stays where it is', () => {
+  it('a 12-month initiative picked as a rock gets a quarter row of its own — the 12-month row is never written', async () => {
+    db.existingInitiatives = [twelveMonthRow()];
+
+    const result = await strategicSyncService.syncRocks(
+      'biz-1',
+      'user-1',
+      rocksOf([pick({ assignedTo: 'Sam', outcome: 'Advice taken' })]),
+      'q2',
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(writesTo(TWELVE_MONTH)).toEqual([]);
+    expect(rowById(TWELVE_MONTH)).toEqual(twelveMonthRow());
+    expect(db.initiativeInsertRows).toHaveLength(1);
+    expect(db.initiativeInsertRows[0]).toMatchObject({
+      title: MONEY,
+      step_type: 'q2',
+      source: 'quarterly_review',
+      // A copy of the initiative, as the Goals wizard files one...
+      category: 'finance',
+      idea_type: 'strategic',
+      priority: 'high',
+      timeline: 'H2 FY27',
+      // ...with what the review set on the rock.
+      assigned_to: 'Sam',
+      outcome: 'Advice taken',
+    });
+  });
+
+  it('an earlier quarter\'s rock carried forward is filed under the new quarter — q1 keeps its record', async () => {
+    db.existingInitiatives = [
+      { id: Q1_ROCK, title: 'Hire an estimator', step_type: 'q1', status: 'in_progress', category: 'people' },
+    ];
+
+    await strategicSyncService.syncRocks(
+      'biz-1',
+      'user-1',
+      rocksOf([pick({ initiativeId: Q1_ROCK, title: 'Hire an estimator', category: 'people' })]),
+      'q2',
+    );
+
+    expect(writesTo(Q1_ROCK)).toEqual([]);
+    expect(rowById(Q1_ROCK)).toMatchObject({ step_type: 'q1', status: 'in_progress' });
+    expect(db.initiativeInserts).toEqual([{ title: 'Hire an estimator', step_type: 'q2' }]);
+    expect(db.initiativeInsertRows[0]).toMatchObject({ category: 'people' });
+  });
+
+  it('completing twice files the pick once — the second completion updates the row the first one made', async () => {
+    db.existingInitiatives = [twelveMonthRow()];
+    const rocks = rocksOf([pick({ assignedTo: 'Sam' })]);
+
+    await strategicSyncService.syncRocks('biz-1', 'user-1', rocks, 'q2');
+    await strategicSyncService.syncRocks('biz-1', 'user-1', rocks, 'q2');
+
+    expect(db.initiativeInserts).toHaveLength(1);
+    const [quarterRow] = rowsIn('q2');
+    expect(writesTo(quarterRow.id)).toHaveLength(1);
+    expect(writesTo(TWELVE_MONTH)).toEqual([]);
+  });
+
+  it('a pick the quarter already holds a row for — the Goals wizard\'s own copy — updates that row', async () => {
+    db.existingInitiatives = [twelveMonthRow(), { id: Q2_ROW, title: MONEY, step_type: 'q2', status: 'not_started' }];
+
+    await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf([pick({ assignedTo: 'Sam' })]), 'q2');
+
+    expect(db.initiativeInserts).toEqual([]);
+    expect(writesTo(Q2_ROW)).toHaveLength(1);
+    expect(rowById(Q2_ROW)).toMatchObject({ step_type: 'q2', assigned_to: 'Sam' });
+    expect(writesTo(TWELVE_MONTH)).toEqual([]);
+  });
+
+  it('a rock already in the quarter is updated in place, by its own id', async () => {
+    // Two rows of one title in the quarter: the rock is the one it names.
+    const other = '55555555-5555-4555-8555-555555555555';
+    db.existingInitiatives = [
+      { id: other, title: 'Due Date Focus', step_type: 'q2' },
+      { id: Q2_ROW, title: 'Due Date Focus', step_type: 'q2' },
+    ];
+
+    await strategicSyncService.syncRocks(
+      'biz-1',
+      'user-1',
+      rocksOf([pick({ initiativeId: Q2_ROW, title: 'Due Date Focus', assignedTo: 'Steve' })]),
+      'q2',
+    );
+
+    expect(writesTo(Q2_ROW)).toHaveLength(1);
+    expect(writesTo(other)).toEqual([]);
+    expect(db.initiativeInserts).toEqual([]);
+  });
+
+  it('files nothing, and says so, when the picked initiative cannot be read', async () => {
+    // Filed without it, the quarter's copy would keep the wrong category for good.
+    db.existingInitiatives = [twelveMonthRow()];
+    db.failPickedRead = true;
+
+    const result = await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf([pick()]), 'q2');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Could not read the initiatives picked for q2');
+    expect(db.initiativeInserts).toEqual([]);
+    expect(db.initiativeWrites).toEqual([]);
+  });
+});
+
+describe('the sprint detail lands on the quarter row the rock was filed under', () => {
+  const detail = {
+    assignedTo: 'Sam',
+    why: 'The owner is the bottleneck',
+    outcome: 'Advice taken',
+    startDate: '2026-10-01',
+    endDate: '2026-12-31',
+    tasks: [TASK],
+    milestones: [MILESTONE],
+    totalHours: 1.5,
+  };
+
+  it('a picked rock\'s tasks, milestones, why and outcome land on its quarter row — none on the 12-month row', async () => {
+    db.existingInitiatives = [twelveMonthRow()];
+    const decisions = [pick(detail)];
+
+    const result = await strategicSyncService.syncAll('biz-1', 'user-1', decisions, TARGETS, 'q2', rocksOf(decisions), []);
+
+    expect(result).toEqual({ success: true, errors: [] });
+    expect(writesTo(TWELVE_MONTH)).toEqual([]);
+    expect(rowById(TWELVE_MONTH)).toEqual(twelveMonthRow());
+    expect(rowsIn('q2')).toHaveLength(1);
+    expect(rowsIn('q2')[0]).toMatchObject({
+      assigned_to: 'Sam',
+      why: 'The owner is the bottleneck',
+      outcome: 'Advice taken',
+      start_date: '2026-10-01',
+      end_date: '2026-12-31',
+      tasks: [TASK],
+      milestones: [MILESTONE],
+      total_hours: 1.5,
+    });
+  });
+
+  it('a rock added in Sprint Planning gets its tasks and milestones too — they used to be dropped', async () => {
+    const decisions = [
+      pick({ initiativeId: 'sprint-new-1790296002208', title: 'Complete the Payroll Automations', ...detail }),
+    ];
+
+    const result = await strategicSyncService.syncAll('biz-1', 'user-1', decisions, TARGETS, 'q2', rocksOf(decisions), []);
+
+    expect(result).toEqual({ success: true, errors: [] });
+    expect(rowsIn('q2')).toHaveLength(1);
+    expect(rowsIn('q2')[0]).toMatchObject({ tasks: [TASK], milestones: [MILESTONE], why: 'The owner is the bottleneck' });
+  });
+
+  it('a rock listed twice writes one row: the first listing\'s detail, the second filling only what it lacks', async () => {
+    db.existingInitiatives = [twelveMonthRow(), { id: Q2_ROW, title: MONEY, step_type: 'q2' }];
+
+    await strategicSyncService.syncSprintPlanningToQuarter(
+      'biz-1',
+      [pick({ initiativeId: Q2_ROW, why: 'First listing' }), pick({ why: 'Second listing', tasks: [TASK] })],
+      'q2',
+    );
+
+    expect(writesTo(Q2_ROW)).toHaveLength(1);
+    expect(writesTo(Q2_ROW)[0].payload).toMatchObject({ why: 'First listing', tasks: [TASK] });
+    expect(writesTo(TWELVE_MONTH)).toEqual([]);
+  });
+
+  it('reports detail with no quarter row to land on, instead of dropping it', async () => {
+    db.existingInitiatives = [twelveMonthRow()];
+
+    const result = await strategicSyncService.syncSprintPlanningToQuarter('biz-1', [pick(detail)], 'q2');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Sprint detail not saved');
+    expect(result.error).toContain(MONEY);
+    expect(db.initiativeWrites).toEqual([]);
+  });
+
+  it('writes only the planned quarter\'s rocks — 4.3 plans nothing else', async () => {
+    db.existingInitiatives = [twelveMonthRow(), { id: Q1_ROCK, title: 'Hire an estimator', step_type: 'q3' }];
+
+    const result = await strategicSyncService.syncSprintPlanningToQuarter(
+      'biz-1',
+      [
+        pick({ quarterAssigned: 'unassigned', ...detail }),
+        pick({ initiativeId: Q1_ROCK, title: 'Hire an estimator', quarterAssigned: 'q3', ...detail }),
+      ],
+      'q2',
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(db.initiativeWrites).toEqual([]);
+  });
+
+  it('reports a refused write instead of counting only the successes', async () => {
+    db.existingInitiatives = [{ id: Q2_ROW, title: 'Due Date Focus', step_type: 'q2' }];
+    db.failInitiativeUpdate = true;
+
+    const result = await strategicSyncService.syncSprintPlanningToQuarter(
+      'biz-1',
+      [pick({ initiativeId: Q2_ROW, title: 'Due Date Focus', why: 'Quotes out in 48h' })],
+      'q2',
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('permission denied');
+  });
+});
+
+describe('the quarter\'s decisions are saved on its own rows — taking a pick out never cancels the original', () => {
+  it('removing a picked rock drops its quarter row, never the 12-month initiative', async () => {
+    // The quarter row a background sync filed while the coach worked in 4.3.
+    db.existingInitiatives = [twelveMonthRow(), { id: Q2_ROW, title: MONEY, step_type: 'q2', status: 'not_started' }];
+
+    await strategicSyncService.syncAll('biz-1', 'user-1', [pick({ decision: 'kill' })], TARGETS, 'q2', [], []);
+
+    expect(writesTo(TWELVE_MONTH)).toEqual([]);
+    expect(rowById(TWELVE_MONTH)?.status).toBe('not_started');
+    expect(rowById(Q2_ROW)?.status).toBe('cancelled');
+  });
+
+  it('a pick taken out before it has a quarter row writes nothing at all', async () => {
+    db.existingInitiatives = [twelveMonthRow()];
+
+    const result = await strategicSyncService.syncAll('biz-1', 'user-1', [pick({ decision: 'kill' })], TARGETS, 'q2', [], []);
+
+    expect(result).toEqual({ success: true, errors: [] });
+    expect(db.initiativeWrites).toEqual([]);
+    expect(db.initiativeInserts).toEqual([]);
+  });
+
+  it('dropping one listing of a rock listed twice keeps the rock', async () => {
+    db.existingInitiatives = [twelveMonthRow(), { id: Q2_ROW, title: MONEY, step_type: 'q2', status: 'in_progress' }];
+
+    await strategicSyncService.syncInitiativeChanges(
+      'biz-1',
+      'user-1',
+      [pick({ initiativeId: Q2_ROW, currentStatus: 'in_progress' }), pick({ decision: 'kill' })],
+      'q2',
+    );
+
+    expect(writesTo(Q2_ROW)).toHaveLength(1);
+    expect(rowById(Q2_ROW)?.status).toBe('in_progress');
+    expect(writesTo(TWELVE_MONTH)).toEqual([]);
+  });
+
+  it('a quarter row dropped through its own listing is not the row for a rock picked under its name', async () => {
+    db.existingInitiatives = [twelveMonthRow(), { id: Q2_ROW, title: MONEY, step_type: 'q2', status: 'not_started' }];
+    const decisions = [pick({ initiativeId: Q2_ROW, decision: 'kill' }), pick({ assignedTo: 'Sam' })];
+
+    const result = await strategicSyncService.syncAll('biz-1', 'user-1', decisions, TARGETS, 'q2', rocksOf(decisions), []);
+
+    expect(result).toEqual({ success: true, errors: [] });
+    expect(rowById(Q2_ROW)?.status).toBe('cancelled');
+    // The pick gets a row of its own, as a rock re-added under a dropped rock's name does.
+    const live = rowsIn('q2').filter((r) => r.status !== 'cancelled');
+    expect(live).toHaveLength(1);
+    expect(live[0]).toMatchObject({ title: MONEY, assigned_to: 'Sam' });
+    expect(writesTo(TWELVE_MONTH)).toEqual([]);
+  });
+
+  it('a decision outside the planned quarter still saves on its own row', async () => {
+    // Dropped from the Available pool, the 12-month initiative itself is dropped.
+    db.existingInitiatives = [twelveMonthRow()];
+
+    await strategicSyncService.syncInitiativeChanges(
+      'biz-1',
+      'user-1',
+      [pick({ quarterAssigned: 'unassigned', decision: 'kill' })],
+      'q2',
+    );
+
+    expect(rowById(TWELVE_MONTH)?.status).toBe('cancelled');
+  });
+
+  it('saves nothing for the quarter, and says so, when the quarter cannot be read', async () => {
+    db.existingInitiatives = [twelveMonthRow()];
+    db.failInitiativeRead = true;
+
+    const result = await strategicSyncService.syncInitiativeChanges('biz-1', 'user-1', [pick({ decision: 'kill' })], 'q2');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('could not read it');
+    expect(db.initiativeWrites).toEqual([]);
   });
 });

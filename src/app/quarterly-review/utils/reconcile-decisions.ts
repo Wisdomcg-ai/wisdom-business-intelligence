@@ -32,6 +32,17 @@ const quarterOf = (d: Pick<InitiativeDecision, 'quarterAssigned'>): string =>
  * it is that rock: the session's copy gives it the coach's decision and fills in
  * what it lacks, and is not listed a second time. One copy per row.
  *
+ * The same holds for an initiative the coach PICKED for a quarter from
+ * somewhere else in the plan — the 12-month list, or an earlier quarter's rock
+ * carried forward. The sync files it under a quarter row of its own (the Goals
+ * wizard's model) and leaves the original where it is, so re-loading finds that
+ * quarter row, new to the review, and the original back in its own place (or,
+ * for a 12-month initiative, out of the pool, which hides what a quarter holds).
+ * The quarter row is the pick: it takes the coach's decision and sprint detail,
+ * and the original is listed as the plan holds it. Without this the pick's
+ * decision was dropped and its quarter row listed bare — and the next sync
+ * wrote the bare copy over what the coach had set.
+ *
  * Nothing else is merged. A row the review already held, or a second copy of
  * the same title, stays listed — step 4.3 flags repeats for the coach to choose
  * (Matt, 25 Sep 2026: alert, don't assume).
@@ -44,6 +55,7 @@ export function reconcileDecisions(
   fresh: InitiativeDecision[]
 ): InitiativeDecision[] {
   const existingById = new Map(existing.map(d => [d.initiativeId, d]));
+  const freshById = new Map(fresh.map(f => [f.initiativeId, f]));
 
   let reconciled = fresh.map(f => {
     const held = existingById.get(f.initiativeId);
@@ -69,19 +81,27 @@ export function reconcileDecisions(
   const carried: InitiativeDecision[] = [];
   const claimed = new Set<number>();
   for (const d of existing) {
-    if (!isAddedInReview(d.initiativeId)) continue;
+    const added = isAddedInReview(d.initiativeId);
+    // A saved initiative the coach put in a quarter its own row is not in.
+    const home = freshById.get(d.initiativeId);
+    const picked =
+      !added && quarterOf(d) !== 'unassigned' && (!home || quarterOf(home) !== quarterOf(d));
+    if (!added && !picked) continue;
     const key = titleKey(d.title);
     const index = key ? savedAt.get(`${quarterOf(d)}|${key}`) : undefined;
     const saved = index === undefined ? undefined : reconciled[index];
     if (index === undefined || !saved || claimed.has(index) || existingById.has(saved.initiativeId)) {
-      carried.push(d);
+      if (added) carried.push(d);
       continue;
     }
     claimed.add(index);
     const merged = fillSprintBlanks(saved, d);
-    reconciled = reconciled.map((r, i) =>
-      i === index ? { ...merged, decision: saved.completedInStep1 ? merged.decision : d.decision } : r
-    );
+    reconciled = reconciled.map((r, i) => {
+      if (i === index) return { ...merged, decision: saved.completedInStep1 ? merged.decision : d.decision };
+      // The row the pick came from, listed where the plan holds it and as it holds it.
+      if (home && r.initiativeId === d.initiativeId) return home;
+      return r;
+    });
   }
 
   return [...reconciled, ...carried];

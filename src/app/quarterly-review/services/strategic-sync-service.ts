@@ -7,7 +7,14 @@
 import { createClient } from '@/lib/supabase/client';
 import type { StrategicInitiative, InitiativeStatus } from '@/app/goals/types';
 import type { InitiativeDecision, Rock, QuarterlyTargets, RealignmentData, NextYearTargets, AnnualInitiativePlan } from '../types';
-import { titleKey } from '../utils/rocks-from-decisions';
+import {
+  fillSprintBlanks,
+  isForPlannedQuarter,
+  isSavedInitiativeId,
+  plannedRockDecisions,
+  titleKey,
+} from '../utils/rocks-from-decisions';
+import { quarterDecisionWrites, quarterRowIndex, type QuarterRow } from '../utils/quarter-rows';
 
 type StepType = 'q1' | 'q2' | 'q3' | 'q4' | 'sprint' | 'current_remainder';
 
@@ -64,19 +71,50 @@ export class StrategicSyncService {
    * Sync initiative decisions back to strategic_initiatives table
    * UPDATE-ONLY: updates status/notes on existing initiatives, never deletes or creates
    * This prevents accidental data loss from the destructive saveInitiatives() call
+   *
+   * The planned quarter's listings write to the quarter's own rows
+   * (quarterDecisionWrites). They used to write to the row each came from, so
+   * taking a picked 12-month initiative out of the quarter — Drop, or Remove in
+   * Sprint Planning — cancelled the 12-month initiative itself.
    */
   async syncInitiativeChanges(
     businessId: string,
     userId: string,
-    decisions: InitiativeDecision[]
+    decisions: InitiativeDecision[],
+    /** The quarter the review plans. Without it every decision writes to its own row. */
+    quarterKey?: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const supabase = this.getSupabase();
+      const stepType = quarterKey ? this.quarterKeyToStepType(quarterKey) : null;
+      const inPlannedQuarter = (d: InitiativeDecision) =>
+        stepType !== null && isForPlannedQuarter(d, Number(stepType.slice(1)));
 
+      const writes: Array<[string, InitiativeDecision]> = [];
       for (const decision of decisions) {
+        if (inPlannedQuarter(decision)) continue;
         // Skip user-added initiatives (not in DB)
         if (decision.initiativeId.startsWith('new-')) continue;
+        writes.push([decision.initiativeId, decision]);
+      }
 
+      let readFailure: string | null = null;
+      const planned = decisions.filter(inPlannedQuarter);
+      if (planned.length > 0) {
+        const { data: quarterRows, error: readError } = await supabase
+          .from('strategic_initiatives')
+          .select('id, title, status')
+          .eq('business_id', businessId)
+          .eq('step_type', stepType);
+        if (readError) {
+          // Written blind, a rock picked from the 12-month list lands on the 12-month row.
+          readFailure = `Decisions for ${stepType} not saved — could not read it: ${readError.message}`;
+        } else {
+          writes.push(...quarterDecisionWrites(planned, (quarterRows ?? []) as QuarterRow[]));
+        }
+      }
+
+      for (const [rowId, decision] of writes) {
         // Map decision to DB status
         let status: string = 'in_progress';
         if (decision.decision === 'kill') status = 'cancelled';
@@ -94,10 +132,11 @@ export class StrategicSyncService {
             notes: decision.notes || null,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', decision.initiativeId)
+          .eq('id', rowId)
           .eq('business_id', businessId);
       }
 
+      if (readFailure) return { success: false, error: readFailure };
       console.log('[StrategicSync] Successfully synced initiative decisions (update-only)');
       return { success: true };
     } catch (err) {
@@ -373,6 +412,14 @@ export class StrategicSyncService {
    * Sync rocks to strategic_initiatives with the correct quarter step_type.
    * Uses UPDATE-only for existing rows + INSERT for new rocks.
    * NEVER deletes existing initiatives — rocks coexist with Goals Wizard data.
+   *
+   * A rock is filed under one of the QUARTER's rows (quarterRowIndex): its own
+   * row when that row is in the quarter, updated in place; otherwise the
+   * quarter's row of its title, found or inserted — the Goals wizard's model,
+   * where a quarter holds its own copy of an initiative and the original stays
+   * where it is. A rock picked from the 12-month list or carried forward from an
+   * earlier quarter used to be updated through its own id, step_type included,
+   * which MOVED that row into this quarter.
    */
   async syncRocks(
     businessId: string,
@@ -387,9 +434,6 @@ export class StrategicSyncService {
       // Determine step_type: use quarter key if provided, fall back to 'sprint'
       const stepType: StepType = (quarterKey ? this.quarterKeyToStepType(quarterKey) : null) || 'sprint';
 
-      const isValidUUID = (id: string): boolean =>
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-
       // A rock the session created carries an id like `sprint-new-1790198021629`,
       // which is not a UUID — so the branch below used to INSERT it, every
       // completion, with nothing checking whether it was already there. Efficient
@@ -399,9 +443,11 @@ export class StrategicSyncService {
       // early on an empty list; wiring that writer is what reactivates it.
       //
       // So the row is found by what it IS — this business's rock of that title in
-      // that quarter — not by an id the workshop never had to give it.
-      const normalise = (title: string) => title.trim().toLowerCase();
-      const existingByTitle = new Map<string, string>();
+      // that quarter — not by an id the workshop never had to give it. A rock the
+      // coach dropped (saved as cancelled) is not the rock planned now: matched by
+      // title, a rock removed in Sprint Planning and added back under the same
+      // name was written onto the dropped row — and stayed cancelled. It gets a
+      // row of its own; the dropped one stays as history.
       const { data: existingRows, error: existingError } = await supabase
         .from('strategic_initiatives')
         .select('id, title, status')
@@ -412,19 +458,37 @@ export class StrategicSyncService {
         // Inserting blind here is what created the duplicates in the first place.
         return { success: false, error: `Could not read existing rocks: ${existingError.message}` };
       }
-      for (const row of existingRows ?? []) {
-        // A rock the coach dropped (saved as cancelled) is not the rock planned
-        // now. Matched by title, a rock removed in Sprint Planning and added back
-        // under the same name was written onto the dropped row — and stayed
-        // cancelled. It gets a row of its own; the dropped one stays as history.
-        if ((row as { status?: string | null }).status === 'cancelled') continue;
-        const key = normalise(String((row as { title?: string }).title ?? ''));
-        if (key && !existingByTitle.has(key)) existingByTitle.set(key, String((row as { id: string }).id));
+      const quarter = quarterRowIndex((existingRows ?? []) as QuarterRow[]);
+      const rowFor = (rock: Rock) => quarter.rowFor({ id: rock.id, title: rock.title || 'Untitled Rock' });
+
+      // A rock picked from elsewhere in the plan that the quarter holds no row
+      // for gets a copy of the initiative: its category, type, priority and
+      // timeline come with it, as they do when the Goals wizard puts an
+      // initiative in a quarter. The fields the review sets itself come from the
+      // rock, as for every rock.
+      const pickedIds = rocks
+        .filter(rock => !rowFor(rock) && isSavedInitiativeId(rock.id))
+        .map(rock => rock.id);
+      const picked = new Map<string, Record<string, unknown>>();
+      if (pickedIds.length > 0) {
+        const { data: originals, error: originalsError } = await supabase
+          .from('strategic_initiatives')
+          .select('id, category, idea_type, priority, timeline')
+          .eq('business_id', businessId)
+          .in('id', pickedIds);
+        if (originalsError) {
+          // A copy filed without them would keep the wrong category for good.
+          return { success: false, error: `Could not read the initiatives picked for ${stepType}: ${originalsError.message}` };
+        }
+        for (const row of (originals ?? []) as Array<Record<string, unknown>>) picked.set(String(row.id), row);
       }
 
       let updatedCount = 0;
       let insertedCount = 0;
       const failures: string[] = [];
+      // One write per row, and one insert per title: the first rock is the rock,
+      // as in rocksFromDecisions.
+      const written = new Set<string>();
 
       for (const [index, rock] of rocks.entries()) {
         const baseData = {
@@ -442,42 +506,37 @@ export class StrategicSyncService {
           updated_at: new Date().toISOString(),
         };
 
-        const titleKey = normalise(baseData.title);
-        const existingId =
-          rock.id && isValidUUID(rock.id) ? rock.id : existingByTitle.get(titleKey);
+        const rowId = rowFor(rock);
+        const writeKey = rowId ?? `title:${titleKey(baseData.title)}`;
+        if (written.has(writeKey)) continue;
+        written.add(writeKey);
 
-        if (existingId) {
-          // UPDATE the existing row. baseData carries step_type, so a row held
-          // elsewhere in the plan (a 12-month initiative picked for the quarter)
-          // is filed under this quarter — which is why only rocks actually put
-          // in the quarter may reach here (rocksFromDecisions excludes 4.2's
-          // Available pool).
+        if (rowId) {
+          // UPDATE the quarter's row. Never a row elsewhere in the plan: baseData
+          // carries step_type.
           const { error } = await supabase
             .from('strategic_initiatives')
             .update(baseData)
-            .eq('id', existingId)
+            .eq('id', rowId)
             .eq('business_id', businessId);
           if (!error) updatedCount++;
           else failures.push(`update ${baseData.title}: ${error.message}`);
         } else {
-          // INSERT new rock
+          // INSERT the quarter's row for this rock
+          const original = picked.get(rock.id);
           const { error } = await supabase
             .from('strategic_initiatives')
             .insert({
               ...baseData,
               business_id: businessId,
               user_id: userId,
-              category: 'misc',
-              idea_type: 'strategic',
+              category: (original?.category as string | null) || 'misc',
+              idea_type: (original?.idea_type as string | null) || 'strategic',
+              priority: (original?.priority as string | null) ?? null,
+              timeline: (original?.timeline as string | null) ?? null,
             });
-          if (!error) {
-            insertedCount++;
-            // Two rocks of the same title in one run must not both insert, and
-            // the next completion must find this one.
-            if (titleKey) existingByTitle.set(titleKey, 'inserted');
-          } else {
-            failures.push(`insert ${baseData.title}: ${error.message}`);
-          }
+          if (!error) insertedCount++;
+          else failures.push(`insert ${baseData.title}: ${error.message}`);
         }
       }
 
@@ -501,6 +560,13 @@ export class StrategicSyncService {
    * to keep/accelerate decisions, this writes those fields to the matching
    * strategic_initiatives row for the correct quarter (step_type = 'q1'/'q2'/etc.).
    * UPDATE-only — never creates or deletes rows.
+   *
+   * "The matching row for the quarter" is the row syncRocks filed the rock
+   * under (quarterRowIndex), so this runs after it. It used to be the decision's
+   * own id — for a rock picked from the 12-month list, the 12-month row — and
+   * a rock the review added (no row id) had its tasks, milestones and why
+   * dropped altogether. Only the planned quarter's rocks are written: 4.3 plans
+   * nothing else.
    */
   async syncSprintPlanningToQuarter(
     businessId: string,
@@ -508,23 +574,47 @@ export class StrategicSyncService {
     quarterKey: string // e.g., 'q1', 'q2'
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const supabase = this.getSupabase();
-      const qKey = quarterKey.toLowerCase().replace(/[^q1234]/g, '') as 'q1' | 'q2' | 'q3' | 'q4';
-      let updatedCount = 0;
+      const stepType = this.quarterKeyToStepType(quarterKey);
+      if (!stepType) return { success: true };
 
-      for (const decision of decisions) {
-        // Only sync keep/accelerate decisions that have sprint planning data
-        if (decision.decision !== 'keep' && decision.decision !== 'accelerate') continue;
-        if (decision.initiativeId.startsWith('new-')) continue;
-
-        // Check if there's any sprint data to sync
-        const hasSprintData = decision.assignedTo || decision.why || decision.outcome ||
+      const withDetail = plannedRockDecisions(decisions, Number(stepType.slice(1))).filter(
+        (decision) =>
+          decision.assignedTo || decision.why || decision.outcome ||
           decision.startDate || decision.endDate || decision.totalHours ||
           (decision.tasks && decision.tasks.length > 0) ||
-          (decision.milestones && decision.milestones.length > 0);
+          (decision.milestones && decision.milestones.length > 0)
+      );
+      if (withDetail.length === 0) return { success: true };
 
-        if (!hasSprintData) continue;
+      const supabase = this.getSupabase();
+      const { data: quarterRows, error: readError } = await supabase
+        .from('strategic_initiatives')
+        .select('id, title, status')
+        .eq('business_id', businessId)
+        .eq('step_type', stepType);
+      if (readError) {
+        return { success: false, error: `Sprint detail not saved — could not read ${stepType}: ${readError.message}` };
+      }
+      const quarter = quarterRowIndex((quarterRows ?? []) as QuarterRow[]);
 
+      // One write per row. A rock listed twice files both listings under one
+      // row: the first listing's detail, later ones filling only what it lacks —
+      // the same rule rocksFromDecisions builds the rock by.
+      const byRow = new Map<string, InitiativeDecision>();
+      const failures: string[] = [];
+      for (const decision of withDetail) {
+        const rowId = quarter.rowFor({ id: decision.initiativeId, title: decision.title });
+        if (!rowId) {
+          // An untitled listing is never made a rock (rocksFromDecisions), so it has no row to miss.
+          if (titleKey(decision.title)) failures.push(`${decision.title}: no ${stepType} row`);
+          continue;
+        }
+        const held = byRow.get(rowId);
+        byRow.set(rowId, held ? fillSprintBlanks(held, decision) : decision);
+      }
+
+      let updatedCount = 0;
+      for (const [rowId, decision] of byRow) {
         const updatePayload: Record<string, any> = {
           updated_at: new Date().toISOString(),
         };
@@ -538,17 +628,22 @@ export class StrategicSyncService {
         if (decision.tasks) updatePayload.tasks = decision.tasks;
         if (decision.milestones) updatePayload.milestones = decision.milestones;
 
-        // Update the initiative row in the quarter's step_type
         const { error } = await supabase
           .from('strategic_initiatives')
           .update(updatePayload)
-          .eq('id', decision.initiativeId)
+          .eq('id', rowId)
           .eq('business_id', businessId);
 
         if (!error) updatedCount++;
+        else failures.push(`${decision.title}: ${error.message}`);
       }
 
-      console.log(`[StrategicSync] Synced sprint planning for ${updatedCount} initiatives to ${qKey}`);
+      console.log(`[StrategicSync] Synced sprint planning for ${updatedCount} initiatives to ${stepType}`);
+      // A rock whose detail did not land is not a successful completion; this
+      // used to count only the successes and report success regardless.
+      if (failures.length > 0) {
+        return { success: false, error: `Sprint detail not saved — ${failures.join('; ')}` };
+      }
       return { success: true };
     } catch (err) {
       console.error('[StrategicSync] Error syncing sprint planning to quarter:', err);
@@ -760,8 +855,8 @@ export class StrategicSyncService {
     // The review's own quarter — the one it plans. Never re-derived here.
     const resolvedQuarterKey = quarterKey;
 
-    // Sync initiative decisions
-    const decisionsResult = await this.syncInitiativeChanges(businessId, userId, decisions);
+    // Sync initiative decisions (the planned quarter's listings onto its own rows)
+    const decisionsResult = await this.syncInitiativeChanges(businessId, userId, decisions, resolvedQuarterKey);
     if (!decisionsResult.success && decisionsResult.error) {
       errors.push(decisionsResult.error);
     }
@@ -780,16 +875,19 @@ export class StrategicSyncService {
       }
     }
 
-    // Sync sprint planning data to quarter rows (the quarter the review plans)
-    const sprintResult = await this.syncSprintPlanningToQuarter(businessId, decisions, resolvedQuarterKey);
-    if (!sprintResult.success && sprintResult.error) {
-      errors.push(sprintResult.error);
-    }
-
     // Sync rocks to the quarter the review plans
     const rocksResult = await this.syncRocks(businessId, userId, rocks, resolvedQuarterKey);
     if (!rocksResult.success && rocksResult.error) {
       errors.push(rocksResult.error);
+    }
+
+    // Sync sprint planning data to quarter rows (the quarter the review plans).
+    // After the rocks: a rock picked from the 12-month list or an earlier
+    // quarter, or added in the session, has its quarter row only once syncRocks
+    // has filed it.
+    const sprintResult = await this.syncSprintPlanningToQuarter(businessId, decisions, resolvedQuarterKey);
+    if (!sprintResult.success && sprintResult.error) {
+      errors.push(sprintResult.error);
     }
 
     // Sync new initiatives
