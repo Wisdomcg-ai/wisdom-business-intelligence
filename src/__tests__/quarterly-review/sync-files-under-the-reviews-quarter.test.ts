@@ -26,11 +26,9 @@ import path from 'node:path';
 const db = vi.hoisted(() => ({
   /** Every business_financial_goals update, in order. */
   targetUpdates: [] as Array<Record<string, unknown>>,
-  /** Every saveInitiatives call: [stepType, titles]. */
-  initiativeSaves: [] as Array<{ stepType: string; titles: string[] }>,
   failTargetUpdate: false,
   /** strategic_initiatives rows already stored for the business + step_type. */
-  existingInitiatives: [] as Array<{ id: string; title: string }>,
+  existingInitiatives: [] as Array<{ id: string; title: string; status?: string }>,
   initiativeInserts: [] as Array<{ title: string; step_type: string }>,
   initiativeUpdates: [] as Array<{ id: string; title: string }>,
   failInitiativeRead: false,
@@ -89,13 +87,15 @@ vi.mock('@/lib/supabase/client', () => ({
           };
           return chain;
         },
-        insert: async (payload: Record<string, unknown>) => {
+        insert: async (payload: Record<string, unknown> | Array<Record<string, unknown>>) => {
           if (table === 'strategic_initiatives') {
             if (db.failInitiativeInsert) return { error: { message: 'null value in column \"user_id\"' } };
-            db.initiativeInserts.push({
-              title: String(payload.title ?? ''),
-              step_type: String(payload.step_type ?? ''),
-            });
+            for (const row of Array.isArray(payload) ? payload : [payload]) {
+              db.initiativeInserts.push({
+                title: String(row.title ?? ''),
+                step_type: String(row.step_type ?? ''),
+              });
+            }
           }
           return { error: null };
         },
@@ -103,16 +103,6 @@ vi.mock('@/lib/supabase/client', () => ({
       return builder;
     },
   }),
-}));
-
-vi.mock('@/app/goals/services/strategic-planning-service', () => ({
-  StrategicPlanningService: {
-    loadInitiatives: vi.fn(async () => []),
-    saveInitiatives: vi.fn(async (_biz: string, _user: string, initiatives: Array<{ title: string }>, stepType: string) => {
-      db.initiativeSaves.push({ stepType, titles: initiatives.map((i) => i.title) });
-      return { success: true };
-    }),
-  },
 }));
 
 import { strategicSyncService } from '@/app/quarterly-review/services/strategic-sync-service';
@@ -126,7 +116,6 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(INSIDE_Q1);
   db.targetUpdates = [];
-  db.initiativeSaves = [];
   db.failTargetUpdate = false;
   db.existingInitiatives = [];
   db.initiativeInserts = [];
@@ -164,7 +153,7 @@ describe('the quarter the review plans decides where its work files', () => {
       { title: 'Hire a second estimator', category: 'people' },
     ]);
 
-    expect(db.initiativeSaves).toEqual([{ stepType: 'q3', titles: ['Hire a second estimator'] }]);
+    expect(db.initiativeInserts).toEqual([{ title: 'Hire a second estimator', step_type: 'q3' }]);
   });
 
   it('an initiative keeps the quarter the coach dropped it into', async () => {
@@ -172,7 +161,7 @@ describe('the quarter the review plans decides where its work files', () => {
       { title: 'Rebuild the website', category: 'marketing', quarterAssigned: 'q4' },
     ]);
 
-    expect(db.initiativeSaves).toEqual([{ stepType: 'q4', titles: ['Rebuild the website'] }]);
+    expect(db.initiativeInserts).toEqual([{ title: 'Rebuild the website', step_type: 'q4' }]);
   });
 });
 
@@ -283,5 +272,78 @@ describe('completing twice does not store the rock twice', () => {
 
     expect(result.success).toBe(false);
     expect(result.errors.join(' ')).toContain('Rocks not saved');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 25 Sep 2026 — JVJ Civil and Asphalt. Completing a review appended its added
+// initiatives to the quarter every time, on top of the rows syncRocks had just
+// saved by title; and it did so through the Goals wizard's list save, which
+// hard-deletes every row of the quarter missing from the list it is handed.
+// ---------------------------------------------------------------------------
+describe('the initiatives a review added are saved once, and nothing else is touched', () => {
+  it('skips an initiative the quarter already holds — the row syncRocks saved moments earlier', async () => {
+    db.existingInitiatives = [{ id: '11111111-2222-4333-8444-555555555555', title: '  training ' }];
+
+    const result = await strategicSyncService.syncNewInitiatives('biz-1', 'user-1', [
+      { title: 'Training', category: 'people', quarterAssigned: 'q2' },
+    ]);
+
+    expect(result).toEqual({ success: true });
+    expect(db.initiativeInserts).toEqual([]);
+  });
+
+  it('inserts what the quarter does not hold — and never updates or deletes a row', async () => {
+    db.existingInitiatives = [{ id: '11111111-2222-4333-8444-555555555555', title: 'Training' }];
+
+    await strategicSyncService.syncNewInitiatives('biz-1', 'user-1', [
+      { title: 'Training', category: 'people', quarterAssigned: 'q2' },
+      { title: 'KPI & Bonus Structure', category: 'people', quarterAssigned: 'q2' },
+    ]);
+
+    expect(db.initiativeInserts).toEqual([{ title: 'KPI & Bonus Structure', step_type: 'q2' }]);
+    expect(db.initiativeUpdates).toEqual([]);
+  });
+
+  it('adds two of the same title only once', async () => {
+    await strategicSyncService.syncNewInitiatives('biz-1', 'user-1', [
+      { title: 'Training', category: 'people', quarterAssigned: 'q2' },
+      { title: 'TRAINING', category: 'people', quarterAssigned: 'q2' },
+    ]);
+
+    expect(db.initiativeInserts).toHaveLength(1);
+  });
+
+  it('writes nothing, and says so, when the quarter cannot be read', async () => {
+    // A failed read used to look like an empty quarter — and the list save
+    // then deleted every row the quarter held.
+    db.failInitiativeRead = true;
+
+    const result = await strategicSyncService.syncNewInitiatives('biz-1', 'user-1', [
+      { title: 'Training', category: 'people', quarterAssigned: 'q2' },
+    ]);
+
+    expect(db.initiativeInserts).toEqual([]);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('could not read q2');
+  });
+});
+
+describe('a rock the coach dropped is not the rock planned now', () => {
+  it('gives a rock re-added under a dropped rock\'s name a row of its own', async () => {
+    // Matched by title, it was written onto the cancelled row and stayed cancelled.
+    db.existingInitiatives = [
+      { id: '11111111-2222-4333-8444-555555555555', title: 'Due Date Focus', status: 'cancelled' },
+    ];
+
+    await strategicSyncService.syncRocks(
+      'biz-1',
+      'user-1',
+      [{ id: 'sprint-new-1790198021629', title: 'Due Date Focus', owner: '', status: 'not_started', progressPercentage: 0, successCriteria: '' } as never],
+      'q1',
+    );
+
+    expect(db.initiativeUpdates).toEqual([]);
+    expect(db.initiativeInserts).toEqual([{ title: 'Due Date Focus', step_type: 'q1' }]);
   });
 });

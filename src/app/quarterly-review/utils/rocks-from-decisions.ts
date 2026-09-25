@@ -30,17 +30,172 @@ export function titleKey(title: string | null | undefined): string {
 }
 
 /**
- * A decision belongs to the quarter being planned when it says so, or when it
- * says nothing — an unassigned decision in this step is about the quarter the
- * session is planning.
+ * A decision belongs to the quarter being planned only when it says so.
+ *
+ * 'unassigned' — and an empty quarter, which step 4.2 groups the same way
+ * (`quarterAssigned || 'unassigned'`) — is 4.2's "Available" pool: initiatives
+ * nobody has put in any quarter, loaded from the plan's ideas and 12-month
+ * lists and defaulted to 'keep'. Counting them as this quarter's rocks (found
+ * 25 Sep 2026) saved Performance Management System as a JVJ rock that 4.3 never
+ * showed, and 4 of Digital Bond's 8 and 4 of Efficient Living's 9 — and
+ * syncRocks then filed those plan rows under Q2. The PDF's fallback for older
+ * reviews printed their whole pool the same way (Sydney Pressed Metal's Q3
+ * 2026 review holds 23 pool entries). No review in production holds an empty
+ * quarter, so nothing relied on the old reading of it.
  */
 export function isForPlannedQuarter(
   decision: Pick<InitiativeDecision, 'quarterAssigned'>,
   plannedQuarter: number,
 ): boolean {
   const assigned = (decision.quarterAssigned ?? '').trim().toLowerCase()
-  if (!assigned || assigned === 'unassigned') return true
   return assigned === `q${plannedQuarter}`
+}
+
+/**
+ * Every decision that makes a rock this quarter: Continue or Accelerate, in the
+ * quarter being planned. Copies of the same rock are all included.
+ */
+export function plannedRockDecisions(
+  decisions: InitiativeDecision[] | null | undefined,
+  plannedQuarter: number,
+): InitiativeDecision[] {
+  return (decisions ?? [])
+    .filter(d => ACTIVE_DECISIONS.has(String(d?.decision ?? '').toLowerCase()))
+    .filter(d => isForPlannedQuarter(d, plannedQuarter))
+}
+
+/** The sprint fields step 4.3 collects on a rock. */
+const SPRINT_FIELDS = [
+  'assignedTo',
+  'why',
+  'outcome',
+  'startDate',
+  'endDate',
+  'notes',
+  'tasks',
+  'milestones',
+  'totalHours',
+] as const
+
+const isBlank = (value: unknown): boolean =>
+  value === undefined ||
+  value === null ||
+  value === '' ||
+  value === 0 ||
+  (Array.isArray(value) && value.length === 0)
+
+/**
+ * `target` with every blank sprint field filled from `source`. Never overwrites
+ * anything the target already holds.
+ */
+export function fillSprintBlanks(target: InitiativeDecision, source: InitiativeDecision): InitiativeDecision {
+  const out = { ...target } as unknown as Record<string, unknown>
+  const from = source as unknown as Record<string, unknown>
+  for (const field of SPRINT_FIELDS) {
+    if (isBlank(out[field]) && !isBlank(from[field])) out[field] = from[field]
+  }
+  return out as unknown as InitiativeDecision
+}
+
+/** A decision the plan holds a row for. Rocks the review added itself do not. */
+export function isSavedInitiativeId(id: string | null | undefined): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id ?? ''))
+}
+
+/**
+ * For each rock listed more than once this quarter, the 1-based positions of
+ * its OTHER listings, keyed by id — so step 4.3 can say "also listed as #4".
+ *
+ * The step shows every copy and lets the coach choose which to remove (Matt,
+ * 25 Sep 2026: alert, don't assume). Merging them silently would hide copies
+ * whose details differ. Positions follow `rocks` as given — the cards' order.
+ */
+export function duplicateListings(rocks: InitiativeDecision[]): Map<string, number[]> {
+  const positions = new Map<string, number[]>()
+  rocks.forEach((r, index) => {
+    const key = titleKey(r.title)
+    if (!key) return
+    positions.set(key, [...(positions.get(key) ?? []), index + 1])
+  })
+  const out = new Map<string, number[]>()
+  rocks.forEach((r, index) => {
+    const all = positions.get(titleKey(r.title)) ?? []
+    if (all.length > 1) out.set(r.initiativeId, all.filter(p => p !== index + 1))
+  })
+  return out
+}
+
+/**
+ * Write step 4.3's working copy back into the review's decisions: each rock's
+ * sprint detail onto its own decision, and rocks added in the step appended.
+ */
+export function mergeSprintEdits(
+  decisions: InitiativeDecision[] | null | undefined,
+  sprint: InitiativeDecision[],
+): InitiativeDecision[] {
+  const all = decisions ?? []
+  const byId = new Map(sprint.map(r => [r.initiativeId, r]))
+  const merged = all.map(d => {
+    const edited = byId.get(d.initiativeId)
+    return edited ? { ...d, ...edited } : d
+  })
+  const held = new Set(all.map(d => d.initiativeId))
+  return [...merged, ...sprint.filter(r => !held.has(r.initiativeId))]
+}
+
+/**
+ * Take ONE listing of a rock out of the quarter — the one the coach chose.
+ *
+ * A listing the plan holds a row for is marked Drop ('kill'): step 4.2 shows it
+ * as Drop, and the sync on completion saves it as cancelled — never a delete. A
+ * listing the review added itself has no row, so it is simply removed.
+ *
+ * One case needs more: removing the SAVED listing of a rock whose other listing
+ * the review added itself (JVJ's Training: the row its completion saved, and
+ * the session's copy). Dropping the row would leave the kept listing to be
+ * matched to that same row by title on completion — and saved as cancelled. So
+ * the kept listing takes over the row instead: the rock the coach kept is the
+ * one that is saved, with everything on its card.
+ *
+ * Removing only from the step's own working copy is what made "Remove" undo
+ * itself: the decisions still held the rock, and the step's re-sync put it
+ * straight back. Returns the same array when there is nothing to remove.
+ */
+export function removeRockFromQuarter(
+  decisions: InitiativeDecision[] | null | undefined,
+  rockId: string,
+  plannedQuarter: number,
+): InitiativeDecision[] {
+  const all = decisions ?? []
+  const target = all.find(d => d.initiativeId === rockId)
+  if (!target) return all
+
+  if (!isSavedInitiativeId(rockId)) return all.filter(d => d.initiativeId !== rockId)
+
+  const key = titleKey(target.title)
+  const kept = key
+    ? plannedRockDecisions(all, plannedQuarter).find(
+        d => d.initiativeId !== rockId && titleKey(d.title) === key && !isSavedInitiativeId(d.initiativeId),
+      )
+    : undefined
+
+  if (kept) {
+    // The kept listing stays where it is on screen; only the removed one goes.
+    return all
+      .filter(d => d.initiativeId !== rockId)
+      .map(d =>
+        d.initiativeId === kept.initiativeId
+          ? {
+              ...kept,
+              initiativeId: target.initiativeId,
+              currentStatus: target.currentStatus,
+              progressPercentage: target.progressPercentage,
+            }
+          : d,
+      )
+  }
+
+  return all.map(d => (d.initiativeId === rockId ? { ...d, decision: 'kill' as const } : d))
 }
 
 /**
@@ -54,9 +209,7 @@ export function rocksFromDecisions(
   decisions: InitiativeDecision[] | null | undefined,
   plannedQuarter: number,
 ): Rock[] {
-  const kept = (decisions ?? [])
-    .filter(d => ACTIVE_DECISIONS.has(String(d?.decision ?? '').toLowerCase()))
-    .filter(d => isForPlannedQuarter(d, plannedQuarter))
+  const kept = plannedRockDecisions(decisions, plannedQuarter)
 
   // One rock per title. `initiative_decisions` repeats titles in production —
   // Digital Bond's completed Q1 FY2027 review holds three twice over, Efficient

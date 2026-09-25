@@ -10,6 +10,7 @@ import { calculateQuarters } from '@/app/goals/utils/quarters';
 import { getInitials, getColorForName, parseTeamFromProfile, type TeamMember } from '@/app/goals/utils/team';
 import { getCategoryStyle, getCardClasses } from '@/app/goals/utils/design-tokens';
 import { snapshotActual } from '../../utils/snapshot-actuals';
+import { reconcileDecisions, onePoolEntryPerInitiative } from '../../utils/reconcile-decisions';
 import type {
   QuarterlyReview,
   InitiativeDecision,
@@ -507,7 +508,9 @@ export function QuarterlyPlanStep({
       // Filter out:
       // 1. Items already assigned to a quarter (by ID or by matching title)
       // 2. Operational items (only show strategic)
-      const unassignedPool = (poolData || []).filter((i: any) =>
+      // 3. The second row of an initiative the plan holds as both an idea and a
+      //    12-month item (onePoolEntryPerInitiative)
+      const unassignedPool = onePoolEntryPerInitiative((poolData || []) as any[]).filter((i: any) =>
         !assignedIds.has(i.id) &&
         !assignedTitles.has((i.title || '').trim().toLowerCase()) &&
         i.idea_type !== 'operational'
@@ -563,26 +566,9 @@ export function QuarterlyPlanStep({
           // First load — use fresh DB data
           onUpdateInitiativeDecisions(allDecisions);
         } else {
-          // Reconcile: preserve user decisions/notes, but add new DB items and update quarters
-          const existingById = new Map(decisions.map(d => [d.initiativeId, d]));
-          const reconciled = allDecisions.map(fresh => {
-            const existing = existingById.get(fresh.initiativeId);
-            if (existing) {
-              // Keep user's decision and notes, but preserve 1.3 flags from fresh
-              // For completed-in-1.3 items, lock decision to 'keep' (not overridable)
-              const decision = fresh.completedInStep1 ? 'keep' as InitiativeAction : existing.decision;
-              return {
-                ...existing,    // Preserve ALL existing fields (why, outcome, tasks, milestones from 4.3)
-                ...fresh,       // Apply fresh database data (title, category, status, progress)
-                decision,       // Reconciled decision
-                notes: existing.notes || fresh.notes,
-              };
-            }
-            return fresh;
-          });
-          // Also keep any user-added initiatives (ids starting with 'new-')
-          const userAdded = decisions.filter(d => d.initiativeId.startsWith('new-'));
-          onUpdateInitiativeDecisions([...reconciled, ...userAdded]);
+          // Preserve the review's decisions and sprint detail; carry over the
+          // rocks it added itself — once, even after completing it saved them.
+          onUpdateInitiativeDecisions(reconcileDecisions(decisions, allDecisions));
         }
       }
 

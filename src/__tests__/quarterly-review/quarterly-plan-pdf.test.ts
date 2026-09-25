@@ -491,17 +491,18 @@ describe('the rocks the session actually set reach the page', () => {
     ).toEqual(['Doing it', 'Pushing harder']);
   });
 
-  it('leaves off a decision tagged for a different quarter, and keeps an untagged one', () => {
+  it('leaves off a decision tagged for a different quarter, or for none (4.2\'s Available pool)', () => {
     expect(
       rocksFromDecisions(
         [
           sprintDecision({ title: 'Next quarter', quarterAssigned: 'q3' }),
           sprintDecision({ title: 'This quarter', quarterAssigned: 'q2' }),
           sprintDecision({ title: 'Untagged', quarterAssigned: undefined }),
+          sprintDecision({ title: 'In the pool', quarterAssigned: 'unassigned' }),
         ] as never,
         2
       ).map(r => r.title)
-    ).toEqual(['This quarter', 'Untagged']);
+    ).toEqual(['This quarter']);
   });
 
   it('names who owns it and when it is due, when the session said so', () => {
@@ -540,8 +541,12 @@ describe('the rocks the session actually set reach the page', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Found the same morning, checking #593 against a real completed review before
-// declaring it done: "unassigned" is a literal value, and the most common one.
+// "unassigned" is a literal value, and the most common one (#593 found it) — but
+// it is step 4.2's Available pool, not the quarter being planned. Corrected 25
+// Sep 2026: across every review in production, not one "unassigned" decision
+// has ever carried sprint detail (owner, why, outcome, tasks, dates), while the
+// rocks coaches actually planned in 4.3 all do. Reading the pool as rocks
+// printed initiatives the client never committed to, and stored them.
 // ---------------------------------------------------------------------------
 
 /** Digital Bond's completed Q1 FY2027 review, decisions exactly as stored. */
@@ -558,32 +563,49 @@ const digitalBondDecisions = [
   ['Delegate Sales Calls', 'unassigned'],
 ].map(([title, q], i) => sprintDecision({ title, quarterAssigned: q, initiativeId: `db-${i}` }));
 
-describe('"unassigned" work is the quarter being planned', () => {
-  it('treats the literal "unassigned" the same as no tag at all', () => {
-    // 81 of 150 decisions in production carry it — the most common value.
-    expect(isForPlannedQuarter({ quarterAssigned: 'unassigned' }, 1)).toBe(true);
-    expect(isForPlannedQuarter({ quarterAssigned: undefined }, 1)).toBe(true);
-    expect(isForPlannedQuarter({ quarterAssigned: '' }, 1)).toBe(true);
+/** JVJ Civil and Asphalt's Q2 FY2027 review, decisions as stored on 25 Sep 2026. */
+const jvjDecisions = [
+  ['05af7ff5-6023-4f36-b4b0-7db83c7c3740', 'Training', 'q2'],
+  ['5d9fb9c9-11e6-4325-8d25-4d6ab6a9b2e1', 'KPI & Bonus Structure', 'q2'],
+  ['c742f2c3-71d8-4597-acf0-04afc0833d87', 'Performance Management System', 'unassigned'],
+  ['0a1d1d80-5bb0-4220-8f2a-e850a050c1b7', 'Performance Management System', 'unassigned'],
+  ['new-1790293272000', 'Training', 'q2'],
+  ['new-1790293338029', 'KPI & Bonus Structure', 'q2'],
+  ['sprint-new-1790296002208', 'Complete the Payroll Automations', 'q2'],
+].map(([initiativeId, title, q]) => sprintDecision({ initiativeId, title, quarterAssigned: q }));
+
+describe('"unassigned" is the Available pool, not the quarter being planned', () => {
+  it('never counts the literal "unassigned", or no tag at all', () => {
+    expect(isForPlannedQuarter({ quarterAssigned: 'unassigned' }, 1)).toBe(false);
+    expect(isForPlannedQuarter({ quarterAssigned: undefined }, 1)).toBe(false);
+    expect(isForPlannedQuarter({ quarterAssigned: '' }, 1)).toBe(false);
   });
 
   it('reads the tag regardless of case or stray spaces', () => {
-    expect(isForPlannedQuarter({ quarterAssigned: 'Unassigned' }, 1)).toBe(true);
     expect(isForPlannedQuarter({ quarterAssigned: ' Q1 ' }, 1)).toBe(true);
+    expect(isForPlannedQuarter({ quarterAssigned: 'Unassigned' }, 1)).toBe(false);
     expect(isForPlannedQuarter({ quarterAssigned: 'q3' }, 1)).toBe(false);
   });
 
-  it('prints Digital Bond’s five rocks — not zero, and not eight', () => {
+  it('prints JVJ\'s three rocks — not Performance Management System, which 4.3 never showed', () => {
     const page = buildPlanPage(
-      input({ review: review({ quarter: 1, quarterly_rocks: [], initiative_decisions: digitalBondDecisions }) })
+      input({ review: review({ quarter: 2, quarterly_rocks: [], initiative_decisions: jvjDecisions }) })
     );
     const rocks = page.blocks.find(b => b.title === 'My rocks this quarter') as any;
     expect(rocks.items.map((i: any) => i.text)).toEqual([
-      'Messaging on Digital Bond Website - Update',
-      'Process for delivering a scalable solution',
-      'Determine how to get money off the table and invest',
-      'Develop a leveraged sales process',
-      'Delegate Sales Calls',
+      'Training',
+      'KPI & Bonus Structure',
+      'Complete the Payroll Automations',
     ]);
+  });
+
+  it('prints no rocks for Digital Bond\'s Q1 — that session put nothing in Q1', () => {
+    // Two decisions for q3 and eight in the pool, none carrying sprint detail.
+    // Printing the pool here listed five initiatives as rocks nobody set.
+    const page = buildPlanPage(
+      input({ review: review({ quarter: 1, quarterly_rocks: [], initiative_decisions: digitalBondDecisions }) })
+    );
+    expect(page.blocks.map(b => b.title)).not.toContain('My rocks this quarter');
   });
 });
 
@@ -658,11 +680,12 @@ describe('repeated copies fill each other in, field by field', () => {
     ]);
   });
 
-  it('never lets a copy tagged for another quarter lend this one its owner', () => {
+  it('never lets a copy tagged for another quarter, or in the pool, lend this one its owner', () => {
     const [rock] = rocksFromDecisions(
       [
-        sprintDecision({ title: 'Hire', quarterAssigned: 'unassigned' }),
+        sprintDecision({ title: 'Hire', quarterAssigned: 'q2' }),
         sprintDecision({ title: 'Hire', quarterAssigned: 'q3', assignedTo: 'Someone else' }),
+        sprintDecision({ title: 'Hire', quarterAssigned: 'unassigned', assignedTo: 'Pool owner' }),
       ] as never,
       2
     );
