@@ -11,12 +11,14 @@
  *
  * The hook is driven for real — renderHook, with the 800ms autosave and the 5s
  * sync on fake timers — and opened the way the workshop page opens it, by
- * review id, so the sync writes to the business_profiles id. Sentry is the
+ * review id, so the sync writes to the business_profiles id. Edits go through
+ * updateInitiativeDecisions, the call Sprint Planning makes. Which rocks get
+ * filed is not this file's business; the id and the quarter are. Sentry is the
  * boundary: the contract is the `invariant:` tag, not a call to a helper.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import type { Rock } from '@/app/quarterly-review/types';
+import type { InitiativeDecision, Rock } from '@/app/quarterly-review/types';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('@sentry/nextjs', () => ({ captureException: sentry.captureException }));
@@ -76,7 +78,21 @@ const ROCK: Rock = {
   progressPercentage: 0,
   successCriteria: 'Every job quoted within 48h',
 };
-const SECOND_ROCK: Rock = { ...ROCK, id: 'sprint-new-1790198021630', title: 'Hire a second estimator' };
+
+/** What Sprint Planning hands the hook when the coach types a rock's outcome. */
+const keptForQ2 = (outcome: string): InitiativeDecision[] => [
+  {
+    initiativeId: '11111111-2222-4333-8444-555555555555',
+    title: 'Due Date Focus',
+    category: 'operations',
+    currentStatus: 'in_progress',
+    progressPercentage: 0,
+    decision: 'keep',
+    notes: '',
+    quarterAssigned: 'q2',
+    outcome,
+  },
+];
 
 const PICKED_UNREADABLE = {
   success: false,
@@ -119,8 +135,8 @@ const openSprintPlanning = async () => {
 type Hook = Awaited<ReturnType<typeof openSprintPlanning>>;
 
 /** A Sprint Planning edit: the 800ms autosave lands, then the 5s sync runs. */
-const editRocks = async (hook: Hook, rocks: Rock[]) => {
-  act(() => hook.result.current.updateQuarterlyRocks(rocks));
+const editSprintPlanning = async (hook: Hook, outcome: string) => {
+  act(() => hook.result.current.updateInitiativeDecisions(keptForQ2(outcome)));
   await settle(800);
   await settle(5000);
 };
@@ -157,7 +173,7 @@ describe('the background rocks sync reads the answer syncRocks gives', () => {
 
     // Written under the business_profiles id and the quarter the review plans.
     expect(sync.syncRocks).toHaveBeenCalledTimes(1);
-    expect(sync.syncRocks).toHaveBeenCalledWith('profile-1', 'user-1', [ROCK], 'q2');
+    expect(sync.syncRocks).toHaveBeenCalledWith('profile-1', 'user-1', expect.any(Array), 'q2');
     expect(captured()).toEqual([
       {
         message: PICKED_UNREADABLE.error,
@@ -208,8 +224,8 @@ describe('a failure that persists is captured once, not on every cycle', () => {
 
     const hook = await openSprintPlanning();
     await settle(5000);
-    await editRocks(hook, [ROCK, SECOND_ROCK]);
-    await editRocks(hook, [SECOND_ROCK]);
+    await editSprintPlanning(hook, 'Every job quoted within 48h');
+    await editSprintPlanning(hook, 'Every job quoted within 24h');
 
     expect(sync.syncRocks).toHaveBeenCalledTimes(3);
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
@@ -220,7 +236,7 @@ describe('a failure that persists is captured once, not on every cycle', () => {
 
     const hook = await openSprintPlanning();
     await settle(5000);
-    await editRocks(hook, [ROCK, SECOND_ROCK]);
+    await editSprintPlanning(hook, 'Every job quoted within 48h');
 
     expect(captured().map(c => c.message)).toEqual([PICKED_UNREADABLE.error, INSERT_REFUSED.error]);
   });
@@ -233,8 +249,8 @@ describe('a failure that persists is captured once, not on every cycle', () => {
 
     const hook = await openSprintPlanning();
     await settle(5000);
-    await editRocks(hook, [ROCK, SECOND_ROCK]);
-    await editRocks(hook, [ROCK]);
+    await editSprintPlanning(hook, 'Every job quoted within 48h');
+    await editSprintPlanning(hook, 'Every job quoted within 24h');
 
     expect(sync.syncRocks).toHaveBeenCalledTimes(3);
     expect(captured().map(c => c.message)).toEqual([PICKED_UNREADABLE.error, PICKED_UNREADABLE.error]);
