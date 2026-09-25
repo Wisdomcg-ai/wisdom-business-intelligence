@@ -50,6 +50,12 @@ const db = vi.hoisted(() => ({
   failPickedRead: false,
   failInitiativeInsert: false,
   failInitiativeUpdate: false,
+  /**
+   * The statuses strategic_initiatives_status_check allows, read from the
+   * schema below. A write of any other status is refused, as the database
+   * refuses it — without this the fake took 'planned' and 'deferred' happily.
+   */
+  allowedStatuses: [] as string[],
 }));
 
 vi.mock('@/lib/supabase/client', () => {
@@ -68,6 +74,13 @@ vi.mock('@/lib/supabase/client', () => {
       ).then(resolve, reject),
   });
 
+  const statusRefused = (row: Record<string, unknown>) =>
+    row.status !== undefined && row.status !== null && !db.allowedStatuses.includes(String(row.status));
+  const CHECK_VIOLATION = {
+    code: '23514',
+    message: 'new row for relation "strategic_initiatives" violates check constraint "strategic_initiatives_status_check"',
+  };
+
   const initiatives = {
     select: () => initiativeQuery([], false),
     update: (payload: Record<string, unknown>) => {
@@ -85,6 +98,7 @@ vi.mock('@/lib/supabase/client', () => {
           if (db.failInitiativeUpdate) {
             return Promise.resolve({ error: { message: 'permission denied for strategic_initiatives' } }).then(resolve, reject);
           }
+          if (statusRefused(payload)) return Promise.resolve({ error: CHECK_VIOLATION }).then(resolve, reject);
           for (const row of db.existingInitiatives) if (filters.every((f) => f(row))) Object.assign(row, payload);
           return Promise.resolve({ error: null }).then(resolve, reject);
         },
@@ -93,6 +107,7 @@ vi.mock('@/lib/supabase/client', () => {
     },
     insert: async (payload: Record<string, unknown> | Array<Record<string, unknown>>) => {
       if (db.failInitiativeInsert) return { error: { message: 'null value in column \"user_id\"' } };
+      if ((Array.isArray(payload) ? payload : [payload]).some(statusRefused)) return { error: CHECK_VIOLATION };
       for (const row of Array.isArray(payload) ? payload : [payload]) {
         db.initiativeInserts.push({
           title: String(row.title ?? ''),
@@ -145,6 +160,20 @@ vi.mock('@/lib/supabase/client', () => {
 });
 
 import { strategicSyncService } from '@/app/quarterly-review/services/strategic-sync-service';
+import { assignedIn, assignmentTag, withAssignment, withoutAssignment } from '@/app/quarterly-review/utils/assignment-tag';
+import { INITIATIVE_STATUSES } from '@/app/quarterly-review/utils/decision-writes';
+
+/** strategic_initiatives_status_check, read from the schema the database was built from. */
+const STATUS_CHECK = (() => {
+  const schema = readFileSync(
+    path.resolve(__dirname, '../../../supabase/migrations/00000000000000_baseline_schema.sql'),
+    'utf-8',
+  );
+  const check = /CONSTRAINT "strategic_initiatives_status_check" CHECK \(\("status" = ANY \(ARRAY\[([^\]]+)\]/.exec(schema);
+  if (!check) throw new Error('strategic_initiatives_status_check is not in the baseline schema');
+  return [...check[1].matchAll(/'([a-z_]+)'::"text"/g)].map((m) => m[1]);
+})();
+db.allowedStatuses = STATUS_CHECK;
 
 /** 24 Sep 2026 — inside FY27 Q1 (Jul–Sep), six days from its end. */
 const INSIDE_Q1 = new Date('2026-09-24T02:00:00Z');
@@ -695,7 +724,8 @@ describe('the quarter\'s decisions are saved on its own rows — taking a pick o
       'q2',
     );
 
-    expect(writesTo(Q2_ROW)).toHaveLength(1);
+    // The kept listing decides the row, and Continue leaves a row as it is.
+    expect(writesTo(Q2_ROW)).toEqual([]);
     expect(rowById(Q2_ROW)?.status).toBe('in_progress');
     expect(writesTo(TWELVE_MONTH)).toEqual([]);
   });
@@ -738,5 +768,394 @@ describe('the quarter\'s decisions are saved on its own rows — taking a pick o
     expect(result.success).toBe(false);
     expect(result.error).toContain('could not read it');
     expect(db.initiativeWrites).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 26 Sep 2026, found while building #605. syncInitiativeChanges wrote a status
+// and the card's notes for every decision step 4.2 held, and checked neither
+// write.
+//
+// - Continue on a not-started initiative wrote 'planned' and Carry Forward
+//   wrote 'deferred'. strategic_initiatives_status_check allows neither, so the
+//   database refused both — silently, the notes in the same write with them.
+//   No row in production holds either status.
+// - The writes that landed wrote the card's notes, which are not the row's
+//   notes: 4.2 never loads those, it keeps its owner chip there as
+//   "[Assigned: <owner>]". Seven rows over two businesses now hold the tag as
+//   their notes. 52 rows of real notes survived only because they are not
+//   started — fixing the status alone would have wiped every one.
+// ---------------------------------------------------------------------------
+const Q3_STARTED = '66666666-6666-4666-8666-666666666666';
+const Q1_DROPPED = '77777777-7777-4777-8777-777777777777';
+const Q1_DONE = '88888888-8888-4888-8888-888888888888';
+const IDEA = '99999999-9999-4999-8999-999999999999';
+const Q4_ROW = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+/** A Q3 initiative under way, with an owner and notes of its own. */
+const startedRow = (): InitiativeRow => ({
+  id: Q3_STARTED,
+  title: 'Standardise Support Agreements',
+  step_type: 'q3',
+  status: 'in_progress',
+  assigned_to: 'Darren Rogers',
+  notes: 'Template agreed with the lawyer in August',
+  description: 'One agreement for every support client',
+});
+
+/** An idea with notes the client wrote — the 52 rows at risk look like this. */
+const ideaRow = (): InitiativeRow => ({
+  id: IDEA,
+  title: 'Supervision module',
+  step_type: 'strategic_ideas',
+  status: 'not_started',
+  notes: 'Will move into Odoo supervision module post HR go-live.',
+});
+
+/** What step 4.2 holds for a row it loaded: Continue, and the owner tag where the notes go. */
+const card = (row: InitiativeRow, over: Partial<InitiativeDecision> = {}): InitiativeDecision => ({
+  initiativeId: row.id,
+  title: row.title,
+  category: 'operations',
+  currentStatus: String(row.status ?? 'not_started'),
+  progressPercentage: 0,
+  decision: 'keep',
+  notes: row.assigned_to ? assignmentTag(String(row.assigned_to)) : '',
+  quarterAssigned: /^q[1-4]$/.test(String(row.step_type)) ? String(row.step_type) : 'unassigned',
+  ...over,
+});
+
+describe('a decision saves what the coach decided, in a status the table allows', () => {
+  it('the fake refuses what the table refuses, so every test here runs against the real CHECK', async () => {
+    const { createClient } = await import('@/lib/supabase/client');
+    const client = createClient() as unknown as {
+      from: (table: string) => {
+        update: (payload: Record<string, unknown>) => {
+          eq: (column: string, value: unknown) => PromiseLike<{ error: { message: string } | null }>;
+        };
+      };
+    };
+    db.existingInitiatives = [ideaRow()];
+
+    const { error } = await client.from('strategic_initiatives').update({ status: 'planned' }).eq('id', IDEA);
+
+    expect(error?.message).toContain('strategic_initiatives_status_check');
+    expect(rowById(IDEA)?.status).toBe('not_started');
+    expect([...INITIATIVE_STATUSES]).toEqual(STATUS_CHECK);
+  });
+
+  it('Continue on a not-started initiative writes nothing — it wrote "planned", which the table refuses', async () => {
+    const q4: InitiativeRow = { id: Q4_ROW, title: 'Launch new website', step_type: 'q4', status: 'not_started', assigned_to: 'Peter' };
+    db.existingInitiatives = [ideaRow(), { ...q4 }];
+
+    const result = await strategicSyncService.syncInitiativeChanges('biz-1', 'user-1', [card(ideaRow()), card(q4)], 'q2');
+
+    expect(result).toEqual({ success: true });
+    expect(db.initiativeWrites).toEqual([]);
+  });
+
+  it('Carry Forward puts the initiative on hold — it wrote "deferred", which the table refuses', async () => {
+    db.existingInitiatives = [startedRow()];
+
+    const result = await strategicSyncService.syncInitiativeChanges(
+      'biz-1',
+      'user-1',
+      [card(startedRow(), { decision: 'defer' })],
+      'q2',
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(rowById(Q3_STARTED)).toMatchObject({ status: 'on_hold', notes: 'Template agreed with the lawyer in August' });
+  });
+
+  it('Drop cancels, and the row keeps its notes — the owner tag is never written over them', async () => {
+    db.existingInitiatives = [startedRow()];
+
+    await strategicSyncService.syncInitiativeChanges('biz-1', 'user-1', [card(startedRow(), { decision: 'kill' })], 'q2');
+
+    expect(rowById(Q3_STARTED)).toMatchObject({ status: 'cancelled', notes: 'Template agreed with the lawyer in August' });
+    expect(writesTo(Q3_STARTED)[0].payload).not.toHaveProperty('notes');
+  });
+
+  it('an empty note is not a cleared one — a card with no owner does not null the row\'s notes', async () => {
+    db.existingInitiatives = [ideaRow()];
+
+    await strategicSyncService.syncInitiativeChanges('biz-1', 'user-1', [card(ideaRow(), { decision: 'kill' })], 'q2');
+
+    expect(rowById(IDEA)).toMatchObject({
+      status: 'cancelled',
+      notes: 'Will move into Odoo supervision module post HR go-live.',
+    });
+  });
+
+  it('Continue on an initiative already under way writes nothing — it put the owner tag over its notes', async () => {
+    // Just Digital Signage, 20 Mar 2026: four in-progress rows, notes now the tag.
+    db.existingInitiatives = [startedRow()];
+
+    await strategicSyncService.syncInitiativeChanges('biz-1', 'user-1', [card(startedRow())], 'q2');
+
+    expect(db.initiativeWrites).toEqual([]);
+    expect(rowById(Q3_STARTED)).toEqual(startedRow());
+  });
+
+  it('notes a coach wrote are saved, without the owner tag', async () => {
+    db.existingInitiatives = [startedRow()];
+
+    await strategicSyncService.syncInitiativeChanges(
+      'biz-1',
+      'user-1',
+      [card(startedRow(), { decision: 'defer', notes: withAssignment('Waiting on the new hire', 'Darren Rogers') })],
+      'q2',
+    );
+
+    expect(rowById(Q3_STARTED)).toMatchObject({ status: 'on_hold', notes: 'Waiting on the new hire' });
+  });
+
+  it('Continue never brings back a dropped rock or reopens a finished one — a past quarter\'s cards cannot be changed', async () => {
+    // Efficient Living's Q1 drops were cancelled by its Q2 review (25 Sep 2026).
+    // Its Q3 review will list them again, in a past quarter, as Continue — and
+    // the old sync wrote 'in_progress' for Continue on any row not 'not_started'.
+    const dropped: InitiativeRow = { id: Q1_DROPPED, title: 'Sales and Marketing', step_type: 'q1', status: 'cancelled' };
+    const done: InitiativeRow = { id: Q1_DONE, title: 'Due Date Focus', step_type: 'q1', status: 'completed' };
+    db.existingInitiatives = [{ ...dropped }, { ...done }];
+
+    const result = await strategicSyncService.syncInitiativeChanges('biz-1', 'user-1', [card(dropped), card(done)], 'q3');
+
+    expect(result).toEqual({ success: true });
+    expect(db.initiativeWrites).toEqual([]);
+    expect(rowById(Q1_DROPPED)?.status).toBe('cancelled');
+    expect(rowById(Q1_DONE)?.status).toBe('completed');
+  });
+
+  it('a rock kept in the quarter being planned is live — its cancelled row comes back as not started', async () => {
+    // Dropped at one completion, kept again after the review was re-opened:
+    // step 4.3 plans it and its detail is filed on this row.
+    const row: InitiativeRow = { id: Q2_ROW, title: 'Due Date Focus', step_type: 'q2', status: 'cancelled' };
+    db.existingInitiatives = [{ ...row }];
+    const decisions = [card(row, { assignedTo: 'Steve', why: 'Jobs slip past their due date' })];
+
+    const result = await strategicSyncService.syncAll('biz-1', 'user-1', decisions, TARGETS, 'q2', rocksOf(decisions), []);
+
+    expect(result).toEqual({ success: true, errors: [] });
+    expect(rowsIn('q2')).toHaveLength(1);
+    expect(rowById(Q2_ROW)).toMatchObject({
+      status: 'not_started',
+      assigned_to: 'Steve',
+      why: 'Jobs slip past their due date',
+    });
+  });
+
+  it('a rock carried forward to the quarter now being planned is taken off hold', async () => {
+    // Carry Forward in the Q2 review put it on hold; the Q3 review lists it in
+    // the planned quarter as Continue, and 4.3 plans it as a rock.
+    const row: InitiativeRow = { id: Q3_STARTED, title: 'Standardise Support Agreements', step_type: 'q3', status: 'on_hold' };
+    db.existingInitiatives = [{ ...row }];
+
+    await strategicSyncService.syncInitiativeChanges('biz-1', 'user-1', [card(row)], 'q3');
+
+    expect(rowById(Q3_STARTED)?.status).toBe('not_started');
+  });
+
+  it('a finished initiative is never reopened, even in the quarter being planned', async () => {
+    const row: InitiativeRow = { id: Q2_ROW, title: 'Due Date Focus', step_type: 'q2', status: 'completed' };
+    db.existingInitiatives = [{ ...row }];
+
+    await strategicSyncService.syncInitiativeChanges('biz-1', 'user-1', [card(row)], 'q2');
+
+    expect(db.initiativeWrites).toEqual([]);
+    expect(rowById(Q2_ROW)?.status).toBe('completed');
+  });
+
+  it('Continue outside the quarter being planned leaves a row on hold', async () => {
+    const row: InitiativeRow = { id: Q3_STARTED, title: 'Standardise Support Agreements', step_type: 'q3', status: 'on_hold' };
+    db.existingInitiatives = [{ ...row }];
+
+    await strategicSyncService.syncInitiativeChanges('biz-1', 'user-1', [card(row)], 'q2');
+
+    expect(db.initiativeWrites).toEqual([]);
+    expect(rowById(Q3_STARTED)?.status).toBe('on_hold');
+  });
+
+  it('a listing the review added is never written by its made-up id', async () => {
+    // 'sprint-new-…' does not start with 'new-': the old guard let it through
+    // to an update by an id no row has.
+    const result = await strategicSyncService.syncInitiativeChanges(
+      'biz-1',
+      'user-1',
+      [pick({ initiativeId: 'sprint-new-1790296002208', title: 'Complete the Payroll Automations', quarterAssigned: 'q3', decision: 'kill' })],
+      'q2',
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(db.initiativeWrites).toEqual([]);
+  });
+});
+
+describe('a decision the database refuses is reported, not skipped', () => {
+  it('answers success:false, naming the initiative and the reason', async () => {
+    db.existingInitiatives = [startedRow()];
+    db.failInitiativeUpdate = true;
+
+    const result = await strategicSyncService.syncInitiativeChanges(
+      'biz-1',
+      'user-1',
+      [card(startedRow(), { decision: 'kill' })],
+      'q2',
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Initiative decisions not saved');
+    expect(result.error).toContain('Standardise Support Agreements');
+    expect(result.error).toContain('permission denied');
+  });
+
+  it('syncAll passes it on, so completion says the plan did not all save', async () => {
+    db.existingInitiatives = [startedRow()];
+    db.failInitiativeUpdate = true;
+
+    const result = await strategicSyncService.syncAll(
+      'biz-1',
+      'user-1',
+      [card(startedRow(), { decision: 'kill' })],
+      TARGETS,
+      'q2',
+      [],
+      [],
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.errors.join(' ')).toContain('Initiative decisions not saved');
+  });
+
+  it('a whole review as 4.2 hands it over saves cleanly — completion shows no false "didn\'t save"', async () => {
+    // Every card 4.2 lists — the planned quarter's rocks (its own row, one picked
+    // from the 12-month list, one added in 4.3), a past quarter's drop, a later
+    // quarter, the Available pool — all Continue with the owner tag, but for
+    // the coach's one Carry Forward and one Drop.
+    const q2Rock: InitiativeRow = {
+      id: Q2_ROW,
+      title: 'Due Date Focus',
+      step_type: 'q2',
+      status: 'not_started',
+      assigned_to: 'Steve',
+      notes: 'Client asked for weekly updates',
+    };
+    const q4: InitiativeRow = { id: Q4_ROW, title: 'Launch new website', step_type: 'q4', status: 'not_started', assigned_to: 'Peter' };
+    const dropped: InitiativeRow = { id: Q1_DROPPED, title: 'Sales and Marketing', step_type: 'q1', status: 'cancelled' };
+    db.existingInitiatives = [{ ...q2Rock }, twelveMonthRow(), startedRow(), { ...q4 }, { ...dropped }, ideaRow()];
+    const decisions = [
+      card(q2Rock, { assignedTo: 'Steve', outcome: 'Every job quoted within 48h' }),
+      pick({ notes: assignmentTag('Mel'), assignedTo: 'Sam' }),
+      pick({ initiativeId: 'sprint-new-1790296002208', title: 'Complete the Payroll Automations', why: 'Hours lost every pay run' }),
+      card(dropped),
+      card(startedRow(), { decision: 'defer' }),
+      card(q4, { decision: 'kill' }),
+      card(ideaRow()),
+    ];
+
+    const result = await strategicSyncService.syncAll('biz-1', 'user-1', decisions, TARGETS, 'q2', rocksOf(decisions), []);
+
+    expect(result).toEqual({ success: true, errors: [] });
+    // Only the coach's two decisions changed a status...
+    expect(rowById(Q3_STARTED)?.status).toBe('on_hold');
+    expect(rowById(Q4_ROW)?.status).toBe('cancelled');
+    expect(rowById(Q1_DROPPED)?.status).toBe('cancelled');
+    expect(rowById(Q2_ROW)?.status).toBe('not_started');
+    expect(rowById(IDEA)?.status).toBe('not_started');
+    expect(rowById(TWELVE_MONTH)).toEqual(twelveMonthRow());
+    // ...no row's notes changed, and none holds the owner tag.
+    expect(rowById(Q2_ROW)?.notes).toBe('Client asked for weekly updates');
+    expect(rowById(Q3_STARTED)?.notes).toBe('Template agreed with the lawyer in August');
+    expect(rowById(IDEA)?.notes).toBe('Will move into Odoo supervision module post HR go-live.');
+    const tagged = db.existingInitiatives.filter((r) =>
+      [r.notes, r.description].some((text) => String(text ?? '').includes('[Assigned:')),
+    );
+    expect(tagged).toEqual([]);
+  });
+});
+
+describe('step 4.2\'s owner tag never reaches a rock', () => {
+  it('reads and rewrites the tag the way the step shows it', () => {
+    const tagged = withAssignment('Waiting on the new hire [Assigned: Mel]', 'Sam');
+
+    expect(tagged).toBe('Waiting on the new hire [Assigned: Sam]');
+    expect(assignedIn(tagged)).toBe('Sam');
+    expect(withoutAssignment(tagged)).toBe('Waiting on the new hire');
+    // An owner the plan keeps as a team-role id — Just Digital Signage's rows.
+    expect(withoutAssignment(assignmentTag('role-900aa935-ae8c-4913-baf7-169260fa19ef-2'))).toBe('');
+  });
+
+  it('a card\'s tag becomes neither the rock\'s notes nor, without a why, its description', () => {
+    // JVJ's Q2 review stored "[Assigned: Chris Panic]" as Performance
+    // Management System's description.
+    const [rock] = rocksFromDecisions([pick({ title: 'Performance Management System', notes: assignmentTag('Chris Panic') })], 2);
+
+    expect(rock.notes).toBeUndefined();
+    expect(rock.description).toBeUndefined();
+  });
+
+  it('what the coach wrote still reaches the rock', () => {
+    const [withWhy] = rocksFromDecisions([pick({ why: 'Nobody owns the numbers', notes: withAssignment('Budget approved', 'Mel') })], 2);
+
+    expect(withWhy).toMatchObject({ description: 'Nobody owns the numbers', notes: 'Budget approved' });
+  });
+
+  it('a rock stored with the tag leaves the row\'s notes and description as they were', async () => {
+    // Rocks built before rocksFromDecisions left the tag out are still stored;
+    // re-completing JVJ's review would have written them.
+    db.existingInitiatives = [
+      {
+        id: Q2_ROW,
+        title: 'Performance Management System',
+        step_type: 'q2',
+        status: 'not_started',
+        description: 'Quarterly one-on-ones for every crew lead',
+        notes: 'Chris to draft the template',
+      },
+    ];
+
+    const result = await strategicSyncService.syncRocks(
+      'biz-1',
+      'user-1',
+      [
+        {
+          id: Q2_ROW,
+          title: 'Performance Management System',
+          owner: '',
+          status: 'not_started',
+          progressPercentage: 0,
+          successCriteria: '',
+          notes: '[Assigned: Chris Panic]',
+          description: '[Assigned: Chris Panic]',
+        } as never,
+      ],
+      'q2',
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(rowById(Q2_ROW)).toMatchObject({
+      description: 'Quarterly one-on-ones for every crew lead',
+      notes: 'Chris to draft the template',
+    });
+    expect(writesTo(Q2_ROW)[0].payload).not.toHaveProperty('notes');
+    expect(writesTo(Q2_ROW)[0].payload).not.toHaveProperty('description');
+  });
+
+  it('a why the coach gave is written as the row\'s description', async () => {
+    db.existingInitiatives = [{ id: Q2_ROW, title: 'Due Date Focus', step_type: 'q2', status: 'not_started', description: 'Old' }];
+    const decisions = [card(rowById(Q2_ROW)!, { why: 'Jobs slip past their due date' })];
+
+    await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf(decisions), 'q2');
+
+    expect(rowById(Q2_ROW)?.description).toBe('Jobs slip past their due date');
+  });
+
+  it('a rock filed as a new row is saved without the tag', async () => {
+    db.existingInitiatives = [twelveMonthRow()];
+
+    await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf([pick({ notes: assignmentTag('Mel') })]), 'q2');
+
+    expect(db.initiativeInsertRows).toHaveLength(1);
+    expect(db.initiativeInsertRows[0]).toMatchObject({ notes: null, description: null });
   });
 });
