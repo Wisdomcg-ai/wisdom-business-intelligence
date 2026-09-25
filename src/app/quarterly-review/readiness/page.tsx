@@ -11,6 +11,7 @@ import {
   effectiveFoundationMode,
   toSessionModeOverride,
   isInWorkshopProgramme,
+  planHasAnnualTarget,
   type ReviewReadiness,
   type SessionModeOverride,
   type Signal,
@@ -104,7 +105,8 @@ export default function ReviewReadinessPage() {
         // row rather than reporting a fleet-wide "nobody has KPIs".
         const gather = async (
           table: string,
-          select: string
+          select: string,
+          countsRow: (r: any) => boolean = () => true
         ): Promise<Map<string, number> | null> => {
           try {
             const { data, error } = await supabase
@@ -114,6 +116,7 @@ export default function ReviewReadinessPage() {
             if (error) throw error;
             const counts = new Map<string, number>();
             for (const r of (data ?? []) as any[]) {
+              if (!countsRow(r)) continue;
               const k = String(r.business_id);
               counts.set(k, (counts.get(k) ?? 0) + 1);
             }
@@ -125,7 +128,9 @@ export default function ReviewReadinessPage() {
         };
 
         const [goals, kpis, rocks, reviews] = await Promise.all([
-          gather('business_financial_goals', 'business_id'),
+          // A plan row with no annual revenue target is not a plan — the same
+          // rule the workshop itself applies (planHasAnnualTarget).
+          gather('business_financial_goals', 'business_id, revenue_year1', planHasAnnualTarget),
           gather('business_kpis', 'business_id'),
           gather('strategic_initiatives', 'business_id'),
           (async () => {

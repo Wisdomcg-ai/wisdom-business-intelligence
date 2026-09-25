@@ -27,7 +27,7 @@ import { snapshotActual } from '@/app/quarterly-review/utils/snapshot-actuals';
 import {
   saveFoundationAnnualPlan,
   saveFoundationQuarterlyTargets,
-  addFoundationKpis,
+  addFoundationKpi,
   trackPlanWrite,
   planWritesSettled,
   FOUNDATION_OWNED_COLUMNS,
@@ -168,16 +168,24 @@ describe('next quarter can read the baseline back', () => {
 // ---------------------------------------------------------------------------
 // The writes. A tiny fake that records every call.
 // ---------------------------------------------------------------------------
-type Call = { table: string; op: string; payload?: any; filters: Record<string, unknown> };
+type Call = { table: string; op: string; payload?: any; filters: Record<string, unknown>; returning?: boolean };
 
-function fakeDb(state: { goals?: any; kpiCount?: number; insertError?: any }) {
+function fakeDb(state: {
+  goals?: any;
+  kpiCount?: number;
+  insertError?: any;
+  upsertError?: any;
+  updateRows?: any[];
+}) {
   const calls: Call[] = [];
   const client = {
     from(table: string) {
       const call: Call = { table, op: 'select', filters: {} };
       const b: any = {
         select: (_cols?: string, opts?: any) => {
-          call.op = opts?.head ? 'count' : 'select';
+          // update(...).select() returns the updated rows; it is still an update.
+          if (call.op === 'update') call.returning = true;
+          else call.op = opts?.head ? 'count' : 'select';
           return b;
         },
         insert: (payload: any) => {
@@ -195,7 +203,7 @@ function fakeDb(state: { goals?: any; kpiCount?: number; insertError?: any }) {
           call.op = 'upsert';
           call.payload = payload;
           calls.push(call);
-          return Promise.resolve({ error: null });
+          return Promise.resolve({ error: state.upsertError ?? null });
         },
         eq: (col: string, val: unknown) => {
           call.filters[col] = val;
@@ -207,7 +215,12 @@ function fakeDb(state: { goals?: any; kpiCount?: number; insertError?: any }) {
         },
         then: (resolve: any) => {
           calls.push(call);
-          const res = call.op === 'count' ? { count: state.kpiCount ?? 0, error: null } : { error: null };
+          const res =
+            call.op === 'count'
+              ? { count: state.kpiCount ?? 0, error: null }
+              : call.returning
+                ? { data: state.updateRows ?? [], error: null }
+                : { error: null };
           return Promise.resolve(res).then(resolve);
         },
       };
@@ -310,36 +323,54 @@ describe('saving the quarterly split', () => {
   });
 });
 
-describe('adding first KPIs', () => {
-  const kpi = (id: string) => ({ id, name: id });
+describe('adding a KPI — one at a time, no cap', () => {
+  const kpi = (id: string) => ({ id, name: `KPI ${id}`, plainName: `Plain ${id}`, unit: 'number' });
 
-  it('adds up to three to a client with none', async () => {
-    const { client, calls } = fakeDb({ kpiCount: 0 });
-    const res = await addFoundationKpis(client, { profileId: 'p1', userId: 'u1', kpis: [kpi('a'), kpi('b'), kpi('c')] });
-    expect(res.added).toBe(3);
-    expect(calls.find(c => c.op === 'upsert')!.payload).toHaveLength(3);
-  });
-
-  it('never deactivates anything — it only adds', async () => {
-    const { client, calls } = fakeDb({ kpiCount: 0 });
-    await addFoundationKpis(client, { profileId: 'p1', userId: 'u1', kpis: [kpi('a')] });
-    // The Goals wizard's save issues an is_active=false update for unlisted KPIs.
-    expect(calls.some(c => c.op === 'update')).toBe(false);
-  });
-
-  it('refuses a fourth', async () => {
-    const { client } = fakeDb({ kpiCount: 0 });
-    await expect(
-      addFoundationKpis(client, { profileId: 'p1', userId: 'u1', kpis: [kpi('a'), kpi('b'), kpi('c'), kpi('d')] })
-    ).rejects.toThrow(/at most 3/);
-  });
-
-  it('refuses outright for a client who already has KPIs', async () => {
+  it('adds a KPI for a client who already has some (JVJ could not add a second)', async () => {
     const { client, calls } = fakeDb({ kpiCount: 4 });
-    await expect(
-      addFoundationKpis(client, { profileId: 'p1', userId: 'u1', kpis: [kpi('a')] })
-    ).rejects.toThrow(/already has KPIs/);
-    expect(calls.some(c => c.op === 'upsert')).toBe(false);
+    await addFoundationKpi(client, { profileId: 'p1', userId: 'u1', kpi: kpi('a') });
+    const upsert = calls.find(c => c.op === 'upsert')!;
+    expect(upsert.table).toBe('business_kpis');
+    expect(upsert.payload).toHaveLength(1);
+    expect(upsert.payload[0]).toMatchObject({
+      business_id: 'p1',
+      user_id: 'u1',
+      kpi_id: 'a',
+      name: 'KPI a',
+      friendly_name: 'Plain a',
+      is_active: true,
+    });
+    // No "already has KPIs" count check any more.
+    expect(calls.some(c => c.op === 'count')).toBe(false);
+  });
+
+  it('never overwrites a KPI row that already exists', async () => {
+    const { client, calls } = fakeDb({});
+    await addFoundationKpi(client, { profileId: 'p1', userId: 'u1', kpi: kpi('a') });
+    // ignoreDuplicates: an existing row keeps its targets — the insert skips it.
+    const upsert = calls.find(c => c.op === 'upsert')!;
+    expect(upsert.payload[0].year1_target).toBe(0);
+    // The only update switches THIS KPI on. It never switches anything off —
+    // the Goals wizard's list save issues is_active=false for unlisted KPIs.
+    const updates = calls.filter(c => c.op === 'update');
+    expect(updates).toHaveLength(1);
+    expect(updates[0].payload).toMatchObject({ is_active: true });
+    expect(updates[0].filters).toEqual({ business_id: 'p1', kpi_id: 'a' });
+  });
+
+  it('brings a removed KPI back with its old targets, and says what they are', async () => {
+    const { client } = fakeDb({
+      updateRows: [{ current_value: 40, year1_target: 60, year2_target: 80, year3_target: 100 }],
+    });
+    const stored = await addFoundationKpi(client, { profileId: 'p1', userId: 'u1', kpi: kpi('a') });
+    expect(stored).toEqual({ currentValue: 40, year1Target: 60, year2Target: 80, year3Target: 100 });
+  });
+
+  it('reports a failed add rather than swallowing it', async () => {
+    const { client } = fakeDb({ upsertError: { message: 'rls' } });
+    await expect(addFoundationKpi(client, { profileId: 'p1', userId: 'u1', kpi: kpi('a') })).rejects.toEqual({
+      message: 'rls',
+    });
   });
 });
 

@@ -12,16 +12,24 @@
  *    three numbers. So the annual plan INSERTS a new row, or UPDATES only the
  *    columns this session owns — never both at once.
  *  - The Goals wizard's KPI save DEACTIVATES every KPI not in the list it is
- *    given. Reusing it would switch off a client's other KPIs. KPIs here are only
- *    ever ADDED, and only when the client has none.
+ *    given. Reusing it would switch off a client's other KPIs. KPIs here are
+ *    written one at a time, each write naming the KPI it changes.
  *
  * business_financial_goals.business_id is UNIQUE, so a second plan cannot exist.
  */
 import type { FoundationNumbers, FoundationSplit } from '../utils/foundation-plan';
-import { toQuarterlyTargetsJson, marginPercent, FOUNDATION_KPI_LIMIT } from '../utils/foundation-plan';
+import { toQuarterlyTargetsJson, marginPercent } from '../utils/foundation-plan';
 import type { YearType } from '../types';
 
 type Client = { from: (table: string) => any };
+
+/** A KPI's stored figures, in the shape the Goals wizard's KPI table edits. */
+export interface StoredKpiValues {
+  currentValue: number;
+  year1Target: number;
+  year2Target: number;
+  year3Target: number;
+}
 
 export interface FoundationKpi {
   id: string;
@@ -182,50 +190,67 @@ export async function saveFoundationQuarterlyTargets(
 }
 
 /**
- * Add the client's first KPIs. Additive only, capped, and refused outright if
- * the client already has KPIs — this is first-time setup, not KPI management.
+ * Add ONE KPI to the client's list. There is no cap: a first session offers the
+ * same library as the Goals wizard, one KPI at a time, as many as the client
+ * wants (Matt, 25 Sep 2026 — the old "up to three, added in one go" picker hid
+ * itself after JVJ added one, and they could not add a second).
+ *
+ * Deliberately NOT the Goals wizard's list save: that writes the whole list and
+ * DEACTIVATES every KPI it was not handed, so a screen holding a partial or stale
+ * list switches off the client's other KPIs. Each write here names the one KPI
+ * it changes; target edits and removals go through KPIService's single-KPI
+ * updateKPIValue / deleteKPI, which are keyed the same way.
+ *
+ * A KPI the client had before and removed comes back WITH its old targets: the
+ * insert skips a row that already exists, and the second write only switches it
+ * back on. It returns what is stored, so the screen shows those targets rather
+ * than the zeros it started the new row with.
  */
-export async function addFoundationKpis(
+export async function addFoundationKpi(
   supabase: Client,
-  params: { profileId: string; userId: string; kpis: FoundationKpi[] }
-): Promise<{ added: number }> {
-  if (params.kpis.length === 0) return { added: 0 };
-  if (params.kpis.length > FOUNDATION_KPI_LIMIT) {
-    throw new Error(`A first session sets at most ${FOUNDATION_KPI_LIMIT} KPIs`);
-  }
-
-  const { count, error: countError } = await supabase
-    .from('business_kpis')
-    .select('id', { count: 'exact', head: true })
-    .eq('business_id', params.profileId)
-    .eq('is_active', true);
-  if (countError) throw countError;
-  if ((count ?? 0) > 0) {
-    throw new Error('This client already has KPIs — manage them in the Goals wizard');
-  }
-
+  params: { profileId: string; userId: string; kpi: FoundationKpi }
+): Promise<StoredKpiValues | null> {
+  const { profileId, userId, kpi } = params;
   const now = new Date().toISOString();
-  const rows = params.kpis.map(k => ({
-    business_id: params.profileId,
-    user_id: params.userId,
-    kpi_id: k.id,
-    name: k.name,
-    friendly_name: k.plainName || k.name,
-    description: k.description ?? null,
-    category: k.category ?? null,
-    frequency: k.frequency ?? null,
-    unit: k.unit ?? null,
-    current_value: 0,
-    year1_target: 0,
-    is_active: true,
-    updated_at: now,
-  }));
 
-  const { error } = await supabase
+  const { error: insertError } = await supabase.from('business_kpis').upsert(
+    [
+      {
+        business_id: profileId,
+        user_id: userId,
+        kpi_id: kpi.id,
+        name: kpi.name,
+        friendly_name: kpi.plainName || kpi.name,
+        description: kpi.description ?? null,
+        category: kpi.category ?? null,
+        frequency: kpi.frequency ?? null,
+        unit: kpi.unit ?? null,
+        current_value: 0,
+        year1_target: 0,
+        is_active: true,
+        updated_at: now,
+      },
+    ],
+    { onConflict: 'business_id,kpi_id', ignoreDuplicates: true }
+  );
+  if (insertError) throw insertError;
+
+  const { data, error: activateError } = await supabase
     .from('business_kpis')
-    .upsert(rows, { onConflict: 'business_id,kpi_id', ignoreDuplicates: true });
-  if (error) throw error;
-  return { added: rows.length };
+    .update({ is_active: true, updated_at: now })
+    .eq('business_id', profileId)
+    .eq('kpi_id', kpi.id)
+    .select('current_value, year1_target, year2_target, year3_target');
+  if (activateError) throw activateError;
+
+  const row = Array.isArray(data) ? data[0] : null;
+  if (!row) return null;
+  return {
+    currentValue: Number(row.current_value) || 0,
+    year1Target: Number(row.year1_target) || 0,
+    year2Target: Number(row.year2_target) || 0,
+    year3Target: Number(row.year3_target) || 0,
+  };
 }
 
 /** Exported for tests: the complete list of goal columns a first session may write. */

@@ -3,26 +3,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { resolveBusinessProfileId } from '@/lib/business/resolveBusinessProfileIds';
-import { ESSENTIAL_KPIS } from '@/lib/kpi-definitions';
+import { KPISection } from '@/app/goals/components/step1';
+import KPIService from '@/app/goals/services/kpi-service';
+import type { KPIData } from '@/app/goals/types';
 import { StepHeader } from '../StepHeader';
 import { MoneyInput, formatMoney } from '../MoneyInput';
-import type { QuarterlyReview, QuarterlyTargets } from '../../types';
+import type { QuarterlyReview, QuarterlyTargets, YearType } from '../../types';
 import {
   evenSplitAll,
   planningQuarterTargets,
   sumSplit,
-  FOUNDATION_KPI_LIMIT,
   type FoundationNumbers,
   type FoundationSplit,
   type QuarterSplit,
 } from '../../utils/foundation-plan';
 import {
   saveFoundationQuarterlyTargets,
-  addFoundationKpis,
+  addFoundationKpi,
   trackPlanWrite,
   planWritesSettled,
 } from '../../services/foundation-plan-service';
 import { captureReviewWriteFailure } from '../../utils/capture-write-failure';
+import { planHasAnnualTarget } from '../../utils/review-readiness';
 import { Check, Loader2, AlertTriangle } from 'lucide-react';
 
 interface FoundationQuarterlyPlanStepProps {
@@ -32,6 +34,10 @@ interface FoundationQuarterlyPlanStepProps {
 
 type Line = keyof FoundationNumbers;
 type SaveState = 'idle' | 'saving' | 'saved' | 'failed';
+type KpiField = 'currentValue' | 'year1Target' | 'year2Target' | 'year3Target';
+
+/** How long after the last keystroke a KPI figure is saved. */
+const KPI_SAVE_DELAY_MS = 800;
 
 const LINES: { key: Line; label: string }[] = [
   { key: 'revenue', label: 'Revenue' },
@@ -55,8 +61,8 @@ function splitFromStored(stored: any): FoundationSplit | null {
 }
 
 /**
- * First session, step 10 — split the year across the quarters, and pick up to
- * three KPIs.
+ * First session, step 10 — split the year across the quarters, and choose the
+ * KPIs to watch.
  *
  * Starts from the client's EXISTING quarterly targets if they have them (a forced
  * first session must not overwrite real quarters with an even guess), otherwise
@@ -66,8 +72,12 @@ function splitFromStored(stored: any): FoundationSplit | null {
  * completing the review runs the strategic sync with the review's empty default
  * and overwrites the planning quarter with $0.
  *
- * KPIs are offered only to a client who has none, from the five essentials, up to
- * three, added in one go — first-time setup, never KPI management.
+ * KPIs use the Goals wizard's own KPI section — the full library, custom KPIs,
+ * targets, remove — with no cap (Matt, 25 Sep 2026). The earlier picker offered
+ * five essentials, up to three, added in ONE go, then hid itself for good once
+ * any KPI existed: JVJ added one and could not add a second. Every KPI write
+ * here names the one KPI it changes (see addFoundationKpi for why the wizard's
+ * list save is not reused).
  */
 export function FoundationQuarterlyPlanStep({ review, onUpdateQuarterlyTargets }: FoundationQuarterlyPlanStepProps) {
   const supabase = useMemo(() => createClient(), []);
@@ -77,9 +87,22 @@ export function FoundationQuarterlyPlanStep({ review, onUpdateQuarterlyTargets }
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [save, setSave] = useState<SaveState>('idle');
-  const [existingKpis, setExistingKpis] = useState<number | null>(null);
-  const [picked, setPicked] = useState<string[]>([]);
+  const [yearType, setYearType] = useState<YearType>('FY');
+  // null = not read (or the read failed): never shown as "no KPIs".
+  const [kpis, setKpis] = useState<KPIData[] | null>(null);
   const [kpiSave, setKpiSave] = useState<SaveState>('idle');
+  const [showKPIModal, setShowKPIModal] = useState(false);
+  const [kpisOpen, setKpisOpen] = useState(true);
+  // Figures typed but not yet saved, per KPI. Saved on a short delay, and
+  // finished off if the step closes first.
+  const kpiEdits = useRef(new Map<string, Partial<Record<KpiField, number>>>());
+  const kpiTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Fields the owner has typed into, per KPI — a slow add must not paint the
+  // stored figures back over them.
+  const kpiTouched = useRef(new Map<string, Set<KpiField>>());
+  // Adds still on the wire. A target edit or removal for that KPI waits for its
+  // add, or it would update a row that does not exist yet and change nothing.
+  const kpiAdds = useRef(new Map<string, Promise<unknown>>());
   // Whether the quarters on screen came from the plan (someone set them) or are
   // the even split — so the screen only claims "we've split your year evenly"
   // when it did.
@@ -106,28 +129,30 @@ export function FoundationQuarterlyPlanStep({ review, onUpdateQuarterlyTargets }
         const [goalsRes, kpiRes] = await Promise.all([
           supabase
             .from('business_financial_goals')
-            .select('revenue_year1, gross_profit_year1, net_profit_year1, quarterly_targets')
+            .select('revenue_year1, gross_profit_year1, net_profit_year1, quarterly_targets, year_type')
             .eq('business_id', pid)
             .maybeSingle(),
-          supabase
-            .from('business_kpis')
-            .select('id', { count: 'exact', head: true })
-            .eq('business_id', pid)
-            .eq('is_active', true),
+          // Reads both id-spaces and says whether the read worked — a failed
+          // read must never look like "this client has no KPIs".
+          KPIService.getUserKPIsResult(pid),
         ]);
         if (goalsRes.error) throw goalsRes.error;
-        if (kpiRes.error) throw kpiRes.error;
         if (cancelled) return;
 
         setProfileId(pid);
         profileRef.current = pid;
-        setExistingKpis(kpiRes.count ?? 0);
+        if (kpiRes.ok) setKpis(kpiRes.kpis);
+        else captureReviewWriteFailure(new Error('KPI read failed'), 'foundation-kpis-load', { reviewId: review.id, profileId: pid });
         const g = goalsRes.data;
-        if (g && g.revenue_year1 !== null && g.gross_profit_year1 !== null && g.net_profit_year1 !== null) {
+        if (g?.year_type) setYearType(g.year_type as YearType);
+        // A plan whose year is $0 has nothing to split. Showing the quarters
+        // against it read "$15.2M over $0" (JVJ, 25 Sep 2026); the owner is sent
+        // back to set the year first, as when there is no plan at all.
+        if (g && planHasAnnualTarget(g)) {
           const a = {
             revenue: Number(g.revenue_year1),
-            grossProfit: Number(g.gross_profit_year1),
-            netProfit: Number(g.net_profit_year1),
+            grossProfit: Number(g.gross_profit_year1 ?? 0),
+            netProfit: Number(g.net_profit_year1 ?? 0),
           };
           setAnnual(a);
           const stored = splitFromStored(g.quarterly_targets);
@@ -201,26 +226,130 @@ export function FoundationQuarterlyPlanStep({ review, onUpdateQuarterlyTargets }
     setSplit({ ...split, [line]: next });
   };
 
-  const saveKpis = async () => {
-    if (!profileId || picked.length === 0) return;
+  // ── KPIs ────────────────────────────────────────────────────────────────
+  // Uses refs only, so the unmount cleanup (which captures the first render's
+  // copy) still sees everything typed since.
+  const flushKpiEdits = async (quiet = false) => {
+    if (kpiTimer.current) clearTimeout(kpiTimer.current);
+    kpiTimer.current = null;
+    const pid = profileRef.current;
+    const edits = [...kpiEdits.current.entries()];
+    kpiEdits.current.clear();
+    if (!pid || edits.length === 0) return;
+    if (!quiet) setKpiSave('saving');
+    const results = await Promise.allSettled(
+      edits.map(([kpiId, updates]) =>
+        trackPlanWrite(
+          (async () => {
+            await kpiAdds.current.get(kpiId)?.catch(() => {});
+            const res = await KPIService.updateKPIValue(pid, kpiId, updates);
+            if (!res.success) throw new Error(res.error || 'KPI update failed');
+          })()
+        )
+      )
+    );
+    const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    failed.forEach(f =>
+      captureReviewWriteFailure(f.reason, 'foundation-kpi-update', {
+        reviewId: latest.current.review.id,
+        profileId: pid,
+      })
+    );
+    if (!quiet) setKpiSave(failed.length > 0 ? 'failed' : 'saved');
+  };
+
+  // Leaving the step before the delay runs out still saves the KPI figures.
+  useEffect(
+    () => () => {
+      if (kpiEdits.current.size > 0) void flushKpiEdits(true);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  const kpiWriteFailed = (err: unknown, label: string, kpiId: string) => {
+    captureReviewWriteFailure(err, label, { reviewId: review.id, profileId, kpiId });
+    setKpiSave('failed');
+  };
+
+  const addKpi = (kpi: KPIData) => {
+    if (!profileId || !kpis || kpis.some(k => k.id === kpi.id)) return;
+    setKpis(list => (list ? [...list, kpi] : list));
     setKpiSave('saving');
-    try {
-      const chosen = ESSENTIAL_KPIS.filter(k => picked.includes(k.id)).map(k => ({
-        id: k.id,
-        name: k.name,
-        plainName: k.plainName,
-        unit: k.unit,
-        category: k.category,
-        frequency: k.frequency,
-        description: k.description,
-      }));
-      await addFoundationKpis(supabase, { profileId, userId: review.user_id, kpis: chosen });
-      setExistingKpis(chosen.length);
-      setKpiSave('saved');
-    } catch (err) {
-      captureReviewWriteFailure(err, 'foundation-kpis-save', { reviewId: review.id, profileId });
-      setKpiSave('failed');
-    }
+    const write = trackPlanWrite(
+      addFoundationKpi(supabase, {
+        profileId,
+        userId: review.user_id,
+        kpi: {
+          id: kpi.id,
+          name: kpi.name,
+          plainName: kpi.friendlyName,
+          unit: kpi.unit,
+          category: kpi.category,
+          frequency: kpi.frequency,
+          description: kpi.description,
+        },
+      })
+    );
+    kpiAdds.current.set(kpi.id, write);
+    write
+      .then(
+        stored => {
+          // A KPI switched back on keeps its old targets — show those, except
+          // in any box the owner has already typed into.
+          if (stored) {
+            const touched = kpiTouched.current.get(kpi.id) ?? new Set<KpiField>();
+            const shown = Object.fromEntries(
+              (Object.keys(stored) as KpiField[]).filter(f => !touched.has(f)).map(f => [f, stored[f]])
+            );
+            setKpis(list => (list ? list.map(k => (k.id === kpi.id ? { ...k, ...shown } : k)) : list));
+          }
+          setKpiSave('saved');
+        },
+        err => {
+          kpiEdits.current.delete(kpi.id);
+          setKpis(list => (list ? list.filter(k => k.id !== kpi.id) : list));
+          kpiWriteFailed(err, 'foundation-kpi-add', kpi.id);
+        }
+      )
+      .finally(() => {
+        if (kpiAdds.current.get(kpi.id) === write) kpiAdds.current.delete(kpi.id);
+      });
+  };
+
+  const updateKpiValue = (kpiId: string, field: KpiField, value: number) => {
+    setKpis(list => (list ? list.map(k => (k.id === kpiId ? { ...k, [field]: value } : k)) : list));
+    const touched = kpiTouched.current.get(kpiId) ?? new Set<KpiField>();
+    touched.add(field);
+    kpiTouched.current.set(kpiId, touched);
+    kpiEdits.current.set(kpiId, { ...kpiEdits.current.get(kpiId), [field]: value });
+    setKpiSave('idle');
+    if (kpiTimer.current) clearTimeout(kpiTimer.current);
+    kpiTimer.current = setTimeout(() => void flushKpiEdits(), KPI_SAVE_DELAY_MS);
+  };
+
+  // Removing SWITCHES OFF the KPI (is_active = false), the way the Goals wizard
+  // does — its targets survive if it is added back.
+  const removeKpi = (kpiId: string) => {
+    const removed = kpis?.find(k => k.id === kpiId);
+    if (!profileId || !removed) return;
+    const pid = profileId;
+    kpiEdits.current.delete(kpiId);
+    setKpis(list => (list ? list.filter(k => k.id !== kpiId) : list));
+    setKpiSave('saving');
+    trackPlanWrite(
+      (async () => {
+        await kpiAdds.current.get(kpiId)?.catch(() => {});
+        const res = await KPIService.deleteKPI(pid, kpiId);
+        if (!res.success) throw new Error(res.error || 'KPI remove failed');
+      })()
+    ).then(
+      () => setKpiSave('saved'),
+      err => {
+        setKpis(list => (list && !list.some(k => k.id === kpiId) ? [...list, removed] : list));
+        kpiWriteFailed(err, 'foundation-kpi-remove', kpiId);
+      }
+    );
   };
 
   if (!loaded) {
@@ -348,68 +477,50 @@ export function FoundationQuarterlyPlanStep({ review, onUpdateQuarterlyTargets }
       )}
 
       <div className="border-t border-gray-100 pt-6">
-        <p className="text-sm font-medium text-gray-900 mb-1">
-          Pick up to {FOUNDATION_KPI_LIMIT} numbers to watch
+        <p className="text-sm font-medium text-gray-900 mb-1">The numbers to watch</p>
+        <p className="text-xs text-gray-500 mb-4">
+          Add as many KPIs as you like and set their targets — it&apos;s the same list as the Goals section.
         </p>
 
-        {existingKpis !== null && existingKpis > 0 && kpiSave !== 'saved' && (
-          <p className="text-sm text-gray-600">
-            This business already tracks {existingKpis} KPI{existingKpis === 1 ? '' : 's'}. Change them in
-            the Goals section when you need to.
+        {kpis === null && !loadFailed && (
+          <p className="text-sm text-amber-800">
+            Couldn&apos;t check this business&apos;s KPIs. Reload the page before adding any.
           </p>
         )}
 
-        {kpiSave === 'saved' && (
-          <p className="flex items-center gap-1.5 text-sm text-green-700">
-            <Check className="w-4 h-4" /> Added — you&apos;ll see these on your scorecard next quarter.
-          </p>
+        {kpis !== null && profileId && (
+          <KPISection
+            kpis={kpis}
+            updateKPIValue={updateKpiValue}
+            addKPI={addKpi}
+            deleteKPI={removeKpi}
+            yearType={yearType}
+            isCollapsed={!kpisOpen}
+            onToggle={() => setKpisOpen(open => !open)}
+            showKPIModal={showKPIModal}
+            setShowKPIModal={setShowKPIModal}
+            businessId={profileId}
+          />
         )}
 
-        {existingKpis === 0 && kpiSave !== 'saved' && (
-          <>
-            <p className="text-xs text-gray-500 mb-3">
-              These are the few that matter most for almost every business. You can add more later.
-            </p>
-            <div className="grid sm:grid-cols-2 gap-3 mb-4">
-              {ESSENTIAL_KPIS.map(k => {
-                const on = picked.includes(k.id);
-                const full = !on && picked.length >= FOUNDATION_KPI_LIMIT;
-                return (
-                  <button
-                    key={k.id}
-                    type="button"
-                    disabled={full}
-                    aria-pressed={on}
-                    onClick={() => setPicked(p => (on ? p.filter(x => x !== k.id) : [...p, k.id]))}
-                    className={`text-left p-3 rounded-xl border-2 transition-colors disabled:opacity-40 ${
-                      on ? 'border-brand-orange bg-brand-orange-50' : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="font-medium text-sm text-gray-900">{k.plainName || k.name}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">{k.whyItMatters}</div>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={saveKpis}
-                disabled={picked.length === 0 || kpiSave === 'saving'}
-                className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium disabled:opacity-40"
-              >
-                {kpiSave === 'saving' ? 'Adding…' : `Add ${picked.length || ''} KPI${picked.length === 1 ? '' : 's'}`}
-              </button>
-              {kpiSave === 'failed' && (
-                <span className="text-xs text-amber-700">Couldn&apos;t add them — try again.</span>
-              )}
-            </div>
-          </>
-        )}
-
-        {existingKpis === null && !loadFailed && (
-          <p className="text-sm text-gray-500">Couldn&apos;t check this business&apos;s KPIs.</p>
-        )}
+        <div className="h-6 mt-2 text-xs" aria-live="polite">
+          {kpiSave === 'saving' && (
+            <span className="flex items-center gap-1.5 text-gray-500">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving KPIs…
+            </span>
+          )}
+          {kpiSave === 'saved' && (
+            <span className="flex items-center gap-1.5 text-green-600">
+              <Check className="w-3.5 h-3.5" /> KPIs saved
+            </span>
+          )}
+          {kpiSave === 'failed' && (
+            <span className="flex items-center gap-1.5 text-amber-700">
+              <AlertTriangle className="w-3.5 h-3.5" /> Couldn&apos;t save a KPI change — check the list and try
+              again.
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

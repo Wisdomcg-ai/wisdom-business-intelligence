@@ -64,7 +64,12 @@ const PROFILES = [
 
 // Only Twin A has a plan. If profiles were matched by owner, Twin B would
 // borrow Twin A's (or vice versa) and the two rows would read the same.
-const GOALS = [{ business_id: 'p-twin-a' }];
+// Unset Co has a plan ROW with every target at $0 — an abandoned Goals wizard
+// session, which is not a plan (JVJ, 25 Sep 2026).
+const GOALS = [
+  { business_id: 'p-twin-a', revenue_year1: 1200000 },
+  { business_id: 'p-unset', revenue_year1: 0 },
+];
 
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
@@ -127,5 +132,14 @@ describe('the readiness list', () => {
     // Only Twin A has a plan. Matched by owner, both rows would read alike.
     expect(twinA!.planCell).toContain('aria-label="yes"');
     expect(twinB!.planCell).toContain('aria-label="no"');
+  });
+
+  it('does not count a plan row whose targets are all $0 as a plan', async () => {
+    const { container } = render(<ReviewReadinessPage />);
+    await waitFor(() => expect(container.querySelectorAll('tbody tr').length).toBeGreaterThan(0));
+
+    const unset = rows(container).find(r => r.name === 'Unset Co');
+    expect(unset).toBeDefined();
+    expect(unset!.planCell).toContain('aria-label="no"');
   });
 });

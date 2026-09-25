@@ -14,6 +14,7 @@ import {
   type SeededNumbers,
 } from '../../utils/foundation-plan';
 import { saveFoundationAnnualPlan, trackPlanWrite } from '../../services/foundation-plan-service';
+import { planHasAnnualTarget } from '../../utils/review-readiness';
 import { captureReviewWriteFailure } from '../../utils/capture-write-failure';
 import { Check, Loader2, AlertTriangle } from 'lucide-react';
 
@@ -105,11 +106,12 @@ export function FoundationAnnualPlanStep({ review, onUpdateConfidence }: Foundat
         if (cancelled) return;
         setProfileId(pid);
         profileRef.current = pid;
-        const fromPlan =
-          !!data &&
-          (data.revenue_year1 !== null || data.gross_profit_year1 !== null || data.net_profit_year1 !== null);
+        // A row whose targets are all $0 is an empty plan, not one on file —
+        // seeding from it showed $0 × 3 as "saved" and nobody entered the year
+        // (JVJ, 25 Sep 2026). It falls through to the baseline, or blank.
+        const fromPlan = planHasAnnualTarget(data);
         if (data) setYearType((data.year_type as YearType) || 'FY');
-        if (fromPlan) {
+        if (fromPlan && data) {
           setSeededFrom('plan');
           setNumbers({
             revenue: data.revenue_year1 ?? null,
