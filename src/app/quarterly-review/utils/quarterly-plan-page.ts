@@ -10,12 +10,11 @@
  * page of empty headings reads as a form the owner failed to fill in, rather
  * than the plan they just built.
  */
-import { rocksFromDecisions, titleKey } from './rocks-from-decisions';
+import { reviewRocks } from './rocks-from-decisions';
 import type {
   QuarterlyReview,
   QuarterlyTargets,
   Rock,
-  InitiativeDecision,
   PersonalCommitments,
   YearType,
 } from '../types';
@@ -253,46 +252,6 @@ function rockDetail(rock: Rock): string | undefined {
  * own heading and tile is what pushed "Next steps" onto a second, near-empty
  * page in the first render of this page.
  */
-/**
- * The rocks a session actually set.
- *
- * Sprint Planning (step 4.3) records what the client commits to in
- * `initiative_decisions`; until #594 nothing wrote `quarterly_rocks` at all, so
- * every review completed before it holds decisions only. `quarterly_rocks` stays
- * the first source (it is what the writer now stores), and the decisions are the
- * fallback — derived by the WRITER's own rocksFromDecisions, so a review prints
- * the same rocks whether they were stored or derived.
- */
-/**
- * Stored rocks, one per title, by the same rule — so a review whose rocks were
- * saved with a repeat prints the same page as one whose rocks were derived.
- *
- * This looks redundant now that the 4.3 writer dedupes (#594). It is not, and
- * should not be removed on that reasoning: the dedupe lives at that ONE call
- * site, while the service method that writes `quarterly_rocks` stores whatever
- * it is handed. Precision's stored rocks carry hand-authored ids
- * (rock-q1fy27-1, rock-q2-1) written by something no longer in the codebase, and
- * Envisage's Q4 2025 review stores a rock with no title at all. The page a
- * client reads should not depend on every writer remembering the rule.
- */
-function onePerRock(rocks: Rock[]): Rock[] {
-  const byTitle = new Map<string, Rock>();
-  for (const r of rocks) {
-    const key = titleKey(r.title);
-    if (!key) continue;
-    const existing = byTitle.get(key);
-    if (!existing) {
-      byTitle.set(key, { ...r, title: r.title.trim() });
-      continue;
-    }
-    if (!existing.owner && r.owner) existing.owner = r.owner;
-    if (!existing.successCriteria && r.successCriteria) existing.successCriteria = r.successCriteria;
-    if (!existing.doneDefinition && r.doneDefinition) existing.doneDefinition = r.doneDefinition;
-    if (!existing.targetDate && r.targetDate) existing.targetDate = r.targetDate;
-  }
-  return [...byTitle.values()];
-}
-
 function commitmentBlocks(c: PersonalCommitments | null | undefined): PlanBlock[] {
   if (!c) return [];
   const items: { label: string; value: string }[] = [];
@@ -364,13 +323,14 @@ export function buildPlanPage(input: PlanPageInput): PlanPage {
     blocks.push({ kind: 'bullets', title: 'Numbers I’m watching', items });
   }
 
-  const stored = ((review.quarterly_rocks as Rock[] | null) ?? []).filter(r => r?.title?.trim());
-  // One renderer for both sources, so stored and derived print the same line.
-  const rockItems = (
-    stored.length > 0
-      ? onePerRock(stored)
-      : rocksFromDecisions(review.initiative_decisions as InitiativeDecision[] | null, review.quarter)
-  ).map(r => ({ text: r.title.trim(), detail: rockDetail(r) }));
+  // The rocks the session set: its decisions', then any rock stored by hand
+  // that no decision names (reviewRocks) — the same list the close screen, the
+  // summary and the sync use. The page used to print the stored list whenever
+  // it held anything, so a review whose list went stale printed rocks its
+  // decisions had since dropped (Digital Bond's Q2 printed four from the
+  // Available pool until its list was repaired) and missed ones they had since
+  // added.
+  const rockItems = reviewRocks(review).map(r => ({ text: r.title.trim(), detail: rockDetail(r) }));
   if (rockItems.length > 0) {
     blocks.push({ kind: 'numbered', title: 'My rocks this quarter', items: rockItems });
   }

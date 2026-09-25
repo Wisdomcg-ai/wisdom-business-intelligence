@@ -6,6 +6,7 @@ import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, RockReviewItem, RockReviewDecision, Rock } from '../../types';
 import { getPreviousQuarterOf } from '../../types';
+import { reviewRocks } from '../../utils/rocks-from-decisions';
 import {
   Mountain, ChevronDown, ChevronUp, CheckCircle2, ArrowRightCircle,
   Trash2, PenLine, Loader2, AlertCircle, Target, User
@@ -148,7 +149,7 @@ export function RocksReviewStep({ review, onUpdate }: RocksReviewStepProps) {
 
       const { data: prevReview } = await supabase
         .from('quarterly_reviews')
-        .select('quarterly_rocks')
+        .select('quarter, quarterly_rocks, initiative_decisions')
         .eq('business_id', review.business_id)
         .eq('quarter', prevQuarter)
         .eq('year', prevYear)
@@ -156,8 +157,13 @@ export function RocksReviewStep({ review, onUpdate }: RocksReviewStepProps) {
         .limit(1)
         .maybeSingle();
 
-      if (prevReview?.quarterly_rocks && (prevReview.quarterly_rocks as Rock[]).length > 0) {
-        const rocks = prevReview.quarterly_rocks as Rock[];
+      // The rocks that review set (reviewRocks), not its stored copy — which
+      // went stale whenever its 4.2 changed after 4.3, and is empty for every
+      // review completed before #594.
+      const rocks: Rock[] = prevReview
+        ? reviewRocks(prevReview as Pick<QuarterlyReview, 'quarter' | 'quarterly_rocks' | 'initiative_decisions'>)
+        : [];
+      if (rocks.length > 0) {
         console.log('[RocksReview] Loaded from previous quarterly review:', rocks.length, 'rocks');
         setPreviousRocks(rocks);
         initializeFromRocks(rocks);

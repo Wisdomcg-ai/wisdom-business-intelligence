@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { quarterlyReviewService } from '../services/quarterly-review-service';
 import { getQuarterLabel } from '../types';
 import type { QuarterlyReview, Rock } from '../types';
+import { reviewRocks } from '../utils/rocks-from-decisions';
 import {
   Calendar,
   History,
@@ -81,7 +82,11 @@ function TimelineNode({
 }) {
   const { getPath } = useCoachView();
   const isCompleted = review.status === 'completed';
-  const rocksData = getRocksCompletion(review.quarterly_rocks);
+  // The rocks the review set (reviewRocks), not the stored copy — which went
+  // stale whenever 4.2 changed after 4.3, and is empty for every review
+  // completed before #594.
+  const rocks = reviewRocks(review);
+  const rocksData = getRocksCompletion(rocks);
   const targets = review.quarterly_targets;
 
   return (
@@ -250,14 +255,14 @@ function TimelineNode({
                 )}
 
                 {/* Rocks Summary */}
-                {review.quarterly_rocks && review.quarterly_rocks.length > 0 && (
+                {rocks.length > 0 && (
                   <div className="mt-4 p-4 bg-slate-50 rounded-lg">
                     <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
                       <Mountain className="w-4 h-4" />
                       90-Day Rocks ({rocksData.completed}/{rocksData.total} completed)
                     </h4>
                     <div className="space-y-2">
-                      {review.quarterly_rocks.slice(0, 5).map((rock, idx) => (
+                      {rocks.slice(0, 5).map((rock, idx) => (
                         <div key={rock.id} className="flex items-center gap-2 text-sm">
                           <span
                             className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium ${
@@ -275,9 +280,9 @@ function TimelineNode({
                           </span>
                         </div>
                       ))}
-                      {review.quarterly_rocks.length > 5 && (
+                      {rocks.length > 5 && (
                         <p className="text-xs text-gray-500 mt-1">
-                          +{review.quarterly_rocks.length - 5} more
+                          +{rocks.length - 5} more
                         </p>
                       )}
                     </div>
@@ -422,8 +427,8 @@ function CompareView({
     return a.quarter - b.quarter;
   });
 
-  const olderRocks = getRocksCompletion(older.quarterly_rocks);
-  const newerRocks = getRocksCompletion(newer.quarterly_rocks);
+  const olderRocks = getRocksCompletion(reviewRocks(older));
+  const newerRocks = getRocksCompletion(reviewRocks(newer));
 
   const getTrendIcon = (oldVal: number | null | undefined, newVal: number | null | undefined) => {
     if (!oldVal || !newVal) return <Minus className="w-4 h-4 text-gray-400" />;
@@ -591,11 +596,9 @@ function TrendInsights({ reviews }: { reviews: QuarterlyReview[] }) {
     .reverse();
 
   const rocksCompletionTrend = completedReviews
-    .filter(r => r.quarterly_rocks && r.quarterly_rocks.length > 0)
-    .map(r => {
-      const rocks = getRocksCompletion(r.quarterly_rocks);
-      return { quarter: `Q${r.quarter} ${r.year}`, value: rocks.percentage };
-    })
+    .map(r => ({ r, rocks: reviewRocks(r) }))
+    .filter(({ rocks }) => rocks.length > 0)
+    .map(({ r, rocks }) => ({ quarter: `Q${r.quarter} ${r.year}`, value: getRocksCompletion(rocks).percentage }))
     .reverse();
 
   const energyTrend = completedReviews

@@ -512,11 +512,42 @@ export class StrategicSyncService {
         written.add(writeKey);
 
         if (rowId) {
-          // UPDATE the quarter's row. Never a row elsewhere in the plan: baseData
-          // carries step_type.
+          // UPDATE the quarter's row with what the review set for this rock, and
+          // nothing else. The row is the plan's own — the Goals wizard's, or one
+          // an earlier completion filed — and it was written from the whole
+          // rock: the review's "why" over the Goals description, the notes and
+          // KPI links nulled, the source restamped (the ROADMAP badge gone), and
+          // an owner, outcome or end date the review left blank wiped. Sydney
+          // Pressed Metal's five Q2 rocks are Goals rows carrying owners,
+          // outcomes, an end date, notes and a roadmap source, with nothing set
+          // in Sprint Planning: filed this way, all of it would have been
+          // blanked. Rows were filed only when step 4.3 had been edited, until
+          // completion started filing a review's rocks every time.
+          //
+          // The review has no editor for a row's description or notes, so it
+          // never writes them here (Matt, 26 Sep 2026): the why is saved in the
+          // row's own why field (syncSprintPlanningToQuarter), and the notes are
+          // syncInitiativeChanges' to write. A row the review creates starts
+          // with both (the insert below).
+          //
+          // The cost of writing only what is there: an owner, outcome or end
+          // date cleared in Sprint Planning after an earlier sync saved it stays
+          // on the row. A decision holds '' for "cleared" and "never set" alike;
+          // syncSprintPlanningToQuarter has always written only what is present
+          // too. Spaces alone are not a value.
+          const present = (value: string | null | undefined) => !!value?.trim();
+          const setByReview: Record<string, unknown> = {
+            selected: true,
+            order_index: index,
+            updated_at: baseData.updated_at,
+          };
+          if (present(rock.owner)) setByReview.assigned_to = rock.owner;
+          if (present(rock.successCriteria)) setByReview.outcome = rock.successCriteria;
+          if (present(rock.targetDate)) setByReview.end_date = rock.targetDate;
+          if (rock.linkedKPIs?.length) setByReview.linked_kpis = baseData.linked_kpis;
           const { error } = await supabase
             .from('strategic_initiatives')
-            .update(baseData)
+            .update(setByReview)
             .eq('id', rowId)
             .eq('business_id', businessId);
           if (!error) updatedCount++;

@@ -9,6 +9,7 @@ import { migrateStep, migrateSteps } from '../utils/step-migration';
 import { captureReviewWriteFailure } from '../utils/capture-write-failure';
 import { strategicSyncService } from '../services/strategic-sync-service';
 import { planWritesSettled } from '../services/foundation-plan-service';
+import { reviewRocks } from '../utils/rocks-from-decisions';
 import { assemblePlanData } from '@/app/one-page-plan/services/plan-data-assembler';
 import { planSnapshotService } from '@/app/one-page-plan/services/plan-snapshot-service';
 import type {
@@ -24,7 +25,6 @@ import type {
   RoadmapSnapshot,
   QuarterlyTargets,
   InitiativesChanges,
-  Rock,
   PersonalCommitments,
   OpenLoopDecisionRecord,
   IssueResolution,
@@ -136,7 +136,6 @@ interface UseQuarterlyReviewReturn {
   updateInitiativeDecisions: (decisions: InitiativeDecision[]) => void;
   updateQuarterlyTargets: (targets: QuarterlyTargets) => void;
   updateInitiativesChanges: (changes: InitiativesChanges) => void;
-  updateQuarterlyRocks: (rocks: Rock[]) => void;
   updatePersonalCommitments: (commitments: PersonalCommitments) => void;
   updateOneThing: (answer: string) => void;
 
@@ -420,7 +419,11 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
       const quarterKey = planQuarterKey({ quarter: anchorQuarter });
       const syncId = profileBusinessId || businessId;
       try {
-        await strategicSyncService.syncRocks(syncId, userId, review.quarterly_rocks || [], quarterKey);
+        // The rocks the decisions hold now. The stored list only changed when
+        // this step wrote back an edit, so arriving from 4.2 synced whatever
+        // the step had last saved: a rock added in 4.2 since was missed, and
+        // one moved out of the quarter was filed again.
+        await strategicSyncService.syncRocks(syncId, userId, reviewRocks(review), quarterKey);
       } catch (err) {
         console.error('[Sync] Background sync failed:', err);
         captureReviewWriteFailure(err, 'background-rocks-sync', {
@@ -537,6 +540,15 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     setIsCompleting(true);
 
     try {
+      // The rocks this completion files, and records on the review: the ones
+      // its decisions hold now. The stored list was rewritten only when step
+      // 4.3 wrote back an edit, so a review finished without one after its last
+      // change in 4.2 filed stale rocks, or none — Sydney Pressed Metal's Q2
+      // FY2027 review (25 Sep 2026) had five rocks in its decisions and filed
+      // none. A resumed review whose decisions never changed this session is
+      // covered too: nothing here depends on an edit having happened.
+      const rocks = reviewRocks(review);
+
       // A first-session plan step finishes its own save as it closes. Let that
       // land before the strategic sync reads and rewrites the same plan row.
       await planWritesSettled();
@@ -604,7 +616,7 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
           review.initiative_decisions || [],
           review.quarterly_targets || { revenue: 0, grossProfit: 0, netProfit: 0, kpis: [] },
           syncQuarterKey,
-          review.quarterly_rocks || [],
+          rocks,
           (review.initiatives_changes?.added || []).map(a => ({
             title: a.title,
             category: a.category,
@@ -713,8 +725,9 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
         setHistoryWriteFailed(true);
       }
 
-      // 4. COMPLETE the workshop
-      const updated = await quarterlyReviewService.completeWorkshop(review.id);
+      // 4. COMPLETE the workshop — with the rocks it filed, so the review's own
+      // record says what the plan was sent.
+      const updated = await quarterlyReviewService.completeWorkshop(review.id, rocks);
       setReview(updated);
     } catch (err) {
       captureReviewWriteFailure(err, 'complete-workshop', { reviewId: review.id });
@@ -847,9 +860,9 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     updateLocalState(prev => ({ ...prev, initiatives_changes: changes }));
   }, [updateLocalState]);
 
-  const updateQuarterlyRocks = useCallback((rocks: Rock[]) => {
-    updateLocalState(prev => ({ ...prev, quarterly_rocks: rocks }));
-  }, [updateLocalState]);
+  // No updater for quarterly_rocks: a review's rocks are worked out from its
+  // decisions wherever they are used (reviewRocks), and completion records the
+  // list it filed. A separate updater is a second rule to drift from that one.
 
   const updatePersonalCommitments = useCallback((commitments: PersonalCommitments) => {
     updateLocalState(prev => ({ ...prev, personal_commitments: commitments }));
@@ -965,7 +978,6 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
     updateInitiativeDecisions,
     updateQuarterlyTargets,
     updateInitiativesChanges,
-    updateQuarterlyRocks,
     updatePersonalCommitments,
     updateOneThing,
 

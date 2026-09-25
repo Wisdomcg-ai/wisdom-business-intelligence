@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { quarterlyReviewService } from '../../services/quarterly-review-service';
+import { reviewRocks } from '../../utils/rocks-from-decisions';
 import type { QuarterlyReview } from '../../types';
 import type { YearType } from '../../types';
 import {
@@ -144,6 +145,10 @@ export default function QuarterlySummaryPage() {
   // 1, a leftover from the old "review = the quarter that just ended" model, which
   // printed a Q2 plan as "Q3 Targets" on the summary a client reads.
   const planQ = { quarter: review.quarter, year: review.year };
+  // The rocks the review set: its decisions', then any stored by hand that no
+  // decision names (reviewRocks). The stored copy alone went stale whenever 4.2
+  // changed after 4.3, and was empty for every review completed before #594.
+  const rocks = reviewRocks(review);
   const targets = review.quarterly_targets;
   const commitments = review.personal_commitments;
   const actionReplay = review.action_replay;
@@ -1010,7 +1015,7 @@ export default function QuarterlySummaryPage() {
       )}
 
       {/* 4.3 Quarterly Rocks (Sprint Planning) */}
-      {review.quarterly_rocks && review.quarterly_rocks.length > 0 && (
+      {rocks.length > 0 && (
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Mountain className="w-5 h-5 text-gray-600" />
@@ -1018,7 +1023,7 @@ export default function QuarterlySummaryPage() {
           </h2>
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="space-y-4">
-              {review.quarterly_rocks.map((rock, index) => (
+              {rocks.map((rock, index) => (
                 <div key={rock.id} className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
                   <span className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 bg-brand-orange">
                     {index + 1}
