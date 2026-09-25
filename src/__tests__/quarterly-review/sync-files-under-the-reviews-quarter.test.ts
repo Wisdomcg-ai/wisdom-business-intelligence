@@ -393,12 +393,14 @@ describe('a rock the coach dropped is not the rock planned now', () => {
 
 // ---------------------------------------------------------------------------
 // 25 Sep 2026 — Digital Bond. Completing the Q2 review MOVED a 12-month
-// initiative the coach had picked as a rock: syncRocks updated the 12-month row
-// through its own id, step_type included, and relabelled it 'quarterly_review'.
+// initiative into the quarter: syncRocks updated the 12-month row through its
+// own id, step_type included, and relabelled it 'quarterly_review'.
 // "Determine how to get money off the table and invest" is in the pre-sync
-// snapshot's 12-month list at 00:51:40 UTC and gone from the post-sync one. A
-// q1 rock carried into q2 was moved out of q1's record the same way, and the
-// sprint detail followed the decision's id onto the original row.
+// snapshot's 12-month list at 00:51:40 UTC and gone from the post-sync one. It
+// got there from 4.2's Available pool, which #604 has since excluded — but a
+// 12-month initiative the coach genuinely picks for the quarter, or a q1 rock
+// carried into q2, took the same path, and the sprint detail followed the
+// decision's id onto the original row.
 //
 // The Goals wizard files an initiative put in a quarter as a row of the
 // quarter's own, a copy with the same title, and leaves the original where it

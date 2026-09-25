@@ -183,11 +183,11 @@ describe('4.2 re-loading the plan never lists a rock twice on its own account', 
   });
 });
 
-// Digital Bond, 25 Sep 2026: the sync now files a rock picked from the 12-month
-// list or an earlier quarter under a quarter row of its own and leaves the
-// original where it is. Re-loading 4.2 then finds that quarter row, new to the
-// review — and the pick's own row back in its place, or (a 12-month
-// initiative) out of the pool altogether.
+// The sync now files a rock picked from the 12-month list or an earlier quarter
+// under a quarter row of its own and leaves the original where it is (it used to
+// MOVE the original — Digital Bond, 25 Sep 2026). Re-loading 4.2 then finds that
+// quarter row, new to the review — and the pick's own row back in its place, or
+// (a 12-month initiative) out of the pool altogether.
 describe('4.2 re-loading the plan hands a pick over to the quarter row it was filed under', () => {
   const TWELVE_MONTH = '22222222-2222-4222-8222-222222222222';
   const Q1_ROCK = '33333333-3333-4333-8333-333333333333';

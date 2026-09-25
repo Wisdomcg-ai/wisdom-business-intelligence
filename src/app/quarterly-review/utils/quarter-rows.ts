@@ -8,11 +8,13 @@
  * a quarter copy for 95 of its 141 12-month titles (26 Sep 2026).
  *
  * The review's sync used to write a rock onto whichever row its decision came
- * from, step_type included. A 12-month initiative the coach picked as a rock was
- * MOVED into the quarter and dropped out of the One-Page Plan's 12-Month
- * Initiatives — Digital Bond's "Determine how to get money off the table and
- * invest", completed 25 Sep 2026 — and an earlier quarter's rock carried
- * forward was moved out of that quarter's record. Every writer asks here instead.
+ * from, step_type included, so a rock whose row lived outside the quarter was
+ * MOVED into it. Digital Bond's 25 Sep 2026 completion took "Determine how to
+ * get money off the table and invest" out of the One-Page Plan's 12-Month
+ * Initiatives that way (it reached the sync from 4.2's Available pool, which
+ * #604 has since excluded). A 12-month initiative the coach genuinely picks, or
+ * an earlier quarter's rock carried forward, took the same path. Every writer
+ * asks here instead.
  */
 import type { InitiativeDecision } from '../types'
 import { titleKey } from './rocks-from-decisions'
