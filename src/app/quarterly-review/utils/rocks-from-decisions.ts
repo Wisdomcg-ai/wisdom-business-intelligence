@@ -16,6 +16,7 @@
  * stored or derived.
  */
 import type { InitiativeDecision, Rock } from '../types'
+import { withoutAssignment } from './assignment-tag'
 
 /** Decisions that put an initiative on the plate for the coming quarter. */
 const ACTIVE_DECISIONS = new Set(['keep', 'accelerate'])
@@ -227,13 +228,17 @@ export function rocksFromDecisions(
   for (const d of kept) {
     const key = titleKey(d.title)
     if (!key) continue
+    // What the coach wrote — never step 4.2's owner tag, which it keeps in the
+    // same field (assignment-tag.ts). The tag became a rock's notes, and its
+    // description when the coach gave no why.
+    const notes = withoutAssignment(d.notes) || undefined
 
     const existing = byTitle.get(key)
     if (!existing) {
       byTitle.set(key, {
         id: d.initiativeId,
         title: d.title,
-        description: d.why || d.notes || undefined,
+        description: d.why || notes,
         owner: d.assignedTo || '',
         status: 'not_started' as const,
         progressPercentage: 0,
@@ -242,7 +247,7 @@ export function rocksFromDecisions(
         successCriteria: d.outcome || '',
         startDate: d.startDate,
         targetDate: d.endDate,
-        notes: d.notes || undefined,
+        notes,
         priority: 0, // numbered below, once the set is final
       })
       continue
@@ -250,10 +255,10 @@ export function rocksFromDecisions(
 
     if (!existing.owner && d.assignedTo) existing.owner = d.assignedTo
     if (!existing.successCriteria && d.outcome) existing.successCriteria = d.outcome
-    if (!existing.description && (d.why || d.notes)) existing.description = d.why || d.notes
+    if (!existing.description && (d.why || notes)) existing.description = d.why || notes
     if (!existing.startDate && d.startDate) existing.startDate = d.startDate
     if (!existing.targetDate && d.endDate) existing.targetDate = d.endDate
-    if (!existing.notes && d.notes) existing.notes = d.notes
+    if (!existing.notes && notes) existing.notes = notes
     // Every decision that fed this rock, so a reader can trace it back.
     if (!existing.linkedInitiatives?.includes(d.initiativeId)) {
       existing.linkedInitiatives = [...(existing.linkedInitiatives ?? []), d.initiativeId]

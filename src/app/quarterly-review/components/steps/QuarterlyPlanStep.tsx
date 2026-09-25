@@ -11,6 +11,7 @@ import { getInitials, getColorForName, parseTeamFromProfile, type TeamMember } f
 import { getCategoryStyle, getCardClasses } from '@/app/goals/utils/design-tokens';
 import { snapshotActual } from '../../utils/snapshot-actuals';
 import { reconcileDecisions, onePoolEntryPerInitiative } from '../../utils/reconcile-decisions';
+import { assignedIn, assignmentTag, withAssignment } from '../../utils/assignment-tag';
 import type {
   QuarterlyReview,
   InitiativeDecision,
@@ -468,7 +469,8 @@ export function QuarterlyPlanStep({
             currentStatus: i.status || 'active',
             progressPercentage: i.progress_percentage || 0,
             decision: 'keep' as InitiativeAction,
-            notes: i.assigned_to ? `[Assigned: ${i.assigned_to}]` : '',
+            // The owner chip, not the row's notes — see utils/assignment-tag.ts.
+            notes: i.assigned_to ? assignmentTag(i.assigned_to) : '',
             quarterAssigned: quarterId,
             source: i.source,
             ideaType: i.idea_type,
@@ -525,7 +527,7 @@ export function QuarterlyPlanStep({
           currentStatus: i.status || 'active',
           progressPercentage: i.progress_percentage || 0,
           decision: 'keep' as InitiativeAction,
-          notes: i.assigned_to ? `[Assigned: ${i.assigned_to}]` : '',
+          notes: i.assigned_to ? assignmentTag(i.assigned_to) : '',
           quarterAssigned: 'unassigned',
           source: i.source,
           ideaType: i.idea_type,
@@ -731,11 +733,7 @@ export function QuarterlyPlanStep({
     // Replace existing [Assigned: ...] tag or add new one
     onUpdateInitiativeDecisions(decisions.map((d) => {
       if (d.initiativeId !== initiativeId) return d;
-      const notesWithoutAssignment = (d.notes || '').replace(/\s*\[Assigned: .+?\]/g, '').trim();
-      const newNotes = notesWithoutAssignment
-        ? `${notesWithoutAssignment} [Assigned: ${memberName}]`
-        : `[Assigned: ${memberName}]`;
-      return { ...d, notes: newNotes };
+      return { ...d, notes: withAssignment(d.notes, memberName) };
     }));
     setShowAssignmentFor(null);
   }, [decisions, onUpdateInitiativeDecisions]);
@@ -858,9 +856,8 @@ export function QuarterlyPlanStep({
   // ═══════════════════════════════════════════════════════════════
 
   function getAssignedMemberFromDecision(decision: InitiativeDecision): TeamMember | null {
-    const match = decision.notes?.match(/\[Assigned: (.+?)\]/);
-    if (match) {
-      const name = match[1];
+    const name = assignedIn(decision.notes);
+    if (name) {
       return teamMembers.find(m => m.name === name) || {
         id: `parsed-${name}`, name, initials: getInitials(name), color: getColorForName(name),
       };

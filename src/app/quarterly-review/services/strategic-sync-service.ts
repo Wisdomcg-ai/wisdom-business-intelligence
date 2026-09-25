@@ -5,7 +5,7 @@
 'use client';
 
 import { createClient } from '@/lib/supabase/client';
-import type { StrategicInitiative, InitiativeStatus } from '@/app/goals/types';
+import type { StrategicInitiative } from '@/app/goals/types';
 import type { InitiativeDecision, Rock, QuarterlyTargets, RealignmentData, NextYearTargets, AnnualInitiativePlan } from '../types';
 import {
   fillSprintBlanks,
@@ -15,8 +15,13 @@ import {
   titleKey,
 } from '../utils/rocks-from-decisions';
 import { quarterDecisionWrites, quarterRowIndex, type QuarterRow } from '../utils/quarter-rows';
+import { decisionUpdate, type DecisionRow } from '../utils/decision-writes';
+import { withoutAssignment } from '../utils/assignment-tag';
 
 type StepType = 'q1' | 'q2' | 'q3' | 'q4' | 'sprint' | 'current_remainder';
+
+/** A field the review filled in. Empty, or only spaces, is one it left blank. */
+const hasText = (value: string | null | undefined): value is string => (value ?? '').trim() !== '';
 
 export class StrategicSyncService {
   private getSupabase() {
@@ -35,47 +40,24 @@ export class StrategicSyncService {
   }
 
   /**
-   * Map review InitiativeDecision → Goals Wizard StrategicInitiative
-   */
-  private mapDecisionToInitiative(decision: InitiativeDecision): StrategicInitiative {
-    // Map review decision to initiative status
-    let status: InitiativeStatus = 'in_progress';
-    if (decision.decision === 'kill') status = 'cancelled';
-    if (decision.decision === 'defer') status = 'deferred';
-    if (decision.currentStatus === 'not_started') status = 'not_started';
-    if (decision.decision === 'keep' || decision.decision === 'accelerate') {
-      status = decision.currentStatus === 'not_started' ? 'not_started' : 'in_progress';
-    }
-
-    // Map quarter assignment
-    let quarterAssigned: 'Q1' | 'Q2' | 'Q3' | 'Q4' | undefined;
-    if (decision.quarterAssigned) {
-      const match = decision.quarterAssigned.match(/q(\d)/i);
-      if (match) quarterAssigned = `Q${match[1]}` as 'Q1' | 'Q2' | 'Q3' | 'Q4';
-    }
-
-    return {
-      id: decision.initiativeId,
-      title: decision.title,
-      category: (decision.category || 'misc') as StrategicInitiative['category'],
-      source: 'strategic_ideas',
-      status,
-      progressPercentage: decision.progressPercentage || 0,
-      notes: decision.notes || undefined,
-      quarterAssigned,
-      selected: true,
-    };
-  }
-
-  /**
    * Sync initiative decisions back to strategic_initiatives table
-   * UPDATE-ONLY: updates status/notes on existing initiatives, never deletes or creates
-   * This prevents accidental data loss from the destructive saveInitiatives() call
+   * UPDATE-ONLY: never deletes or creates. This prevents accidental data loss
+   * from the destructive saveInitiatives() call.
+   *
+   * A decision writes only what the coach decided (decisionUpdate): Drop
+   * cancels, Carry Forward puts it on hold, Continue and Accelerate leave the
+   * row as it is — unless it is a rock of the quarter being planned, which is
+   * made live — and notes are written only when a coach wrote some. Every card
+   * used to write a status and its notes — 'planned' and 'deferred', which the
+   * table's CHECK refuses, and step 4.2's owner tag over the row's notes.
    *
    * The planned quarter's listings write to the quarter's own rows
    * (quarterDecisionWrites). They used to write to the row each came from, so
    * taking a picked 12-month initiative out of the quarter — Drop, or Remove in
    * Sprint Planning — cancelled the 12-month initiative itself.
+   *
+   * A write the database refuses is reported. These writes went unchecked,
+   * which is how two statuses the table does not allow went unnoticed.
    */
   async syncInitiativeChanges(
     businessId: string,
@@ -90,12 +72,12 @@ export class StrategicSyncService {
       const inPlannedQuarter = (d: InitiativeDecision) =>
         stepType !== null && isForPlannedQuarter(d, Number(stepType.slice(1)));
 
-      const writes: Array<[string, InitiativeDecision]> = [];
+      const writes: Array<[string, InitiativeDecision, DecisionRow]> = [];
       for (const decision of decisions) {
         if (inPlannedQuarter(decision)) continue;
-        // Skip user-added initiatives (not in DB)
-        if (decision.initiativeId.startsWith('new-')) continue;
-        writes.push([decision.initiativeId, decision]);
+        // A listing the review added (new-, sprint-new-) has no row of its own.
+        if (!isSavedInitiativeId(decision.initiativeId)) continue;
+        writes.push([decision.initiativeId, decision, { inPlannedQuarter: false }]);
       }
 
       let readFailure: string | null = null;
@@ -110,34 +92,36 @@ export class StrategicSyncService {
           // Written blind, a rock picked from the 12-month list lands on the 12-month row.
           readFailure = `Decisions for ${stepType} not saved — could not read it: ${readError.message}`;
         } else {
-          writes.push(...quarterDecisionWrites(planned, (quarterRows ?? []) as QuarterRow[]));
+          const rows = (quarterRows ?? []) as QuarterRow[];
+          const statusOf = new Map(rows.map(row => [row.id, row.status]));
+          for (const [rowId, decision] of quarterDecisionWrites(planned, rows)) {
+            writes.push([rowId, decision, { inPlannedQuarter: true, status: statusOf.get(rowId) }]);
+          }
         }
       }
 
-      for (const [rowId, decision] of writes) {
-        // Map decision to DB status
-        let status: string = 'in_progress';
-        if (decision.decision === 'kill') status = 'cancelled';
-        if (decision.decision === 'defer') status = 'deferred';
-        // If keep/accelerate on a not_started initiative assigned to a future quarter, mark as planned
-        if ((decision.decision === 'keep' || decision.decision === 'accelerate') && decision.currentStatus === 'not_started' && decision.quarterAssigned) {
-          status = 'planned';
-        }
+      let updatedCount = 0;
+      const failures: string[] = [];
+      for (const [rowId, decision, row] of writes) {
+        const update = decisionUpdate(decision, row);
+        if (!update) continue;
 
         // Update only — never delete
-        await supabase
+        const { error } = await supabase
           .from('strategic_initiatives')
-          .update({
-            status,
-            notes: decision.notes || null,
-            updated_at: new Date().toISOString(),
-          })
+          .update({ ...update, updated_at: new Date().toISOString() })
           .eq('id', rowId)
           .eq('business_id', businessId);
+        if (!error) updatedCount++;
+        else failures.push(`${decision.title}: ${error.message}`);
       }
 
-      if (readFailure) return { success: false, error: readFailure };
-      console.log('[StrategicSync] Successfully synced initiative decisions (update-only)');
+      const errors = [
+        ...(readFailure ? [readFailure] : []),
+        ...(failures.length > 0 ? [`Initiative decisions not saved — ${failures.join('; ')}`] : []),
+      ];
+      if (errors.length > 0) return { success: false, error: errors.join('; ') };
+      console.log(`[StrategicSync] Synced initiative decisions: ${updatedCount} updated`);
       return { success: true };
     } catch (err) {
       console.error('[StrategicSync] Error syncing initiative changes:', err);
@@ -420,6 +404,11 @@ export class StrategicSyncService {
    * where it is. A rock picked from the 12-month list or carried forward from an
    * earlier quarter used to be updated through its own id, step_type included,
    * which MOVED that row into this quarter.
+   *
+   * A row the quarter already holds is written only what the rock carries. No
+   * rock is built from the row's own owner, outcome, end date, linked KPIs, why
+   * or notes, so a rock without one has not cleared it. A new row takes every
+   * column.
    */
   async syncRocks(
     businessId: string,
@@ -491,16 +480,15 @@ export class StrategicSyncService {
       const written = new Set<string>();
 
       for (const [index, rock] of rocks.entries()) {
+        // Never step 4.2's owner tag (assignment-tag.ts). Rocks built before
+        // rocksFromDecisions left it out still carry it, as notes and, where the
+        // coach gave no why, as the description — JVJ's Q2 review stores three.
+        const description = withoutAssignment(rock.description);
+        const notes = withoutAssignment(rock.notes);
         const baseData = {
           title: rock.title || 'Untitled Rock',
-          description: rock.description || null,
-          notes: rock.notes || null,
-          assigned_to: rock.owner || null,
           selected: true,
           order_index: index,
-          outcome: rock.successCriteria || null,
-          end_date: rock.targetDate || null,
-          linked_kpis: rock.linkedKPIs ? JSON.stringify(rock.linkedKPIs) : null,
           source: 'quarterly_review' as const,
           step_type: stepType,
           updated_at: new Date().toISOString(),
@@ -513,21 +501,46 @@ export class StrategicSyncService {
 
         if (rowId) {
           // UPDATE the quarter's row. Never a row elsewhere in the plan: baseData
-          // carries step_type.
+          // carries step_type. Of the row's detail, only what the rock carries is
+          // written. A rock's owner, outcome, end date and why are what 4.3
+          // entered — step 4.2 loads the row's owner only as its chip
+          // (assignment-tag.ts) and none of the rest — and no step sets linked
+          // KPIs. So a blank here is "not entered in this review", never
+          // "cleared". Written as null, they wiped what the client set in the
+          // Goals wizard for every rock 4.3 left blank — at every completion, and
+          // at every background sync while 4.3 was open.
+          // syncSprintPlanningToQuarter, which writes these rows straight after,
+          // already writes only what is there.
           const { error } = await supabase
             .from('strategic_initiatives')
-            .update(baseData)
+            .update({
+              ...baseData,
+              ...(hasText(rock.owner) ? { assigned_to: rock.owner } : {}),
+              ...(hasText(rock.successCriteria) ? { outcome: rock.successCriteria } : {}),
+              ...(hasText(rock.targetDate) ? { end_date: rock.targetDate } : {}),
+              ...(Array.isArray(rock.linkedKPIs) && rock.linkedKPIs.length > 0
+                ? { linked_kpis: JSON.stringify(rock.linkedKPIs) }
+                : {}),
+              ...(description ? { description } : {}),
+              ...(notes ? { notes } : {}),
+            })
             .eq('id', rowId)
             .eq('business_id', businessId);
           if (!error) updatedCount++;
           else failures.push(`update ${baseData.title}: ${error.message}`);
         } else {
-          // INSERT the quarter's row for this rock
+          // INSERT the quarter's row for this rock, every column — blanks as null.
           const original = picked.get(rock.id);
           const { error } = await supabase
             .from('strategic_initiatives')
             .insert({
               ...baseData,
+              assigned_to: rock.owner || null,
+              outcome: rock.successCriteria || null,
+              end_date: rock.targetDate || null,
+              linked_kpis: rock.linkedKPIs ? JSON.stringify(rock.linkedKPIs) : null,
+              description: description || null,
+              notes: notes || null,
               business_id: businessId,
               user_id: userId,
               category: (original?.category as string | null) || 'misc',
