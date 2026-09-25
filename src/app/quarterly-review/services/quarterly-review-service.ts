@@ -697,13 +697,19 @@ export class QuarterlyReviewService {
     return data;
   }
 
-  async completeWorkshop(id: string): Promise<QuarterlyReview> {
+  /**
+   * Mark the review complete, recording the rocks the completion filed
+   * (`reviewRocks`) — so the review's own copy is what the plan was sent, not
+   * whatever step 4.3 last saved.
+   */
+  async completeWorkshop(id: string, rocks: Rock[]): Promise<QuarterlyReview> {
     const { data, error } = await this.getSupabase()
       .from('quarterly_reviews')
       .update({
         status: 'completed',
         completed_at: new Date().toISOString(),
-        current_step: 'complete'
+        current_step: 'complete',
+        quarterly_rocks: rocks,
       })
       .eq('id', id)
       .select()

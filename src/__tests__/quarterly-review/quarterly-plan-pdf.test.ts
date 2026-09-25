@@ -469,7 +469,9 @@ const sprintDecision = (over: Record<string, unknown> = {}) => ({
 
 describe('the rocks the session actually set reach the page', () => {
   it('prints a rock that Sprint Planning recorded, even though quarterly_rocks is empty', () => {
-    // Step 4.3 writes initiative_decisions; nothing routed writes quarterly_rocks.
+    // Step 4.3 records rocks in initiative_decisions; every review completed
+    // before #594 stored none, and one completed since without an edit in 4.3
+    // stored none either (Sydney Pressed Metal, 25 Sep 2026).
     const page = buildPlanPage(
       input({ review: review({ quarterly_rocks: [], initiative_decisions: [sprintDecision()] }) })
     );
@@ -520,8 +522,12 @@ describe('the rocks the session actually set reach the page', () => {
     expect(rocks.items[0].detail).toBe('Sam · by 30 November 2026 — Every quote on the new template');
   });
 
-  it('still prefers real rocks when a review has them', () => {
-    // Older reviews (and the seeded ones) carry quarterly_rocks with owner and date.
+  it('prints the decisions\' rocks, then a rock stored by hand that no decision names', () => {
+    // Precision's seeded reviews carry rocks nothing in the workshop built, with
+    // owner and date. They are kept (Matt, 26 Sep 2026) — after the rocks the
+    // decisions hold, which are the ones Sprint Planning showed. This page used
+    // to print the stored list alone whenever it held anything, so a review
+    // whose list went stale printed the stale rocks.
     const page = buildPlanPage(
       input({
         review: review({
@@ -531,7 +537,28 @@ describe('the rocks the session actually set reach the page', () => {
       })
     );
     const rocks = page.blocks.find(b => b.title === 'My rocks this quarter') as any;
-    expect(rocks.items.map((i: any) => i.text)).toEqual(['The real rock']);
+    expect(rocks.items.map((i: any) => i.text)).toEqual(['The decision', 'The real rock']);
+  });
+
+  it('does not print a stored rock the decisions no longer make', () => {
+    // Digital Bond's Q2 list was stored when 4.2's Available pool still counted
+    // as rocks; the decisions behind four of its eight stopped counting (#604).
+    const page = buildPlanPage(
+      input({
+        review: review({
+          quarterly_rocks: [
+            { id: 'p', title: 'Productise AI Systems Audits', owner: '', successCriteria: '', linkedInitiatives: ['p'] },
+            { id: 'u', title: 'Create a Clear Offer Ladder', owner: '', successCriteria: '', linkedInitiatives: ['u'] },
+          ],
+          initiative_decisions: [
+            sprintDecision({ initiativeId: 'p', title: 'Productise AI Systems Audits' }),
+            sprintDecision({ initiativeId: 'u', title: 'Create a Clear Offer Ladder', quarterAssigned: 'unassigned' }),
+          ],
+        }),
+      })
+    );
+    const rocks = page.blocks.find(b => b.title === 'My rocks this quarter') as any;
+    expect(rocks.items.map((i: any) => i.text)).toEqual(['Productise AI Systems Audits']);
   });
 
   it('shows no rocks block when the session set none', () => {

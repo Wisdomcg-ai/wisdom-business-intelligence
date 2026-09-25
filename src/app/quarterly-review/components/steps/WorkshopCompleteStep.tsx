@@ -22,6 +22,7 @@ import {
 import Link from 'next/link';
 import { useCoachView } from '@/hooks/useCoachView';
 import { ExportPlanPdfButton } from '../ExportPlanPdfButton';
+import { reviewRocks } from '../../utils/rocks-from-decisions';
 
 interface WorkshopCompleteStepProps {
   review: QuarterlyReview;
@@ -55,7 +56,9 @@ export function WorkshopCompleteStep({
     return value < 0 ? `(${formatted})` : formatted;
   };
 
-  const rocks = review.quarterly_rocks || [];
+  // The rocks the review set (reviewRocks) — the same list the sync just filed,
+  // not the stored copy, which went stale whenever 4.2 changed after 4.3.
+  const rocks = reviewRocks(review);
   const targets = review.quarterly_targets;
   const commitments = review.personal_commitments;
 

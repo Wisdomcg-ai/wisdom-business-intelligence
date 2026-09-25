@@ -14,8 +14,11 @@
  * uses for reviews completed before this existed — kept or accelerated, in the
  * quarter being planned — so a review shows the same rocks whether they were
  * stored or derived.
+ *
+ * Every reader and every sync takes a review's rocks from `reviewRocks` (at
+ * the end of this file), never straight from the stored column.
  */
-import type { InitiativeDecision, Rock } from '../types'
+import type { InitiativeDecision, QuarterlyReview, Rock } from '../types'
 
 /** Decisions that put an initiative on the plate for the coming quarter. */
 const ACTIVE_DECISIONS = new Set(['keep', 'accelerate'])
@@ -261,4 +264,75 @@ export function rocksFromDecisions(
   }
 
   return Array.from(byTitle.values()).map((rock, index) => ({ ...rock, priority: index + 1 }))
+}
+
+/**
+ * Whether a stored rock was built from the review's decisions.
+ *
+ * rocksFromDecisions keys a rock by its first decision and lists every decision
+ * behind it, so such a rock always names itself in `linkedInitiatives`. A rock
+ * written any other way does not: the retired rock editor minted
+ * `rock-<timestamp>` with an empty list (or ids typed in by hand), and
+ * Precision's seeded rocks (`rock-q1fy27-1`) carry none. Every rock stored in
+ * production on 26 Sep 2026 falls cleanly on one side: the ten not built from
+ * decisions are Precision's nine seeded rocks and Envisage's empty one.
+ */
+function isBuiltFromDecisions(rock: Pick<Rock, 'id' | 'linkedInitiatives'>): boolean {
+  return Array.isArray(rock.linkedInitiatives) && rock.linkedInitiatives.includes(rock.id)
+}
+
+/**
+ * The review's rocks — what every screen shows and every sync files.
+ *
+ * First, the rocks its decisions make: the decisions are where the workshop
+ * records them, and step 4.3 shows nothing else. Then any stored rock the
+ * workshop did not build — written in the retired rock editor, or seeded, like
+ * Precision's demo reviews — whose title no decision holds. There is no
+ * decision to rebuild those from, and Matt chose (26 Sep 2026) to keep them
+ * rather than let a rebuild drop them. They stay as stored, one per title; one
+ * with no title is not a rock (Envisage's Q4 2025 row holds nothing at all).
+ *
+ * Why not the stored list: it was written only when step 4.3 wrote back an
+ * edit, so a review completed without one after its last change in 4.2 filed
+ * stale rocks, or none. Sydney Pressed Metal's Q2 FY2027 review was completed
+ * on 25 Sep 2026 with five rocks in its decisions and an empty list; Digital
+ * Bond's, Efficient Living's and JVJ's Q2 lists kept initiatives from 4.2's
+ * Available pool until a data repair re-derived them the next day. A copy kept
+ * apart from the decisions needs that repair every time it drifts.
+ *
+ * Why not a plain union by title: a stored rock the decisions built and no
+ * longer build was taken out on purpose — Remove in Sprint Planning, Drop or a
+ * move in 4.2 — and keeping it would put it straight back. So only a rock with
+ * no decision behind it is kept, and only while no decision names it: once one
+ * does, that decision speaks for the rock, whatever it says.
+ */
+export function reviewRocks(
+  review: Pick<QuarterlyReview, 'quarter' | 'initiative_decisions' | 'quarterly_rocks'>,
+): Rock[] {
+  const decisions = review.initiative_decisions ?? []
+  const built = rocksFromDecisions(decisions, review.quarter)
+
+  const named = new Set(decisions.map(d => titleKey(d?.title)).filter(Boolean))
+  const kept = new Map<string, Rock>()
+  for (const rock of review.quarterly_rocks ?? []) {
+    if (!rock || isBuiltFromDecisions(rock)) continue
+    const key = titleKey(rock.title)
+    if (!key || named.has(key)) continue
+    const held = kept.get(key)
+    // Two stored rocks of one title are one rock, as everywhere else: the first
+    // copy is the rock, and a later one only fills in what it lacks.
+    kept.set(
+      key,
+      held
+        ? {
+            ...held,
+            owner: held.owner || rock.owner,
+            successCriteria: held.successCriteria || rock.successCriteria,
+            doneDefinition: held.doneDefinition || rock.doneDefinition,
+            targetDate: held.targetDate || rock.targetDate,
+          }
+        : rock,
+    )
+  }
+  return [...built, ...kept.values()]
 }
