@@ -1159,3 +1159,167 @@ describe('step 4.2\'s owner tag never reaches a rock', () => {
     expect(db.initiativeInsertRows[0]).toMatchObject({ notes: null, description: null });
   });
 });
+
+// ---------------------------------------------------------------------------
+// 26 Sep 2026, left open by #607. syncRocks updated the quarter's row of every
+// rock with `assigned_to: rock.owner || null`, `outcome: … || null`,
+// `end_date: … || null` and `linked_kpis: … : null` — a whole-row replace
+// behind a partial body. No rock is built from those columns: step 4.2 loads a
+// row's owner only as its chip and none of the rest, and no step sets linked
+// KPIs, so a rock is blank wherever 4.3 did not fill it in. Every completion,
+// and the background sync about five seconds after each 4.3 save, wiped the
+// owner, outcome, end date and linked KPIs the client had set in the Goals
+// wizard on every rock 4.3 left blank. syncSprintPlanningToQuarter, which runs
+// straight after on the same rows, writes only what is there — the two writers
+// disagreed.
+//
+// The trade-off: 4.3's why, outcome and end-date fields are free text, so a
+// value the coach deletes after the background sync saved it now stays saved.
+// The owner picker cannot unassign, so the owner has no such case.
+// ---------------------------------------------------------------------------
+const Q2_GOALS = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+/** What the Goals wizard set on a Q2 rock: an owner (it keeps a team-role id), an outcome, an end date, linked KPIs. */
+const GOALS_DETAIL = {
+  assigned_to: 'role-900aa935-ae8c-4913-baf7-169260fa19ef-1',
+  outcome: 'Two signed maintenance contracts worth $8k a month',
+  end_date: '2026-12-18',
+  // As the Goals wizard stores them (strategic-planning-service.ts).
+  linked_kpis: JSON.stringify(['kpi-recurring-revenue']),
+};
+
+const goalsRow = (over: Partial<InitiativeRow> = {}): InitiativeRow => ({
+  id: Q2_GOALS,
+  title: 'Win two maintenance contracts',
+  step_type: 'q2',
+  status: 'not_started',
+  ...GOALS_DETAIL,
+  ...over,
+});
+
+/** A rock as quarterly_rocks may hold it — written before rocksFromDecisions, or by the old default rock. */
+const storedRock = (over: Record<string, unknown> = {}) =>
+  ({
+    id: Q2_GOALS,
+    title: 'Win two maintenance contracts',
+    owner: '',
+    status: 'not_started',
+    progressPercentage: 0,
+    successCriteria: '',
+    ...over,
+  }) as never;
+
+describe('a rock 4.3 left blank keeps what the client set in the Goals wizard', () => {
+  it('the background sync leaves the owner, outcome, end date and linked KPIs of a rock 4.3 has not filled in', async () => {
+    // What it hands syncRocks while 4.3 is open: the rocks built from 4.2's cards.
+    db.existingInitiatives = [goalsRow()];
+
+    const result = await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf([card(goalsRow())]), 'q2');
+
+    expect(result).toEqual({ success: true });
+    // Still filed as the quarter's rock...
+    expect(writesTo(Q2_GOALS)).toHaveLength(1);
+    // ...without a word about what the review did not enter.
+    for (const column of Object.keys(GOALS_DETAIL)) {
+      expect(writesTo(Q2_GOALS)[0].payload).not.toHaveProperty(column);
+    }
+    expect(rowById(Q2_GOALS)).toMatchObject(GOALS_DETAIL);
+  });
+
+  it('completing the review leaves them too — the whole completion sync, not just syncRocks', async () => {
+    db.existingInitiatives = [goalsRow()];
+    const decisions = [card(goalsRow())];
+
+    const result = await strategicSyncService.syncAll('biz-1', 'user-1', decisions, TARGETS, 'q2', rocksOf(decisions), []);
+
+    expect(result).toEqual({ success: true, errors: [] });
+    expect(rowById(Q2_GOALS)).toMatchObject(GOALS_DETAIL);
+  });
+
+  it('what 4.3 entered is written, field by field — the fields it left blank keep the Goals wizard\'s', async () => {
+    db.existingInitiatives = [goalsRow()];
+    const decisions = [card(goalsRow(), { assignedTo: 'Darren Rogers', endDate: '2026-11-27' })];
+
+    const result = await strategicSyncService.syncAll('biz-1', 'user-1', decisions, TARGETS, 'q2', rocksOf(decisions), []);
+
+    expect(result).toEqual({ success: true, errors: [] });
+    expect(rowById(Q2_GOALS)).toMatchObject({
+      assigned_to: 'Darren Rogers',
+      end_date: '2026-11-27',
+      outcome: GOALS_DETAIL.outcome,
+      linked_kpis: GOALS_DETAIL.linked_kpis,
+    });
+  });
+
+  it('a rock picked from the 12-month list keeps what the Goals wizard set on the quarter\'s own copy', async () => {
+    // The Goals wizard's model: 95 of 141 12-month titles have a quarter copy.
+    db.existingInitiatives = [twelveMonthRow(), goalsRow({ id: Q2_ROW, title: MONEY })];
+
+    const result = await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf([pick()]), 'q2');
+
+    expect(result).toEqual({ success: true });
+    expect(db.initiativeInserts).toEqual([]);
+    expect(writesTo(Q2_ROW)).toHaveLength(1);
+    expect(rowById(Q2_ROW)).toMatchObject(GOALS_DETAIL);
+    expect(rowById(TWELVE_MONTH)).toEqual(twelveMonthRow());
+  });
+
+  it('blank is blank: no owner, an outcome of spaces, no end date and an empty KPI list write nothing', async () => {
+    // The old default rock carries linkedKPIs: [] — written as "[]" over the Goals wizard's list.
+    db.existingInitiatives = [goalsRow()];
+
+    await strategicSyncService.syncRocks(
+      'biz-1',
+      'user-1',
+      [storedRock({ successCriteria: '   ', targetDate: '', linkedKPIs: [] })],
+      'q2',
+    );
+
+    for (const column of [...Object.keys(GOALS_DETAIL), 'description', 'notes']) {
+      expect(writesTo(Q2_GOALS)[0].payload).not.toHaveProperty(column);
+    }
+    expect(rowById(Q2_GOALS)).toMatchObject(GOALS_DETAIL);
+  });
+
+  it('linked KPIs a stored rock carries are written, as the Goals wizard stores them', async () => {
+    db.existingInitiatives = [goalsRow()];
+
+    await strategicSyncService.syncRocks('biz-1', 'user-1', [storedRock({ linkedKPIs: ['kpi-gross-margin'] })], 'q2');
+
+    expect(rowById(Q2_GOALS)).toMatchObject({
+      ...GOALS_DETAIL,
+      linked_kpis: JSON.stringify(['kpi-gross-margin']),
+    });
+  });
+
+  it('a value cleared in 4.3 after the background sync saved it stays saved — a blank is never read as cleared', async () => {
+    // The trade-off above, pinned so that changing it is a decision.
+    db.existingInitiatives = [goalsRow({ outcome: null, end_date: null })];
+    const typed = [card(goalsRow(), { outcome: 'Both contracts signed by November', endDate: '2026-11-30' })];
+    await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf(typed), 'q2');
+
+    const cleared = [card(goalsRow(), { outcome: '', endDate: '' })];
+    await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf(cleared), 'q2');
+
+    expect(rowById(Q2_GOALS)).toMatchObject({ outcome: 'Both contracts signed by November', end_date: '2026-11-30' });
+  });
+
+  it('a rock filed as a new row takes every column — what 4.3 entered, and null for the rest', async () => {
+    // Unchanged: a row the review creates has nothing of the client's to keep.
+    const decisions = [
+      pick({ initiativeId: 'sprint-new-1790296002208', title: 'Complete the Payroll Automations', assignedTo: 'Sam', endDate: '2026-12-31' }),
+    ];
+
+    await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf(decisions), 'q2');
+
+    expect(db.initiativeInsertRows).toHaveLength(1);
+    expect(db.initiativeInsertRows[0]).toMatchObject({
+      assigned_to: 'Sam',
+      end_date: '2026-12-31',
+      outcome: null,
+      linked_kpis: null,
+      description: null,
+      notes: null,
+    });
+  });
+});

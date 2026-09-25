@@ -20,6 +20,9 @@ import { withoutAssignment } from '../utils/assignment-tag';
 
 type StepType = 'q1' | 'q2' | 'q3' | 'q4' | 'sprint' | 'current_remainder';
 
+/** A field the review filled in. Empty, or only spaces, is one it left blank. */
+const hasText = (value: string | null | undefined): value is string => (value ?? '').trim() !== '';
+
 export class StrategicSyncService {
   private getSupabase() {
     return createClient();
@@ -401,6 +404,11 @@ export class StrategicSyncService {
    * where it is. A rock picked from the 12-month list or carried forward from an
    * earlier quarter used to be updated through its own id, step_type included,
    * which MOVED that row into this quarter.
+   *
+   * A row the quarter already holds is written only what the rock carries. No
+   * rock is built from the row's own owner, outcome, end date, linked KPIs, why
+   * or notes, so a rock without one has not cleared it. A new row takes every
+   * column.
    */
   async syncRocks(
     businessId: string,
@@ -479,12 +487,8 @@ export class StrategicSyncService {
         const notes = withoutAssignment(rock.notes);
         const baseData = {
           title: rock.title || 'Untitled Rock',
-          assigned_to: rock.owner || null,
           selected: true,
           order_index: index,
-          outcome: rock.successCriteria || null,
-          end_date: rock.targetDate || null,
-          linked_kpis: rock.linkedKPIs ? JSON.stringify(rock.linkedKPIs) : null,
           source: 'quarterly_review' as const,
           step_type: stepType,
           updated_at: new Date().toISOString(),
@@ -497,13 +501,26 @@ export class StrategicSyncService {
 
         if (rowId) {
           // UPDATE the quarter's row. Never a row elsewhere in the plan: baseData
-          // carries step_type. The row's own description and notes stay unless
-          // the rock carries some — the workshop never loads them, so a rock
-          // without any has not cleared them.
+          // carries step_type. Of the row's detail, only what the rock carries is
+          // written. A rock's owner, outcome, end date and why are what 4.3
+          // entered — step 4.2 loads the row's owner only as its chip
+          // (assignment-tag.ts) and none of the rest — and no step sets linked
+          // KPIs. So a blank here is "not entered in this review", never
+          // "cleared". Written as null, they wiped what the client set in the
+          // Goals wizard for every rock 4.3 left blank — at every completion, and
+          // at every background sync while 4.3 was open.
+          // syncSprintPlanningToQuarter, which writes these rows straight after,
+          // already writes only what is there.
           const { error } = await supabase
             .from('strategic_initiatives')
             .update({
               ...baseData,
+              ...(hasText(rock.owner) ? { assigned_to: rock.owner } : {}),
+              ...(hasText(rock.successCriteria) ? { outcome: rock.successCriteria } : {}),
+              ...(hasText(rock.targetDate) ? { end_date: rock.targetDate } : {}),
+              ...(Array.isArray(rock.linkedKPIs) && rock.linkedKPIs.length > 0
+                ? { linked_kpis: JSON.stringify(rock.linkedKPIs) }
+                : {}),
               ...(description ? { description } : {}),
               ...(notes ? { notes } : {}),
             })
@@ -512,12 +529,16 @@ export class StrategicSyncService {
           if (!error) updatedCount++;
           else failures.push(`update ${baseData.title}: ${error.message}`);
         } else {
-          // INSERT the quarter's row for this rock
+          // INSERT the quarter's row for this rock, every column — blanks as null.
           const original = picked.get(rock.id);
           const { error } = await supabase
             .from('strategic_initiatives')
             .insert({
               ...baseData,
+              assigned_to: rock.owner || null,
+              outcome: rock.successCriteria || null,
+              end_date: rock.targetDate || null,
+              linked_kpis: rock.linkedKPIs ? JSON.stringify(rock.linkedKPIs) : null,
               description: description || null,
               notes: notes || null,
               business_id: businessId,
