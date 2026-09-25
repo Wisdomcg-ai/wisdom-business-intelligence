@@ -183,6 +183,70 @@ describe('4.2 re-loading the plan never lists a rock twice on its own account', 
   });
 });
 
+// Digital Bond, 25 Sep 2026: the sync now files a rock picked from the 12-month
+// list or an earlier quarter under a quarter row of its own and leaves the
+// original where it is. Re-loading 4.2 then finds that quarter row, new to the
+// review — and the pick's own row back in its place, or (a 12-month
+// initiative) out of the pool altogether.
+describe('4.2 re-loading the plan hands a pick over to the quarter row it was filed under', () => {
+  const TWELVE_MONTH = '22222222-2222-4222-8222-222222222222';
+  const Q1_ROCK = '33333333-3333-4333-8333-333333333333';
+  const QUARTER_ROW = '66666666-6666-4666-8666-666666666666';
+  const MONEY = 'Determine how to get money off the table and invest';
+
+  it('a 12-month initiative picked for the quarter: its quarter row takes the coach\'s decision and sprint detail', () => {
+    const saved = [
+      d({ initiativeId: TWELVE_MONTH, title: MONEY, decision: 'accelerate', why: 'The owner is the bottleneck', assignedTo: 'Sam' }),
+    ];
+    // The 12-month row is not re-loaded: 4.2's pool hides what a quarter holds.
+    const out = reconcileDecisions(saved, [d({ initiativeId: QUARTER_ROW, title: MONEY })]);
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      initiativeId: QUARTER_ROW,
+      quarterAssigned: 'q2',
+      decision: 'accelerate',
+      why: 'The owner is the bottleneck',
+      assignedTo: 'Sam',
+    });
+  });
+
+  it('a rock carried forward from Q1: the quarter row takes the pick, and the Q1 row is listed in Q1 as the plan holds it', () => {
+    const saved = [d({ initiativeId: Q1_ROCK, title: 'Hire an estimator', why: 'Quotes go out late' })];
+    const out = reconcileDecisions(saved, [
+      d({ initiativeId: Q1_ROCK, title: 'Hire an estimator', quarterAssigned: 'q1', currentStatus: 'in_progress' }),
+      d({ initiativeId: QUARTER_ROW, title: 'Hire an estimator' }),
+    ]);
+
+    expect(out.map(r => [r.initiativeId, r.quarterAssigned, r.why])).toEqual([
+      [Q1_ROCK, 'q1', undefined],
+      [QUARTER_ROW, 'q2', 'Quotes go out late'],
+    ]);
+  });
+
+  it('a pick taken out of the quarter takes its quarter row with it — it does not come back as a rock', () => {
+    // Removed in Sprint Planning after the background sync had filed it.
+    const saved = [d({ initiativeId: TWELVE_MONTH, title: MONEY, decision: 'kill' })];
+    const out = reconcileDecisions(saved, [d({ initiativeId: QUARTER_ROW, title: MONEY })]);
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ initiativeId: QUARTER_ROW, decision: 'kill' });
+    expect(plannedRockDecisions(out, 2)).toEqual([]);
+  });
+
+  it('never takes an Available-pool entry for a pick', () => {
+    // The idea row was dropped for its 12-month row of the same title (one pool
+    // entry per initiative); the idea's decision is not the 12-month row's.
+    const saved = [d({ initiativeId: 'c742f2c3-71d8-4597-acf0-04afc0833d87', title: 'Performance Management System', quarterAssigned: 'unassigned', decision: 'kill' })];
+    const out = reconcileDecisions(saved, [
+      d({ initiativeId: '0a1d1d80-5bb0-4220-8f2a-e850a050c1b7', title: 'Performance Management System', quarterAssigned: 'unassigned' }),
+    ]);
+
+    expect(out).toHaveLength(1);
+    expect(out[0].decision).toBe('keep');
+  });
+});
+
 describe('4.2\'s Available pool lists an initiative once', () => {
   it('keeps the 12-month row when the plan also holds the idea it came from', () => {
     const rows = [
