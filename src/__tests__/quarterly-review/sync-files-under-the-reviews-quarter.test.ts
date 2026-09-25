@@ -23,7 +23,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { InitiativeDecision } from '@/app/quarterly-review/types';
-import { rocksFromDecisions } from '@/app/quarterly-review/utils/rocks-from-decisions';
+import { removeRockFromQuarter, rocksFromDecisions } from '@/app/quarterly-review/utils/rocks-from-decisions';
+import { listQuarterRow } from '@/app/quarterly-review/utils/reconcile-decisions';
 
 type InitiativeRow = { id: string; title: string; status?: string; step_type?: string; [column: string]: unknown };
 type RowFilter = (row: Record<string, unknown>) => boolean;
@@ -45,6 +46,8 @@ const db = vi.hoisted(() => ({
   initiativeWrites: [] as Array<{ id: string; payload: Record<string, unknown> }>,
   /** Every strategic_initiatives insert, whole. */
   initiativeInsertRows: [] as Array<Record<string, unknown>>,
+  /** strategic_initiatives deletes. Nothing in the review may ever make one. */
+  initiativeDeletes: 0,
   failInitiativeRead: false,
   /** Fail only a read by a list of ids — the read of the initiatives a review picked. */
   failPickedRead: false,
@@ -100,9 +103,20 @@ vi.mock('@/lib/supabase/client', () => {
         });
         db.initiativeInsertRows.push(row);
         const n = String(db.initiativeInsertRows.length).padStart(12, '0');
-        db.existingInitiatives.push({ status: 'not_started', ...row, id: `00000000-0000-4000-8000-${n}` } as InitiativeRow);
+        // The column defaults the database fills in.
+        const defaults: Record<string, unknown> = { status: 'not_started', created_at: new Date().toISOString() };
+        db.existingInitiatives.push({ ...defaults, ...row, id: `00000000-0000-4000-8000-${n}` } as InitiativeRow);
       }
       return { error: null };
+    },
+    delete: () => {
+      db.initiativeDeletes += 1;
+      const chain: Record<string, unknown> = {
+        eq: () => chain,
+        in: () => chain,
+        then: (resolve: (v: unknown) => unknown) => Promise.resolve({ error: null }).then(resolve),
+      };
+      return chain;
     },
   };
 
@@ -151,6 +165,9 @@ const INSIDE_Q1 = new Date('2026-09-24T02:00:00Z');
 
 const TARGETS = { revenue: 750000, grossProfit: 450000, netProfit: 135000, kpis: [] };
 
+/** When the review was created — Efficient Living's Q2 review, 23 Sep 2026 — the day before INSIDE_Q1. */
+const REVIEW_CREATED = '2026-09-23T22:07:59.156721+00:00';
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(INSIDE_Q1);
@@ -161,6 +178,7 @@ beforeEach(() => {
   db.initiativeUpdates = [];
   db.initiativeWrites = [];
   db.initiativeInsertRows = [];
+  db.initiativeDeletes = 0;
   db.failInitiativeRead = false;
   db.failPickedRead = false;
   db.failInitiativeInsert = false;
@@ -241,6 +259,20 @@ describe('the caller reads that answer', () => {
 
   it('passes each added initiative\'s quarter through to the sync', () => {
     expect(hook).toMatch(/quarterAssigned:\s*a\.quarterAssigned/);
+  });
+
+  it('the 4.3 background sync takes removed rocks out as well as filing the rest — and reads its answer', () => {
+    expect(hook).toMatch(
+      /strategicSyncService\.syncSprintRocks\(\s*syncId,\s*userId,\s*review\.initiative_decisions \|\| \[\],\s*review\.quarterly_rocks \|\| \[\],\s*quarterKey,\s*review\.created_at\s*\)/,
+    );
+    expect(hook).toMatch(/if\s*\(\s*!result\.success\s*\)/);
+    expect(hook).toContain('background-rocks-sync-partial');
+    // Filing alone is what left a removed rock's row active.
+    expect(hook).not.toMatch(/strategicSyncService\.syncRocks\(/);
+  });
+
+  it('completion tells the sync when the review was created — which rows its own sync filed', () => {
+    expect(hook).toMatch(/review\.realignment_decision \|\| undefined,[^)]*review\.created_at\s*\)/);
   });
 });
 
@@ -666,13 +698,30 @@ describe('the sprint detail lands on the quarter row the rock was filed under', 
 describe('the quarter\'s decisions are saved on its own rows — taking a pick out never cancels the original', () => {
   it('removing a picked rock drops its quarter row, never the 12-month initiative', async () => {
     // The quarter row a background sync filed while the coach worked in 4.3.
-    db.existingInitiatives = [twelveMonthRow(), { id: Q2_ROW, title: MONEY, step_type: 'q2', status: 'not_started' }];
+    db.existingInitiatives = [
+      twelveMonthRow(),
+      { id: Q2_ROW, title: MONEY, step_type: 'q2', status: 'not_started', source: 'quarterly_review', created_at: '2026-09-24T01:00:00Z' },
+    ];
 
-    await strategicSyncService.syncAll('biz-1', 'user-1', [pick({ decision: 'kill' })], TARGETS, 'q2', [], []);
+    await strategicSyncService.syncAll('biz-1', 'user-1', [pick({ decision: 'kill' })], TARGETS, 'q2', [], [], undefined, REVIEW_CREATED);
 
     expect(writesTo(TWELVE_MONTH)).toEqual([]);
     expect(rowById(TWELVE_MONTH)?.status).toBe('not_started');
     expect(rowById(Q2_ROW)?.status).toBe('cancelled');
+  });
+
+  it('removing a picked rock never cancels a quarter row the Goals wizard filed under its name', async () => {
+    // The wizard's own copy, not listed by the review: the coach never chose to drop it.
+    db.existingInitiatives = [
+      twelveMonthRow(),
+      { id: Q2_ROW, title: MONEY, step_type: 'q2', status: 'not_started', source: 'strategic_ideas', created_at: '2026-06-19T06:52:08Z' },
+    ];
+
+    const result = await strategicSyncService.syncAll('biz-1', 'user-1', [pick({ decision: 'kill' })], TARGETS, 'q2', [], [], undefined, REVIEW_CREATED);
+
+    expect(result).toEqual({ success: true, errors: [] });
+    expect(db.initiativeWrites).toEqual([]);
+    expect(rowById(Q2_ROW)?.status).toBe('not_started');
   });
 
   it('a pick taken out before it has a quarter row writes nothing at all', async () => {
@@ -737,6 +786,268 @@ describe('the quarter\'s decisions are saved on its own rows — taking a pick o
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('could not read it');
+    expect(db.initiativeWrites).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 26 Sep 2026, found building #605. The 4.3 background sync files a rock the
+// session added a few seconds after an edit: syncRocks inserts its quarter row
+// (Efficient Living's Q2 review filed five that way, at 00:19 and 00:26 UTC on
+// 25 Sep, before completing at 00:31). Removing the rock afterwards dropped its
+// listing and nothing else, so nothing cancelled the row: it stayed an active
+// quarter rock, and the next 4.2 load listed it as a fresh 'keep'.
+// ---------------------------------------------------------------------------
+const HIRE = 'Hire a general manager';
+const GOALS_ROW = '99999999-9999-4999-8999-999999999999';
+
+/** A rock added in Sprint Planning, as step 4.3 mints it. */
+const addedRock = (over: Partial<InitiativeDecision> = {}): InitiativeDecision =>
+  pick({ initiativeId: 'sprint-new-1790296002208', title: HIRE, category: 'other', assignedTo: 'Sam', ...over });
+
+/** Step 4.3's background sync: the review's decisions, and the rocks built from them. */
+const background = (decisions: InitiativeDecision[]) =>
+  strategicSyncService.syncSprintRocks('biz-1', 'user-1', decisions, rocksOf(decisions), 'q2', REVIEW_CREATED);
+
+/** Completing the review, as the hook calls it. */
+const complete = (
+  decisions: InitiativeDecision[],
+  added: Array<{ title: string; category: string; quarterAssigned?: string }> = [],
+) =>
+  strategicSyncService.syncAll('biz-1', 'user-1', decisions, TARGETS, 'q2', rocksOf(decisions), added, undefined, REVIEW_CREATED);
+
+const hireRows = () => db.existingInitiatives.filter((r) => r.title === HIRE);
+const remove = (decisions: InitiativeDecision[], id = 'sprint-new-1790296002208') => removeRockFromQuarter(decisions, id, 2);
+
+describe('a rock the session added, filed by the background sync and then removed, stays removed', () => {
+  it('the background sync takes the row it filed back out of the quarter — cancelled, never deleted', async () => {
+    let decisions = [addedRock()];
+    expect(await background(decisions)).toEqual({ success: true, errors: [] });
+    expect(hireRows()).toEqual([expect.objectContaining({ step_type: 'q2', status: 'not_started', source: 'quarterly_review' })]);
+    const [filed] = hireRows();
+
+    decisions = remove(decisions);
+    expect(await background(decisions)).toEqual({ success: true, errors: [] });
+
+    expect(hireRows()).toEqual([expect.objectContaining({ id: filed.id, status: 'cancelled' })]);
+    expect(writesTo(filed.id).at(-1)?.payload).toEqual({ status: 'cancelled', updated_at: expect.any(String) });
+    expect(db.initiativeDeletes).toBe(0);
+  });
+
+  it('completing the review afterwards keeps it out: no second row, and the filed one stays cancelled', async () => {
+    let decisions = [addedRock()];
+    await background(decisions);
+    decisions = remove(decisions);
+    await background(decisions);
+
+    expect(await complete(decisions)).toEqual({ success: true, errors: [] });
+
+    expect(hireRows()).toEqual([expect.objectContaining({ status: 'cancelled' })]);
+    expect(db.initiativeDeletes).toBe(0);
+  });
+
+  it('removed and completed before the background sync ran again: completion cancels the row it filed', async () => {
+    let decisions = [addedRock()];
+    await background(decisions);
+    decisions = remove(decisions);
+
+    expect(await complete(decisions)).toEqual({ success: true, errors: [] });
+
+    expect(hireRows()).toEqual([expect.objectContaining({ status: 'cancelled' })]);
+  });
+
+  it('a rock added in 4.2 and removed before anything filed it is not saved when the review completes', async () => {
+    // initiatives_changes.added keeps every addition; completion inserted it anyway.
+    const decisions = remove([addedRock({ initiativeId: 'new-1790293272000' })], 'new-1790293272000');
+
+    const result = await complete(decisions, [{ title: HIRE, category: 'people', quarterAssigned: 'q2' }]);
+
+    expect(result).toEqual({ success: true, errors: [] });
+    expect(db.initiativeInserts).toEqual([]);
+  });
+
+  it('nor one the coach dropped in 4.2 — while the same title kept in another quarter is still saved', async () => {
+    const decisions = [
+      addedRock({ initiativeId: 'new-1', decision: 'kill' }),
+      addedRock({ initiativeId: 'new-2', quarterAssigned: 'q3' }),
+    ];
+
+    await strategicSyncService.syncNewInitiatives(
+      'biz-1',
+      'user-1',
+      [
+        { title: HIRE, category: 'people', quarterAssigned: 'q2' },
+        { title: HIRE, category: 'people', quarterAssigned: 'q3' },
+      ],
+      'q2',
+      decisions,
+    );
+
+    expect(db.initiativeInserts).toEqual([{ title: HIRE, step_type: 'q3' }]);
+  });
+
+  it('a copy removed while another listing keeps the rock leaves its row alone', async () => {
+    let decisions = [addedRock(), addedRock({ initiativeId: 'sprint-new-2' })];
+    await background(decisions);
+    decisions = remove(decisions, 'sprint-new-2');
+    await background(decisions);
+    await complete(decisions);
+
+    expect(hireRows()).toHaveLength(1);
+    expect(hireRows()[0]).toMatchObject({ assigned_to: 'Sam' });
+    expect(hireRows()[0].status).not.toBe('cancelled');
+  });
+
+  it('a rock re-added under the removed one\'s name gets a row of its own; the removed one stays cancelled', async () => {
+    let decisions = [addedRock()];
+    await background(decisions);
+    decisions = remove(decisions);
+    await background(decisions);
+    decisions = [...decisions, addedRock({ initiativeId: 'sprint-new-1790296099999', assignedTo: 'Mel' })];
+    await background(decisions);
+
+    expect(hireRows().map((r) => [r.status, r.assigned_to])).toEqual([
+      ['cancelled', 'Sam'],
+      ['not_started', 'Mel'],
+    ]);
+  });
+
+  it('re-added after 4.2 handed the Drop its row: one background run files it under a row of its own', async () => {
+    // The removed rock first, so the new one is never written onto the row being cancelled.
+    let decisions = [addedRock()];
+    await background(decisions);
+    const [filed] = hireRows();
+    // 4.2 re-loaded: the Drop now lists the row it was filed under (reconcileDecisions).
+    decisions = [addedRock({ initiativeId: filed.id, decision: 'kill' }), addedRock({ initiativeId: 'sprint-new-2', assignedTo: 'Mel' })];
+
+    expect(await background(decisions)).toEqual({ success: true, errors: [] });
+
+    expect(hireRows().map((r) => [r.id === filed.id, r.status, r.assigned_to])).toEqual([
+      [true, 'cancelled', 'Sam'],
+      [false, 'not_started', 'Mel'],
+    ]);
+  });
+
+  it('a rock the review never removed is left exactly as filed', async () => {
+    const decisions = [addedRock()];
+    await background(decisions);
+    await background(decisions);
+
+    expect(hireRows()).toEqual([expect.objectContaining({ status: 'not_started' })]);
+    expect(db.initiativeWrites.every((w) => !('status' in w.payload))).toBe(true);
+  });
+
+  it('reports a refused cancel instead of leaving the rock active in silence', async () => {
+    let decisions = [addedRock()];
+    await background(decisions);
+    decisions = remove(decisions);
+    db.failInitiativeUpdate = true;
+
+    const result = await background(decisions);
+
+    expect(result.success).toBe(false);
+    expect(result.errors.join(' ')).toContain('Removed rocks not taken out of q2');
+    expect(result.errors.join(' ')).toContain('permission denied');
+  });
+
+  it('reports a quarter it could not read, and cancels nothing', async () => {
+    let decisions = [addedRock()];
+    await background(decisions);
+    decisions = remove(decisions);
+    db.failInitiativeRead = true;
+    const before = db.initiativeWrites.length;
+
+    const result = await strategicSyncService.cancelRemovedRocks('biz-1', decisions, 'q2', REVIEW_CREATED);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('could not read it');
+    expect(db.initiativeWrites).toHaveLength(before);
+  });
+
+  it('reads nothing when nothing was removed', async () => {
+    db.failInitiativeRead = true;
+    expect(await strategicSyncService.cancelRemovedRocks('biz-1', [addedRock()], 'q2', REVIEW_CREATED)).toEqual({ success: true });
+  });
+});
+
+describe('a removed rock never cancels a row the plan already held under its name', () => {
+  /** The Goals wizard's own q2 row. A first session's 4.2 lists none of the plan's rows, so the coach never sees it. */
+  const goalsRow = (over: Partial<InitiativeRow> = {}): InitiativeRow => ({
+    id: GOALS_ROW,
+    title: HIRE,
+    step_type: 'q2',
+    status: 'not_started',
+    source: 'strategic_ideas',
+    created_at: '2026-06-19T00:25:59.685821+00:00',
+    ...over,
+  });
+
+  it('adding a rock of that name files it under the plan\'s row — which stays the plan\'s (no relabelling)', async () => {
+    db.existingInitiatives = [goalsRow()];
+
+    await background([addedRock()]);
+
+    expect(db.initiativeInserts).toEqual([]);
+    expect(rowById(GOALS_ROW)).toMatchObject({ source: 'strategic_ideas', assigned_to: 'Sam' });
+  });
+
+  it('removing it leaves that row active, in the background and on completion', async () => {
+    db.existingInitiatives = [goalsRow()];
+    let decisions = [addedRock()];
+    await background(decisions);
+    decisions = remove(decisions);
+
+    await background(decisions);
+    expect(await complete(decisions)).toEqual({ success: true, errors: [] });
+
+    expect(rowById(GOALS_ROW)?.status).toBe('not_started');
+    expect(writesTo(GOALS_ROW).some((w) => 'status' in w.payload)).toBe(false);
+  });
+
+  it('nor a row a move labelled \'quarterly_review\' before this review began (Digital Bond, 25 Sep)', async () => {
+    db.existingInitiatives = [goalsRow({ source: 'quarterly_review' })];
+    let decisions = [addedRock()];
+    await background(decisions);
+    decisions = remove(decisions);
+    await background(decisions);
+    await complete(decisions);
+
+    expect(rowById(GOALS_ROW)?.status).toBe('not_started');
+  });
+
+  it('a plan row the coach dropped by name waits for completion — the background sync leaves it', async () => {
+    db.existingInitiatives = [goalsRow()];
+    const decisions = [pick({ initiativeId: GOALS_ROW, title: HIRE, decision: 'kill' })];
+
+    await background(decisions);
+    expect(rowById(GOALS_ROW)?.status).toBe('not_started');
+
+    await complete(decisions);
+    expect(rowById(GOALS_ROW)?.status).toBe('cancelled');
+    expect(db.initiativeDeletes).toBe(0);
+  });
+});
+
+describe('a rock the coach dropped stays dropped at the next review', () => {
+  it('Efficient Living\'s cancelled Q1 repeats are saved as cancelled again, not revived as in progress', async () => {
+    // As its next review's 4.2 lists them: a past quarter's rows, written back by id on completion.
+    const repeat: InitiativeRow = {
+      id: '10000000-0000-4000-8000-000000000001',
+      title: 'Due Date Focus',
+      step_type: 'q1',
+      status: 'cancelled',
+      source: 'strategic_ideas',
+    };
+    db.existingInitiatives = [repeat];
+
+    await strategicSyncService.syncInitiativeChanges('biz-1', 'user-1', [listQuarterRow(repeat, 'q1')], 'q2', REVIEW_CREATED);
+
+    expect(rowById(repeat.id)?.status).toBe('cancelled');
+  });
+
+  it('a rock the review added and moved to another quarter is not written by an id the plan does not hold', async () => {
+    await strategicSyncService.syncInitiativeChanges('biz-1', 'user-1', [addedRock({ quarterAssigned: 'q3' })], 'q2', REVIEW_CREATED);
+
     expect(db.initiativeWrites).toEqual([]);
   });
 });

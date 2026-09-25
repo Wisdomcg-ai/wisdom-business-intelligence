@@ -6,6 +6,7 @@ import { useBusinessContext } from '@/hooks/useBusinessContext';
 import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, RockReviewItem, RockReviewDecision, Rock } from '../../types';
 import { getPreviousQuarterOf } from '../../types';
+import { liveQuarterRows } from '../../utils/quarter-rows';
 import {
   Mountain, ChevronDown, ChevronUp, CheckCircle2, ArrowRightCircle,
   Trash2, PenLine, Loader2, AlertCircle, Target, User
@@ -69,14 +70,17 @@ export function RocksReviewStep({ review, onUpdate }: RocksReviewStepProps) {
         console.log('[RocksReview] planning quarter:', review.quarter, '| reviewing rocks for:', prevQuarterKey);
 
         // Source 1 (Primary): Quarterly initiatives from the Goals Wizard
-        // Check previous quarter first (backward-looking), then current quarter as fallback
+        // Check previous quarter first (backward-looking), then current quarter as fallback.
+        // A rock the coach dropped is saved as cancelled, never deleted: it was not
+        // one of the quarter's rocks, so it is not reviewed as one.
         for (const quarterKey of [prevQuarterKey, currentQuarterKey]) {
-          const { data: quarterInitiatives } = await supabase
+          const { data: quarterRows } = await supabase
             .from('strategic_initiatives')
             .select('*')
             .eq('business_id', profileId)
             .eq('step_type', quarterKey)
             .order('created_at', { ascending: true });
+          const quarterInitiatives = liveQuarterRows(quarterRows || []);
 
           console.log('[RocksReview] Quarterly initiatives (step_type:', quarterKey, '):', quarterInitiatives?.length || 0);
 
@@ -100,12 +104,13 @@ export function RocksReviewStep({ review, onUpdate }: RocksReviewStepProps) {
         }
 
         // Source 2 (Fallback): If no quarterly initiatives found, check ALL quarterly initiatives
-        const { data: allInitiatives } = await supabase
+        const { data: allRows } = await supabase
           .from('strategic_initiatives')
           .select('*')
           .eq('business_id', profileId)
           .in('step_type', ['q1', 'q2', 'q3', 'q4'])
           .order('created_at', { ascending: false });
+        const allInitiatives = liveQuarterRows(allRows || []);
 
         console.log('[RocksReview] All quarterly initiatives:', allInitiatives?.length || 0);
 

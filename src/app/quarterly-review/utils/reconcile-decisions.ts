@@ -18,6 +18,8 @@ export function isAddedInReview(id: string | null | undefined): boolean {
 const quarterOf = (d: Pick<InitiativeDecision, 'quarterAssigned'>): string =>
   (d.quarterAssigned || 'unassigned').trim().toLowerCase();
 
+const KEPT = new Set<InitiativeAction>(['keep', 'accelerate']);
+
 /**
  * Merge the freshly loaded plan (`fresh`) with the review's own decisions.
  *
@@ -43,6 +45,21 @@ const quarterOf = (d: Pick<InitiativeDecision, 'quarterAssigned'>): string =>
  * decision was dropped and its quarter row listed bare — and the next sync
  * wrote the bare copy over what the coach had set.
  *
+ * A rock the coach took out of the quarter after the sync had filed it — a
+ * Drop — takes that row with it: the row is listed once, as Drop, and is not a
+ * rock again. The 4.3 background sync files a rock a few seconds after an edit,
+ * so a rock added and then removed in Sprint Planning usually has a row by the
+ * time 4.2 loads; it used to come back from it as a fresh 'keep'. A Drop takes
+ * only a row this review created (`ownRows`, see createdByReview). A row of that
+ * name the plan held already — the Goals wizard's — is listed as the plan holds
+ * it, beside the Drop, for the coach to decide.
+ *
+ * A rock that is kept is filed under the quarter's live row of its title, never
+ * one saved as cancelled: a rock re-added under a dropped rock's name is listed
+ * beside the dropped one, as syncRocks gives it a row of its own (#604). And a
+ * listing that keeps its rock claims a row before one that drops it, so a rock
+ * re-added after it was removed takes the row, not the old Drop.
+ *
  * Nothing else is merged. A row the review already held, or a second copy of
  * the same title, stays listed — step 4.3 flags repeats for the coach to choose
  * (Matt, 25 Sep 2026: alert, don't assume).
@@ -52,7 +69,9 @@ const quarterOf = (d: Pick<InitiativeDecision, 'quarterAssigned'>): string =>
  */
 export function reconcileDecisions(
   existing: InitiativeDecision[],
-  fresh: InitiativeDecision[]
+  fresh: InitiativeDecision[],
+  /** The quarter rows this review's own sync created (createdByReview). */
+  ownRows: ReadonlySet<string> = new Set()
 ): InitiativeDecision[] {
   const existingById = new Map(existing.map(d => [d.initiativeId, d]));
   const freshById = new Map(fresh.map(f => [f.initiativeId, f]));
@@ -70,31 +89,49 @@ export function reconcileDecisions(
     };
   });
 
-  const savedAt = new Map<string, number>();
+  // Per quarter and title: the first live row — the one a kept rock is filed
+  // under — and the first row this review's own sync created.
+  const liveAt = new Map<string, number>();
+  const ownAt = new Map<string, number>();
   reconciled.forEach((d, index) => {
     const key = titleKey(d.title);
     if (!key) return;
     const at = `${quarterOf(d)}|${key}`;
-    if (!savedAt.has(at)) savedAt.set(at, index);
+    if (d.currentStatus !== 'cancelled' && !liveAt.has(at)) liveAt.set(at, index);
+    if (ownRows.has(d.initiativeId) && !ownAt.has(at)) ownAt.set(at, index);
   });
 
-  const carried: InitiativeDecision[] = [];
-  const claimed = new Set<number>();
-  for (const d of existing) {
-    const added = isAddedInReview(d.initiativeId);
-    // A saved initiative the coach put in a quarter its own row is not in.
+  const added = (d: InitiativeDecision) => isAddedInReview(d.initiativeId);
+  // A saved initiative the coach put in a quarter its own row is not in.
+  const picked = (d: InitiativeDecision) => {
     const home = freshById.get(d.initiativeId);
-    const picked =
-      !added && quarterOf(d) !== 'unassigned' && (!home || quarterOf(home) !== quarterOf(d));
-    if (!added && !picked) continue;
+    return !added(d) && quarterOf(d) !== 'unassigned' && (!home || quarterOf(home) !== quarterOf(d));
+  };
+  const keeps = (d: InitiativeDecision) => KEPT.has(d.decision);
+  const claimers = existing.filter(d => added(d) || picked(d));
+
+  const claimOf = new Map<InitiativeDecision, number>();
+  const claimed = new Set<number>();
+  for (const d of [...claimers.filter(keeps), ...claimers.filter(d => !keeps(d))]) {
     const key = titleKey(d.title);
-    const index = key ? savedAt.get(`${quarterOf(d)}|${key}`) : undefined;
+    if (!key) continue;
+    const at = `${quarterOf(d)}|${key}`;
+    const index = keeps(d) ? liveAt.get(at) : ownAt.get(at);
     const saved = index === undefined ? undefined : reconciled[index];
-    if (index === undefined || !saved || claimed.has(index) || existingById.has(saved.initiativeId)) {
-      if (added) carried.push(d);
+    if (index === undefined || !saved || claimed.has(index) || existingById.has(saved.initiativeId)) continue;
+    claimed.add(index);
+    claimOf.set(d, index);
+  }
+
+  const carried: InitiativeDecision[] = [];
+  for (const d of claimers) {
+    const index = claimOf.get(d);
+    if (index === undefined) {
+      if (added(d)) carried.push(d);
       continue;
     }
-    claimed.add(index);
+    const saved = reconciled[index];
+    const home = freshById.get(d.initiativeId);
     const merged = fillSprintBlanks(saved, d);
     reconciled = reconciled.map((r, i) => {
       if (i === index) return { ...merged, decision: saved.completedInStep1 ? merged.decision : d.decision };
@@ -105,6 +142,43 @@ export function reconcileDecisions(
   }
 
   return [...reconciled, ...carried];
+}
+
+/** A row of one of the plan's quarters, as step 4.2 loads it. */
+export interface PlanQuarterRow {
+  id: string;
+  title: string;
+  category?: string | null;
+  status?: string | null;
+  progress_percentage?: number | null;
+  assigned_to?: string | null;
+  source?: string | null;
+  idea_type?: string | null;
+}
+
+/**
+ * One of a quarter's rows as step 4.2 lists it.
+ *
+ * A row saved as cancelled — a rock the coach dropped — is listed as Drop. It
+ * used to be listed as a fresh 'keep' like every other row: a dropped rock was
+ * on the plate again the next time 4.2 loaded, and the completion after that
+ * saved it as in progress (syncInitiativeChanges writes a kept listing as
+ * 'in_progress'). Efficient Living's fifteen cancelled repeats of its Q1 rocks
+ * (25 Sep 2026) would have come back that way at its next review.
+ */
+export function listQuarterRow(row: PlanQuarterRow, quarterId: string): InitiativeDecision {
+  return {
+    initiativeId: row.id,
+    title: row.title,
+    category: row.category || 'marketing',
+    currentStatus: row.status || 'active',
+    progressPercentage: row.progress_percentage || 0,
+    decision: row.status === 'cancelled' ? 'kill' : 'keep',
+    notes: row.assigned_to ? `[Assigned: ${row.assigned_to}]` : '',
+    quarterAssigned: quarterId,
+    source: row.source as InitiativeDecision['source'],
+    ideaType: row.idea_type as InitiativeDecision['ideaType'],
+  };
 }
 
 /** A row of the plan's ideas / 12-month lists, as step 4.2 loads it. */

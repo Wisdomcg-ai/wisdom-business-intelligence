@@ -146,9 +146,23 @@ export function mergeSprintEdits(
 /**
  * Take ONE listing of a rock out of the quarter — the one the coach chose.
  *
- * A listing the plan holds a row for is marked Drop ('kill'): step 4.2 shows it
- * as Drop, and the sync on completion saves it as cancelled — never a delete. A
- * listing the review added itself has no row, so it is simply removed.
+ * Taking the rock out of the quarter marks its listing Drop ('kill'): step 4.2
+ * shows it as Drop, and the sync saves the quarter row it is filed under as
+ * cancelled — never a delete.
+ *
+ * That holds for a rock the review added itself too. It has no row of its own,
+ * but the 4.3 background sync files one for it a few seconds after an edit
+ * (syncRocks inserts the quarter's row). Such a listing used to be simply
+ * removed, taking no record with it, so nothing cancelled that row: it stayed
+ * an active rock — on the One-Page Plan, in the next review's 1.3 — and 4.2's
+ * next load listed it as a fresh 'keep', a rock again. The Drop is the record.
+ * The sync cancels the row this review created for it, and only that row
+ * (createdByReview): one the plan already held under the same title is left as
+ * it is.
+ *
+ * A listing that is only a copy — another listing of the same title still
+ * keeps the rock — is removed outright: the rock stays, and so does its row. An
+ * untitled one never had a row, so it goes too.
  *
  * One case needs more: removing the SAVED listing of a rock whose other listing
  * the review added itself (JVJ's Training: the row its completion saved, and
@@ -169,10 +183,16 @@ export function removeRockFromQuarter(
   const all = decisions ?? []
   const target = all.find(d => d.initiativeId === rockId)
   if (!target) return all
-
-  if (!isSavedInitiativeId(rockId)) return all.filter(d => d.initiativeId !== rockId)
+  const drop = () => all.map(d => (d.initiativeId === rockId ? { ...d, decision: 'kill' as const } : d))
 
   const key = titleKey(target.title)
+  if (!isSavedInitiativeId(rockId)) {
+    const stillKept = plannedRockDecisions(all, plannedQuarter).some(
+      d => d.initiativeId !== rockId && titleKey(d.title) === key,
+    )
+    return !key || stillKept ? all.filter(d => d.initiativeId !== rockId) : drop()
+  }
+
   const kept = key
     ? plannedRockDecisions(all, plannedQuarter).find(
         d => d.initiativeId !== rockId && titleKey(d.title) === key && !isSavedInitiativeId(d.initiativeId),
@@ -195,7 +215,7 @@ export function removeRockFromQuarter(
       )
   }
 
-  return all.map(d => (d.initiativeId === rockId ? { ...d, decision: 'kill' as const } : d))
+  return drop()
 }
 
 /**

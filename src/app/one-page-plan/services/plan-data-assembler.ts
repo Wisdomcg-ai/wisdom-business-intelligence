@@ -6,6 +6,7 @@ import { resolveKpiTarget, type StoredTarget } from '@/lib/kpi/target-source'
 import type { OnePagePlanData } from '../types'
 import type { YearType } from '@/app/goals/types'
 import { calculateQuarters, determinePlanYear } from '@/app/goals/utils/quarters'
+import { liveQuarterRows } from '@/app/quarterly-review/utils/quarter-rows'
 
 // Only log in development
 const isDev = process.env.NODE_ENV === 'development'
@@ -739,7 +740,9 @@ export async function assemblePlanData(params: AssemblePlanDataParams): Promise<
       owner: init.assigned_to ? resolveTeamMember(init.assigned_to) : undefined
     })),
 
-    quarterlyRocks: (quarterInitiatives || []).map((init: any) => ({
+    // A rock the coach dropped is saved as cancelled, never deleted — it is
+    // not one of the quarter's rocks.
+    quarterlyRocks: liveQuarterRows(quarterInitiatives || []).map((init: any) => ({
       action: init.title,
       owner: init.assigned_to ? resolveTeamMember(init.assigned_to) : undefined,
       dueDate: init.timeline

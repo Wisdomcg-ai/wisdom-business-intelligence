@@ -10,7 +10,13 @@ import { calculateQuarters } from '@/app/goals/utils/quarters';
 import { getInitials, getColorForName, parseTeamFromProfile, type TeamMember } from '@/app/goals/utils/team';
 import { getCategoryStyle, getCardClasses } from '@/app/goals/utils/design-tokens';
 import { snapshotActual } from '../../utils/snapshot-actuals';
-import { reconcileDecisions, onePoolEntryPerInitiative } from '../../utils/reconcile-decisions';
+import {
+  reconcileDecisions,
+  onePoolEntryPerInitiative,
+  listQuarterRow,
+  type PlanQuarterRow,
+} from '../../utils/reconcile-decisions';
+import { createdByReview } from '../../utils/quarter-rows';
 import type {
   QuarterlyReview,
   InitiativeDecision,
@@ -426,53 +432,47 @@ export function QuarterlyPlanStep({
         if (members.length > 0) setTeamMembers(members);
       }
 
-      // Load initiatives by step_type (q1, q2, q3, q4) — this is how Goals Wizard saves them
+      // Load initiatives by step_type (q1, q2, q3, q4) — this is how Goals Wizard saves them.
+      // source and created_at say which rows this review's own sync filed (createdByReview).
       const { data: q1Data } = await supabase
         .from('strategic_initiatives')
-        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type')
+        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type, created_at')
         .eq('business_id', businessId)
         .eq('step_type', 'q1')
         .order('order_index', { ascending: true });
 
       const { data: q2Data } = await supabase
         .from('strategic_initiatives')
-        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type')
+        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type, created_at')
         .eq('business_id', businessId)
         .eq('step_type', 'q2')
         .order('order_index', { ascending: true });
 
       const { data: q3Data } = await supabase
         .from('strategic_initiatives')
-        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type')
+        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type, created_at')
         .eq('business_id', businessId)
         .eq('step_type', 'q3')
         .order('order_index', { ascending: true });
 
       const { data: q4Data } = await supabase
         .from('strategic_initiatives')
-        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type')
+        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type, created_at')
         .eq('business_id', businessId)
         .eq('step_type', 'q4')
         .order('order_index', { ascending: true });
 
       // Build decisions from per-quarter queries with quarter already known
       const allDecisions: InitiativeDecision[] = [];
+      // The quarter rows this review's own sync filed: the only rows a rock it
+      // has since dropped takes with it (reconcileDecisions).
+      const ownRows = new Set<string>();
 
       const buildDecisions = (data: any[] | null, quarterId: string) => {
         if (!data) return;
         data.forEach(i => {
-          allDecisions.push({
-            initiativeId: i.id,
-            title: i.title,
-            category: i.category || 'marketing',
-            currentStatus: i.status || 'active',
-            progressPercentage: i.progress_percentage || 0,
-            decision: 'keep' as InitiativeAction,
-            notes: i.assigned_to ? `[Assigned: ${i.assigned_to}]` : '',
-            quarterAssigned: quarterId,
-            source: i.source,
-            ideaType: i.idea_type,
-          });
+          allDecisions.push(listQuarterRow(i as PlanQuarterRow, quarterId));
+          if (createdByReview(i, review.created_at)) ownRows.add(i.id);
         });
       };
 
@@ -567,8 +567,9 @@ export function QuarterlyPlanStep({
           onUpdateInitiativeDecisions(allDecisions);
         } else {
           // Preserve the review's decisions and sprint detail; carry over the
-          // rocks it added itself — once, even after completing it saved them.
-          onUpdateInitiativeDecisions(reconcileDecisions(decisions, allDecisions));
+          // rocks it added itself — once, even after completing it saved them —
+          // and a rock it dropped takes the row its own sync filed with it.
+          onUpdateInitiativeDecisions(reconcileDecisions(decisions, allDecisions, ownRows));
         }
       }
 
