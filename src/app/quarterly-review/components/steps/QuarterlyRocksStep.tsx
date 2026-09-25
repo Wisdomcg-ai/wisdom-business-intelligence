@@ -11,6 +11,12 @@ import OperationalPlanTab from '@/app/goals/components/OperationalPlanTab';
 import type { QuarterlyReview, InitiativeDecision } from '../../types';
 import { planQuarterKey } from '../../types';
 import {
+  plannedRockDecisions,
+  removeRockFromQuarter,
+  mergeSprintEdits,
+  duplicateListings,
+} from '../../utils/rocks-from-decisions';
+import {
   Rocket,
   Plus,
   GripVertical,
@@ -112,13 +118,16 @@ export function QuarterlyRocksStep({ review, onUpdateInitiativeDecisions }: Quar
   const hasInitializedRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSyncingRef = useRef(false);
+  // The review's decisions as they stand NOW. The delayed write-back used to
+  // merge into the copy it saw when it was scheduled, so a change made in
+  // between (a removal) was written straight back over.
+  const decisionsRef = useRef<InitiativeDecision[]>(allDecisions);
+  decisionsRef.current = allDecisions;
 
   // Re-sync when upstream changes (e.g. user navigates back from 4.2 and returns)
   useEffect(() => {
     if (!hasInitializedRef.current || !sprintQuarterKey) return;
-    const incoming = (review.initiative_decisions || []).filter(
-      (d) => d.decision !== 'kill' && d.quarterAssigned === sprintQuarterKey
-    );
+    const incoming = plannedRockDecisions(review.initiative_decisions || [], review.quarter);
     // Only re-sync if the set of IDs changed (user added/removed in 4.2)
     const incomingIds = new Set(incoming.map((d) => d.initiativeId));
     const localIds = new Set(localInitiatives.map((d) => d.initiativeId));
@@ -142,18 +151,9 @@ export function QuarterlyRocksStep({ review, onUpdateInitiativeDecisions }: Quar
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      // Merge sprint plan data back into the full decisions array
-      const currentDecisions = review.initiative_decisions || [];
-      const localById = new Map(localInitiatives.map((i) => [i.initiativeId, i]));
-      const merged = currentDecisions.map((d) => {
-        const local = localById.get(d.initiativeId);
-        if (local) return { ...d, ...local };
-        return d;
-      });
-      // Also add any new initiatives (ids starting with 'sprint-new-')
-      const existingIds = new Set(currentDecisions.map((d) => d.initiativeId));
-      const newOnes = localInitiatives.filter((i) => !existingIds.has(i.initiativeId));
-      onUpdateInitiativeDecisions([...merged, ...newOnes]);
+      // Merge sprint plan data back into the full decisions array, plus any
+      // rocks added here (ids starting with 'sprint-new-')
+      onUpdateInitiativeDecisions(mergeSprintEdits(decisionsRef.current, localInitiatives));
     }, 500);
 
     return () => {
@@ -192,11 +192,10 @@ export function QuarterlyRocksStep({ review, onUpdateInitiativeDecisions }: Quar
       setSprintQuarterNum(review.quarter);
       setSprintYear(review.year);
 
-      // Now filter initiatives for the sprint quarter
-      const decisions = review.initiative_decisions || [];
-      const filtered = decisions.filter(
-        (d) => d.decision !== 'kill' && d.quarterAssigned === resolvedKey
-      );
+      // This quarter's rocks — Continue or Accelerate, in the quarter being
+      // planned: the same rule that saves them (rocksFromDecisions). Every
+      // listing is shown; a rock listed twice is flagged, not merged.
+      const filtered = plannedRockDecisions(review.initiative_decisions || [], review.quarter);
       isSyncingRef.current = true;
       setLocalInitiatives(filtered);
       hasInitializedRef.current = true;
@@ -264,9 +263,23 @@ export function QuarterlyRocksStep({ review, onUpdateInitiativeDecisions }: Quar
     setShowAddInitiative(false);
   }, [sprintQuarterKey]);
 
+  // Take the chosen listing out of the quarter — in the review's decisions, not
+  // just on screen. Removing it only from the working copy left it in the
+  // decisions, and the re-sync put it straight back. Edits still waiting for
+  // the delayed write-back are folded in first, so none are lost.
   const deleteInitiative = useCallback((id: string) => {
-    setLocalInitiatives((prev) => prev.filter((i) => i.initiativeId !== id));
-  }, []);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const current = mergeSprintEdits(decisionsRef.current, localInitiatives);
+    const next = removeRockFromQuarter(current, id, review.quarter);
+    decisionsRef.current = next;
+    onUpdateInitiativeDecisions(next);
+    isSyncingRef.current = true;
+    setLocalInitiatives(plannedRockDecisions(next, review.quarter));
+    setTimeout(() => { isSyncingRef.current = false; }, 100);
+  }, [localInitiatives, review.quarter, onUpdateInitiativeDecisions]);
+
+  // Rocks listed more than once: flagged on their cards, for the coach to choose.
+  const duplicates = useMemo(() => duplicateListings(localInitiatives), [localInitiatives]);
 
   // ─── Task CRUD ──────────────────────────────────────────
   const addTask = useCallback((initiativeId: string) => {
@@ -681,6 +694,17 @@ export function QuarterlyRocksStep({ review, onUpdateInitiativeDecisions }: Quar
                 </div>
               </div>
 
+              {duplicates.size > 0 && (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-amber-900">
+                    Some rocks are listed more than once — they&apos;re marked below. Open the copy you
+                    don&apos;t want and choose <strong>Remove rock</strong>. Left as they are, each repeat is
+                    saved as one rock.
+                  </p>
+                </div>
+              )}
+
               {/* Initiative Cards */}
               {localInitiatives.length === 0 ? (
                 <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-slate-300">
@@ -708,6 +732,7 @@ export function QuarterlyRocksStep({ review, onUpdateInitiativeDecisions }: Quar
                       onToggle={() => setExpandedInitiative(expandedInitiative === initiative.initiativeId ? null : initiative.initiativeId)}
                       onUpdate={(updates) => updateInitiative(initiative.initiativeId, updates)}
                       onDelete={() => deleteInitiative(initiative.initiativeId)}
+                      duplicateOf={duplicates.get(initiative.initiativeId)}
                       onAddTask={() => addTask(initiative.initiativeId)}
                       onUpdateTask={(taskId, updates) => updateTask(initiative.initiativeId, taskId, updates)}
                       onDeleteTask={(taskId) => deleteTask(initiative.initiativeId, taskId)}
@@ -769,6 +794,8 @@ interface InitiativeCardProps {
   onToggle: () => void;
   onUpdate: (updates: Partial<InitiativeDecision>) => void;
   onDelete: () => void;
+  /** Positions of this rock's other listings, when it is listed more than once. */
+  duplicateOf?: number[];
   onAddTask: () => void;
   onUpdateTask: (taskId: string, updates: Partial<NonNullable<InitiativeDecision['tasks']>[0]>) => void;
   onDeleteTask: (taskId: string) => void;
@@ -791,6 +818,7 @@ function InitiativeCard({
   onToggle,
   onUpdate,
   onDelete,
+  duplicateOf,
   onAddTask,
   onUpdateTask,
   onDeleteTask,
@@ -811,6 +839,7 @@ function InitiativeCard({
   const catStyle = getCategoryStyle(initiative.category);
   const ownerMember = initiative.assignedTo ? getAssignedMember(initiative.assignedTo) : null;
   const isShowingAssignment = showAssignmentFor === initiative.initiativeId;
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
 
   // Badge styles
   const getBadgeStyle = () => {
@@ -822,7 +851,7 @@ function InitiativeCard({
   const badgeStyle = getBadgeStyle();
 
   return (
-    <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-white">
+    <div data-testid="rock-card" className="border-2 border-gray-200 rounded-lg overflow-hidden bg-white">
       {/* Card Header */}
       <div
         onClick={onToggle}
@@ -865,6 +894,12 @@ function InitiativeCard({
                 </>
               )}
             </div>
+            {duplicateOf && duplicateOf.length > 0 && (
+              <p className="mt-1.5 text-xs font-medium text-amber-700 flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                Listed more than once — also #{duplicateOf.join(' and #')}
+              </p>
+            )}
             {/* Progress Bar */}
             {taskCount > 0 && (
               <div className="mt-2 flex items-center gap-2">
@@ -1124,17 +1159,33 @@ function InitiativeCard({
             )}
           </div>
 
-          {/* Delete Initiative */}
-          {initiative.initiativeId.startsWith('sprint-new-') && (
-            <div className="border-t border-gray-200 pt-3 flex justify-end">
+          {/* Remove from the quarter — any rock, not only one added here. */}
+          <div className="border-t border-gray-200 pt-3 flex flex-wrap justify-end items-center gap-3">
+            {confirmingRemove ? (
+              <>
+                <span className="text-sm text-gray-700">Remove this rock from the quarter?</span>
+                <button
+                  onClick={() => setConfirmingRemove(false)}
+                  className="text-sm text-gray-600 hover:text-gray-800 font-medium"
+                >
+                  Keep it
+                </button>
+                <button
+                  onClick={onDelete}
+                  className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Remove
+                </button>
+              </>
+            ) : (
               <button
-                onClick={onDelete}
+                onClick={() => setConfirmingRemove(true)}
                 className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1.5"
               >
-                <Trash2 className="w-3.5 h-3.5" /> Remove Initiative
+                <Trash2 className="w-3.5 h-3.5" /> Remove rock
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </div>

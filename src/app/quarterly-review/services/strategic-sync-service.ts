@@ -1,13 +1,13 @@
 // Strategic Sync Service
 // Two-way sync: quarterly review decisions → strategic plan tables
-// Wraps StrategicPlanningService to write changes back to source-of-truth tables
+// Writes changes back to the source-of-truth tables (strategic_initiatives, goals)
 
 'use client';
 
 import { createClient } from '@/lib/supabase/client';
-import { StrategicPlanningService } from '@/app/goals/services/strategic-planning-service';
 import type { StrategicInitiative, InitiativeStatus } from '@/app/goals/types';
 import type { InitiativeDecision, Rock, QuarterlyTargets, RealignmentData, NextYearTargets, AnnualInitiativePlan } from '../types';
+import { titleKey } from '../utils/rocks-from-decisions';
 
 type StepType = 'q1' | 'q2' | 'q3' | 'q4' | 'sprint' | 'current_remainder';
 
@@ -107,7 +107,20 @@ export class StrategicSyncService {
   }
 
   /**
-   * Sync new initiatives created during the review into strategic_initiatives
+   * Save the initiatives the review added into the quarter they were planned for.
+   *
+   * INSERT-only, and only what the quarter does not already hold (by title).
+   *
+   * This used to load the quarter, append the additions and hand the lot to the
+   * Goals wizard's saveInitiatives — a list save that HARD-DELETES every row of
+   * the quarter missing from the list and rewrites the rest from the loaded
+   * copy. loadInitiatives answers [] when its read fails, so one failed read at
+   * completion would have deleted the whole quarter; and every completion
+   * re-appended `initiatives_changes.added` (which lists the review's additions
+   * every time) on top of the rows syncRocks had just saved by title — JVJ's
+   * Training and KPI & Bonus Structure, 25 Sep 2026.
+   *
+   * A quarter that cannot be read is not written: the sync says so.
    */
   async syncNewInitiatives(
     businessId: string,
@@ -119,45 +132,56 @@ export class StrategicSyncService {
     try {
       if (newInitiatives.length === 0) return { success: true };
 
-      // Group by quarter
-      const byQuarter = new Map<string, StrategicInitiative[]>();
-
+      const supabase = this.getSupabase();
+      const byQuarter = new Map<StepType, Array<{ title: string; category: string }>>();
       for (const init of newInitiatives) {
         const stepType = this.quarterKeyToStepType(init.quarterAssigned || defaultQuarterKey);
         if (!stepType) continue;
-
-        if (!byQuarter.has(stepType)) {
-          byQuarter.set(stepType, []);
-        }
-
-        byQuarter.get(stepType)!.push({
-          id: `new-${Date.now()}-${Math.random()}`,
-          title: init.title,
-          category: (init.category || 'misc') as StrategicInitiative['category'],
-          source: 'strategic_ideas',
-          status: 'not_started',
-          selected: true,
-        });
+        if (!byQuarter.has(stepType)) byQuarter.set(stepType, []);
+        byQuarter.get(stepType)!.push(init);
       }
 
+      const failures: string[] = [];
       for (const [stepType, initiatives] of byQuarter) {
-        // Load existing to merge
-        const existing = await StrategicPlanningService.loadInitiatives(businessId, stepType as StepType);
-        const merged = [...existing, ...initiatives];
-
-        const result = await StrategicPlanningService.saveInitiatives(
-          businessId,
-          userId,
-          merged,
-          stepType as StepType
-        );
-
-        if (!result.success) {
-          return { success: false, error: `Failed to sync new initiatives: ${result.error}` };
+        const { data: heldRows, error: readError } = await supabase
+          .from('strategic_initiatives')
+          .select('title')
+          .eq('business_id', businessId)
+          .eq('step_type', stepType);
+        if (readError) {
+          failures.push(`could not read ${stepType}: ${readError.message}`);
+          continue;
         }
+
+        const held = new Set((heldRows ?? []).map((r: { title?: string | null }) => titleKey(r.title)).filter(Boolean));
+        const now = new Date().toISOString();
+        const rows: Record<string, unknown>[] = [];
+        for (const init of initiatives) {
+          const key = titleKey(init.title);
+          if (!key || held.has(key)) continue;
+          held.add(key);
+          rows.push({
+            business_id: businessId,
+            user_id: userId,
+            title: init.title.trim(),
+            category: init.category || 'misc',
+            step_type: stepType,
+            source: 'strategic_ideas',
+            selected: true,
+            idea_type: 'strategic',
+            order_index: (heldRows ?? []).length + rows.length,
+            updated_at: now,
+          });
+        }
+        if (rows.length === 0) continue;
+
+        const { error: insertError } = await supabase.from('strategic_initiatives').insert(rows);
+        if (insertError) failures.push(`insert into ${stepType}: ${insertError.message}`);
       }
 
-      console.log('[StrategicSync] Successfully synced new initiatives');
+      if (failures.length > 0) {
+        return { success: false, error: `New initiatives not saved — ${failures.join('; ')}` };
+      }
       return { success: true };
     } catch (err) {
       console.error('[StrategicSync] Error syncing new initiatives:', err);
@@ -380,7 +404,7 @@ export class StrategicSyncService {
       const existingByTitle = new Map<string, string>();
       const { data: existingRows, error: existingError } = await supabase
         .from('strategic_initiatives')
-        .select('id, title')
+        .select('id, title, status')
         .eq('business_id', businessId)
         .eq('step_type', stepType);
 
@@ -389,6 +413,11 @@ export class StrategicSyncService {
         return { success: false, error: `Could not read existing rocks: ${existingError.message}` };
       }
       for (const row of existingRows ?? []) {
+        // A rock the coach dropped (saved as cancelled) is not the rock planned
+        // now. Matched by title, a rock removed in Sprint Planning and added back
+        // under the same name was written onto the dropped row — and stayed
+        // cancelled. It gets a row of its own; the dropped one stays as history.
+        if ((row as { status?: string | null }).status === 'cancelled') continue;
         const key = normalise(String((row as { title?: string }).title ?? ''));
         if (key && !existingByTitle.has(key)) existingByTitle.set(key, String((row as { id: string }).id));
       }
@@ -418,7 +447,11 @@ export class StrategicSyncService {
           rock.id && isValidUUID(rock.id) ? rock.id : existingByTitle.get(titleKey);
 
         if (existingId) {
-          // UPDATE existing row — don't change step_type if it already exists elsewhere
+          // UPDATE the existing row. baseData carries step_type, so a row held
+          // elsewhere in the plan (a 12-month initiative picked for the quarter)
+          // is filed under this quarter — which is why only rocks actually put
+          // in the quarter may reach here (rocksFromDecisions excludes 4.2's
+          // Available pool).
           const { error } = await supabase
             .from('strategic_initiatives')
             .update(baseData)

@@ -30,6 +30,8 @@ const decision = (over: Partial<InitiativeDecision> = {}): InitiativeDecision =>
     progressPercentage: 0,
     decision: 'keep',
     notes: '',
+    // Every rock step 4.3 shows is tagged with the quarter being planned.
+    quarterAssigned: 'q2',
     ...over,
   }) as InitiativeDecision;
 
@@ -47,11 +49,18 @@ describe('which decisions are this quarter\'s rocks', () => {
     expect(rocks.map(r => r.id)).toEqual(['a', 'b']);
   });
 
-  it('counts a decision with no quarter as this quarter\'s', () => {
-    // The step assigns a quarter only when the coach drags into one; an
-    // untouched decision in 4.3 is about the quarter being planned.
-    expect(isForPlannedQuarter({ quarterAssigned: undefined }, 2)).toBe(true);
-    expect(isForPlannedQuarter({ quarterAssigned: 'unassigned' }, 2)).toBe(true);
+  it('leaves 4.2\'s Available pool out — "unassigned", or no quarter at all', () => {
+    // Step 4.2 loads every idea and 12-month initiative nobody has put in a
+    // quarter as quarterAssigned 'unassigned', decision 'keep', and groups a
+    // missing quarter the same way. In production not one of those decisions
+    // has ever carried sprint detail (owner, why, outcome, tasks, dates), while
+    // the rocks coaches actually planned in 4.3 all do: the pool was never the
+    // plan. Counting it (25 Sep 2026) stored Performance Management System as a
+    // JVJ rock 4.3 never showed, and four extra each for Digital Bond and
+    // Efficient Living.
+    expect(isForPlannedQuarter({ quarterAssigned: 'unassigned' }, 2)).toBe(false);
+    expect(isForPlannedQuarter({ quarterAssigned: undefined }, 2)).toBe(false);
+    expect(isForPlannedQuarter({ quarterAssigned: '' }, 2)).toBe(false);
     expect(isForPlannedQuarter({ quarterAssigned: 'q2' }, 2)).toBe(true);
     expect(isForPlannedQuarter({ quarterAssigned: 'Q2' }, 2)).toBe(true);
   });
@@ -121,7 +130,7 @@ describe('one rock per title', () => {
         decision({ initiativeId: '5', title: 'Process for delivering a scalable solution' }),
         decision({ initiativeId: '6', title: 'Determine how to get money off the table and invest' }),
       ],
-      1,
+      2,
     );
     expect(rocks).toHaveLength(3);
     expect(rocks.map(r => r.priority)).toEqual([1, 2, 3]);
@@ -135,7 +144,7 @@ describe('one rock per title', () => {
         decision({ initiativeId: 'b', title: 'Due Date Focus', assignedTo: 'Steve', outcome: 'Every job quoted in 48h' }),
         decision({ initiativeId: 'c', title: 'Due Date Focus', endDate: '2026-12-31' }),
       ],
-      1,
+      2,
     );
     expect(rock.owner).toBe('Steve');
     expect(rock.successCriteria).toBe('Every job quoted in 48h');
@@ -151,7 +160,7 @@ describe('one rock per title', () => {
         decision({ initiativeId: 'a', title: 'Due Date Focus', assignedTo: 'Steve' }),
         decision({ initiativeId: 'b', title: 'Due Date Focus', assignedTo: 'Someone else' }),
       ],
-      1,
+      2,
     );
     expect(rock.owner).toBe('Steve');
   });
@@ -163,13 +172,13 @@ describe('one rock per title', () => {
         decision({ initiativeId: 'a', title: 'Due Date Focus' }),
         decision({ initiativeId: 'b', title: '  due   date focus  ' }),
       ],
-      1,
+      2,
     );
     expect(rocks).toHaveLength(1);
   });
 
   it('drops a decision with no title at all', () => {
-    expect(rocksFromDecisions([decision({ title: '   ' })], 1)).toEqual([]);
+    expect(rocksFromDecisions([decision({ title: '   ' })], 2)).toEqual([]);
   });
 });
 
