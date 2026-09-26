@@ -6,6 +6,8 @@ import { resolveKpiTarget, type StoredTarget } from '@/lib/kpi/target-source'
 import type { OnePagePlanData } from '../types'
 import type { YearType } from '@/app/goals/types'
 import { calculateQuarters, determinePlanYear } from '@/app/goals/utils/quarters'
+import { liveQuarterRows } from '@/app/quarterly-review/utils/quarter-rows'
+import { livePlanRows } from '@/lib/initiatives/dropped-initiatives'
 
 // Only log in development
 const isDev = process.env.NODE_ENV === 'development'
@@ -386,12 +388,15 @@ export async function assemblePlanData(params: AssemblePlanDataParams): Promise<
     if (nextQuarterIdx >= 0) {
       const nextQKey = quarters[nextQuarterIdx].id
       for (const tryId of initiativeIds) {
-        const { count } = await supabase
+        // Only a rock still planned makes the next quarter the one to show. A
+        // quarter whose rocks were all dropped (saved as cancelled) has none,
+        // and showing it would print an empty quarter over the current one.
+        const { data: nextQuarterRows } = await supabase
           .from('strategic_initiatives')
-          .select('id', { count: 'exact', head: true })
+          .select('status')
           .eq('business_id', tryId)
           .eq('step_type', nextQKey)
-        if ((count || 0) > 0) {
+        if (liveQuarterRows(nextQuarterRows || []).length > 0) {
           nextQuarterHasData = true
           break
         }
@@ -733,13 +738,17 @@ export async function assemblePlanData(params: AssemblePlanDataParams): Promise<
       quarterTarget: resolveKpiTarget(kpiQuarterTarget(kpi)),
     })),
 
-    strategicInitiatives: (initiatives || []).map((init: any) => ({
+    // An initiative the coach dropped is saved as cancelled, never deleted — it
+    // is not one of the plan's 12-month initiatives.
+    strategicInitiatives: livePlanRows(initiatives || []).map((init: any) => ({
       title: init.title,
       quarters: [],
       owner: init.assigned_to ? resolveTeamMember(init.assigned_to) : undefined
     })),
 
-    quarterlyRocks: (quarterInitiatives || []).map((init: any) => ({
+    // A rock the coach dropped is saved as cancelled, never deleted — it is
+    // not one of the quarter's rocks.
+    quarterlyRocks: liveQuarterRows(quarterInitiatives || []).map((init: any) => ({
       action: init.title,
       owner: init.assigned_to ? resolveTeamMember(init.assigned_to) : undefined,
       dueDate: init.timeline

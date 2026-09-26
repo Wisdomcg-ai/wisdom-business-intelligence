@@ -10,7 +10,15 @@ import { calculateQuarters } from '@/app/goals/utils/quarters';
 import { getInitials, getColorForName, parseTeamFromProfile, type TeamMember } from '@/app/goals/utils/team';
 import { getCategoryStyle, getCardClasses } from '@/app/goals/utils/design-tokens';
 import { snapshotActual } from '../../utils/snapshot-actuals';
-import { reconcileDecisions, onePoolEntryPerInitiative } from '../../utils/reconcile-decisions';
+import {
+  reconcileDecisions,
+  availablePool,
+  listQuarterRow,
+  listPoolRow,
+  listingsToDistribute,
+  type PlanQuarterRow,
+} from '../../utils/reconcile-decisions';
+import { createdByReview } from '../../utils/quarter-rows';
 import type {
   QuarterlyReview,
   InitiativeDecision,
@@ -426,53 +434,47 @@ export function QuarterlyPlanStep({
         if (members.length > 0) setTeamMembers(members);
       }
 
-      // Load initiatives by step_type (q1, q2, q3, q4) — this is how Goals Wizard saves them
+      // Load initiatives by step_type (q1, q2, q3, q4) — this is how Goals Wizard saves them.
+      // source and created_at say which rows this review's own sync filed (createdByReview).
       const { data: q1Data } = await supabase
         .from('strategic_initiatives')
-        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type')
+        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type, created_at')
         .eq('business_id', businessId)
         .eq('step_type', 'q1')
         .order('order_index', { ascending: true });
 
       const { data: q2Data } = await supabase
         .from('strategic_initiatives')
-        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type')
+        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type, created_at')
         .eq('business_id', businessId)
         .eq('step_type', 'q2')
         .order('order_index', { ascending: true });
 
       const { data: q3Data } = await supabase
         .from('strategic_initiatives')
-        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type')
+        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type, created_at')
         .eq('business_id', businessId)
         .eq('step_type', 'q3')
         .order('order_index', { ascending: true });
 
       const { data: q4Data } = await supabase
         .from('strategic_initiatives')
-        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type')
+        .select('id, title, description, category, status, progress_percentage, assigned_to, order_index, source, idea_type, created_at')
         .eq('business_id', businessId)
         .eq('step_type', 'q4')
         .order('order_index', { ascending: true });
 
       // Build decisions from per-quarter queries with quarter already known
       const allDecisions: InitiativeDecision[] = [];
+      // The quarter rows this review's own sync filed: the only rows a rock it
+      // has since dropped takes with it (reconcileDecisions).
+      const ownRows = new Set<string>();
 
       const buildDecisions = (data: any[] | null, quarterId: string) => {
         if (!data) return;
         data.forEach(i => {
-          allDecisions.push({
-            initiativeId: i.id,
-            title: i.title,
-            category: i.category || 'marketing',
-            currentStatus: i.status || 'active',
-            progressPercentage: i.progress_percentage || 0,
-            decision: 'keep' as InitiativeAction,
-            notes: i.assigned_to ? `[Assigned: ${i.assigned_to}]` : '',
-            quarterAssigned: quarterId,
-            source: i.source,
-            ideaType: i.idea_type,
-          });
+          allDecisions.push(listQuarterRow(i as PlanQuarterRow, quarterId));
+          if (createdByReview(i, review.created_at)) ownRows.add(i.id);
         });
       };
 
@@ -481,23 +483,10 @@ export function QuarterlyPlanStep({
       buildDecisions(q3Data, 'q3');
       buildDecisions(q4Data, 'q4');
 
-      // Load unassigned pool (twelve_month not already assigned to q1-q4)
-      // Goals Wizard creates SEPARATE rows when assigning to quarters —
-      // the twelve_month row persists with a different ID. So we must
-      // filter by both ID and title to catch these duplicates.
-      const assignedIds = new Set([
-        ...(q1Data || []).map(i => i.id),
-        ...(q2Data || []).map(i => i.id),
-        ...(q3Data || []).map(i => i.id),
-        ...(q4Data || []).map(i => i.id),
-      ]);
-      const assignedTitles = new Set([
-        ...(q1Data || []).map(i => (i.title || '').trim().toLowerCase()),
-        ...(q2Data || []).map(i => (i.title || '').trim().toLowerCase()),
-        ...(q3Data || []).map(i => (i.title || '').trim().toLowerCase()),
-        ...(q4Data || []).map(i => (i.title || '').trim().toLowerCase()),
-      ]);
-
+      // Load unassigned pool (twelve_month + strategic_ideas not in any quarter).
+      // Goals Wizard creates SEPARATE rows when assigning to quarters — the
+      // twelve_month row persists with a different ID — so availablePool checks
+      // the quarters by title as well as by id.
       const { data: poolData } = await supabase
         .from('strategic_initiatives')
         .select('id, title, description, category, status, progress_percentage, assigned_to, source, idea_type, step_type')
@@ -505,31 +494,20 @@ export function QuarterlyPlanStep({
         .in('step_type', ['twelve_month', 'strategic_ideas'])
         .order('order_index', { ascending: true });
 
-      // Filter out:
-      // 1. Items already assigned to a quarter (by ID or by matching title)
-      // 2. Operational items (only show strategic)
-      // 3. The second row of an initiative the plan holds as both an idea and a
-      //    12-month item (onePoolEntryPerInitiative)
-      const unassignedPool = onePoolEntryPerInitiative((poolData || []) as any[]).filter((i: any) =>
-        !assignedIds.has(i.id) &&
-        !assignedTitles.has((i.title || '').trim().toLowerCase()) &&
-        i.idea_type !== 'operational'
-      );
+      // Leaves out what a quarter's live row already holds, operational items,
+      // and the second row of an initiative held as both an idea and a 12-month
+      // item. A quarter row the coach dropped holds nothing (availablePool).
+      const unassignedPool = availablePool((poolData || []) as any[], [
+        ...(q1Data || []),
+        ...(q2Data || []),
+        ...(q3Data || []),
+        ...(q4Data || []),
+      ]);
 
-      // Add unassigned pool items as "Available" (quarterAssigned = 'unassigned')
+      // Add unassigned pool items as "Available" (quarterAssigned = 'unassigned').
+      // One the coach dropped (saved as cancelled) is listed as Drop.
       unassignedPool.forEach((i: any) => {
-        allDecisions.push({
-          initiativeId: i.id,
-          title: i.title,
-          category: i.category || 'marketing',
-          currentStatus: i.status || 'active',
-          progressPercentage: i.progress_percentage || 0,
-          decision: 'keep' as InitiativeAction,
-          notes: i.assigned_to ? `[Assigned: ${i.assigned_to}]` : '',
-          quarterAssigned: 'unassigned',
-          source: i.source,
-          ideaType: i.idea_type,
-        });
+        allDecisions.push(listPoolRow(i as PlanQuarterRow));
       });
 
       // Cross-reference Step 1.3 rock decisions onto 4.2 initiative decisions
@@ -567,8 +545,9 @@ export function QuarterlyPlanStep({
           onUpdateInitiativeDecisions(allDecisions);
         } else {
           // Preserve the review's decisions and sprint detail; carry over the
-          // rocks it added itself — once, even after completing it saved them.
-          onUpdateInitiativeDecisions(reconcileDecisions(decisions, allDecisions));
+          // rocks it added itself — once, even after completing it saved them —
+          // and a rock it dropped takes the row its own sync filed with it.
+          onUpdateInitiativeDecisions(reconcileDecisions(decisions, allDecisions, ownRows));
         }
       }
 
@@ -833,7 +812,8 @@ export function QuarterlyPlanStep({
     const futureQuarters = quarterColumns.filter(q => !q.isPast);
     if (futureQuarters.length === 0) return;
 
-    const unassigned = decisions.filter(d => !d.quarterAssigned || d.quarterAssigned === 'unassigned');
+    // Never an initiative the coach dropped: it stays in Available, as Drop.
+    const unassigned = listingsToDistribute(decisions);
     if (unassigned.length === 0) return;
 
     const updated = [...decisions];
@@ -1543,7 +1523,7 @@ export function QuarterlyPlanStep({
             {/* Batch Actions */}
             {decisions.length > 0 && (
               <div className="flex items-center justify-end gap-2 mb-4">
-                {(initiativesByQuarter['unassigned'] || []).length > 0 && (
+                {listingsToDistribute(decisions).length > 0 && (
                   <>
                     <button
                       onClick={distributeByPriority}

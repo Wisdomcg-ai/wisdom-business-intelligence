@@ -195,6 +195,20 @@ describe('a removed rock stays removed', () => {
     expect(cardTitles(reopened.container)).not.toContain('Training');
   });
 
+  it('a rock added here and removed is kept as a Drop — the record the sync takes back the row it filed by', async () => {
+    // The background sync files a rock added here a few seconds after an edit.
+    // Dropped from the decisions without a trace, its row stayed an active rock.
+    const first = await open();
+    await removeCard(first.container, 5); // Complete the Payroll Automations, added in 4.3
+    await pause(1500);
+    expect(cardTitles(first.container)).not.toContain('Complete the Payroll Automations');
+    expect(saved.find((d) => d.initiativeId === 'sprint-new-1790296002208')?.decision).toBe('kill');
+    first.unmount();
+
+    const reopened = await open(saved);
+    expect(cardTitles(reopened.container)).not.toContain('Complete the Payroll Automations');
+  });
+
   it('keeps an edit typed just before another rock is removed', async () => {
     const { container } = await open();
     fireEvent.click(within(cardFor(container, 5)).getByText('Complete the Payroll Automations'));

@@ -14,7 +14,12 @@ import {
   plannedRockDecisions,
   titleKey,
 } from '../utils/rocks-from-decisions';
-import { quarterDecisionWrites, quarterRowIndex, type QuarterRow } from '../utils/quarter-rows';
+import {
+  createdByReview,
+  quarterDecisionWrites,
+  quarterRowIndex,
+  type QuarterRow,
+} from '../utils/quarter-rows';
 
 type StepType = 'q1' | 'q2' | 'q3' | 'q4' | 'sprint' | 'current_remainder';
 
@@ -32,6 +37,23 @@ export class StrategicSyncService {
     const num = parseInt(match[1]);
     if (num >= 1 && num <= 4) return `q${num}` as StepType;
     return null;
+  }
+
+  /**
+   * `${stepType}|${titleKey}` for every title the review has dropped from a
+   * quarter and keeps in none of its listings there.
+   */
+  private droppedFromQuarters(decisions: InitiativeDecision[]): Set<string> {
+    const kept = new Set<string>();
+    const dropped = new Set<string>();
+    for (const d of decisions) {
+      const stepType = d.quarterAssigned ? this.quarterKeyToStepType(d.quarterAssigned) : null;
+      const key = titleKey(d.title);
+      if (!stepType || !key) continue;
+      if (d.decision === 'kill') dropped.add(`${stepType}|${key}`);
+      if (d.decision === 'keep' || d.decision === 'accelerate') kept.add(`${stepType}|${key}`);
+    }
+    return new Set([...dropped].filter(at => !kept.has(at)));
   }
 
   /**
@@ -75,14 +97,18 @@ export class StrategicSyncService {
    * The planned quarter's listings write to the quarter's own rows
    * (quarterDecisionWrites). They used to write to the row each came from, so
    * taking a picked 12-month initiative out of the quarter — Drop, or Remove in
-   * Sprint Planning — cancelled the 12-month initiative itself.
+   * Sprint Planning — cancelled the 12-month initiative itself. A rock dropped
+   * through a listing that does not own its quarter row cancels that row only
+   * when this review created it (createdByReview).
    */
   async syncInitiativeChanges(
     businessId: string,
     userId: string,
     decisions: InitiativeDecision[],
     /** The quarter the review plans. Without it every decision writes to its own row. */
-    quarterKey?: string
+    quarterKey?: string,
+    /** When the review was created: which quarter rows its own sync filed. */
+    reviewCreatedAt?: string | null
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const supabase = this.getSupabase();
@@ -93,8 +119,9 @@ export class StrategicSyncService {
       const writes: Array<[string, InitiativeDecision]> = [];
       for (const decision of decisions) {
         if (inPlannedQuarter(decision)) continue;
-        // Skip user-added initiatives (not in DB)
-        if (decision.initiativeId.startsWith('new-')) continue;
+        // Skip what the plan holds no row for: rocks the review added ('new-' in
+        // 4.2, 'sprint-new-' in 4.3) and 4.2's suggestions.
+        if (!isSavedInitiativeId(decision.initiativeId)) continue;
         writes.push([decision.initiativeId, decision]);
       }
 
@@ -103,14 +130,14 @@ export class StrategicSyncService {
       if (planned.length > 0) {
         const { data: quarterRows, error: readError } = await supabase
           .from('strategic_initiatives')
-          .select('id, title, status')
+          .select('id, title, status, source, created_at')
           .eq('business_id', businessId)
           .eq('step_type', stepType);
         if (readError) {
           // Written blind, a rock picked from the 12-month list lands on the 12-month row.
           readFailure = `Decisions for ${stepType} not saved — could not read it: ${readError.message}`;
         } else {
-          writes.push(...quarterDecisionWrites(planned, (quarterRows ?? []) as QuarterRow[]));
+          writes.push(...quarterDecisionWrites(planned, (quarterRows ?? []) as QuarterRow[], reviewCreatedAt));
         }
       }
 
@@ -160,18 +187,27 @@ export class StrategicSyncService {
    * Training and KPI & Bonus Structure, 25 Sep 2026.
    *
    * A quarter that cannot be read is not written: the sync says so.
+   *
+   * An initiative the review added and then took out of its quarter — Drop in
+   * 4.2, or removed in Sprint Planning — is not saved. `added` keeps every
+   * addition whatever became of it, and each one the quarter did not hold was
+   * inserted: a rock removed before any sync had filed it came back as a live
+   * row the moment the review completed.
    */
   async syncNewInitiatives(
     businessId: string,
     userId: string,
     newInitiatives: Array<{ title: string; category: string; quarterAssigned?: string }>,
     /** Where an initiative with no quarter of its own goes: the quarter the review plans. */
-    defaultQuarterKey: string = 'q1'
+    defaultQuarterKey: string = 'q1',
+    /** The review's decisions, which say what it has since dropped. */
+    decisions: InitiativeDecision[] = []
   ): Promise<{ success: boolean; error?: string }> {
     try {
       if (newInitiatives.length === 0) return { success: true };
 
       const supabase = this.getSupabase();
+      const dropped = this.droppedFromQuarters(decisions);
       const byQuarter = new Map<StepType, Array<{ title: string; category: string }>>();
       for (const init of newInitiatives) {
         const stepType = this.quarterKeyToStepType(init.quarterAssigned || defaultQuarterKey);
@@ -197,7 +233,7 @@ export class StrategicSyncService {
         const rows: Record<string, unknown>[] = [];
         for (const init of initiatives) {
           const key = titleKey(init.title);
-          if (!key || held.has(key)) continue;
+          if (!key || held.has(key) || dropped.has(`${stepType}|${key}`)) continue;
           held.add(key);
           rows.push({
             business_id: businessId,
@@ -491,6 +527,10 @@ export class StrategicSyncService {
       const written = new Set<string>();
 
       for (const [index, rock] of rocks.entries()) {
+        // No `source`: it says who created the row, so only an insert sets it.
+        // An update used to relabel the Goals wizard's row 'quarterly_review',
+        // and createdByReview reads that label to tell the rows this review
+        // filed from the rows the plan already held.
         const baseData = {
           title: rock.title || 'Untitled Rock',
           description: rock.description || null,
@@ -501,7 +541,6 @@ export class StrategicSyncService {
           outcome: rock.successCriteria || null,
           end_date: rock.targetDate || null,
           linked_kpis: rock.linkedKPIs ? JSON.stringify(rock.linkedKPIs) : null,
-          source: 'quarterly_review' as const,
           step_type: stepType,
           updated_at: new Date().toISOString(),
         };
@@ -528,6 +567,7 @@ export class StrategicSyncService {
             .from('strategic_initiatives')
             .insert({
               ...baseData,
+              source: 'quarterly_review',
               business_id: businessId,
               user_id: userId,
               category: (original?.category as string | null) || 'misc',
@@ -552,6 +592,89 @@ export class StrategicSyncService {
       console.error('[StrategicSync] Error syncing rocks:', err);
       return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
     }
+  }
+
+  /**
+   * Cancel — never delete — the quarter rows this review's own sync filed for
+   * rocks the coach has since taken out of the quarter.
+   *
+   * The 4.3 background sync files a rock a few seconds after an edit: syncRocks
+   * inserts the quarter's row for a rock the session added, or picked from
+   * elsewhere in the plan. Taking the rock out afterwards left that row active
+   * until the review completed — and for good if it never did. This takes back
+   * what the sync put in, as soon as the rock is removed.
+   *
+   * Only a row this review created (createdByReview), and only when no listing
+   * in the quarter still keeps the rock (quarterDecisionWrites). A plan row the
+   * coach dropped by name waits for completion, as it always has.
+   */
+  async cancelRemovedRocks(
+    businessId: string,
+    decisions: InitiativeDecision[],
+    quarterKey: string,
+    reviewCreatedAt: string | null | undefined
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const stepType = this.quarterKeyToStepType(quarterKey);
+      if (!stepType) return { success: true };
+      const planned = decisions.filter(d => isForPlannedQuarter(d, Number(stepType.slice(1))));
+      if (!planned.some(d => d.decision === 'kill')) return { success: true };
+
+      const supabase = this.getSupabase();
+      const { data, error: readError } = await supabase
+        .from('strategic_initiatives')
+        .select('id, title, status, source, created_at')
+        .eq('business_id', businessId)
+        .eq('step_type', stepType);
+      if (readError) {
+        return { success: false, error: `Removed rocks not taken out of ${stepType} — could not read it: ${readError.message}` };
+      }
+      const rows = (data ?? []) as QuarterRow[];
+      const byId = new Map(rows.map(r => [r.id, r]));
+
+      const failures: string[] = [];
+      for (const [rowId, listing] of quarterDecisionWrites(planned, rows, reviewCreatedAt)) {
+        const row = byId.get(rowId);
+        if (listing.decision !== 'kill' || !row || row.status === 'cancelled') continue;
+        if (!createdByReview(row, reviewCreatedAt)) continue;
+        const { error } = await supabase
+          .from('strategic_initiatives')
+          .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+          .eq('id', rowId)
+          .eq('business_id', businessId);
+        if (error) failures.push(`${row.title || rowId}: ${error.message}`);
+      }
+
+      if (failures.length > 0) {
+        return { success: false, error: `Removed rocks not taken out of ${stepType} — ${failures.join('; ')}` };
+      }
+      return { success: true };
+    } catch (err) {
+      console.error('[StrategicSync] Error cancelling removed rocks:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+    }
+  }
+
+  /**
+   * Step 4.3's own sync, run in the background while the coach works: the rocks
+   * taken out of the quarter first (cancelRemovedRocks), then the rocks it plans
+   * (syncRocks) — so a rock re-added under a removed one's name is filed under a
+   * row of its own, never onto the row being cancelled.
+   */
+  async syncSprintRocks(
+    businessId: string,
+    userId: string,
+    decisions: InitiativeDecision[],
+    rocks: Rock[],
+    quarterKey: string,
+    reviewCreatedAt: string | null | undefined
+  ): Promise<{ success: boolean; errors: string[] }> {
+    const errors: string[] = [];
+    const removed = await this.cancelRemovedRocks(businessId, decisions, quarterKey, reviewCreatedAt);
+    if (!removed.success && removed.error) errors.push(removed.error);
+    const filed = await this.syncRocks(businessId, userId, rocks, quarterKey);
+    if (!filed.success && filed.error) errors.push(filed.error);
+    return { success: errors.length === 0, errors };
   }
 
   /**
@@ -848,7 +971,9 @@ export class StrategicSyncService {
     quarterKey: string,
     rocks: Rock[],
     newInitiatives: Array<{ title: string; category: string; quarterAssigned?: string }>,
-    realignmentData?: RealignmentData
+    realignmentData?: RealignmentData,
+    /** When the review was created: which quarter rows its own sync filed. */
+    reviewCreatedAt?: string | null
   ): Promise<{ success: boolean; errors: string[] }> {
     const errors: string[] = [];
 
@@ -856,7 +981,13 @@ export class StrategicSyncService {
     const resolvedQuarterKey = quarterKey;
 
     // Sync initiative decisions (the planned quarter's listings onto its own rows)
-    const decisionsResult = await this.syncInitiativeChanges(businessId, userId, decisions, resolvedQuarterKey);
+    const decisionsResult = await this.syncInitiativeChanges(
+      businessId,
+      userId,
+      decisions,
+      resolvedQuarterKey,
+      reviewCreatedAt
+    );
     if (!decisionsResult.success && decisionsResult.error) {
       errors.push(decisionsResult.error);
     }
@@ -890,9 +1021,9 @@ export class StrategicSyncService {
       errors.push(sprintResult.error);
     }
 
-    // Sync new initiatives
+    // Sync new initiatives — not one the review has since dropped
     if (newInitiatives.length > 0) {
-      const newResult = await this.syncNewInitiatives(businessId, userId, newInitiatives, resolvedQuarterKey);
+      const newResult = await this.syncNewInitiatives(businessId, userId, newInitiatives, resolvedQuarterKey, decisions);
       if (!newResult.success && newResult.error) {
         errors.push(newResult.error);
       }

@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { INITIATIVE_BUCKETS } from '@/app/goals/initiative-buckets'
+import { removedFromList } from '@/lib/initiatives/dropped-initiatives'
 
 export const dynamic = 'force-dynamic'
 
@@ -299,16 +300,34 @@ async function postHandler(request: Request) {
         if (!initiatives || !Array.isArray(initiatives)) continue
 
         try {
-          // Get existing for this step_type
-          const { data: existing } = await admin
+          // Get existing for this step_type, with the status that says which the
+          // coach dropped in a quarterly review (saved as cancelled). The wizard
+          // never loads those, so they are never in this list.
+          const { data: existing, error: existingError } = await admin
             .from('strategic_initiatives')
-            .select('id')
+            .select('id, status')
             .eq('business_id', saveProfileId)
             .eq('step_type', type)
 
+          // Which ids are this step's own rows decides what is updated and what
+          // is inserted. Unread, every item would be inserted again beside the
+          // row it already has, so this step is not written.
+          if (existingError) {
+            Sentry.captureException(existingError, {
+              tags: { route: 'goals/save', invariant: 'goals_initiative_read_failed' },
+              extra: { context: '[API /goals/save] Saved initiatives could not be read; the step was not written', stepType: type },
+            } as any)
+            errors.push(`${type} read: ${existingError.message}`)
+            continue
+          }
+
           const existingIds = new Set(existing?.map((e: any) => e.id) || [])
 
-          // Separate new vs existing
+          // Separate new vs existing. Only this step's own rows are updated in
+          // place; any other id (one made in the browser, or the row an
+          // initiative was picked from in an earlier step) is inserted as a new
+          // row of this step. Upserting it by id would move that row out of the
+          // step it belongs to.
           const isValidUUID = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
           const toInsert = initiatives.filter((i: any) => !i.id || !isValidUUID(i.id) || !existingIds.has(i.id))
           const toUpsert = initiatives.filter((i: any) => i.id && isValidUUID(i.id) && existingIds.has(i.id))
@@ -392,9 +411,10 @@ async function postHandler(request: Request) {
             }
           }
 
-          // Delete items that were removed
+          // Delete items that were removed — never one the coach dropped, which
+          // the list leaves out rather than removes (removedFromList).
           const currentIds = initiatives.filter((i: any) => i.id && isValidUUID(i.id)).map((i: any) => i.id)
-          const toRemove = Array.from(existingIds).filter(id => !currentIds.includes(id))
+          const toRemove = removedFromList(existing ?? [], currentIds)
           if (toRemove.length > 0) {
             const { error: deleteError } = await admin
               .from('strategic_initiatives')
