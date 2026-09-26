@@ -18,6 +18,7 @@
  */
 import type { InitiativeDecision } from '../types'
 import { titleKey } from './rocks-from-decisions'
+import { isDroppedInitiative, livePlanRows } from '@/lib/initiatives/dropped-initiatives'
 
 /** A strategic_initiatives row of the quarter being planned, as the sync reads it. */
 export interface QuarterRow {
@@ -32,10 +33,10 @@ export interface QuarterRow {
 /**
  * A quarter's rows that are still its rocks. A rock the coach dropped is saved
  * as cancelled, never deleted, so every reader that lists a quarter's rocks has
- * to leave those rows out itself.
+ * to leave those rows out itself — by the plan's one rule (livePlanRows).
  */
 export function liveQuarterRows<T extends { status?: string | null }>(rows: T[]): T[] {
-  return rows.filter(row => row.status !== 'cancelled')
+  return livePlanRows(rows)
 }
 
 /** A database timestamp as epoch ms, whichever of Postgres's spellings it arrives in. */
@@ -86,7 +87,7 @@ export function quarterRowIndex(rows: QuarterRow[]): QuarterRowIndex {
   const liveByTitle = new Map<string, string>()
   for (const row of rows) {
     // A rock the coach dropped (saved as cancelled) is not the rock planned now.
-    if (row.status === 'cancelled') continue
+    if (isDroppedInitiative(row)) continue
     const key = titleKey(row.title)
     if (key && !liveByTitle.has(key)) liveByTitle.set(key, row.id)
   }

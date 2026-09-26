@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useBusinessContext } from '@/hooks/useBusinessContext';
 import PageHeader from '@/components/ui/PageHeader';
 import { captureReviewWriteFailure } from '../utils/capture-write-failure';
+import { isDroppedInitiative } from '@/lib/initiatives/dropped-initiatives';
 import {
   isFoundationMode,
   effectiveFoundationMode,
@@ -132,7 +133,9 @@ export default function ReviewReadinessPage() {
           // rule the workshop itself applies (planHasAnnualTarget).
           gather('business_financial_goals', 'business_id, revenue_year1', planHasAnnualTarget),
           gather('business_kpis', 'business_id'),
-          gather('strategic_initiatives', 'business_id'),
+          // An initiative the coach dropped (saved as cancelled) is no rock to
+          // reflect on — the workshop's 1.3 leaves it out too.
+          gather('strategic_initiatives', 'business_id, status', r => !isDroppedInitiative(r)),
           (async () => {
             try {
               const { data, error } = await supabase

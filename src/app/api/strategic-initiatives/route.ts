@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { withQuerySchema } from '@/lib/api/with-schema'
+import { livePlanRows } from '@/lib/initiatives/dropped-initiatives'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,9 +17,22 @@ const GetQuerySchema = z
 // R12: estimated_cost + is_monthly_cost have been part of the canonical schema
 // since baseline, so the previous per-request "do these columns exist?" probe
 // (an extra DB round-trip on EVERY request, always succeeding) was dead weight.
-// Always select them.
+// Always select them. `status` says which initiatives the coach dropped.
 const COLUMNS =
-  'id, title, description, priority, step_type, category, timeline, notes, estimated_cost, is_monthly_cost'
+  'id, title, description, priority, step_type, category, timeline, notes, estimated_cost, is_monthly_cost, status'
+
+/**
+ * The initiatives this answers with: the plan's, never one the coach dropped
+ * in a quarterly review (saved as cancelled, never deleted). The forecast
+ * wizard offers these as spending "From your plan", and a dropped initiative
+ * is not in the plan to budget for.
+ *
+ * Applied after an id-space has been chosen, so which id-space answers is
+ * unchanged: one whose rows were all dropped answers with none.
+ */
+function planInitiatives(rows: any[]) {
+  return livePlanRows(rows).map(mapInitiative)
+}
 
 function mapInitiative(d: any) {
   return {
@@ -87,7 +101,7 @@ async function getHandler(request: Request) {
       const { data, error } = await query.order('created_at', { ascending: false })
 
       if (!error && data && data.length > 0) {
-        return NextResponse.json({ initiatives: data.map(mapInitiative) })
+        return NextResponse.json({ initiatives: planInitiatives(data) })
       }
 
       // If the filtered query returned nothing, try without the annual-plan filter.
@@ -99,7 +113,7 @@ async function getHandler(request: Request) {
           .order('created_at', { ascending: false })
 
         if (!allErr && allData && allData.length > 0) {
-          return NextResponse.json({ initiatives: allData.map(mapInitiative) })
+          return NextResponse.json({ initiatives: planInitiatives(allData) })
         }
       }
     }
@@ -113,7 +127,7 @@ async function getHandler(request: Request) {
         .order('created_at', { ascending: false })
 
       if (!error && data && data.length > 0) {
-        return NextResponse.json({ initiatives: data.map(mapInitiative) })
+        return NextResponse.json({ initiatives: planInitiatives(data) })
       }
     }
 

@@ -12,8 +12,10 @@ import { getCategoryStyle, getCardClasses } from '@/app/goals/utils/design-token
 import { snapshotActual } from '../../utils/snapshot-actuals';
 import {
   reconcileDecisions,
-  onePoolEntryPerInitiative,
+  availablePool,
   listQuarterRow,
+  listPoolRow,
+  listingsToDistribute,
   type PlanQuarterRow,
 } from '../../utils/reconcile-decisions';
 import { createdByReview } from '../../utils/quarter-rows';
@@ -481,23 +483,10 @@ export function QuarterlyPlanStep({
       buildDecisions(q3Data, 'q3');
       buildDecisions(q4Data, 'q4');
 
-      // Load unassigned pool (twelve_month not already assigned to q1-q4)
-      // Goals Wizard creates SEPARATE rows when assigning to quarters —
-      // the twelve_month row persists with a different ID. So we must
-      // filter by both ID and title to catch these duplicates.
-      const assignedIds = new Set([
-        ...(q1Data || []).map(i => i.id),
-        ...(q2Data || []).map(i => i.id),
-        ...(q3Data || []).map(i => i.id),
-        ...(q4Data || []).map(i => i.id),
-      ]);
-      const assignedTitles = new Set([
-        ...(q1Data || []).map(i => (i.title || '').trim().toLowerCase()),
-        ...(q2Data || []).map(i => (i.title || '').trim().toLowerCase()),
-        ...(q3Data || []).map(i => (i.title || '').trim().toLowerCase()),
-        ...(q4Data || []).map(i => (i.title || '').trim().toLowerCase()),
-      ]);
-
+      // Load unassigned pool (twelve_month + strategic_ideas not in any quarter).
+      // Goals Wizard creates SEPARATE rows when assigning to quarters — the
+      // twelve_month row persists with a different ID — so availablePool checks
+      // the quarters by title as well as by id.
       const { data: poolData } = await supabase
         .from('strategic_initiatives')
         .select('id, title, description, category, status, progress_percentage, assigned_to, source, idea_type, step_type')
@@ -505,31 +494,20 @@ export function QuarterlyPlanStep({
         .in('step_type', ['twelve_month', 'strategic_ideas'])
         .order('order_index', { ascending: true });
 
-      // Filter out:
-      // 1. Items already assigned to a quarter (by ID or by matching title)
-      // 2. Operational items (only show strategic)
-      // 3. The second row of an initiative the plan holds as both an idea and a
-      //    12-month item (onePoolEntryPerInitiative)
-      const unassignedPool = onePoolEntryPerInitiative((poolData || []) as any[]).filter((i: any) =>
-        !assignedIds.has(i.id) &&
-        !assignedTitles.has((i.title || '').trim().toLowerCase()) &&
-        i.idea_type !== 'operational'
-      );
+      // Leaves out what a quarter's live row already holds, operational items,
+      // and the second row of an initiative held as both an idea and a 12-month
+      // item. A quarter row the coach dropped holds nothing (availablePool).
+      const unassignedPool = availablePool((poolData || []) as any[], [
+        ...(q1Data || []),
+        ...(q2Data || []),
+        ...(q3Data || []),
+        ...(q4Data || []),
+      ]);
 
-      // Add unassigned pool items as "Available" (quarterAssigned = 'unassigned')
+      // Add unassigned pool items as "Available" (quarterAssigned = 'unassigned').
+      // One the coach dropped (saved as cancelled) is listed as Drop.
       unassignedPool.forEach((i: any) => {
-        allDecisions.push({
-          initiativeId: i.id,
-          title: i.title,
-          category: i.category || 'marketing',
-          currentStatus: i.status || 'active',
-          progressPercentage: i.progress_percentage || 0,
-          decision: 'keep' as InitiativeAction,
-          notes: i.assigned_to ? `[Assigned: ${i.assigned_to}]` : '',
-          quarterAssigned: 'unassigned',
-          source: i.source,
-          ideaType: i.idea_type,
-        });
+        allDecisions.push(listPoolRow(i as PlanQuarterRow));
       });
 
       // Cross-reference Step 1.3 rock decisions onto 4.2 initiative decisions
@@ -834,7 +812,8 @@ export function QuarterlyPlanStep({
     const futureQuarters = quarterColumns.filter(q => !q.isPast);
     if (futureQuarters.length === 0) return;
 
-    const unassigned = decisions.filter(d => !d.quarterAssigned || d.quarterAssigned === 'unassigned');
+    // Never an initiative the coach dropped: it stays in Available, as Drop.
+    const unassigned = listingsToDistribute(decisions);
     if (unassigned.length === 0) return;
 
     const updated = [...decisions];
@@ -1544,7 +1523,7 @@ export function QuarterlyPlanStep({
             {/* Batch Actions */}
             {decisions.length > 0 && (
               <div className="flex items-center justify-end gap-2 mb-4">
-                {(initiativesByQuarter['unassigned'] || []).length > 0 && (
+                {listingsToDistribute(decisions).length > 0 && (
                   <>
                     <button
                       onClick={distributeByPriority}

@@ -8,6 +8,7 @@
  */
 import type { InitiativeAction, InitiativeDecision } from '../types';
 import { fillSprintBlanks, titleKey } from './rocks-from-decisions';
+import { isDroppedInitiative, livePlanRows } from '@/lib/initiatives/dropped-initiatives';
 
 /** Rocks a review added itself: 'new-' in step 4.2, 'sprint-new-' in step 4.3. */
 export function isAddedInReview(id: string | null | undefined): boolean {
@@ -173,7 +174,7 @@ export function listQuarterRow(row: PlanQuarterRow, quarterId: string): Initiati
     category: row.category || 'marketing',
     currentStatus: row.status || 'active',
     progressPercentage: row.progress_percentage || 0,
-    decision: row.status === 'cancelled' ? 'kill' : 'keep',
+    decision: isDroppedInitiative(row) ? 'kill' : 'keep',
     notes: row.assigned_to ? `[Assigned: ${row.assigned_to}]` : '',
     quarterAssigned: quarterId,
     source: row.source as InitiativeDecision['source'],
@@ -207,3 +208,61 @@ export function onePoolEntryPerInitiative<T extends PoolRow>(rows: T[]): T[] {
   return rows.filter(r => chosen.get(keyOf(r)) === r);
 }
 
+
+/** A quarter row as step 4.2's Available pool checks it: whether it holds an initiative. */
+export interface HoldingRow {
+  id: string;
+  title?: string | null;
+  status?: string | null;
+}
+
+/**
+ * The ideas and 12-month initiatives step 4.2 offers as Available: one entry
+ * per initiative (onePoolEntryPerInitiative), strategic ones only, and none a
+ * quarter already holds — by id, or by title, because the Goals wizard gives a
+ * quarter its own copy of an initiative under a new id.
+ *
+ * Only a live quarter row holds a title. A quarter row saved as cancelled is a
+ * rock the coach took out of that quarter, not an initiative taken out of the
+ * plan (#605: Drop on a picked card drops the quarter's rock, and the 12-month
+ * initiative is dropped in Available). So the 12-month initiative is offered
+ * again, to be picked for another quarter or dropped itself — as the Goals
+ * wizard's Step 4 offers it, since it no longer loads the dropped copy. The
+ * dropped copy's title used to hide it from Available for good.
+ */
+export function availablePool<T extends PoolRow & { idea_type?: string | null }>(
+  poolRows: T[],
+  quarterRows: readonly HoldingRow[],
+): T[] {
+  // The same row is never listed twice, whatever its status.
+  const heldIds = new Set(quarterRows.map(r => r.id));
+  const heldTitles = new Set(livePlanRows(quarterRows).map(r => titleKey(r.title)).filter(Boolean));
+  return onePoolEntryPerInitiative(poolRows).filter(
+    r => !heldIds.has(r.id) && !heldTitles.has(titleKey(r.title)) && r.idea_type !== 'operational'
+  );
+}
+
+/**
+ * One of the plan's ideas or 12-month initiatives as step 4.2's Available pool
+ * lists it: the listing a quarter row gets, in no quarter.
+ *
+ * A row saved as cancelled — an initiative the coach dropped from Available —
+ * is listed as Drop, as a dropped quarter row is. It used to be listed as a
+ * fresh 'keep': offered again at the next review, and the completion after that
+ * saved it as in progress (syncInitiativeChanges writes a kept listing outside
+ * the planned quarter back by id), so a dropped initiative came back onto the
+ * plan without anyone choosing it.
+ */
+export function listPoolRow(row: PlanQuarterRow): InitiativeDecision {
+  return listQuarterRow(row, 'unassigned');
+}
+
+/**
+ * The Available listings "Distribute" places in quarters — never one the coach
+ * dropped. Available lists a dropped initiative as Drop (listPoolRow), and
+ * spreading it across the quarters would put it back in the plan's columns,
+ * taking one of a quarter's five places.
+ */
+export function listingsToDistribute(decisions: InitiativeDecision[]): InitiativeDecision[] {
+  return decisions.filter(d => quarterOf(d) === 'unassigned' && d.decision !== 'kill');
+}

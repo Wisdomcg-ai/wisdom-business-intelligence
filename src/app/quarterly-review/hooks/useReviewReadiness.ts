@@ -18,6 +18,7 @@ import {
   type Signal,
 } from '../utils/review-readiness';
 import { getPreviousQuarterOf, planQuarterKey, type QuarterNumber } from '../types';
+import { liveQuarterRows } from '../utils/quarter-rows';
 
 interface UseReviewReadinessResult extends ReviewReadiness {
   isLoading: boolean;
@@ -158,11 +159,17 @@ export function useReviewReadiness(
               hasKpis: await probe('kpis', () =>
                 count('business_kpis', q => q.eq('business_id', profileId))
               ),
-              hasPriorRocks: await probe('prior-rocks', () => {
+              // The rocks step 1.3 will review: the previous quarter's, less any
+              // the coach dropped (saved as cancelled) — 1.3 leaves those out.
+              hasPriorRocks: await probe('prior-rocks', async () => {
                 const prev = getPreviousQuarterOf(quarter as QuarterNumber, year);
-                return count('strategic_initiatives', q =>
-                  q.eq('business_id', profileId).eq('step_type', planQuarterKey(prev))
-                );
+                const { data, error } = await supabase
+                  .from('strategic_initiatives')
+                  .select('status')
+                  .eq('business_id', profileId)
+                  .eq('step_type', planQuarterKey(prev));
+                if (error) throw error;
+                return liveQuarterRows(data ?? []).length;
               }),
             };
 

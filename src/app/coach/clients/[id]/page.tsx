@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { livePlanRows } from '@/lib/initiatives/dropped-initiatives'
 import { ClientFileTabs, type TabId } from '@/components/coach/ClientFileTabs'
 import { OverviewTab } from '@/components/coach/tabs/OverviewTab'
 import { ProfileTab } from '@/components/coach/tabs/ProfileTab'
@@ -356,9 +357,11 @@ export default function ClientFilePage() {
               .in('step_type', ['twelve_month', 'q1', 'q2', 'q3', 'q4'])
 
             if (!initError && initiatives) {
-              // status can be: 'not_started', 'in_progress', 'completed', 'blocked'
-              completedGoals = initiatives.filter((i: any) => i.status === 'completed').length
-              activeGoals = initiatives.filter((i: any) => i.status !== 'completed').length
+              // An initiative the coach dropped (saved as cancelled) is neither
+              // done nor still to do: it counts on neither side of "x/y complete".
+              const onPlan = livePlanRows(initiatives)
+              completedGoals = onPlan.filter((i: any) => i.status === 'completed').length
+              activeGoals = onPlan.filter((i: any) => i.status !== 'completed').length
             }
           } catch (e) {
             // ignored

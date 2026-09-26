@@ -7,6 +7,7 @@ import { StepHeader } from '../StepHeader';
 import type { QuarterlyReview, AnnualPlanSnapshot, RealignmentData, QuarterlyTargets } from '../../types';
 import { getDefaultRealignmentData, getDefaultAnnualPlanSnapshot, remainingQuartersFor } from '../../types';
 import { planHasAnnualTarget } from '../../utils/review-readiness';
+import { liveQuarterRows } from '../../utils/quarter-rows';
 import {
   Target,
   DollarSign,
@@ -414,9 +415,11 @@ export function ConfidenceRealignmentStep({
       i => i.fiscal_year === currentFY || i.fiscal_year === null || i.fiscal_year === undefined
     );
 
-    // Only include quarter-assigned initiatives (q1-q4 step_types)
+    // Only include quarter-assigned initiatives (q1-q4 step_types), and not a
+    // rock the coach dropped: saved as cancelled, it is neither done nor still
+    // to do, so it counts toward no bar and no "x of y complete".
     const quarterTypes = ['q1', 'q2', 'q3', 'q4'];
-    const quarterInitiatives = yearFiltered.filter(i => quarterTypes.includes(i.step_type || ''));
+    const quarterInitiatives = liveQuarterRows(yearFiltered.filter(i => quarterTypes.includes(i.step_type || '')));
 
     if (quarterInitiatives.length === 0) return null;
 
@@ -433,7 +436,7 @@ export function ConfidenceRealignmentStep({
       completed: arr.filter(i => i.status === 'completed').length,
       inProgress: arr.filter(i => i.status === 'in_progress').length,
       planned: arr.filter(i => ['not_started', 'planned'].includes(i.status)).length,
-      deferred: arr.filter(i => ['deferred', 'on_hold', 'cancelled'].includes(i.status)).length,
+      deferred: arr.filter(i => ['deferred', 'on_hold'].includes(i.status)).length,
     });
 
     const overall = countByStatus(quarterInitiatives);

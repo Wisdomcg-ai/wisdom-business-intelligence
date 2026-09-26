@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { withSchema } from '@/lib/api/with-schema'
 import { resolveBusinessProfileIds } from '@/lib/business/resolveBusinessProfileIds'
 import { INITIATIVE_BUCKETS } from '@/app/goals/initiative-buckets'
+import { removedFromList } from '@/lib/initiatives/dropped-initiatives'
 
 export const dynamic = 'force-dynamic'
 
@@ -299,10 +300,12 @@ async function postHandler(request: Request) {
         if (!initiatives || !Array.isArray(initiatives)) continue
 
         try {
-          // Get existing for this step_type
+          // Get existing for this step_type, with the status that says which the
+          // coach dropped in a quarterly review (saved as cancelled). The wizard
+          // never loads those, so they are never in this list.
           const { data: existing } = await admin
             .from('strategic_initiatives')
-            .select('id')
+            .select('id, status')
             .eq('business_id', saveProfileId)
             .eq('step_type', type)
 
@@ -392,9 +395,10 @@ async function postHandler(request: Request) {
             }
           }
 
-          // Delete items that were removed
+          // Delete items that were removed — never one the coach dropped, which
+          // the list leaves out rather than removes (removedFromList).
           const currentIds = initiatives.filter((i: any) => i.id && isValidUUID(i.id)).map((i: any) => i.id)
-          const toRemove = Array.from(existingIds).filter(id => !currentIds.includes(id))
+          const toRemove = removedFromList(existing ?? [], currentIds)
           if (toRemove.length > 0) {
             const { error: deleteError } = await admin
               .from('strategic_initiatives')

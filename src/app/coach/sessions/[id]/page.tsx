@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { isDroppedInitiative, pickableRows } from '@/lib/initiatives/dropped-initiatives'
 import {
   ArrowLeft,
   Calendar,
@@ -133,9 +134,16 @@ export default function SessionDetailPage() {
   ])
   const [showActionReview, setShowActionReview] = useState(false)
 
-  // Rock linkage
-  const [rocks, setRocks] = useState<Array<{ id: string; title: string; step_type: string }>>([])
+  // Rock linkage. Every quarter row, dropped ones included, so an action linked
+  // to a rock the coach has since dropped still shows its rock; the pickers
+  // offer only live rocks (rockChoices).
+  const [rocks, setRocks] = useState<Array<{ id: string; title: string; step_type: string; status?: string | null }>>([])
   const [rockLinkingActionId, setRockLinkingActionId] = useState<string | null>(null)
+  // What an action's picker offers: the live rocks, and the rock it is already
+  // linked to even if that one has since been dropped (pickableRows).
+  const rockChoices = (linkedId: string | null) => pickableRows(rocks, linkedId)
+  const rockLabel = (rock: { title: string; status?: string | null }) =>
+    isDroppedInitiative(rock) ? `${rock.title} (dropped)` : rock.title
 
   const loadSession = useCallback(async () => {
     try {
@@ -188,7 +196,7 @@ export default function SessionDetailPage() {
       if (profileData) {
         const { data: rocksData } = await supabase
           .from('strategic_initiatives')
-          .select('id, title, step_type')
+          .select('id, title, step_type, status')
           .eq('business_id', profileData.id)
           .in('step_type', ['q1', 'q2', 'q3', 'q4'])
           .order('step_type')
@@ -703,11 +711,11 @@ export default function SessionDetailPage() {
                           {linkedRock && (
                             <span className="flex items-center gap-1 text-xs text-teal-700">
                               <Target className="w-3 h-3" />
-                              {linkedRock.title}
+                              {rockLabel(linkedRock)}
                             </span>
                           )}
                           {/* Rock link button for previous actions */}
-                          {rocks.length > 0 && (
+                          {rockChoices(action.strategic_initiative_id).length > 0 && (
                             <span className="flex items-center gap-1">
                               {rockLinkingActionId === action.id ? (
                                 <select
@@ -719,12 +727,12 @@ export default function SessionDetailPage() {
                                 >
                                   <option value="">None (unlink)</option>
                                   {['q1', 'q2', 'q3', 'q4'].map(qt => {
-                                    const qtRocks = rocks.filter(r => r.step_type === qt)
+                                    const qtRocks = rockChoices(action.strategic_initiative_id).filter(r => r.step_type === qt)
                                     if (qtRocks.length === 0) return null
                                     return (
                                       <optgroup key={qt} label={qt.toUpperCase()}>
                                         {qtRocks.map(r => (
-                                          <option key={r.id} value={r.id}>{r.title}</option>
+                                          <option key={r.id} value={r.id}>{rockLabel(r)}</option>
                                         ))}
                                       </optgroup>
                                     )
@@ -733,7 +741,7 @@ export default function SessionDetailPage() {
                               ) : (
                                 <button
                                   onClick={() => setRockLinkingActionId(action.id)}
-                                  title={linkedRock ? `Linked: ${linkedRock.title}` : 'Link to Rock'}
+                                  title={linkedRock ? `Linked: ${rockLabel(linkedRock)}` : 'Link to Rock'}
                                   className={`p-0.5 rounded transition-colors ${linkedRock ? 'text-teal-600 hover:text-teal-800' : 'text-gray-400 hover:text-teal-600'}`}
                                 >
                                   <Target className="w-3.5 h-3.5" />
@@ -826,7 +834,7 @@ export default function SessionDetailPage() {
                           {linkedRock && rockLinkingActionId !== action.id && (
                             <div className="flex items-center gap-1 mt-1">
                               <Target className="w-3 h-3 text-teal-600" />
-                              <span className="text-xs text-teal-700 font-medium truncate">{linkedRock.title}</span>
+                              <span className="text-xs text-teal-700 font-medium truncate">{rockLabel(linkedRock)}</span>
                             </div>
                           )}
                           {rockLinkingActionId === action.id && (
@@ -840,12 +848,12 @@ export default function SessionDetailPage() {
                               >
                                 <option value="">None (unlink)</option>
                                 {['q1', 'q2', 'q3', 'q4'].map(qt => {
-                                  const qtRocks = rocks.filter(r => r.step_type === qt)
+                                  const qtRocks = rockChoices(action.strategic_initiative_id).filter(r => r.step_type === qt)
                                   if (qtRocks.length === 0) return null
                                   return (
                                     <optgroup key={qt} label={qt.toUpperCase()}>
                                       {qtRocks.map(r => (
-                                        <option key={r.id} value={r.id}>{r.title}</option>
+                                        <option key={r.id} value={r.id}>{rockLabel(r)}</option>
                                       ))}
                                     </optgroup>
                                   )
@@ -855,10 +863,10 @@ export default function SessionDetailPage() {
                           )}
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
-                          {rocks.length > 0 && (
+                          {rockChoices(action.strategic_initiative_id).length > 0 && (
                             <button
                               onClick={() => setRockLinkingActionId(rockLinkingActionId === action.id ? null : action.id)}
-                              title={linkedRock ? `Linked: ${linkedRock.title}` : 'Link to Rock'}
+                              title={linkedRock ? `Linked: ${rockLabel(linkedRock)}` : 'Link to Rock'}
                               className={`p-1 rounded transition-colors ${linkedRock ? 'text-teal-600 hover:text-teal-800' : 'text-gray-400 hover:text-teal-600'}`}
                             >
                               <Target className="w-4 h-4" />
