@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useBusinessContext } from '@/hooks/useBusinessContext'
 import { resolveBusinessId } from '@/lib/business/resolveBusinessId'
+import { livePlanRows } from '@/lib/initiatives/dropped-initiatives'
 import { getCurrentFiscalYear, getQuarterForMonth, getFiscalYearStartDate, getFiscalYearEndDate, getQuarterDefs, DEFAULT_YEAR_START_MONTH } from '@/lib/utils/fiscal-year-utils'
 import type { FinancialGoals, Rock, DashboardData, DashboardError, DashboardInsight, SuggestedAction } from '../types'
 
@@ -333,7 +334,10 @@ export function useDashboardData(): UseDashboardDataReturn {
 
     if (error || !data) return []
 
-    return data.map(rock => ({
+    // A rock the coach dropped is saved as cancelled, never deleted — it is not
+    // one of the quarter's rocks. A quarter holding only dropped rocks has none,
+    // so the dashboard falls through to the planning quarter.
+    return livePlanRows(data).map(rock => ({
       id: rock.id,
       title: rock.title,
       owner: rock.assigned_to

@@ -18,12 +18,55 @@
  */
 import type { InitiativeDecision } from '../types'
 import { titleKey } from './rocks-from-decisions'
+import { isDroppedInitiative, livePlanRows } from '@/lib/initiatives/dropped-initiatives'
 
 /** A strategic_initiatives row of the quarter being planned, as the sync reads it. */
 export interface QuarterRow {
   id: string
   title?: string | null
   status?: string | null
+  /** 'quarterly_review' only on a row a review's syncRocks inserted. */
+  source?: string | null
+  created_at?: string | null
+}
+
+/**
+ * A quarter's rows that are still its rocks. A rock the coach dropped is saved
+ * as cancelled, never deleted, so every reader that lists a quarter's rocks has
+ * to leave those rows out itself — by the plan's one rule (livePlanRows).
+ */
+export function liveQuarterRows<T extends { status?: string | null }>(rows: T[]): T[] {
+  return livePlanRows(rows)
+}
+
+/** A database timestamp as epoch ms, whichever of Postgres's spellings it arrives in. */
+const instant = (value: string): number =>
+  Date.parse(
+    value
+      .trim()
+      .replace(' ', 'T')
+      .replace(/(\.\d{3})\d+/, '$1')
+      .replace(/([+-]\d{2})$/, '$1:00'),
+  )
+
+/**
+ * Whether this review's own sync created the row — the only kind of row a rock
+ * the review later drops may take out of the quarter with it.
+ *
+ * syncRocks is the only writer of source 'quarterly_review', and it sets it only
+ * on a row it inserts. A row it inserted for this review is no older than the
+ * review, and both timestamps are the database's, so no browser clock is
+ * involved. Production, 26 Sep 2026: every q2 row a review inserted passes
+ * (Efficient Living's five, filed by the 4.3 background sync mid-session;
+ * Scan2Archive's; Test ABC's three), and none of the twelve rows syncRocks
+ * relabelled 'quarterly_review' when it moved them does — Digital Bond's eight
+ * were created in June, Efficient Living's four in December.
+ */
+export function createdByReview(row: QuarterRow, reviewCreatedAt: string | null | undefined): boolean {
+  if (row.source !== 'quarterly_review' || !row.created_at || !reviewCreatedAt) return false
+  const created = instant(row.created_at)
+  const review = instant(reviewCreatedAt)
+  return Number.isFinite(created) && Number.isFinite(review) && created >= review
 }
 
 export interface QuarterRowIndex {
@@ -44,7 +87,7 @@ export function quarterRowIndex(rows: QuarterRow[]): QuarterRowIndex {
   const liveByTitle = new Map<string, string>()
   for (const row of rows) {
     // A rock the coach dropped (saved as cancelled) is not the rock planned now.
-    if (row.status === 'cancelled') continue
+    if (isDroppedInitiative(row)) continue
     const key = titleKey(row.title)
     if (key && !liveByTitle.has(key)) liveByTitle.set(key, row.id)
   }
@@ -74,10 +117,20 @@ const KEPT = new Set(['keep', 'accelerate'])
  * the pick is given a row of its own, as a rock re-added under a dropped rock's
  * name is (#604). A row two listings share is kept if either keeps it:
  * dropping one listing of a rock listed twice drops the listing, not the rock.
+ *
+ * A listing that does not own the row, and does not keep the rock, writes to
+ * it only when this review created the row (createdByReview) — the copy its
+ * own sync filed. The Goals wizard files a quarter row under the same title as
+ * the initiative it came from, and a review lists every row its quarter held
+ * when step 4.2 loaded — except in a first session, whose 4.2 lists none. A
+ * rock the coach added and then removed must not cancel a row of that name the
+ * plan already held: the coach never saw it, let alone chose to drop it.
  */
 export function quarterDecisionWrites(
   listings: InitiativeDecision[],
   rows: QuarterRow[],
+  /** When the review was created: which of the quarter's rows its own sync filed. */
+  reviewCreatedAt?: string | null,
 ): Map<string, InitiativeDecision> {
   const quarter = quarterRowIndex(rows)
   const writes = new Map<string, InitiativeDecision>()
@@ -100,6 +153,9 @@ export function quarterDecisionWrites(
     if (!held || (!KEPT.has(held.decision) && KEPT.has(listing.decision))) shared.set(row, listing)
   }
 
-  for (const [row, listing] of shared) writes.set(row, listing)
+  const byId = new Map(rows.map(r => [r.id, r]))
+  for (const [row, listing] of shared) {
+    if (KEPT.has(listing.decision) || createdByReview(byId.get(row)!, reviewCreatedAt)) writes.set(row, listing)
+  }
   return writes
 }

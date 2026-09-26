@@ -420,7 +420,25 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
       const quarterKey = planQuarterKey({ quarter: anchorQuarter });
       const syncId = profileBusinessId || businessId;
       try {
-        await strategicSyncService.syncRocks(syncId, userId, review.quarterly_rocks || [], quarterKey);
+        // Rocks the coach took out of the quarter first — the rows this sync
+        // filed for them are cancelled, and only rows this review created —
+        // then the rocks it plans. syncSprintRocks REPORTS a refused write
+        // rather than throwing it, so its answer is read, not just awaited.
+        const result = await strategicSyncService.syncSprintRocks(
+          syncId,
+          userId,
+          review.initiative_decisions || [],
+          review.quarterly_rocks || [],
+          quarterKey,
+          review.created_at
+        );
+        if (!result.success) {
+          captureReviewWriteFailure(
+            new Error(`Background rocks sync reported errors: ${JSON.stringify(result.errors)}`),
+            'background-rocks-sync-partial',
+            { reviewId: review.id, businessId: syncId, quarterKey }
+          );
+        }
       } catch (err) {
         console.error('[Sync] Background sync failed:', err);
         captureReviewWriteFailure(err, 'background-rocks-sync', {
@@ -610,7 +628,10 @@ export function useQuarterlyReview(options: UseQuarterlyReviewOptions = {}): Use
             category: a.category,
             quarterAssigned: a.quarterAssigned,
           })),
-          review.realignment_decision || undefined
+          review.realignment_decision || undefined,
+          // Which quarter rows this review's own sync filed: the only rows a
+          // rock it dropped may take out of the quarter with it.
+          review.created_at
         );
         // syncAll REPORTS its failures, it does not throw them: every
         // sub-writer catches its own error into { success: false, error } and
