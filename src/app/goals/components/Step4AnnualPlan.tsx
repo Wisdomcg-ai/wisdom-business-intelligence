@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { formatDollar, parseDollarInput } from '../utils/formatting'
 import { calculateQuarters, deriveCurrentRemainderColumn, determinePlanYear, QuarterInfo } from '../utils/quarters'
 import { TeamMember, getInitials, getColorForName } from '../utils/team'
+import { titleKey, hasTwelveMonthTwin } from '../utils/initiative-titles'
 import type { OnePagePlanData } from '@/app/one-page-plan/types'
 import { resolveKpiTarget } from '@/lib/kpi/target-source'
 
@@ -15,7 +16,9 @@ interface Step4Props {
   twelveMonthInitiatives: StrategicInitiative[]
   setTwelveMonthInitiatives: (initiatives: StrategicInitiative[] | ((prev: StrategicInitiative[]) => StrategicInitiative[])) => void
   annualPlanByQuarter: Record<string, StrategicInitiative[]>
-  setAnnualPlanByQuarter: (plan: Record<string, StrategicInitiative[]>) => void
+  // Takes an updater, as useStrategicPlanning's setter does: a move changes two
+  // quarters, and both changes must land.
+  setAnnualPlanByQuarter: (plan: Record<string, StrategicInitiative[]> | ((prev: Record<string, StrategicInitiative[]>) => Record<string, StrategicInitiative[]>)) => void
   // Period values keyed by quarter id. q1-q4 are required for backwards-compat
   // with consumers (page.tsx, Step5SprintPlanning) that index `.q1`/`.q2`/etc
   // directly. `current_remainder` is optional — only present when the wizard
@@ -432,11 +435,11 @@ export default function Step4AnnualPlan({
   const assignedTitles = new Set(
     Object.values(annualPlanByQuarter)
       .flat()
-      .map(i => (i.title || '').trim().toLowerCase())
+      .map(i => titleKey(i.title))
       .filter(t => t.length > 0)
   )
   const unassignedInitiatives = twelveMonthInitiatives.filter(
-    i => !assignedTitles.has((i.title || '').trim().toLowerCase())
+    i => !assignedTitles.has(titleKey(i.title))
   )
 
   // B6: chip-filtered subset of the unassigned pool — used only by the
@@ -464,31 +467,57 @@ export default function Step4AnnualPlan({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- getCategoryStyle is component-local with stable refs in palette objects
   }, [twelveMonthInitiatives])
 
+  // The plan changes below are updaters built from the latest plan, never from
+  // this render's copy: two changes made in one event must both land.
+
   // Add initiative to quarter
   const handleAddToQuarter = (initiative: StrategicInitiative, quarterId: string) => {
-    setAnnualPlanByQuarter({
-      ...annualPlanByQuarter,
-      [quarterId]: [...(annualPlanByQuarter[quarterId] || []), initiative]
+    setAnnualPlanByQuarter(prev => {
+      const items = prev[quarterId] || []
+      if (items.some(i => i.id === initiative.id)) return prev
+      return { ...prev, [quarterId]: [...items, initiative] }
     })
   }
 
-  // Remove initiative from quarter - ensures it goes back to the Available pool
+  // Remove initiative from quarter - it goes back to the Available pool.
+  //
+  // The 12-month list is searched by TITLE: a quarter rock is a copy of its
+  // 12-month initiative under another id. Searching by id found nothing after a
+  // reload, so every Remove appended the rock, the save inserted a second
+  // 12-month row, and Available listed the initiative twice. Only a rock with
+  // no 12-month initiative of its title is put back, such as a row the
+  // pre-March owner save moved out of the 12-month list.
   const handleRemoveFromQuarter = (initiativeId: string, quarterId: string) => {
-    // Find the initiative being removed
     const initiative = (annualPlanByQuarter[quarterId] || []).find(i => i.id === initiativeId)
+    if (!initiative) return
 
-    // Remove from the quarter
-    setAnnualPlanByQuarter({
-      ...annualPlanByQuarter,
-      [quarterId]: (annualPlanByQuarter[quarterId] || []).filter(i => i.id !== initiativeId)
-    })
+    setAnnualPlanByQuarter(prev => ({
+      ...prev,
+      [quarterId]: (prev[quarterId] || []).filter(i => i.id !== initiativeId),
+    }))
 
-    // Ensure the initiative is in twelveMonthInitiatives so it appears in Available
-    // This handles cases where DB data got out of sync
-    if (initiative && !twelveMonthInitiatives.some(i => i.id === initiativeId)) {
+    if (!hasTwelveMonthTwin(initiative.title, twelveMonthInitiatives)) {
       console.log('[Step4] Adding removed initiative back to twelveMonthInitiatives:', initiative.title)
-      setTwelveMonthInitiatives(prev => [...prev, initiative])
+      setTwelveMonthInitiatives(prev =>
+        hasTwelveMonthTwin(initiative.title, prev) ? prev : [...prev, initiative])
     }
+  }
+
+  // Move a rock to another quarter in ONE update. It used to be a remove and an
+  // add, each setting the plan from this render's copy, so the add overwrote
+  // the remove: the rock stayed where it was AND appeared in the other quarter,
+  // and the save inserted the copy. The rock moves whole, with the sprint
+  // detail Step 5 gave it (owner, why, outcome, tasks, dates).
+  const handleMoveBetweenQuarters = (initiativeId: string, fromQuarter: string, toQuarter: string) => {
+    setAnnualPlanByQuarter(prev => {
+      const initiative = (prev[fromQuarter] || []).find(i => i.id === initiativeId)
+      if (!initiative) return prev
+      return {
+        ...prev,
+        [fromQuarter]: (prev[fromQuarter] || []).filter(i => i.id !== initiativeId),
+        [toQuarter]: [...(prev[toQuarter] || []), initiative],
+      }
+    })
   }
 
   // Assign person to initiative
@@ -606,6 +635,10 @@ export default function Step4AnnualPlan({
     setDraggedItem({ initiativeId, sourceQuarter })
   }
 
+  // A drag that ends anywhere forgets its card, so a later drop of something
+  // else on a quarter (a file, selected text) cannot move it.
+  const handleDragEnd = () => setDraggedItem(null)
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     e.currentTarget.classList.add('bg-brand-orange-50')
@@ -619,32 +652,51 @@ export default function Step4AnnualPlan({
     e.preventDefault()
     e.currentTarget.classList.remove('bg-brand-orange-50')
 
-    if (!draggedItem) return
+    const dragged = draggedItem
+    setDraggedItem(null)
+    if (!dragged) return
 
-    const { initiativeId, sourceQuarter } = draggedItem
+    placeInitiative(dragged.initiativeId, dragged.sourceQuarter, targetQuarter)
+  }
 
-    const targetCount = annualPlanByQuarter[targetQuarter]?.length || 0
-    if (targetCount >= MAX_PER_QUARTER) {
+  // What a drop or "+ Add" does, given where the card came from and where it
+  // went. "+ Add" used to fake a drop: its event had no currentTarget, so it
+  // threw before adding anything, and the drag state it set had not landed.
+  const placeInitiative = (initiativeId: string, sourceQuarter: string, targetQuarter: string) => {
+    if (sourceQuarter === targetQuarter) return
+
+    // Onto Available: the rock leaves its quarter. This used to add an
+    // 'unassigned' bucket to the plan and leave the rock where it was.
+    if (targetQuarter === 'unassigned') {
+      handleRemoveFromQuarter(initiativeId, sourceQuarter)
+      return
+    }
+
+    const targetItems = annualPlanByQuarter[targetQuarter] || []
+    if (targetItems.length >= MAX_PER_QUARTER) {
       alert(`Quarter is at capacity (max ${MAX_PER_QUARTER} initiatives)`)
       return
     }
 
     if (sourceQuarter === 'unassigned') {
       const initiative = unassignedInitiatives.find(i => i.id === initiativeId)
-      if (initiative) {
-        handleAddToQuarter(initiative, targetQuarter)
-      }
-    } else if (sourceQuarter === targetQuarter) {
+      if (initiative) handleAddToQuarter(initiative, targetQuarter)
       return
-    } else {
-      const initiative = annualPlanByQuarter[sourceQuarter]?.find(i => i.id === initiativeId)
-      if (initiative) {
-        handleRemoveFromQuarter(initiativeId, sourceQuarter)
-        handleAddToQuarter(initiative, targetQuarter)
-      }
     }
 
-    setDraggedItem(null)
+    const initiative = (annualPlanByQuarter[sourceQuarter] || []).find(i => i.id === initiativeId)
+    if (!initiative) return
+
+    // A quarter lists an initiative once. The old drag copied, so some plans
+    // have an initiative in several quarters, and a move can meet its twin.
+    const key = titleKey(initiative.title)
+    if (key && targetItems.some(i => titleKey(i.title) === key)) {
+      const label = allPeriods.find(p => p.id === targetQuarter)?.label ?? targetQuarter
+      alert(`"${initiative.title.trim()}" is already in ${label}.`)
+      return
+    }
+
+    handleMoveBetweenQuarters(initiativeId, sourceQuarter, targetQuarter)
   }
 
   // Calculate quarter status
@@ -910,7 +962,7 @@ export default function Step4AnnualPlan({
       strategicInitiatives: twelveMonthInitiatives.map(i => {
         const inQuarters: string[] = []
         for (const [q, items] of Object.entries(annualPlanByQuarter)) {
-          if ((items || []).some(x => x.id === i.id || (x.title || '').trim().toLowerCase() === (i.title || '').trim().toLowerCase())) {
+          if ((items || []).some(x => x.id === i.id || titleKey(x.title) === titleKey(i.title))) {
             inQuarters.push(q.toUpperCase())
           }
         }
@@ -1447,6 +1499,7 @@ export default function Step4AnnualPlan({
                       return (
                         <div
                           key={quarter.id}
+                          data-testid={`quarter-${quarter.id}`}
                           onDragOver={!isLockedQuarter ? handleDragOver : undefined}
                           onDrop={!isLockedQuarter ? (e) => handleDrop(e, quarter.id) : undefined}
                           className={`rounded-lg border-2 p-3 flex flex-col min-h-[180px] ${
@@ -1499,8 +1552,7 @@ export default function Step4AnnualPlan({
                                 onChange={(e) => {
                                   const id = e.target.value
                                   if (!id) return
-                                  handleDragStart(id, 'unassigned')
-                                  handleDrop({ preventDefault: () => {} } as React.DragEvent, quarter.id)
+                                  placeInitiative(id, 'unassigned', quarter.id)
                                 }}
                                 className="text-[10px] border border-slate-200 rounded px-1 py-0.5 text-brand-orange font-semibold hover:border-brand-orange focus:outline-none focus:ring-1 focus:ring-brand-orange max-w-[110px]"
                               >
@@ -1532,6 +1584,7 @@ export default function Step4AnnualPlan({
                                     key={initiative.id}
                                     draggable
                                     onDragStart={() => handleDragStart(initiative.id, quarter.id)}
+                                    onDragEnd={handleDragEnd}
                                     className={`group flex items-start gap-1.5 p-2 rounded border-2 cursor-move transition-all ${cardBg}`}
                                   >
                                     <GripVertical className={`w-3 h-3 flex-shrink-0 mt-0.5 ${subTextColor}`} />
@@ -1597,6 +1650,7 @@ export default function Step4AnnualPlan({
 
                   {/* Available pool */}
                   <div
+                    data-testid="available-pool"
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, 'unassigned')}
                     className="mt-4 bg-gray-50 rounded-lg border-2 border-dashed border-slate-300 p-4"
@@ -1666,6 +1720,7 @@ export default function Step4AnnualPlan({
                               key={initiative.id}
                               draggable
                               onDragStart={() => handleDragStart(initiative.id, 'unassigned')}
+                              onDragEnd={handleDragEnd}
                               className={`flex items-start gap-1.5 p-2 rounded border-2 cursor-move ${cardBg}`}
                             >
                               <GripVertical className={`w-3 h-3 flex-shrink-0 mt-0.5 ${subTextColor}`} />
