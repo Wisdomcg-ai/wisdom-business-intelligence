@@ -1,7 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import type { QuarterlyReview } from '../../types';
+import type { QuarterlyReview, RockReviewDecision } from '../../types';
+import { ROCK_REVIEW_DECISIONS } from '../../types';
 import {
   CheckCircle2,
   Trophy,
@@ -22,6 +23,11 @@ import {
 import Link from 'next/link';
 import { useCoachView } from '@/hooks/useCoachView';
 import { ExportPlanPdfButton } from '../ExportPlanPdfButton';
+import { reviewRocks } from '../../utils/rocks-from-decisions';
+import { reviewedRocksOutcome } from '../../utils/rocks-outcome';
+
+const ACCOUNTABILITY_LABELS: Record<RockReviewDecision, string> = { completed: 'Completed', carry_forward: 'Carry Forward', modify: 'Modified', drop: 'Dropped' };
+const ACCOUNTABILITY_COLORS: Record<RockReviewDecision, string> = { completed: 'text-green-600', carry_forward: 'text-blue-600', modify: 'text-amber-600', drop: 'text-red-600' };
 
 interface WorkshopCompleteStepProps {
   review: QuarterlyReview;
@@ -55,7 +61,10 @@ export function WorkshopCompleteStep({
     return value < 0 ? `(${formatted})` : formatted;
   };
 
-  const rocks = review.quarterly_rocks || [];
+  // The rocks the review set (reviewRocks) — the same list the sync just filed,
+  // not the stored copy, which went stale whenever 4.2 changed after 4.3.
+  const rocks = reviewRocks(review);
+  const rocksOutcome = reviewedRocksOutcome(review);
   const targets = review.quarterly_targets;
   const commitments = review.personal_commitments;
 
@@ -188,24 +197,19 @@ export function WorkshopCompleteStep({
       )}
 
       {/* Last Quarter Rocks Review */}
-      {review.rocks_review && (review.rocks_review as any[]).length > 0 && (
+      {rocksOutcome && (
         <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 mb-8">
           <div className="flex items-center gap-2 mb-4">
             <Target className="w-5 h-5 text-gray-600" />
             <h3 className="font-semibold text-gray-900">Last Quarter Rocks Review</h3>
           </div>
           <div className="grid grid-cols-4 gap-3 mb-4">
-            {['completed', 'carry_forward', 'modified', 'dropped'].map(status => {
-              const count = (review.rocks_review as any[]).filter((r: any) => r.decision === status).length;
-              const labels: Record<string, string> = { completed: 'Completed', carry_forward: 'Carry Forward', modified: 'Modified', dropped: 'Dropped' };
-              const colors: Record<string, string> = { completed: 'text-green-600', carry_forward: 'text-blue-600', modified: 'text-amber-600', dropped: 'text-red-600' };
-              return (
-                <div key={status} className="text-center bg-white rounded-lg p-3 border border-gray-100">
-                  <div className={`text-2xl font-bold ${colors[status]}`}>{count}</div>
-                  <div className="text-xs text-gray-500">{labels[status]}</div>
-                </div>
-              );
-            })}
+            {ROCK_REVIEW_DECISIONS.map(decision => (
+              <div key={decision} className="text-center bg-white rounded-lg p-3 border border-gray-100">
+                <div className={`text-2xl font-bold ${ACCOUNTABILITY_COLORS[decision]}`}>{rocksOutcome.counts[decision]}</div>
+                <div className="text-xs text-gray-500">{ACCOUNTABILITY_LABELS[decision]}</div>
+              </div>
+            ))}
           </div>
         </div>
       )}

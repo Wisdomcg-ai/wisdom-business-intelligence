@@ -80,7 +80,10 @@ vi.mock('@/lib/supabase/client', () => {
           return chain;
         },
         then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) => {
-          db.initiativeUpdates.push({ id, title: String(payload.title ?? '') });
+          // The row written, by its own title: an update to a row the quarter
+          // already holds does not carry one (nothing in the review renames it).
+          const row = db.existingInitiatives.find((r) => r.id === id);
+          db.initiativeUpdates.push({ id, title: String(payload.title ?? row?.title ?? '') });
           db.initiativeWrites.push({ id, payload });
           if (db.failInitiativeUpdate) {
             return Promise.resolve({ error: { message: 'permission denied for strategic_initiatives' } }).then(resolve, reject);
@@ -738,5 +741,164 @@ describe('the quarter\'s decisions are saved on its own rows — taking a pick o
     expect(result.success).toBe(false);
     expect(result.error).toContain('could not read it');
     expect(db.initiativeWrites).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Completion now files a review's rocks every time, not only after an edit in
+// Sprint Planning (rocks-follow-the-decisions.test.tsx). Most of a quarter's
+// rocks are the plan's own quarter rows, filled in by the Goals wizard, and
+// syncRocks wrote every column of such a row from the rock — so whatever the
+// review had no value for was blanked. Sydney Pressed Metal's five Q2 rocks,
+// 26 Sep 2026: owners, outcomes, an end date, notes and a roadmap source on the
+// rows, and nothing set in Sprint Planning.
+// ---------------------------------------------------------------------------
+
+/** People Power, as the Goals wizard left Sydney Pressed Metal's Q2 row. */
+const goalsRow = (): InitiativeRow => ({
+  id: Q2_ROW,
+  title: 'People Power',
+  step_type: 'q2',
+  status: 'not_started',
+  source: 'roadmap',
+  category: 'people',
+  description: 'Build and manage a productive team with clear roles',
+  notes: 'Create org chart: current and 12-month future',
+  assigned_to: 'owner-fbbd2549-b37f-4e52-8fe7-04be648ac4b7',
+  outcome: 'Better team knowledge',
+  end_date: '2026-12-31',
+  why: 'To build a better team',
+  linked_kpis: '["kpi-1"]',
+  order_index: 3,
+});
+
+/** The row as step 4.2 lists it — 4.2 carries the owner in the notes. */
+const listed = (over: Partial<InitiativeDecision> = {}): InitiativeDecision =>
+  pick({
+    initiativeId: Q2_ROW,
+    title: 'People Power',
+    category: 'people',
+    notes: '[Assigned: owner-fbbd2549-b37f-4e52-8fe7-04be648ac4b7]',
+    ...over,
+  });
+
+describe('filing a rock on a row the quarter already holds keeps what the plan put there', () => {
+  it('writes nothing the review did not set', async () => {
+    db.existingInitiatives = [goalsRow()];
+
+    const result = await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf([listed()]), 'q2');
+
+    expect(result).toEqual({ success: true });
+    expect(writesTo(Q2_ROW)).toHaveLength(1);
+    expect(Object.keys(writesTo(Q2_ROW)[0].payload).sort()).toEqual(['order_index', 'selected', 'updated_at']);
+    // Description, notes, owner, outcome, end date, KPI links and the roadmap
+    // source are as the Goals wizard left them; only the rock's order is new.
+    expect(rowById(Q2_ROW)).toEqual({ ...goalsRow(), selected: true, order_index: 0, updated_at: expect.any(String) });
+  });
+
+  it('writes the owner, outcome and end date Sprint Planning set — and still nothing else', async () => {
+    db.existingInitiatives = [goalsRow()];
+
+    await strategicSyncService.syncRocks(
+      'biz-1',
+      'user-1',
+      rocksOf([listed({ assignedTo: 'Priya', outcome: 'Org chart live', endDate: '2026-11-30', why: 'Roles are unclear' })]),
+      'q2',
+    );
+
+    expect(rowById(Q2_ROW)).toMatchObject({
+      assigned_to: 'Priya',
+      outcome: 'Org chart live',
+      end_date: '2026-11-30',
+      // The review's "why" belongs in `why` (the sprint sync writes it there);
+      // it used to replace the Goals description.
+      description: goalsRow().description,
+      notes: goalsRow().notes,
+      source: 'roadmap',
+      linked_kpis: '["kpi-1"]',
+      title: 'People Power',
+      step_type: 'q2',
+    });
+  });
+
+  it('writes KPI links only when the rock carries some', async () => {
+    db.existingInitiatives = [goalsRow()];
+    const [rock] = rocksOf([listed()]);
+
+    await strategicSyncService.syncRocks('biz-1', 'user-1', [{ ...rock, linkedKPIs: ['kpi-2'] }], 'q2');
+
+    expect(rowById(Q2_ROW)?.linked_kpis).toBe('["kpi-2"]');
+  });
+
+  it('treats a value of only spaces as blank', async () => {
+    db.existingInitiatives = [goalsRow()];
+
+    await strategicSyncService.syncRocks(
+      'biz-1',
+      'user-1',
+      rocksOf([listed({ assignedTo: '   ', outcome: ' \n ', endDate: ' ' })]),
+      'q2',
+    );
+
+    expect(rowById(Q2_ROW)).toMatchObject({
+      assigned_to: goalsRow().assigned_to,
+      outcome: goalsRow().outcome,
+      end_date: goalsRow().end_date,
+    });
+  });
+
+  it('keeps a value cleared in Sprint Planning after an earlier sync saved it — the cost of never blanking', async () => {
+    // A decision holds '' for "cleared" and "never set" alike, so a blank is
+    // never written over the row. Pinned so that changing it is a decision.
+    db.existingInitiatives = [goalsRow()];
+    await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf([listed({ outcome: 'Org chart live' })]), 'q2');
+    expect(rowById(Q2_ROW)?.outcome).toBe('Org chart live');
+
+    await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf([listed({ outcome: '' })]), 'q2');
+
+    expect(rowById(Q2_ROW)?.outcome).toBe('Org chart live');
+  });
+
+  it('a 12-month pick filed onto the Goals wizard\'s own quarter copy keeps its content', async () => {
+    // The Goals wizard gives a quarter its own copy of an initiative (#605); a
+    // pick is filed onto that copy, which carries the wizard's content too.
+    const copy = { ...goalsRow(), title: MONEY, description: 'Exit planning, this quarter', assigned_to: 'Mel' };
+    db.existingInitiatives = [twelveMonthRow(), copy];
+
+    await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf([pick()]), 'q2');
+
+    expect(writesTo(TWELVE_MONTH)).toEqual([]);
+    expect(rowById(Q2_ROW)).toEqual({ ...copy, selected: true, order_index: 0, updated_at: expect.any(String) });
+  });
+
+  it('writes no KPI links for a rock that carries an empty list', async () => {
+    db.existingInitiatives = [goalsRow()];
+    const [rock] = rocksOf([listed()]);
+
+    await strategicSyncService.syncRocks('biz-1', 'user-1', [{ ...rock, linkedKPIs: [] }], 'q2');
+
+    expect(rowById(Q2_ROW)?.linked_kpis).toBe('["kpi-1"]');
+  });
+
+  it('still files a rock the quarter has no row for whole', async () => {
+    // Nothing to keep on a new row: it gets everything the rock has.
+    const added = pick({
+      initiativeId: 'sprint-new-1790296002208',
+      title: 'Complete the Payroll Automations',
+      assignedTo: 'Chris',
+      outcome: 'Payroll in an hour',
+      why: 'Payroll takes a day',
+    });
+
+    await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf([added]), 'q2');
+
+    expect(db.initiativeInsertRows[0]).toMatchObject({
+      title: 'Complete the Payroll Automations',
+      step_type: 'q2',
+      source: 'quarterly_review',
+      assigned_to: 'Chris',
+      outcome: 'Payroll in an hour',
+      description: 'Payroll takes a day',
+    });
   });
 });

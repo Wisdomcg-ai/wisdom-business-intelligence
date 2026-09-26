@@ -6,14 +6,17 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { quarterlyReviewService } from '../../services/quarterly-review-service';
-import type { QuarterlyReview } from '../../types';
+import { reviewRocks } from '../../utils/rocks-from-decisions';
+import { reviewedRocksOutcome } from '../../utils/rocks-outcome';
+import type { QuarterlyReview, RockReviewDecision } from '../../types';
 import type { YearType } from '../../types';
 import {
   STEP_LABELS,
   FEEDBACK_LOOP_AREA_LABELS,
   FEEDBACK_LOOP_COLUMN_LABELS,
   FEEDBACK_LOOP_AREAS,
-  FEEDBACK_LOOP_COLUMNS
+  FEEDBACK_LOOP_COLUMNS,
+  ROCK_REVIEW_DECISIONS
 } from '../../types';
 import {
   ArrowLeft,
@@ -44,6 +47,10 @@ import {
 import Link from 'next/link';
 import { useCoachView } from '@/hooks/useCoachView';
 import { ExportPlanPdfButton } from '../../components/ExportPlanPdfButton';
+
+const ACCOUNTABILITY_LABELS: Record<RockReviewDecision, string> = { completed: 'Completed', carry_forward: 'Carry Forward', modify: 'Modified', drop: 'Dropped' };
+const ACCOUNTABILITY_COLORS: Record<RockReviewDecision, string> = { completed: 'text-green-600', carry_forward: 'text-blue-600', modify: 'text-amber-600', drop: 'text-red-600' };
+const ACCOUNTABILITY_CHIPS: Record<RockReviewDecision, string> = { completed: 'bg-green-100 text-green-700', carry_forward: 'bg-blue-100 text-blue-700', modify: 'bg-amber-100 text-amber-700', drop: 'bg-red-100 text-red-700' };
 
 export default function QuarterlySummaryPage() {
   const params = useParams();
@@ -144,6 +151,12 @@ export default function QuarterlySummaryPage() {
   // 1, a leftover from the old "review = the quarter that just ended" model, which
   // printed a Q2 plan as "Q3 Targets" on the summary a client reads.
   const planQ = { quarter: review.quarter, year: review.year };
+  // The rocks the review set: its decisions', then any stored by hand that no
+  // decision names (reviewRocks). The stored copy alone went stale whenever 4.2
+  // changed after 4.3, and was empty for every review completed before #594.
+  const rocks = reviewRocks(review);
+  // How LAST quarter's rocks went, from step 1.3 — named for that quarter.
+  const rocksOutcome = reviewedRocksOutcome(review);
   const targets = review.quarterly_targets;
   const commitments = review.personal_commitments;
   const actionReplay = review.action_replay;
@@ -309,41 +322,31 @@ export default function QuarterlySummaryPage() {
       )}
 
       {/* 1.3 Rocks Accountability (Last Quarter) */}
-      {review.rocks_review && (review.rocks_review as any[]).length > 0 && (
+      {rocksOutcome && (
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-gray-600" />
-            Rocks Accountability
+            {rocksOutcome.label} Rocks Accountability
           </h2>
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="grid grid-cols-4 gap-3 mb-4">
-              {['completed', 'carry_forward', 'modified', 'dropped'].map(status => {
-                const count = (review.rocks_review as any[]).filter((r: any) => r.decision === status).length;
-                const labels: Record<string, string> = { completed: 'Completed', carry_forward: 'Carry Forward', modified: 'Modified', dropped: 'Dropped' };
-                const colors: Record<string, string> = { completed: 'text-green-600', carry_forward: 'text-blue-600', modified: 'text-amber-600', dropped: 'text-red-600' };
-                return (
-                  <div key={status} className="text-center p-3 bg-gray-50 rounded-lg">
-                    <div className={`text-2xl font-bold ${colors[status]}`}>{count}</div>
-                    <div className="text-xs text-gray-600">{labels[status]}</div>
-                  </div>
-                );
-              })}
+              {ROCK_REVIEW_DECISIONS.map(decision => (
+                <div key={decision} className="text-center p-3 bg-gray-50 rounded-lg">
+                  <div className={`text-2xl font-bold ${ACCOUNTABILITY_COLORS[decision]}`}>{rocksOutcome.counts[decision]}</div>
+                  <div className="text-xs text-gray-600">{ACCOUNTABILITY_LABELS[decision]}</div>
+                </div>
+              ))}
             </div>
             <div className="space-y-2">
-              {(review.rocks_review as any[]).map((rock: any, index: number) => (
+              {review.rocks_review.filter(Boolean).map((rock, index) => (
                 <div key={index} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
                   <div className="flex-1">
                     <p className="font-medium text-gray-900">{rock.title}</p>
                     {rock.outcomeNarrative && <p className="text-sm text-gray-600 mt-1">{rock.outcomeNarrative}</p>}
                     {rock.lessonsLearned && <p className="text-sm text-gray-500 mt-1 italic">{rock.lessonsLearned}</p>}
                   </div>
-                  <span className={`text-xs font-medium px-2 py-1 rounded-full flex-shrink-0 ${
-                    rock.decision === 'completed' ? 'bg-green-100 text-green-700' :
-                    rock.decision === 'carry_forward' ? 'bg-blue-100 text-blue-700' :
-                    rock.decision === 'modified' ? 'bg-amber-100 text-amber-700' :
-                    'bg-red-100 text-red-700'
-                  }`}>
-                    {rock.decision?.replace('_', ' ')}
+                  <span className={`text-xs font-medium px-2 py-1 rounded-full flex-shrink-0 ${ACCOUNTABILITY_CHIPS[rock.decision] ?? 'bg-gray-100 text-gray-600'}`}>
+                    {ACCOUNTABILITY_LABELS[rock.decision] ?? rock.decision}
                   </span>
                 </div>
               ))}
@@ -1010,7 +1013,7 @@ export default function QuarterlySummaryPage() {
       )}
 
       {/* 4.3 Quarterly Rocks (Sprint Planning) */}
-      {review.quarterly_rocks && review.quarterly_rocks.length > 0 && (
+      {rocks.length > 0 && (
         <section className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Mountain className="w-5 h-5 text-gray-600" />
@@ -1018,7 +1021,7 @@ export default function QuarterlySummaryPage() {
           </h2>
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="space-y-4">
-              {review.quarterly_rocks.map((rock, index) => (
+              {rocks.map((rock, index) => (
                 <div key={rock.id} className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
                   <span className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 bg-brand-orange">
                     {index + 1}

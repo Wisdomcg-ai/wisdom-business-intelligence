@@ -4,8 +4,16 @@ import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { quarterlyReviewService } from '../services/quarterly-review-service';
-import { getQuarterLabel } from '../types';
-import type { QuarterlyReview, Rock } from '../types';
+import { getQuarterLabel, ROCK_REVIEW_DECISIONS } from '../types';
+import type { InitiativeAction, QuarterlyReview, RockReviewDecision } from '../types';
+import { reviewRocks } from '../utils/rocks-from-decisions';
+import {
+  plannedRocksProgress,
+  reviewedQuarterName,
+  reviewedRocksOutcome,
+  rocksCompletionTrend,
+  type RocksOutcome,
+} from '../utils/rocks-outcome';
 import {
   Calendar,
   History,
@@ -46,16 +54,8 @@ const formatCurrency = (value: number) => {
   return value < 0 ? `(${formatted})` : formatted;
 };
 
-// Helper to calculate rocks completion
-const getRocksCompletion = (rocks: Rock[] | undefined) => {
-  if (!rocks || rocks.length === 0) return { completed: 0, total: 0, percentage: 0 };
-  const completed = rocks.filter(r => r.status === 'completed').length;
-  return {
-    completed,
-    total: rocks.length,
-    percentage: Math.round((completed / rocks.length) * 100)
-  };
-};
+const ACCOUNTABILITY_LABELS: Record<RockReviewDecision, string> = { completed: 'Done', carry_forward: 'Carry', modify: 'Modified', drop: 'Dropped' };
+const ACCOUNTABILITY_COLORS: Record<RockReviewDecision, string> = { completed: 'text-green-600', carry_forward: 'text-blue-600', modify: 'text-amber-600', drop: 'text-red-600' };
 
 // Timeline Node Component
 function TimelineNode({
@@ -81,7 +81,17 @@ function TimelineNode({
 }) {
   const { getPath } = useCoachView();
   const isCompleted = review.status === 'completed';
-  const rocksData = getRocksCompletion(review.quarterly_rocks);
+  // The rocks the review set (reviewRocks), not the stored copy — which went
+  // stale whenever 4.2 changed after 4.3, and is empty for every review
+  // completed before #594.
+  const rocks = reviewRocks(review);
+  // They are all 'not_started' here: how they went is recorded by the NEXT
+  // review's step 1.3. So this card's rocks figures are last quarter's, from its
+  // own step 1.3, and name that quarter.
+  const plannedProgress = plannedRocksProgress(rocks);
+  const rocksOutcome = reviewedRocksOutcome(review);
+  const reviewedName = reviewedQuarterName(review);
+  const rocksNoun = rocksOutcome?.selfReported ? 'Priorities' : 'Rocks';
   const targets = review.quarterly_targets;
 
   return (
@@ -132,7 +142,10 @@ function TimelineNode({
                   </h3>
                   <p className="text-sm text-gray-500">
                     {isCompleted
-                      ? `Completed ${new Date(review.completed_at!).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                      ? review.completed_at
+                        ? `Completed ${new Date(review.completed_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                        // Two completed reviews carry no date; new Date(null) printed 1 Jan 1970.
+                        : 'Completed'
                       : review.status === 'in_progress'
                       ? 'In Progress'
                       : 'Not Started'
@@ -150,9 +163,9 @@ function TimelineNode({
                         {review.annual_target_confidence * 10}% confident
                       </span>
                     )}
-                    {rocksData.total > 0 && (
+                    {rocksOutcome && (
                       <span className="px-2 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-700">
-                        {rocksData.completed}/{rocksData.total} rocks
+                        {rocksOutcome.label} {rocksNoun.toLowerCase()}: {rocksOutcome.completed}/{rocksOutcome.total} done
                       </span>
                     )}
                     {review.customer_pulse && (review.customer_pulse as any).npsScore != null && (
@@ -200,12 +213,19 @@ function TimelineNode({
                     <div className="text-xs text-gray-600">Confidence</div>
                   </div>
 
-                  {/* Rocks Completion */}
-                  <div className="p-3 bg-gray-50 rounded-lg text-center">
+                  {/* Last quarter's rocks, as this review's step 1.3 held them to account */}
+                  <div
+                    className="p-3 bg-gray-50 rounded-lg text-center"
+                    title={
+                      rocksOutcome
+                        ? `${rocksOutcome.completed} of ${rocksOutcome.total} ${rocksOutcome.label} ${rocksNoun.toLowerCase()} done${rocksOutcome.selfReported ? ', as the owner recalled them' : ''}`
+                        : `This review has no rocks accountability for ${reviewedName}`
+                    }
+                  >
                     <div className="text-2xl font-bold text-gray-900">
-                      {rocksData.total > 0 ? `${rocksData.percentage}%` : '—'}
+                      {rocksOutcome ? `${rocksOutcome.percentage}%` : '—'}
                     </div>
-                    <div className="text-xs text-gray-600">Rocks Done</div>
+                    <div className="text-xs text-gray-600">{reviewedName} {rocksNoun} Done</div>
                   </div>
 
                   {/* Quarter Rating */}
@@ -250,14 +270,15 @@ function TimelineNode({
                 )}
 
                 {/* Rocks Summary */}
-                {review.quarterly_rocks && review.quarterly_rocks.length > 0 && (
+                {rocks.length > 0 && (
                   <div className="mt-4 p-4 bg-slate-50 rounded-lg">
                     <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
                       <Mountain className="w-4 h-4" />
-                      90-Day Rocks ({rocksData.completed}/{rocksData.total} completed)
+                      90-Day Rocks for {getQuarterLabel(review.quarter, review.year)}
+                      {plannedProgress && ` (${plannedProgress.completed}/${plannedProgress.total} completed)`}
                     </h4>
                     <div className="space-y-2">
-                      {review.quarterly_rocks.slice(0, 5).map((rock, idx) => (
+                      {rocks.slice(0, 5).map((rock, idx) => (
                         <div key={rock.id} className="flex items-center gap-2 text-sm">
                           <span
                             className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium ${
@@ -275,9 +296,9 @@ function TimelineNode({
                           </span>
                         </div>
                       ))}
-                      {review.quarterly_rocks.length > 5 && (
+                      {rocks.length > 5 && (
                         <p className="text-xs text-gray-500 mt-1">
-                          +{review.quarterly_rocks.length - 5} more
+                          +{rocks.length - 5} more
                         </p>
                       )}
                     </div>
@@ -309,24 +330,19 @@ function TimelineNode({
                 )}
 
                 {/* Last Quarter Rocks Review */}
-                {review.rocks_review && (review.rocks_review as any[]).length > 0 && (
+                {rocksOutcome && (
                   <div className="mt-4 p-4 bg-slate-50 rounded-lg">
                     <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
                       <Award className="w-4 h-4" />
-                      Rocks Accountability
+                      {rocksOutcome.label} {rocksOutcome.selfReported ? 'Priorities (self-reported)' : 'Rocks Accountability'}
                     </h4>
                     <div className="grid grid-cols-4 gap-2 text-center">
-                      {['completed', 'carry_forward', 'modified', 'dropped'].map(status => {
-                        const count = (review.rocks_review as any[]).filter((r: any) => r.decision === status).length;
-                        const labels: Record<string, string> = { completed: 'Done', carry_forward: 'Carry', modified: 'Modified', dropped: 'Dropped' };
-                        const colors: Record<string, string> = { completed: 'text-green-600', carry_forward: 'text-blue-600', modified: 'text-amber-600', dropped: 'text-red-600' };
-                        return (
-                          <div key={status}>
-                            <div className={`text-lg font-semibold ${colors[status]}`}>{count}</div>
-                            <div className="text-xs text-gray-500">{labels[status]}</div>
-                          </div>
-                        );
-                      })}
+                      {ROCK_REVIEW_DECISIONS.map(decision => (
+                        <div key={decision}>
+                          <div className={`text-lg font-semibold ${ACCOUNTABILITY_COLORS[decision]}`}>{rocksOutcome.counts[decision]}</div>
+                          <div className="text-xs text-gray-500">{ACCOUNTABILITY_LABELS[decision]}</div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -339,9 +355,11 @@ function TimelineNode({
                       Initiative Decisions ({(review.initiative_decisions as any[]).length})
                     </h4>
                     <div className="grid grid-cols-4 gap-2 text-center">
-                      {['keep', 'accelerate', 'defer', 'kill'].map(action => {
-                        const count = (review.initiative_decisions as any[]).filter((d: any) => d.action === action).length;
-                        const colors: Record<string, string> = { keep: 'text-blue-600', accelerate: 'text-green-600', defer: 'text-amber-600', kill: 'text-red-600' };
+                      {(['keep', 'accelerate', 'defer', 'kill'] as const).map(action => {
+                        // The decision is stored as `decision`. This read `action`,
+                        // which no decision has, so every count was 0.
+                        const count = review.initiative_decisions.filter(d => d?.decision === action).length;
+                        const colors: Record<InitiativeAction, string> = { keep: 'text-blue-600', accelerate: 'text-green-600', defer: 'text-amber-600', kill: 'text-red-600' };
                         return (
                           <div key={action}>
                             <div className={`text-lg font-semibold ${colors[action]}`}>{count}</div>
@@ -422,8 +440,20 @@ function CompareView({
     return a.quarter - b.quarter;
   });
 
-  const olderRocks = getRocksCompletion(older.quarterly_rocks);
-  const newerRocks = getRocksCompletion(newer.quarterly_rocks);
+  // Each review's last quarter of rocks, as its step 1.3 held them to account.
+  // A real 0% is a value, so this row works out its own change: the helpers
+  // below read 0 as missing.
+  const olderRocks = reviewedRocksOutcome(older);
+  const newerRocks = reviewedRocksOutcome(newer);
+  const rocksChange = olderRocks && newerRocks ? newerRocks.percentage - olderRocks.percentage : null;
+  const rocksCell = (review: QuarterlyReview, outcome: RocksOutcome | null) => (
+    <td className="py-3 px-4 text-center text-sm font-medium">
+      {outcome ? `${outcome.percentage}%` : '—'}
+      <div className="text-xs font-normal text-gray-500">
+        {reviewedQuarterName(review)} {outcome?.selfReported ? 'priorities' : 'rocks'}
+      </div>
+    </td>
+  );
 
   const getTrendIcon = (oldVal: number | null | undefined, newVal: number | null | undefined) => {
     if (!oldVal || !newVal) return <Minus className="w-4 h-4 text-gray-400" />;
@@ -523,16 +553,18 @@ function CompareView({
             {/* Rocks Completion */}
             <tr>
               <td className="py-3 px-4 text-sm text-gray-700">Rocks Completion</td>
-              <td className="py-3 px-4 text-center text-sm font-medium">
-                {olderRocks.total > 0 ? `${olderRocks.percentage}%` : '—'}
-              </td>
-              <td className="py-3 px-4 text-center text-sm font-medium">
-                {newerRocks.total > 0 ? `${newerRocks.percentage}%` : '—'}
-              </td>
+              {rocksCell(older, olderRocks)}
+              {rocksCell(newer, newerRocks)}
               <td className="py-3 px-4 text-center">
                 <div className="flex items-center justify-center gap-1">
-                  {getTrendIcon(olderRocks.percentage, newerRocks.percentage)}
-                  <span className="text-sm">{getChangeText(olderRocks.percentage, newerRocks.percentage, '%')}</span>
+                  {rocksChange === null || rocksChange === 0 ? (
+                    <Minus className="w-4 h-4 text-gray-400" />
+                  ) : rocksChange > 0 ? (
+                    <TrendingUp className="w-4 h-4 text-green-500" />
+                  ) : (
+                    <TrendingDown className="w-4 h-4 text-red-500" />
+                  )}
+                  <span className="text-sm">{rocksChange === null ? '—' : `${rocksChange > 0 ? '+' : ''}${rocksChange}%`}</span>
                 </div>
               </td>
             </tr>
@@ -590,13 +622,16 @@ function TrendInsights({ reviews }: { reviews: QuarterlyReview[] }) {
     .map(r => ({ quarter: `Q${r.quarter} ${r.year}`, value: (r.annual_target_confidence || 0) * 10 }))
     .reverse();
 
-  const rocksCompletionTrend = completedReviews
-    .filter(r => r.quarterly_rocks && r.quarterly_rocks.length > 0)
-    .map(r => {
-      const rocks = getRocksCompletion(r.quarterly_rocks);
-      return { quarter: `Q${r.quarter} ${r.year}`, value: rocks.percentage };
-    })
-    .reverse();
+  // The quarters whose rocks a completed review held to account in step 1.3 —
+  // each one the quarter BEFORE that review's. A review with no step 1.3
+  // record is left out, not averaged in as 0%; so is a first session's list of
+  // recalled priorities (see rocksCompletionTrend).
+  const rocksTrend = rocksCompletionTrend(completedReviews);
+  const rocksSpan = rocksTrend
+    ? rocksTrend.quarters.length === 1
+      ? rocksTrend.quarters[0].label
+      : `${rocksTrend.quarters[0].label} – ${rocksTrend.quarters[rocksTrend.quarters.length - 1].label}`
+    : null;
 
   const energyTrend = completedReviews
     .filter(r => r.energy_level)
@@ -607,11 +642,6 @@ function TrendInsights({ reviews }: { reviews: QuarterlyReview[] }) {
   const latestConfidence = confidenceTrend.length > 0 ? confidenceTrend[confidenceTrend.length - 1].value : null;
   const previousConfidence = confidenceTrend.length > 1 ? confidenceTrend[confidenceTrend.length - 2].value : null;
   const confidenceChange = latestConfidence && previousConfidence ? latestConfidence - previousConfidence : 0;
-
-  const latestRocks = rocksCompletionTrend.length > 0 ? rocksCompletionTrend[rocksCompletionTrend.length - 1].value : null;
-  const avgRocks = rocksCompletionTrend.length > 0
-    ? Math.round(rocksCompletionTrend.reduce((sum, r) => sum + r.value, 0) / rocksCompletionTrend.length)
-    : 0;
 
   const latestEnergy = energyTrend.length > 0 ? energyTrend[energyTrend.length - 1].value : null;
   const previousEnergy = energyTrend.length > 1 ? energyTrend[energyTrend.length - 2].value : null;
@@ -647,10 +677,19 @@ function TrendInsights({ reviews }: { reviews: QuarterlyReview[] }) {
         </div>
         <div className="flex items-end gap-2">
           <span className="text-3xl font-bold text-gray-900">
-            {avgRocks > 0 ? `${avgRocks}%` : '—'}
+            {rocksTrend ? `${rocksTrend.average}%` : '—'}
           </span>
         </div>
-        <p className="text-xs text-gray-500 mt-1">across {rocksCompletionTrend.length} quarters</p>
+        <p className="text-xs text-gray-500 mt-1">
+          {rocksTrend ? (
+            <>
+              across {rocksTrend.quarters.length} quarter{rocksTrend.quarters.length === 1 ? '' : 's'} ·{' '}
+              <span className="whitespace-nowrap">{rocksSpan}</span>
+            </>
+          ) : (
+            'no quarter’s rocks reviewed yet'
+          )}
+        </p>
       </div>
 
       {/* Energy Trend */}

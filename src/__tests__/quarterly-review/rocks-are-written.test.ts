@@ -182,20 +182,20 @@ describe('one rock per title', () => {
   });
 });
 
-describe('step 4.3 is wired to the rocks updater', () => {
+describe('the workshop stores no rocks by a rule of its own', () => {
+  // #594 wired step 4.3 to store rocksFromDecisions(decisions) on every edit
+  // there. It was the only writer, and it fired only on an edit in 4.3, so a
+  // change made in 4.2 afterwards never reached the rocks — and as a second
+  // rule it would drop a rock stored by hand (Precision's seeded ones) on the
+  // first edit. The rocks are now worked out from the decisions where they are
+  // used and recorded at completion: rocks-follow-the-decisions.test.tsx.
   const page = readFileSync(
     path.resolve(__dirname, '../../app/quarterly-review/workshop/page.tsx'),
     'utf-8',
   );
 
-  it('writes the rocks when the decisions change', () => {
-    // The regression is precisely that the updater existed and was passed to
-    // nobody, so a sentinel on "it is called" is the fence that matters.
-    expect(page).toMatch(/updateQuarterlyRocks\(rocksFromDecisions\(/);
-    expect(page).toContain("from '../utils/rocks-from-decisions'");
-  });
-
-  it('derives them from the review\'s own quarter, not the clock', () => {
-    expect(page).toMatch(/rocksFromDecisions\(decisions,\s*review\.quarter\)/);
+  it('hands step 4.3 the decisions updater and nothing else', () => {
+    expect(page).toMatch(/onUpdateInitiativeDecisions=\{updateInitiativeDecisions\}/);
+    expect(page).not.toMatch(/updateQuarterlyRocks|quarterly_rocks|rocksFromDecisions/);
   });
 });
