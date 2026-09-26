@@ -249,7 +249,7 @@ export function availablePool<T extends PoolRow & { idea_type?: string | null }>
  * A row saved as cancelled — an initiative the coach dropped from Available —
  * is listed as Drop, as a dropped quarter row is. It used to be listed as a
  * fresh 'keep': offered again at the next review, and the completion after that
- * saved it as in progress (syncInitiativeChanges writes a kept listing outside
+ * saved it as in progress (syncInitiativeChanges wrote a kept listing outside
  * the planned quarter back by id), so a dropped initiative came back onto the
  * plan without anyone choosing it.
  */

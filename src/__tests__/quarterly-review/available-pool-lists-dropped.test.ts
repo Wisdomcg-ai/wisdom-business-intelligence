@@ -6,7 +6,7 @@
  * never a delete — #609):
  *
  * 1. An initiative dropped from Available was listed again as a fresh 'keep'.
- *    syncInitiativeChanges writes a kept listing outside the planned quarter
+ *    syncInitiativeChanges wrote a kept listing outside the planned quarter
  *    back by id as 'in_progress', so the next completion revived it: a dropped
  *    initiative back on the plan without anyone choosing it. It is now listed
  *    as Drop (listPoolRow), as #609 lists a dropped quarter row.
