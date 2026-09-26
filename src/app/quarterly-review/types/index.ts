@@ -180,7 +180,13 @@ export const OPEN_LOOP_DECISION_LABELS: Record<OpenLoopDecision, string> = {
 // New Enums for Restructured Workshop
 // ═══════════════════════════════════════════════════════════════
 
-export type RockReviewDecision = 'completed' | 'carry_forward' | 'drop' | 'modify';
+/**
+ * Step 1.3's decisions, in the order every screen lists them — the one list.
+ * Readers loop over this rather than keep their own: three screens counted
+ * 'modified' and 'dropped', which step 1.3 never writes, so they always read 0.
+ */
+export const ROCK_REVIEW_DECISIONS = ['completed', 'carry_forward', 'modify', 'drop'] as const;
+export type RockReviewDecision = (typeof ROCK_REVIEW_DECISIONS)[number];
 export type RealignmentChoice = 'keep_targets' | 'adjust_targets';
 export type InitiativeAction = 'keep' | 'accelerate' | 'defer' | 'kill';
 export type PersonAction = 'retain' | 'develop' | 'performance_manage' | 'replace';
