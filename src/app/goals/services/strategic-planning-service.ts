@@ -47,6 +47,10 @@ export class StrategicPlanningService {
   /**
    * Save strategic initiatives (all steps except sprint actions)
    * Uses upsert pattern to ensure atomicity - no data loss if operation fails
+   *
+   * A step is saved as its whole list, and writes only rows of that step: its
+   * own rows are updated in place, any other item is inserted as a new row of
+   * the step, and a row of the step the list no longer holds is deleted.
    */
   static async saveInitiatives(
     businessId: string,
@@ -67,11 +71,19 @@ export class StrategicPlanningService {
       // Get existing initiative IDs for this step, and which of them the coach
       // dropped in a quarterly review: those are saved as cancelled, never
       // loaded (loadInitiatives), so never in this list — and never deleted.
-      const { data: existingData } = await this.supabase
+      const { data: existingData, error: existingError } = await this.supabase
         .from('strategic_initiatives')
         .select('id, status')
         .eq('business_id', businessId)
         .eq('step_type', stepType)
+
+      // Which ids are this step's own rows decides what is updated in place and
+      // what is inserted. Unread, every item would be inserted again beside the
+      // row it already has, so write nothing.
+      if (existingError) {
+        console.error(`[Strategic Planning] ❌ Could not read the saved ${stepType} initiatives:`, existingError)
+        return { success: false, error: `Could not read the saved ${stepType} initiatives: ${existingError.message}` }
+      }
 
       // CRITICAL SAFEGUARD: Prevent accidental mass deletion
       // If there's existing data and we're about to delete everything, abort
@@ -94,9 +106,11 @@ export class StrategicPlanningService {
 
       // Only include valid UUIDs in newIds set (client-generated IDs are not in DB)
       const newIds = new Set(initiatives.filter(init => init.id && isValidUUID(init.id)).map(init => init.id))
+      // This step's own rows: the only ones this save updates in place.
+      const ownIds = new Set((existingData || []).map(row => row.id))
 
       if (initiatives.length > 0) {
-        // Separate new initiatives (no id or invalid id) from existing ones (valid UUID)
+        // Separate new initiatives from this step's existing rows
         const newInitiatives: any[] = []
         const existingInitiatives: any[] = []
 
@@ -133,9 +147,14 @@ export class StrategicPlanningService {
             updated_at: new Date().toISOString()
           }
 
-          // Only treat as existing if it has a valid UUID (from database)
-          // Client-generated IDs like "idea-123-0.456" should be treated as new
-          if (init.id && isValidUUID(init.id)) {
+          // Only treat as existing if it is one of THIS step's rows. Anything else
+          // is inserted as a new row of this step: a client-generated ID like
+          // "idea-123-0.456", and the row an initiative was picked from in an
+          // earlier step — Step 3's drag and Step 4's add-to-quarter hand the
+          // next list the same object, id and all. Upserting that row by id
+          // would re-file it here, out of the step it came from (the 12-month
+          // list, the ideas). The same rule as /api/goals/save.
+          if (init.id && ownIds.has(init.id)) {
             existingInitiatives.push({ id: init.id, ...baseData })
           } else {
             newInitiatives.push(baseData)

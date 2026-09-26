@@ -303,15 +303,31 @@ async function postHandler(request: Request) {
           // Get existing for this step_type, with the status that says which the
           // coach dropped in a quarterly review (saved as cancelled). The wizard
           // never loads those, so they are never in this list.
-          const { data: existing } = await admin
+          const { data: existing, error: existingError } = await admin
             .from('strategic_initiatives')
             .select('id, status')
             .eq('business_id', saveProfileId)
             .eq('step_type', type)
 
+          // Which ids are this step's own rows decides what is updated and what
+          // is inserted. Unread, every item would be inserted again beside the
+          // row it already has, so this step is not written.
+          if (existingError) {
+            Sentry.captureException(existingError, {
+              tags: { route: 'goals/save', invariant: 'goals_initiative_read_failed' },
+              extra: { context: '[API /goals/save] Saved initiatives could not be read; the step was not written', stepType: type },
+            } as any)
+            errors.push(`${type} read: ${existingError.message}`)
+            continue
+          }
+
           const existingIds = new Set(existing?.map((e: any) => e.id) || [])
 
-          // Separate new vs existing
+          // Separate new vs existing. Only this step's own rows are updated in
+          // place; any other id (one made in the browser, or the row an
+          // initiative was picked from in an earlier step) is inserted as a new
+          // row of this step. Upserting it by id would move that row out of the
+          // step it belongs to.
           const isValidUUID = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
           const toInsert = initiatives.filter((i: any) => !i.id || !isValidUUID(i.id) || !existingIds.has(i.id))
           const toUpsert = initiatives.filter((i: any) => i.id && isValidUUID(i.id) && existingIds.has(i.id))
