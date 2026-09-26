@@ -1141,13 +1141,30 @@ describe('step 4.2\'s owner tag never reaches a rock', () => {
     expect(writesTo(Q2_ROW)[0].payload).not.toHaveProperty('description');
   });
 
-  it('a why the coach gave is written as the row\'s description', async () => {
-    db.existingInitiatives = [{ id: Q2_ROW, title: 'Due Date Focus', step_type: 'q2', status: 'not_started', description: 'Old' }];
+  it('a rock never writes over the row\'s description or notes — its why is saved to a column of its own', async () => {
+    // The description is the Goals wizard's text; Goals Step 5 shows and edits
+    // the why in its own column. Notes a coach wrote are saved by
+    // syncInitiativeChanges.
+    db.existingInitiatives = [
+      {
+        id: Q2_ROW,
+        title: 'Due Date Focus',
+        step_type: 'q2',
+        status: 'not_started',
+        description: 'Every job quoted within 48h',
+        notes: 'From the Goals session',
+      },
+    ];
     const decisions = [card(rowById(Q2_ROW)!, { why: 'Jobs slip past their due date' })];
 
-    await strategicSyncService.syncRocks('biz-1', 'user-1', rocksOf(decisions), 'q2');
+    const result = await strategicSyncService.syncAll('biz-1', 'user-1', decisions, TARGETS, 'q2', rocksOf(decisions), []);
 
-    expect(rowById(Q2_ROW)?.description).toBe('Jobs slip past their due date');
+    expect(result).toEqual({ success: true, errors: [] });
+    expect(rowById(Q2_ROW)).toMatchObject({
+      description: 'Every job quoted within 48h',
+      notes: 'From the Goals session',
+      why: 'Jobs slip past their due date',
+    });
   });
 
   it('a rock filed as a new row is saved without the tag', async () => {

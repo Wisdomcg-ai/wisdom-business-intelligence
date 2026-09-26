@@ -472,9 +472,10 @@ export class StrategicSyncService {
       const written = new Set<string>();
 
       for (const [index, rock] of rocks.entries()) {
-        // Never step 4.2's owner tag (assignment-tag.ts). Rocks built before
-        // rocksFromDecisions left it out still carry it, as notes and, where the
-        // coach gave no why, as the description — JVJ's Q2 review stores three.
+        // For a new row. Never step 4.2's owner tag (assignment-tag.ts): rocks
+        // built before rocksFromDecisions left it out still carry it, as notes
+        // and, where the coach gave no why, as the description — JVJ's Q2 review
+        // stores three.
         const description = withoutAssignment(rock.description);
         const notes = withoutAssignment(rock.notes);
         const baseData = {
@@ -497,16 +498,14 @@ export class StrategicSyncService {
 
         if (rowId) {
           // UPDATE the quarter's row. Never a row elsewhere in the plan: baseData
-          // carries step_type. The row's own description and notes stay unless
-          // the rock carries some — the workshop never loads them, so a rock
-          // without any has not cleared them.
+          // carries step_type. Never the row's description or notes: the
+          // description is the Goals wizard's text, which a rock's why used to
+          // replace — the why has a column of its own, which
+          // syncSprintPlanningToQuarter writes and Goals Step 5 shows — and notes
+          // a coach wrote are saved by syncInitiativeChanges.
           const { error } = await supabase
             .from('strategic_initiatives')
-            .update({
-              ...baseData,
-              ...(description ? { description } : {}),
-              ...(notes ? { notes } : {}),
-            })
+            .update(baseData)
             .eq('id', rowId)
             .eq('business_id', businessId);
           if (!error) updatedCount++;
